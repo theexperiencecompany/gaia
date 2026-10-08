@@ -46,8 +46,15 @@ function isPostHogReady(): boolean {
   return posthog.__loaded;
 }
 
+function isIdentityChange(call: PendingCall): boolean {
+  return call.kind === "identify" || call.kind === "reset";
+}
+
+/** Past the cap only events are dropped: a lost identify or reset misattributes everything after it. */
 function enqueue(call: PendingCall): void {
-  if (pendingCalls.length >= MAX_PENDING_CALLS) return;
+  if (pendingCalls.length >= MAX_PENDING_CALLS && !isIdentityChange(call)) {
+    return;
+  }
   pendingCalls.push(call);
 }
 
@@ -63,7 +70,8 @@ function send(call: PendingCall): void {
       posthog.setPersonProperties(call.properties);
       break;
     case "reset":
-      posthog.reset();
+      // An anonymous id carries pre-signup history; resetting it would orphan that.
+      if (posthog._isIdentified()) posthog.reset();
       break;
   }
 }
@@ -126,7 +134,7 @@ export function identifyUser(
 }
 
 /**
- * Reset user identity: on logout, or a 401 that ends a signed-in session.
+ * End a signed-in identity: on logout, or a 401. An anonymous identity is kept.
  * Queued like identify, since posthog.reset() before init is a silent no-op.
  */
 export function resetUser(): void {

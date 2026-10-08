@@ -1,5 +1,7 @@
 """The event catalog's contract: names, owners, property kinds, emitters and the generated types."""
 
+import ast
+from datetime import timedelta
 import json
 from pathlib import Path
 import re
@@ -9,6 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 import pytest
 
 from shared.py.analytics.catalog import CATALOG
+from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.base import (
     EVENT_NAME_PATTERN,
     CatalogError,
@@ -38,11 +41,12 @@ _SERVER_SOURCES = ("apps/api/app",)
 _VOICE_SOURCES = ("apps/voice-agent/src",)
 _WEB_SOURCES = ("apps/web/src", "apps/web/instrumentation-client.ts")
 _BOT_SOURCES = ("libs/shared/ts/src/bots", "apps/bots")
+_ATTRIBUTED_OWNERS = (Surface.SERVER, Surface.VOICE)
 _TEST_PATH = re.compile(r"(__tests__|/tests?/|\.test\.tsx?$|\.spec\.tsx?$)")
 
 
-def _source_text(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> str:
-    chunks: list[str] = []
+def _source_files(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
+    texts: list[str] = []
     for root in roots:
         base = REPO_ROOT / root
         files = [base] if base.is_file() else base.rglob("*")
@@ -53,17 +57,44 @@ def _source_text(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> str:
                 and "node_modules" not in path.parts
                 and not _TEST_PATH.search(relative)
             ):
-                chunks.append(path.read_text(encoding="utf-8"))
-    return "\n".join(chunks)
+                texts.append(path.read_text(encoding="utf-8"))
+    return texts
+
+
+def _python_references(source: str) -> set[str]:
+    """Names the module's code loads; imports, comments, docstrings and annotations emit nothing."""
+    tree = ast.parse(source)
+    annotations = [
+        node.annotation
+        for node in ast.walk(tree)
+        if isinstance(node, ast.arg | ast.AnnAssign) and node.annotation is not None
+    ]
+    annotations += [
+        node.returns
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns is not None
+    ]
+    in_annotation = {id(child) for annotation in annotations for child in ast.walk(annotation)}
+    return {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and id(node) not in in_annotation
+    }
 
 
 @pytest.fixture(scope="module")
-def emitter_sources() -> dict[Surface, str]:
+def python_references() -> dict[Surface, set[str]]:
     return {
-        Surface.SERVER: _source_text(_SERVER_SOURCES, (".py",)),
-        Surface.VOICE: _source_text(_VOICE_SOURCES, (".py",)),
-        Surface.WEB: _source_text(_WEB_SOURCES, (".ts", ".tsx")),
-        Surface.BOT: _source_text(_BOT_SOURCES, (".ts",)),
+        surface: set().union(*(_python_references(text) for text in _source_files(roots, (".py",))))
+        for surface, roots in ((Surface.SERVER, _SERVER_SOURCES), (Surface.VOICE, _VOICE_SOURCES))
+    }
+
+
+@pytest.fixture(scope="module")
+def typescript_sources() -> dict[Surface, str]:
+    return {
+        Surface.WEB: "\n".join(_source_files(_WEB_SOURCES, (".ts", ".tsx"))),
+        Surface.BOT: "\n".join(_source_files(_BOT_SOURCES, (".ts",))),
     }
 
 
@@ -133,15 +164,38 @@ def test_never_emitted_events_are_gone(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", list(CATALOG))
-def test_every_event_has_an_emitter(name: str, emitter_sources: dict[Surface, str]) -> None:
+def test_every_event_has_an_emitter(
+    name: str,
+    python_references: dict[Surface, set[str]],
+    typescript_sources: dict[Surface, str],
+) -> None:
     """A catalog entry nothing emits is a dashboard tile that reads zero forever."""
     model = CATALOG[name]
-    source = emitter_sources[model.owner]
-    if model.owner in (Surface.SERVER, Surface.VOICE):
+    if model.owner in python_references:
         # A name reference, not "Name(": some emitters pick the class first, then build it.
-        assert re.search(rf"\b{model.__name__}\b", source), f"nothing emits {model.__name__}"
+        assert model.__name__ in python_references[model.owner], f"nothing emits {model.__name__}"
     else:
-        assert f'"{name}"' in source, f"no {model.owner} source names {name}"
+        assert f'"{name}"' in typescript_sources[model.owner], (
+            f"no {model.owner} source names {name}"
+        )
+
+
+def test_an_import_comment_docstring_or_annotation_is_not_an_emitter() -> None:
+    source = (
+        "from shared.py.analytics.catalog.billing import PaymentFailed\n"
+        "def f(event: PaymentFailed) -> PaymentFailed:\n"
+        '    """PaymentFailed is captured elsewhere."""\n'
+        "    # PaymentFailed\n"
+        "    return event\n"
+    )
+    assert "PaymentFailed" not in _python_references(source)
+
+
+def test_a_class_picked_before_it_is_built_is_an_emitter() -> None:
+    source = (
+        "event_cls = PaymentFailed if failed else PaymentSucceeded\ncapture(uid, event_cls())\n"
+    )
+    assert {"PaymentFailed", "PaymentSucceeded"} <= _python_references(source)
 
 
 def test_the_generated_typescript_matches_the_catalog() -> None:
@@ -153,3 +207,53 @@ def test_the_generated_typescript_matches_the_catalog() -> None:
 def test_the_exported_catalog_json_matches_the_catalog() -> None:
     committed = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
     assert committed == json.loads(json.dumps(export_catalog())), "run `mise analytics:types`"
+
+
+@pytest.mark.parametrize("name", list(CATALOG))
+def test_every_event_has_a_daily_budget(name: str) -> None:
+    """The volume alert reads it; an event with none could loop unnoticed."""
+    assert CATALOG[name].budget_per_user_day >= 1
+
+
+def test_an_event_without_a_budget_cannot_be_defined() -> None:
+    with pytest.raises(CatalogError, match="budget_per_user_day"):
+        type(
+            "NoBudget",
+            (ServerEvent,),
+            {"event": "test:no_budget", "__annotations__": {"event": ClassVar[str]}},
+        )
+
+
+@pytest.mark.parametrize(
+    "name", [name for name, model in CATALOG.items() if model.owner in _ATTRIBUTED_OWNERS]
+)
+def test_every_server_and_voice_event_requires_attribution(name: str) -> None:
+    """The base properties are required in the exported schema, so a tile may rely on them."""
+    exported = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+    [event] = [event for event in exported["events"] if event["event"] == name]
+    base = exported["base_properties"][event["base_properties"]]
+    assert set(base["required"]) == {"actor", "trigger", "surface"}
+
+
+def test_an_event_property_cannot_shadow_the_attribution() -> None:
+    with pytest.raises(CatalogError, match="shadow"):
+        type(
+            "Shadowing",
+            (ServerEvent,),
+            {
+                "event": "test:shadowing",
+                "budget_per_user_day": 10,
+                "__annotations__": {
+                    "event": ClassVar[str],
+                    "budget_per_user_day": ClassVar[int],
+                    "surface": bool,
+                },
+            },
+        )
+
+
+def test_the_active_user_mark_is_gated_to_once_a_day() -> None:
+    assert UserActive.event in CATALOG
+    assert UserActive.budget_per_user_day == 1
+    assert UserActive.at_most_once_ttl is not None
+    assert UserActive.at_most_once_ttl >= timedelta(days=1)

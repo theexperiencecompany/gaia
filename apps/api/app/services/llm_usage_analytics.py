@@ -81,7 +81,6 @@ def capture_auxiliary_llm_call(
         UserId(user_id),
         AiLlmCallCompleted(
             feature=str(feature),
-            surface=SourceCategory.BG.value,
             label=label,
             model=model_name,
             input_tokens=usage["input_tokens"],

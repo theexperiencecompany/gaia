@@ -5,6 +5,7 @@ Tools API router for retrieving available tools and their metadata.
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.client_type import request_client_source
 from app.decorators.caching import Cacheable
 from app.models.chat_models import ConversationSource
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
@@ -19,8 +20,6 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-_CLIENT_TYPE_HEADER = "X-Client-Type"
-
 
 @router.get("/tools", response_model=ToolsListResponse)
 async def list_available_tools(
@@ -34,10 +33,7 @@ async def list_available_tools(
     log.set(operation="list_tools")
     try:
         user_id = user.user_id
-        include_desktop = (
-            request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
-            == ConversationSource.DESKTOP.value
-        )
+        include_desktop = request_client_source(request) is ConversationSource.DESKTOP
 
         catalog = await get_available_tools(user_id=user_id)
         result = filter_tools_response(catalog, include_desktop=include_desktop)

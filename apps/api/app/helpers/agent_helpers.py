@@ -47,6 +47,7 @@ from app.models.agent_models import (
     LlmCallMetadata,
     StreamChunkMetadata,
     read_agent_configurable,
+    run_analytics_context,
 )
 from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
@@ -783,6 +784,7 @@ async def build_agent_config(
         "user_name": acting_user.name,
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
+        "analytics_context": run_analytics_context(base_configurable or {}).model_dump(mode="json"),
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.

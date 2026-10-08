@@ -182,14 +182,16 @@ class TestCreateSubscription:
         # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            PaymentCheckoutStarted(quantity=1, source=None, surface="redirect", plan_id="prod_abc"),
+            PaymentCheckoutStarted(
+                quantity=1, source=None, checkout_flow="redirect", plan_id="prod_abc"
+            ),
         )
 
     @pytest.mark.regression
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
         self, client: AsyncClient
     ):
-        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/surface split."""
+        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/checkout_flow split."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -209,7 +211,7 @@ class TestCreateSubscription:
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             PaymentCheckoutStarted(
-                quantity=1, source="payment_retry", surface="redirect", plan_id="prod_abc"
+                quantity=1, source="payment_retry", checkout_flow="redirect", plan_id="prod_abc"
             ),
         )
 
@@ -332,7 +334,7 @@ class TestCreateCheckoutSession:
             PaymentCheckoutStarted(
                 billing_cycle=PlanDuration.MONTHLY,
                 source="paywall_modal",
-                surface="overlay",
+                checkout_flow="overlay",
                 plan_id="prod_abc",
             ),
         )

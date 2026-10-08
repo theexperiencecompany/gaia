@@ -100,7 +100,7 @@ class TestGenerateLink:
 @pytest.mark.unit
 class TestDisconnect:
     async def test_disconnect_runs_the_real_seam_refreshes_projection_and_confirms(
-        self, posthog_events
+        self, posthog_events: list[dict[str, object]]
     ) -> None:
         unlink = AsyncMock()
         resync = MagicMock()

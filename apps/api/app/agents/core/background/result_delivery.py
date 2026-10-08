@@ -393,7 +393,7 @@ def _capture_resolution(
             emoji=directive.payload if directive.kind is CommsDirectiveKind.REACT else None,
             delivery=delivery,
         ),
-        dedupe_key=f"chat_background_update_resolved:{run.task_id or run.conversation_id}",
+        dedupe=run.analytics_dedupe,
     )
 
 

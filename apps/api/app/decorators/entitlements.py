@@ -6,18 +6,18 @@ tiered_rate_limit decorator / enforce_tiered_limit imperative-helper
 split so callers that resolve their own user (bots) can still gate.
 """
 
+from datetime import UTC, datetime
 from typing import ParamSpec, TypedDict, TypeVar
 
 from fastapi import HTTPException
 
 from app.config.settings import settings
-from app.constants.analytics import PAYWALL_BLOCKED_WINDOW_SECONDS
 from app.models.payment_models import PlanType
-from app.services.analytics_service import capture_once
+from app.services.analytics_service import capture
 from app.services.payments.payment_service import payment_service
 from app.services.payments.plan_cache import invalidate_plan_cache
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.billing import PAYWALL_BLOCKED_WINDOW, PaywallBlocked
 from shared.py.wide_events import log
 
 P = ParamSpec("P")
@@ -87,10 +87,18 @@ async def require_active_subscription(user_id: str, feature: str) -> None:
         user={"id": user_id},
         payment={"operation": "paywall_gate", "feature": feature},
     )
-    await capture_once(
+    capture_paywall_block(user_id, feature)
+    raise SubscriptionRequiredException()
+
+
+def capture_paywall_block(user_id: str, feature: str) -> None:
+    """Capture paywall:blocked for user_id and feature, once per window: repeats inside it are one block."""
+    window_seconds = PAYWALL_BLOCKED_WINDOW.total_seconds()
+    window_start = datetime.fromtimestamp(
+        datetime.now(UTC).timestamp() // window_seconds * window_seconds, UTC
+    )
+    capture(
         UserId(user_id),
         PaywallBlocked(feature=feature),
-        scope=feature,
-        window_seconds=PAYWALL_BLOCKED_WINDOW_SECONDS,
+        Dedupe(key=f"{feature}:{window_start.isoformat()}", occurred_at=window_start),
     )
-    raise SubscriptionRequiredException()

@@ -90,11 +90,13 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
     ChatTurnReacted,
 )
+from shared.py.analytics.context import analytics_context, current_analytics_context
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -420,7 +422,6 @@ async def _run_chat_stream(
                     source,
                     is_new_conversation=is_new_conversation,
                 ),
-                dedupe_key=stream_id,
             )
 
     except Exception as e:  # surface to client + flag the stream
@@ -578,15 +579,17 @@ def _start_description_task(
     if not is_new_conversation:
         return None
     last_message = body.messages[-1] if body.messages else None
-    return asyncio.create_task(
-        generate_and_update_description(
-            conversation_id,
-            last_message,
-            user,
-            body.selectedTool or None,
-            body.selectedWorkflow or None,
+    # The task copies the bound context at creation: the title is the agent's work, not the user's.
+    with analytics_context(current_analytics_context().acting_as(Actor.AGENT)):
+        return asyncio.create_task(
+            generate_and_update_description(
+                conversation_id,
+                last_message,
+                user,
+                body.selectedTool or None,
+                body.selectedWorkflow or None,
+            )
         )
-    )
 
 
 async def _publish_description_if_ready(

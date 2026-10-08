@@ -1,0 +1,203 @@
+{
+  "$comment": "The canonical PostHog actions, tagged 'canonical' in the project. `mise analytics:check` fails when the live canonical actions differ from this file or when a catalog event's previous_names is not covered here; `python3 scripts/ci/analytics.py sync-actions --apply` makes the project match. A renamed event's old name carries a timestamp bound wherever the two names overlapped, so the union never double counts.",
+  "tag": "canonical",
+  "actions": [
+    {
+      "name": "Active user (human)",
+      "description": "SINGLE SOURCE for 'active user' across all dashboards — reference this action, never re-list events. A human did something: opened the app (user:session_resumed), logged in, sent a chat message (web/desktop/bot), or messaged a bot. Excludes background/agent/system events and anonymous pageviews. Will be replaced by the server-side user:active event (one per user per day, emitted with last_active_at) — edit THIS action then, and every tile follows.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "user:session_resumed"
+        },
+        {
+          "event": "user:logged_in"
+        },
+        {
+          "event": "chat:message_submitted"
+        },
+        {
+          "event": "bot:message_received"
+        }
+      ]
+    },
+    {
+      "name": "Chat message submitted (continuous)",
+      "description": "One accepted chat turn across the 2026-08-18 rename. chat:message_sent (web client) counts only before 2026-08-17 11:25:02.541 UTC, the first chat:message_submitted; the two overlapped on Aug 17-18, so an unbounded OR would double count those days. Before the cutover the series is web-only; after it, every surface.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "chat:message_sent",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-17 11:25:02.541', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "chat:message_submitted"
+        }
+      ]
+    },
+    {
+      "name": "Workflow created (continuous)",
+      "description": "workflows:created (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:created. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:created",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:created"
+        }
+      ]
+    },
+    {
+      "name": "Workflow executed (continuous)",
+      "description": "workflows:executed (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:executed. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:executed",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:executed"
+        }
+      ]
+    },
+    {
+      "name": "Workflow published (continuous)",
+      "description": "workflows:published (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:published. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:published",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:published"
+        }
+      ]
+    },
+    {
+      "name": "Workflow unpublished (continuous)",
+      "description": "workflows:unpublished (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:unpublished. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:unpublished",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:unpublished"
+        }
+      ]
+    },
+    {
+      "name": "Workflow deleted (continuous)",
+      "description": "workflows:deleted (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:deleted. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:deleted",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:deleted"
+        }
+      ]
+    },
+    {
+      "name": "Workflow steps regenerated (continuous)",
+      "description": "workflows:steps_regenerated (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:steps_regenerated. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "workflows:steps_regenerated",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:steps_regenerated"
+        }
+      ]
+    },
+    {
+      "name": "Notification read (continuous)",
+      "description": "notification:dismissed (web client) before 2026-09-17 13:42:36.633 UTC, the first server-side notification:read, then notification:read.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "notification:dismissed",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-09-17 13:42:36.633', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "notification:read"
+        }
+      ]
+    },
+    {
+      "name": "Rate limit hit (continuous)",
+      "description": "rate_limit_hit, then rate_limit:hit after the event catalog rename. One server emitter changed its name in one deploy, so the two never fire for the same hit and need no date bound.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "rate_limit_hit"
+        },
+        {
+          "event": "rate_limit:hit"
+        }
+      ]
+    },
+    {
+      "name": "Approval decided (continuous)",
+      "description": "approval:decided (the barrier path) or hil:decision_submitted (the approval ledger). Not a rename: the HIL_LEDGER flag routes each decision to exactly one path and both are still live, so neither name is date-bounded.",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "approval:decided"
+        },
+        {
+          "event": "hil:decision_submitted"
+        }
+      ]
+    }
+  ]
+}

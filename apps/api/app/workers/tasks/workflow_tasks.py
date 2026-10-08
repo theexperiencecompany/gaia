@@ -48,7 +48,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_daily_cost_budget
-from app.decorators.entitlements import is_paid
+from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
@@ -78,7 +78,6 @@ from app.models.workflow_models import (
 )
 from app.services.analytics_service import capture
 from app.services.hil.approvals_store import list_pending_for_conversation
-from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
     coalesce_window_seconds,
@@ -127,8 +126,14 @@ from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 from shared.py.wide_events import WorkflowContext, log
 
 # How far a fire may drift from its scheduled time before it is worth a warning.
@@ -636,19 +641,6 @@ async def _record_execution_failure(
     # workflow's failure notification; a second one here would say it twice.
     if not isinstance(error, WorkflowExecutorFailed):
         await _notify_workflow_failed(error, workflow)
-
-
-def _origin_for(trigger_type: str) -> LimitHitOrigin:
-    """Return the limit-hit origin: interactive for a manual fire, background otherwise.
-
-    Getting it wrong tells a user who clicked Run that their workflows are
-    paused, or tells a user who did nothing that *they* hit *their* limit.
-    """
-    return (
-        LimitHitOrigin.INTERACTIVE
-        if trigger_type == TriggerType.MANUAL.value
-        else LimitHitOrigin.BACKGROUND
-    )
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:
@@ -1463,7 +1455,7 @@ async def _skip_unpaid_fire(
     # Same event every HTTP/bot paywall block fires; skips rather than
     # raising via require_active_subscription, so the funnel can see it.
     # Explicit id: a worker has no request context for an implicit one.
-    capture(UserId(workflow.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_WORKFLOW))
+    capture_paywall_block(workflow.user_id, PAYWALL_FEATURE_WORKFLOW)
     await _rearm_quietly(scheduler, workflow, trigger_type, workflow_id)
     return f"Workflow {workflow_id} skipped — subscription required"
 
@@ -1473,6 +1465,22 @@ async def execute_workflow_by_id(
     workflow_id: str,
     context: dict[str, object] | None = None,
 ) -> str:
+    """Execute a workflow by ID, as the agent, attributed to what fired it."""
+    trigger_type = _derive_trigger_type(_FireStamp.model_validate(context or {}))
+    with analytics_context(_fire_analytics_context(trigger_type).acting_as(Actor.AGENT)):
+        return await _execute_workflow_fire(workflow_id, context)
+
+
+def _fire_analytics_context(trigger_type: str) -> AnalyticsContext:
+    """Return what started a fire: its schedule, its integration, or the request the job carried."""
+    if trigger_type == TriggerType.SCHEDULE.value:
+        return worker_context(Trigger.SCHEDULE)
+    if trigger_type == TriggerType.INTEGRATION.value:
+        return worker_context(Trigger.INTEGRATION_TRIGGER)
+    return current_analytics_context()
+
+
+async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | None) -> str:
     """Execute a workflow by ID with proper execution count tracking."""
     log.set(workflow_id=workflow_id)
     actual_fire_utc = datetime.now(UTC)
@@ -1509,9 +1517,6 @@ async def execute_workflow_by_id(
         # payload, so concurrent enqueues dedup to one job. Drained only after the
         # gates below, so a rejected run leaves the buffer intact for a later one.
 
-        # Everything below runs as this kind of work: the budget wall, the run's
-        # own tiered limit, and every rate-limited tool the agent reaches.
-        mark_run_origin(_origin_for(trigger_type))
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,

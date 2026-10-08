@@ -197,6 +197,12 @@ Similar structure to web app with React Native components. Uses React Navigation
 - Every capture takes an `AnalyticsId`: a `UserId` (constructible only from a valid Mongo ObjectId) or a `PlatformIdentity` (`<platform>:<id>`, unlinked bot users only). A raw string, an email or `"system"` fails at type-check and at runtime. There is no context-inherited capture: OAuth callbacks, bot routes, webhooks and ARQ jobs once landed on anonymous profiles that way.
 - Bots resolve the linked GAIA id via `BaseBotAdapter.resolveDistinctId` and fall back to `"<platform>:<platformUserId>"` only while the account is unlinked; linking emits an `alias` so the pre-link history merges rather than stranding a ghost profile.
 
+### Attribution, dedupe and active users
+
+- **Every server and voice event carries `actor` (`user`/`agent`), `trigger` (`interactive`/`schedule`/`integration_trigger`/`webhook`/`system`) and `surface` (`web`/`desktop`/`bot`/`voice`/`worker`).** Capture stamps them from the `AnalyticsContext` contextvar (`libs/shared/py/analytics/context.py`) and raises when none is bound. Emitters never pass them. The context is bound once per entry point: the HTTP middleware, the ARQ envelope (jobs carry it in their payload), the scheduler and trigger dispatch, the workflow fire, the agent run tree (stamped on the configurable) and the voice worker. A new entry point binds its own.
+- **A re-sendable fact takes a `Dedupe(key, occurred_at)`**: PostHog merges rows only when uuid, event, timestamp and distinct_id all match, so both come from the fact, never `now()`. An event whose catalog model sets `at_most_once_ttl` goes through a Redis `SET NX` gate.
+- **`user:active` is the one active-user signal.** Capture emits it on a user's first `actor=user` event of the IST day; never emit it by hand.
+
 ### Properties — no PII
 
 Event properties are counts, enums, durations, booleans and ids — never message text, filenames, email addresses, transcripts, or raw platform identifiers. Log the *shape* of what happened, not its content. Bot logs additionally hash identifiers via `hashLogIdentifier`; PostHog gets neither the raw nor the hash.

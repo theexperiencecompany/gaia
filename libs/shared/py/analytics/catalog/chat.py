@@ -10,6 +10,8 @@ class ChatMessageSubmitted(ServerEvent):
     """A chat turn passed every gate and was accepted, from any surface."""
 
     event: ClassVar[str] = "chat:message_submitted"
+    previous_names: ClassVar[tuple[str, ...]] = ("chat:message_sent",)
+    budget_per_user_day: ClassVar[int] = 50
 
     source: Identifier
     has_files: bool
@@ -33,6 +35,7 @@ class ChatMessageRefused(ServerEvent):
     """A bot turn stopped at a gate; without it a refusal is indistinguishable from silence."""
 
     event: ClassVar[str] = "chat:message_refused"
+    budget_per_user_day: ClassVar[int] = 50
 
     platform: Identifier
     reason: Literal["plan_required", "subscription_required"]
@@ -57,18 +60,21 @@ class ChatMessageCompleted(_ChatTurnEnded):
     """A chat turn reached its terminal state; executor-leg timings ride on agent:run_completed."""
 
     event: ClassVar[str] = "chat:message_completed"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ChatMessageCancelled(_ChatTurnEnded):
     """A chat turn the user stopped before it finished."""
 
     event: ClassVar[str] = "chat:message_cancelled"
+    budget_per_user_day: ClassVar[int] = 10
 
 
 class ChatBackgroundUpdateResolved(ServerEvent):
     """Comms resolved a background executor update as a message, a one-emoji react, or silence."""
 
     event: ClassVar[str] = "chat:background_update_resolved"
+    budget_per_user_day: ClassVar[int] = 100
 
     outcome: Identifier
     emoji: Emoji | None = None
@@ -79,6 +85,7 @@ class ChatTurnReacted(ServerEvent):
     """An interactive turn's reply resolved to a one-emoji react instead of a message."""
 
     event: ClassVar[str] = "chat:turn_reacted"
+    budget_per_user_day: ClassVar[int] = 10
 
     emoji: Emoji
 
@@ -87,18 +94,21 @@ class ChatMessagePinned(ServerEvent):
     """A user pinned a message."""
 
     event: ClassVar[str] = "chat:message_pinned"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ChatMessageUnpinned(ServerEvent):
     """A user unpinned a message."""
 
     event: ClassVar[str] = "chat:message_unpinned"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ChatConversationCreated(ServerEvent):
     """A conversation was created, by a user or by the system."""
 
     event: ClassVar[str] = "chat:conversation_created"
+    budget_per_user_day: ClassVar[int] = 20
 
     is_system_generated: bool
     is_onboarding_demo: bool | None = None
@@ -109,6 +119,7 @@ class ChatConversationRenamed(ServerEvent):
     """A conversation's description changed, by the user or the auto-title task."""
 
     event: ClassVar[str] = "chat:conversation_renamed"
+    budget_per_user_day: ClassVar[int] = 20
 
     conversation_id: Identifier
 
@@ -117,6 +128,7 @@ class ChatConversationStarred(ServerEvent):
     """A user starred or unstarred a conversation."""
 
     event: ClassVar[str] = "chat:conversation_starred"
+    budget_per_user_day: ClassVar[int] = 10
 
     starred: bool
     conversation_id: Identifier
@@ -126,6 +138,7 @@ class ChatConversationDeleted(ServerEvent):
     """A user deleted one conversation (conversation_id) or all of them (count)."""
 
     event: ClassVar[str] = "chat:conversation_deleted"
+    budget_per_user_day: ClassVar[int] = 10
 
     conversation_id: Identifier | None = None
     count: int | None = None
@@ -135,6 +148,7 @@ class ChatFileUploaded(ServerEvent):
     """A file upload was stored and indexed."""
 
     event: ClassVar[str] = "chat:file_uploaded"
+    budget_per_user_day: ClassVar[int] = 10
 
     size_bytes: int
     resource_type: Identifier
@@ -145,18 +159,21 @@ class ChatFileUpdated(ServerEvent):
     """A user updated an uploaded file."""
 
     event: ClassVar[str] = "chat:file_updated"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ChatFileDeleted(ServerEvent):
     """A user deleted an uploaded file."""
 
     event: ClassVar[str] = "chat:file_deleted"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ChatVoiceModeToggled(WebEvent):
     """Voice mode was entered, exited, or blocked by the paywall in the composer."""
 
     event: ClassVar[str] = "chat:voice_mode_toggled"
+    budget_per_user_day: ClassVar[int] = 50
 
     voice_mode_enabled: bool
     conversation_id: Identifier | None = None
@@ -167,6 +184,7 @@ class ChatSlashCommandSelected(WebEvent):
     """A tool was picked from the slash-command dropdown; the typed query is never sent."""
 
     event: ClassVar[str] = "chat:slash_command_selected"
+    budget_per_user_day: ClassVar[int] = 10
 
     tool_name: Identifier
     tool_category: Identifier
@@ -177,6 +195,7 @@ class ChatSlashCommandCategoryChanged(WebEvent):
     """A category tab was switched in the slash-command dropdown."""
 
     event: ClassVar[str] = "chat:slash_command_category_changed"
+    budget_per_user_day: ClassVar[int] = 10
 
     category: Identifier
     previous_category: Identifier
@@ -186,6 +205,7 @@ class ChatComposerPlusMenuClicked(WebEvent):
     """An item of the composer's plus menu was clicked."""
 
     event: ClassVar[str] = "chat:composer_plus_menu_clicked"
+    budget_per_user_day: ClassVar[int] = 10
 
     item_id: Literal["upload_file"]
     is_mode: bool
@@ -195,6 +215,7 @@ class ChatToolsButtonClicked(WebEvent):
     """The composer's tools button was clicked."""
 
     event: ClassVar[str] = "chat:tools_button_clicked"
+    budget_per_user_day: ClassVar[int] = 10
 
     is_open: bool
 
@@ -203,6 +224,7 @@ class ChatGridIntegrationConnectClicked(WebEvent):
     """A connect button on the new-chat integration grid was clicked."""
 
     event: ClassVar[str] = "chat:grid_integration_connect_clicked"
+    budget_per_user_day: ClassVar[int] = 50
 
     integration_id: Identifier
     source: Literal["new_chat_grid"]
@@ -212,15 +234,18 @@ class SessionArtifactPinned(ServerEvent):
     """A user pinned a session artifact."""
 
     event: ClassVar[str] = "session:artifact_pinned"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ImageGenerated(ServerEvent):
     """An image was generated from a prompt."""
 
     event: ClassVar[str] = "image:generated"
+    budget_per_user_day: ClassVar[int] = 50
 
 
 class ImageDescribed(ServerEvent):
     """Text was extracted from an uploaded image."""
 
     event: ClassVar[str] = "image:described"
+    budget_per_user_day: ClassVar[int] = 50

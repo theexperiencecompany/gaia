@@ -10,6 +10,7 @@ class SupportFormSubmitted(ServerEvent):
     """A user submitted a support request; lengths and counts only, never the text."""
 
     event: ClassVar[str] = "support:form_submitted"
+    budget_per_user_day: ClassVar[int] = 10
 
     request_type: Identifier
     title_length: int
@@ -21,5 +22,6 @@ class FeedbackMessageSubmitted(ServerEvent):
     """A user rated an assistant reply and the score was recorded."""
 
     event: ClassVar[str] = "feedback:message_submitted"
+    budget_per_user_day: ClassVar[int] = 10
 
     is_positive: bool

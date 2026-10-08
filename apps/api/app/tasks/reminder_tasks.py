@@ -2,7 +2,7 @@
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
-from app.decorators.entitlements import is_paid
+from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
@@ -14,7 +14,6 @@ from app.services.notification_service import notification_service
 from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
@@ -137,7 +136,7 @@ async def execute_reminder_by_agent(
         # Same event every HTTP/bot paywall block fires; this gate skips instead
         # of going through require_active_subscription, so without it the funnel
         # could not see reminders lost to the wall.
-        capture(UserId(reminder.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_REMINDER))
+        capture_paywall_block(reminder.user_id, PAYWALL_FEATURE_REMINDER)
         return
 
     try:
