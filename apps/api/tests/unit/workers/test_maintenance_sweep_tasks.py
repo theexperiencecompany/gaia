@@ -895,7 +895,6 @@ class TestHealthCheckVerdict:
 
         assert result == ""
 
-    @pytest.mark.regression
     async def test_a_model_failure_is_raised_not_turned_into_a_verdict(self) -> None:
         # A fabricated NEEDS_ATTENTION hid a health check that never ran for months,
         # and on the expired tier it became the body of the user's notification.

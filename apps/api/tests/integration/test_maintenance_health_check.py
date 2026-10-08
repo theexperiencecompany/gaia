@@ -43,7 +43,6 @@ class _VerdictOnlyModel(FakeMessagesListChatModel):
 
 
 @pytest.mark.integration
-@pytest.mark.regression
 async def test_the_health_check_prompt_reaches_a_model_with_no_tools() -> None:
     model = _VerdictOnlyModel(responses=[AIMessage(content=f"  {VERDICT}\n")])
 
