@@ -10,6 +10,7 @@ class CalendarEventCreated(ServerEvent):
     """A user created one calendar event, or a batch of them."""
 
     event: ClassVar[str] = "calendar:event_created"
+    budget_per_user_day: ClassVar[int] = 50
 
     is_all_day: bool | None = None
     has_description: bool | None = None
@@ -24,6 +25,7 @@ class CalendarEventUpdated(ServerEvent):
     """A user updated one calendar event, or a batch of them."""
 
     event: ClassVar[str] = "calendar:event_updated"
+    budget_per_user_day: ClassVar[int] = 50
 
     batch_size: int | None = None
     success_count: int | None = None
@@ -34,6 +36,7 @@ class CalendarEventDeleted(ServerEvent):
     """A user deleted one calendar event, or a batch of them."""
 
     event: ClassVar[str] = "calendar:event_deleted"
+    budget_per_user_day: ClassVar[int] = 50
 
     batch_size: int | None = None
     success_count: int | None = None
@@ -44,3 +47,4 @@ class CalendarPreferencesUpdated(ServerEvent):
     """A user changed which calendars are selected."""
 
     event: ClassVar[str] = "calendar:preferences_updated"
+    budget_per_user_day: ClassVar[int] = 50

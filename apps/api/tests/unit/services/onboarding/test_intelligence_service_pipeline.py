@@ -10,6 +10,8 @@ Every node is faked at its own function boundary so the orchestration itself —
 guard order, wiring, the context threaded through it — is what is under test.
 """
 
+import asyncio
+import contextvars
 from dataclasses import replace
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
@@ -42,6 +44,13 @@ from app.services.onboarding.intelligence_service import (
     _scan_then_enqueue_memory,
     holo_card_url,
     process_onboarding_intelligence,
+)
+from app.workers.task_envelope import arq_task
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
 )
 
 MODULE = "app.services.onboarding.intelligence_service"
@@ -133,7 +142,7 @@ class TestScanThenEnqueueMemory:
         async def scan(user_id: str, ctx: Any) -> None:
             order.append("scan")
 
-        async def enqueue(job: str, uid: str) -> None:
+        async def enqueue(job: str, uid: str, **_stamps: object) -> None:
             order.append(f"enqueue:{job}")
 
         pool.enqueue_job = AsyncMock(side_effect=enqueue)
@@ -146,6 +155,44 @@ class TestScanThenEnqueueMemory:
 
         assert order == ["scan", "enqueue:process_gmail_emails_to_memory"]
         assert pool.enqueue_job.await_args.args == ("process_gmail_emails_to_memory", USER)
+
+    async def test_the_memory_job_runs_with_the_attribution_that_queued_it(self) -> None:
+        """The job carries its producer's analytics context, so its events are not system work."""
+        users_onboarding = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
+            ),
+            posthog_session_id="sess-1",
+        )
+        pool = MagicMock()
+        pool.enqueue_job = AsyncMock()
+        with (
+            patch(f"{MODULE}._run_inbox_scanning", AsyncMock()),
+            patch(f"{MODULE}.RedisPoolManager") as manager,
+            analytics_context(users_onboarding),
+        ):
+            manager.get_pool = AsyncMock(return_value=pool)
+            await _scan_then_enqueue_memory(USER, InboxScanContext())
+
+        call = pool.enqueue_job.await_args
+        # ARQ consumes its own _-prefixed controls; the task sees the rest.
+        job_kwargs = {
+            key: value
+            for key, value in call.kwargs.items()
+            if key.startswith("_gaia_") or not key.startswith("_")
+        }
+        seen: list[AnalyticsContext] = []
+
+        async def _ingest(ctx: object, user_id: str) -> str:
+            seen.append(current_analytics_context())
+            return "ok"
+
+        # A fresh context, as in the worker: only the job payload carries attribution.
+        await contextvars.Context().run(
+            asyncio.create_task, arq_task(_ingest)({}, *call.args[1:], **job_kwargs)
+        )
+
+        assert seen == [users_onboarding]
 
     async def test_a_queue_failure_does_not_fail_the_scan(self) -> None:
         # The visible scan already succeeded; losing durable ingestion must not

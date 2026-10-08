@@ -396,13 +396,13 @@ class TestCompleteOnboarding:
         assert result["user_id"] == sample_user_id
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
-    async def test_captures_the_completion_event_deduped_per_user(
+    async def test_captures_the_completion_event_once(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        """Keyed on the user, so a retried POST cannot count the milestone twice."""
+        """A retried POST never reaches the capture: the atomic gate returns early on it."""
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(profession="Engineer", needs=["reminders", "inbox"])
 
@@ -415,7 +415,6 @@ class TestCompleteOnboarding:
         capture.assert_called_once_with(
             UserId(sample_user_id),
             OnboardingCompleted(needs=["inbox", "reminders"], has_other_need=False),
-            dedupe_key=sample_user_id,
         )
         # The profession lands on the person, not the event, so cohorts can
         # cut by it; the free-text need only travels as a flag.

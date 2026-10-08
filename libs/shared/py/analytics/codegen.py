@@ -58,9 +58,13 @@ def _ts_property(name: str, field: FieldInfo) -> str:
 
 
 def _ts_properties(model: type[AnalyticsEvent]) -> str:
-    if not model.model_fields:
+    fields = {
+        **(model.base_properties.model_fields if model.base_properties is not None else {}),
+        **model.model_fields,
+    }
+    if not fields:
         return "Record<string, never>"
-    lines = [_ts_property(name, field) for name, field in model.model_fields.items()]
+    lines = [_ts_property(name, field) for name, field in fields.items()]
     return "{\n" + "\n".join(lines) + "\n  }"
 
 
@@ -83,8 +87,13 @@ def render_typescript() -> str:
 
 
 def export_catalog() -> dict[str, object]:
-    """Describe every event: owning surface, domain, rename history, budget and property schema."""
+    """Describe every event (owner, domain, rename history, budget, gate, properties) and the base schemas."""
+    bases = {model.base_properties for model in CATALOG.values() if model.base_properties}
     return {
+        "base_properties": {
+            base.__name__: base.model_json_schema()
+            for base in sorted(bases, key=lambda b: b.__name__)
+        },
         "events": [
             {
                 "event": name,
@@ -94,10 +103,18 @@ def export_catalog() -> dict[str, object]:
                 "description": (model.__doc__ or "").strip(),
                 "previous_names": list(model.previous_names),
                 "budget_per_user_day": model.budget_per_user_day,
+                "at_most_once_ttl_seconds": (
+                    int(model.at_most_once_ttl.total_seconds())
+                    if model.at_most_once_ttl is not None
+                    else None
+                ),
+                "base_properties": (
+                    model.base_properties.__name__ if model.base_properties is not None else None
+                ),
                 "properties": model.model_json_schema(),
             }
             for name, model in CATALOG.items()
-        ]
+        ],
     }
 
 

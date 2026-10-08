@@ -11,6 +11,7 @@ guard for multi-worker deployments.
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -19,6 +20,7 @@ from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from shared.py.analytics import Dedupe
 from shared.py.wide_events import current_workflow_execution_id, log
 
 
@@ -101,6 +103,9 @@ class RunIdentity:
     #: started. Metric-only: a HIL resume is ``RunKind.QUEUED`` (it runs on its
     #: own stream) but never queued on the lock, so it must not label as queued.
     queued: bool = False
+    #: Wall-clock dispatch time, kept across a queue pop and a HIL resume so a
+    #: rerun of the same task re-sends its lifecycle events as the same rows.
+    dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 def run_user_from_configurable(configurable: AgentConfigurable) -> AuthenticatedUser:
@@ -155,6 +160,8 @@ class ExecutorRun:
     t_dispatch_perf: float | None = None
     #: Busy-lock queue origin, carried from ``RunIdentity`` — see its comment.
     queued: bool = False
+    #: Dispatch time, carried from ``RunIdentity`` — see its comment.
+    dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def from_configurable(
@@ -188,6 +195,7 @@ class ExecutorRun:
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
+            dispatched_at=identity.dispatched_at,
         )
 
     @property
@@ -202,7 +210,14 @@ class ExecutorRun:
             bot_message_id=self.bot_message_id,
             t_dispatch_perf=self.t_dispatch_perf,
             queued=self.queued,
+            dispatched_at=self.dispatched_at,
         )
+
+    @property
+    def analytics_dedupe(self) -> Dedupe | None:
+        """The run as one analytics fact, its task dispatched once; None for a run with no id."""
+        key = self.task_id or self.stream_id
+        return Dedupe(key=key, occurred_at=self.dispatched_at) if key else None
 
     @property
     def is_queued(self) -> bool:

@@ -34,8 +34,9 @@ class PaymentCheckoutStarted(ServerEvent):
     """A user started a Dodo checkout, by redirect or the embedded overlay."""
 
     event: ClassVar[str] = "payment:checkout_started"
+    budget_per_user_day: ClassVar[int] = 20
 
-    surface: Literal["redirect", "overlay"]
+    checkout_flow: Literal["redirect", "overlay"]
     quantity: int | None = None
     source: Identifier | None = None
     billing_cycle: Identifier | None = None
@@ -45,6 +46,7 @@ class PaymentSucceeded(ServerEvent):
     """Dodo reported a successful payment for a GAIA user."""
 
     event: ClassVar[str] = "payment:succeeded"
+    budget_per_user_day: ClassVar[int] = 10
 
     payment_id: Identifier
     currency: CurrencyCode
@@ -60,6 +62,7 @@ class PaymentFailed(ServerEvent):
     """Dodo reported a failed payment for a GAIA user."""
 
     event: ClassVar[str] = "payment:failed"
+    budget_per_user_day: ClassVar[int] = 10
 
     payment_id: Identifier
     currency: CurrencyCode
@@ -75,12 +78,14 @@ class SubscriptionCancellationRequested(ServerEvent):
     """A user asked to cancel their subscription at the end of the billing period."""
 
     event: ClassVar[str] = "subscription:cancellation_requested"
+    budget_per_user_day: ClassVar[int] = 10
 
 
 class SubscriptionActivated(ServerEvent):
     """A subscription became active."""
 
     event: ClassVar[str] = "subscription:activated"
+    budget_per_user_day: ClassVar[int] = 10
 
     subscription_id: Identifier
     plan_name: Literal["Pro"]
@@ -95,6 +100,7 @@ class SubscriptionRenewed(ServerEvent):
     """A subscription renewed for another billing period."""
 
     event: ClassVar[str] = "subscription:renewed"
+    budget_per_user_day: ClassVar[int] = 10
 
     subscription_id: Identifier
     currency: CurrencyCode
@@ -107,6 +113,7 @@ class SubscriptionCancelled(ServerEvent):
     """A subscription was cancelled, now or at the next billing date."""
 
     event: ClassVar[str] = "subscription:cancelled"
+    budget_per_user_day: ClassVar[int] = 10
 
     subscription_id: Identifier
     product_id: Identifier
@@ -117,6 +124,7 @@ class SubscriptionExpired(ServerEvent):
     """A subscription expired and the user fell back to the free plan."""
 
     event: ClassVar[str] = "subscription:expired"
+    budget_per_user_day: ClassVar[int] = 50
 
     subscription_id: Identifier
 
@@ -125,6 +133,7 @@ class SubscriptionPageViewed(WebEvent):
     """The landing pricing page was viewed."""
 
     event: ClassVar[str] = "subscription:page_viewed"
+    budget_per_user_day: ClassVar[int] = 10
 
     source: Literal["landing_pricing"]
 
@@ -133,6 +142,7 @@ class SubscriptionPlanViewed(WebEvent):
     """A pricing card rendered, on the pricing page or the onboarding payment stage."""
 
     event: ClassVar[str] = "subscription:plan_viewed"
+    budget_per_user_day: ClassVar[int] = 50
 
     price: float
     is_monthly: bool
@@ -144,6 +154,7 @@ class SubscriptionFailed(WebEvent):
     """A checkout returned without a subscription; a declined charge or lost webhook reaches no server."""
 
     event: ClassVar[str] = "subscription:failed"
+    budget_per_user_day: ClassVar[int] = 10
 
     source: Literal["onboarding", "payment_success_page"]
     reason: CheckoutFailureReason
@@ -153,6 +164,7 @@ class PaywallBlocked(ServerEvent):
     """A non-PRO caller was turned away from a paid-only surface."""
 
     event: ClassVar[str] = "paywall:blocked"
+    budget_per_user_day: ClassVar[int] = 500
 
     feature: UrlPath | Identifier
 
@@ -161,6 +173,7 @@ class PaywallModalViewed(WebEvent):
     """The paid-only wall rendered; the server sees the 402, only the browser sees the modal."""
 
     event: ClassVar[str] = "paywall:modal_viewed"
+    budget_per_user_day: ClassVar[int] = 10
 
     dismissible: bool
     has_discount_code: bool
@@ -171,6 +184,7 @@ class RateLimitHit(ServerEvent):
     """A user ran into a tiered rate limit."""
 
     event: ClassVar[str] = "rate_limit:hit"
+    budget_per_user_day: ClassVar[int] = 500
     previous_names: ClassVar[tuple[str, ...]] = ("rate_limit_hit",)
 
     feature: Identifier
@@ -182,6 +196,7 @@ class PricingPlanSelected(WebEvent):
     """A user clicked a pricing card's call to action."""
 
     event: ClassVar[str] = "pricing:plan_selected"
+    budget_per_user_day: ClassVar[int] = 20
 
     price: float
     is_monthly: bool
@@ -196,5 +211,6 @@ class UsageQueried(ServerEvent):
     """A user fetched their usage summary."""
 
     event: ClassVar[str] = "usage:queried"
+    budget_per_user_day: ClassVar[int] = 10
 
     plan_type: Identifier

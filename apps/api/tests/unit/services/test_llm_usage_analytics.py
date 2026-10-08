@@ -220,7 +220,6 @@ def test_background_spend_is_never_marked_charged(posthog: Any) -> None:
     _capture()
     props = _captured(posthog)["properties"]
     assert props["charged"] is False
-    assert props["surface"] == "bg"
 
 
 def test_a_call_with_no_user_is_skipped_not_left_anonymous(posthog: Any) -> None:
@@ -272,7 +271,7 @@ def test_a_model_missing_from_the_rate_card_is_flagged(posthog: Any) -> None:
 def test_the_event_is_not_deduped(posthog: Any) -> None:
     """A retry is a second real charge; collapsing them under-reports spend."""
     _capture()
-    assert "uuid" not in _captured(posthog)
+    assert _captured(posthog)["uuid"] is None
 
 
 def test_the_event_carries_no_message_content(posthog: Any) -> None:
@@ -290,7 +289,8 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "cost_usd",
         "charged",
         "cost_estimated",
-        "timestamp",
+        "actor",
+        "trigger",
     }
 
 

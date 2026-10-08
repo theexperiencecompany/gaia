@@ -3,12 +3,14 @@
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
-from posthog import identify_context, new_context, set_context_session
+from posthog import identify_context, new_context
+from pydantic import TypeAdapter, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
+from app.api.v1.middleware.client_type import request_client_source
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
@@ -17,6 +19,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
+from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
 from app.utils.auth_utils import (
@@ -24,6 +27,9 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 from shared.py.wide_events import log
 
 
@@ -33,35 +39,74 @@ def get_current_user(request: Request) -> AuthenticatedUser | None:
     return user if isinstance(user, AuthenticatedUser) else None
 
 
+#: Routes a third party calls on its own schedule, not a user's request.
+WEBHOOK_PATH_PREFIXES = ("/api/v1/payments/webhooks/", "/api/v1/webhook/")
+
+
+def request_analytics_context(request: Request) -> AnalyticsContext:
+    """Attribute a request: a webhook is the worker's, anything else is its caller's own action.
+
+    The surface is the client that sent it: a bot (its API key), the voice
+    worker (the agent token only voice sessions mint) or the web or desktop app.
+    """
+    if request.url.path.startswith(WEBHOOK_PATH_PREFIXES):
+        return worker_context(Trigger.WEBHOOK)
+    user = get_current_user(request)
+    if getattr(request.state, "bot_api_key_valid", False):
+        surface = EntrySurface.BOT
+    elif user is not None and user.impersonated:
+        surface = EntrySurface.VOICE
+    elif request_client_source(request) is ConversationSource.DESKTOP:
+        surface = EntrySurface.DESKTOP
+    else:
+        surface = EntrySurface.WEB
+    return AnalyticsContext(
+        attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface),
+        posthog_session_id=_posthog_session_id(request),
+    )
+
+
+def _posthog_session_id(request: Request) -> str | None:
+    """Read the browser's PostHog session id; a malformed one joins no session."""
+    session_id = request.headers.get(POSTHOG_SESSION_HEADER)
+    if session_id is None:
+        return None
+    try:
+        return _SESSION_ID.validate_python(session_id)
+    except ValidationError:
+        log.warning("posthog_session_header_rejected", length=len(session_id))
+        return None
+
+
+_SESSION_ID: TypeAdapter[str] = TypeAdapter(Identifier)
+
+
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind the request's PostHog identity and browser session to every capture in it.
+    """Bind the request's analytics context and PostHog identity around every capture in it.
 
     Runs inside WorkOS and bot authentication, so the user is the stable Mongo
-    id whichever way the request authenticated. The X-PostHog-Session-Id header
-    joins server events to the browser session that caused them.
+    id whichever way the request authenticated, and the context knows which
+    client the request came from.
     """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        user = get_current_user(request)
-        user_id = user.user_id if user else None
-        session_id = request.headers.get(POSTHOG_SESSION_HEADER)
-        if not (user_id or session_id) or not providers.is_available("posthog"):
-            return await call_next(request)
-
-        if providers.get(POSTHOG_PROVIDER_KEY) is None:
-            return await call_next(request)
-
-        # capture_exceptions=False is load-bearing: autocapture uses the
-        # unconfigured module-level posthog client, which raises and REPLACES
-        # the real exception; unhandled_exception_handler already captures it.
-        with new_context(capture_exceptions=False):  # pragma: no mutate — None is falsy too
-            if user_id:
+        with analytics_context(request_analytics_context(request)):
+            user = get_current_user(request)
+            user_id = user.user_id if user else None
+            if (
+                not user_id
+                or not providers.is_available(POSTHOG_PROVIDER_KEY)
+                or providers.get(POSTHOG_PROVIDER_KEY) is None
+            ):
+                return await call_next(request)
+            # capture_exceptions=False is load-bearing: autocapture uses the
+            # unconfigured module-level posthog client, which raises and REPLACES
+            # the real exception; unhandled_exception_handler already captures it.
+            with new_context(capture_exceptions=False):  # pragma: no mutate — None is falsy too
                 identify_context(str(user_id))
-            if session_id:
-                set_context_session(session_id)
-            return await call_next(request)
+                return await call_next(request)
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
