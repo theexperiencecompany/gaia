@@ -414,10 +414,12 @@ stub_pid=$!
 api_pid=$!
 trap 'kill "$stub_pid" "$api_pid" 2>/dev/null || true' EXIT INT TERM
 
-deadline=$(( $(date +%s) + 180 ))
+# A fresh worktree's first boot indexes the tool store in Chroma, which took over 180s.
+boot_timeout_s=600
+deadline=$(( $(date +%s) + boot_timeout_s ))
 until curl -s -o /dev/null "$api/health"; do
   kill -0 "$api_pid" 2>/dev/null || { echo "the API exited while starting" >&2; exit 1; }
-  [ "$(date +%s)" -lt "$deadline" ] || { echo "the API did not answer within 180s" >&2; exit 1; }
+  [ "$(date +%s)" -lt "$deadline" ] || { echo "the API did not answer within ${boot_timeout_s}s" >&2; exit 1; }
   sleep 1
 done
 
