@@ -8,16 +8,19 @@ from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from pydantic import SecretStr
 import pytest
 
 from app.agents.llm import lane as lane_module
+from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.constants.general import FINISH_TASK_NAME
@@ -1243,13 +1246,25 @@ class TestBindSessionId:
 
     def test_openai_gets_the_agent_key_as_its_prompt_cache_key(self) -> None:
         """OpenAI keeps a chain's cached prefix on one machine via prompt_cache_key; session_id is not its field."""
-        llm = MagicMock()
+        llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
         bound = _bind_session_id(
             llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
         )
 
-        llm.bind.assert_called_once_with(prompt_cache_key="conv-1-comms_agent")
-        assert bound is llm.bind.return_value
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
+        assert "session_id" not in bound.kwargs
+
+    def test_the_sim_stub_serving_the_openai_lane_gets_no_prompt_cache_key(self) -> None:
+        """Under GAIA_SIM_MODE the openai lane is the OpenRouter-SDK stub client, whose send_async rejects the kwarg."""
+        llm = _sim_llm().bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert "prompt_cache_key" not in bound.kwargs
+        assert "session_id" not in bound.kwargs
 
     def test_openai_without_a_session_id_binds_no_cache_key(self) -> None:
         llm = MagicMock()

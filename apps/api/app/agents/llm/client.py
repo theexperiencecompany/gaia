@@ -703,31 +703,42 @@ def _materialize_fallback(fallback: LLMFallback) -> Runnable | None:
 _WIRE_WALK_MAX_HOPS = 6
 
 
-def _is_openrouter_wire(runnable: Runnable) -> bool:
-    """Whether runnable ultimately calls an OpenRouter-wire client.
+def _wire_client(runnable: Runnable) -> object:
+    """Return the chat model runnable ultimately calls, or None when the walk finds none.
 
-    Decides who may receive session_id, which only OpenRouter understands. A
-    fallback arrives wrapped by bind_tools or with_structured_output, so the
-    wrappers are walked rather than type-checked.
+    A tool-bound or structured runnable arrives wrapped, so the two wrappers
+    LangChain builds are walked rather than type-checked: bind_tools/bind yield
+    a RunnableBinding, with_structured_output a RunnableSequence. Bounded,
+    since walking arbitrary attributes could hang on an object that generates them.
     """
-    node: Any = runnable
-    # Bounded, through the two wrappers LangChain builds: ``bind_tools``/``bind``
-    # yield a RunnableBinding, ``with_structured_output`` a RunnableSequence.
-    # Walking arbitrary attributes could hang on an object that generates them.
+    node: object = runnable
     for _ in range(_WIRE_WALK_MAX_HOPS):
-        if isinstance(node, ChatOpenRouter):
-            # session_id is an OpenRouter-service routing hint: a ChatOpenRouter aimed
-            # at another OpenAI-compatible endpoint (e.g. the sim stub) rejects it,
-            # so only bind when the endpoint is OpenRouter's own (base unset).
-            base = node.openrouter_api_base
-            return base is None or "openrouter.ai" in str(base)
         if isinstance(node, RunnableBinding):
             node = node.bound
         elif isinstance(node, RunnableSequence):
             node = node.first
         else:
-            return False
-    return False
+            return node
+    return None
+
+
+def _is_openrouter_wire(runnable: Runnable) -> bool:
+    """Whether runnable calls OpenRouter's own service, the only one that understands session_id."""
+    client = _wire_client(runnable)
+    if not isinstance(client, ChatOpenRouter):
+        return False
+    # A ChatOpenRouter aimed at another OpenAI-compatible endpoint (the sim stub) rejects it.
+    base = client.openrouter_api_base
+    return base is None or "openrouter.ai" in str(base)
+
+
+def _is_openai_wire(runnable: Runnable) -> bool:
+    """Whether runnable calls OpenAI's own API, the only one that understands prompt_cache_key."""
+    client = _wire_client(runnable)
+    if not isinstance(client, ChatOpenAI):
+        return False
+    base = client.openai_api_base
+    return base is None or "api.openai.com" in str(base)
 
 
 def _resolve_fallback(
