@@ -7,6 +7,7 @@ from unittest.mock import patch
 from pymongo.errors import PyMongoError
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.services.integrations.user_integration_status import reconnect_or_unknown
 
 MODULE = "app.services.integrations.user_integration_status"
@@ -31,6 +32,9 @@ class TestReconnectOrUnknown:
 
         assert result is None
         log.warning.assert_called_once()
+        assert log.warning.call_args.args == (
+            f"{LogTag.INTEGRATION} Could not tell whether the connect is a reconnect",
+        )
         assert log.warning.call_args.kwargs == {
             "integration_id": "gmail",
             "error_type": "PyMongoError",
