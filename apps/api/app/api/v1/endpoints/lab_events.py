@@ -65,7 +65,25 @@ def _claims_or_401(authorization: str) -> SandboxExecuteClaims:
         raise
 
 
-@router.post("/events", status_code=202)
+@router.post(
+    "/events",
+    status_code=202,
+    # The body is parsed by hand to keep its own 422 codes; this only documents it.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "description": "The raw Claude hook payload or the OpenCode plugin's {kind, raw}.",
+                    }
+                }
+            },
+        }
+    },
+)
 async def report_lab_event(
     request: Request,
     authorization: Annotated[str, Header()] = "",  # pragma: no mutate — no scheme, same 401
