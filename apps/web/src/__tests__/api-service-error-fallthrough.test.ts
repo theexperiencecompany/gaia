@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const request = vi.fn();
 
-vi.mock("@/lib/api/client", () => ({
+// Only the transport is stubbed; the header helpers stay real.
+vi.mock("@/lib/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof ApiClient>()),
   apiauth: { request: (...args: unknown[]) => request(...args) },
   apiOrigin: "http://localhost:8000",
 }));
@@ -15,6 +17,7 @@ vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));
 
+import type * as ApiClient from "@/lib/api/client";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 
