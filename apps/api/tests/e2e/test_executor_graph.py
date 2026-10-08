@@ -471,12 +471,15 @@ class TestARepeatedCallIsNotRerun:
         ]
         with patch.object(manual_tool, "get_manual", wraps=manual_tool.get_manual) as reads:
             async with executor_graph([*script, "Read it."]) as graph:
-                run = await run_graph(graph, "read the goals manual", recursion_limit=50)
+                # Refusal is background-only by contract; real runs carry that mode.
+                run = await run_graph(
+                    graph, "read the goals manual", recursion_limit=50, execution_mode="background"
+                )
 
         assert reads.call_count == LOOP_GUARD_STOP_REPEAT - 1
         refused = run.results_from(TOOLS_NODE)[LOOP_GUARD_STOP_REPEAT - 1 :]
         assert len(refused) == repeats - (LOOP_GUARD_STOP_REPEAT - 1)
-        assert all("was not run" in text for text in refused), refused
+        assert all("Blocked without executing" in text for text in refused), refused
         assert run.final_text() == "Read it."
 
     async def test_the_same_call_once_per_delegation_is_never_refused(self):
