@@ -1776,11 +1776,10 @@ def _plan(
     amount: int,
     duration: str,
     product_id: str,
-    plan_id: str,
     active: bool = True,
 ) -> PlanDocument:
     return PlanDocument(
-        id=plan_id,
+        id=f"p_{product_id or name.lower()}",
         dodo_product_id=product_id,
         name=name,
         plan_type=plan_type,
@@ -1804,17 +1803,15 @@ CATALOGUE = [
         amount=0,
         duration="monthly",
         product_id="",
-        plan_id="p_free",
     ),
-    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m", plan_id="p_m"),
-    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y", plan_id="p_y"),
+    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m"),
+    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y"),
     _plan(
         name="Enterprise",
         plan_type=PlanTier.ENTERPRISE,
         amount=0,
         duration="monthly",
         product_id="",
-        plan_id="p_ent",
     ),
 ]
 
@@ -1855,7 +1852,6 @@ class TestPlanForSubscription:
             amount=3000,
             duration="monthly",
             product_id="prod_m",
-            plan_id="p_m",
             active=False,
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[retired])
@@ -1913,7 +1909,6 @@ class TestGetProPlan:
             amount=1,
             duration="monthly",
             product_id="prod_m",
-            plan_id="p_m",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[cheap])
 
@@ -1954,7 +1949,6 @@ class TestGetProPlan:
             amount=500,
             duration="monthly",
             product_id="prod_ent",
-            plan_id="p_ent",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[priced_enterprise, CATALOGUE[1]])
 
