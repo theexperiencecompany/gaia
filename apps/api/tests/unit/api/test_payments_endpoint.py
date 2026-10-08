@@ -657,6 +657,7 @@ class TestDodoWebhook:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
         ):
             response = await client.post(
                 WEBHOOK_URL,
@@ -673,6 +674,7 @@ class TestDodoWebhook:
         data = response.json()
         assert data["status"] == "success"
         assert data["event_type"] == "subscription.created"
+        mock_log.set_ns.assert_any_call("payment", event_type="subscription.created")
 
     async def test_a_failed_result_asks_dodo_to_retry_instead_of_acknowledging(
         self, client: AsyncClient

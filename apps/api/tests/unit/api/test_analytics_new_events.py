@@ -1492,6 +1492,12 @@ class TestInstructionsUpdate:
                 json={"content": "Be brief"},
             )
         assert resp.status_code == 200
+        assert resp.json() == {
+            "integrationId": "gmail",
+            "content": "Be brief",
+            "updatedBy": "user",
+            "updatedAt": "2025-01-01T00:00:00Z",
+        }
         mock_capture.assert_called_once_with(UserId(UID), IntegrationInstructionsUpdated())
 
 

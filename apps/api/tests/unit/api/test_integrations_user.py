@@ -41,7 +41,12 @@ class TestAddIntegrationToWorkspace:
             resp = await client.post(BASE, json={"integration_id": "integ-001"})
 
         assert resp.status_code == 200
-        assert resp.json()["connectionStatus"] == "connected"
+        assert resp.json() == {
+            "status": "success",
+            "message": "Integration added to workspace",
+            "integrationId": "integ-001",
+            "connectionStatus": "connected",
+        }
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             IntegrationConnected(integration_id="integ-001", source="workspace"),
