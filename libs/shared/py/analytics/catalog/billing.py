@@ -5,6 +5,25 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import CurrencyCode, Identifier, UrlPath
 
+__all__ = [
+    "PaymentCheckoutStarted",
+    "PaymentFailed",
+    "PaymentSucceeded",
+    "PaywallBlocked",
+    "PaywallModalViewed",
+    "PricingPlanSelected",
+    "RateLimitHit",
+    "SubscriptionActivated",
+    "SubscriptionCancellationRequested",
+    "SubscriptionCancelled",
+    "SubscriptionExpired",
+    "SubscriptionFailed",
+    "SubscriptionPageViewed",
+    "SubscriptionPlanViewed",
+    "SubscriptionRenewed",
+    "UsageQueried",
+]
+
 #: Which surface put the paid-only wall on screen; every member is a call site this repo owns.
 PaywallSource = Literal[
     "composer_submit",
@@ -214,25 +233,3 @@ class UsageQueried(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     plan_type: Identifier
-
-
-__all__ = [
-    "CheckoutFailureReason",
-    "PaymentCheckoutStarted",
-    "PaymentFailed",
-    "PaymentSucceeded",
-    "PaywallBlocked",
-    "PaywallModalViewed",
-    "PaywallSource",
-    "PricingPlanSelected",
-    "RateLimitHit",
-    "SubscriptionActivated",
-    "SubscriptionCancellationRequested",
-    "SubscriptionCancelled",
-    "SubscriptionExpired",
-    "SubscriptionFailed",
-    "SubscriptionPageViewed",
-    "SubscriptionPlanViewed",
-    "SubscriptionRenewed",
-    "UsageQueried",
-]

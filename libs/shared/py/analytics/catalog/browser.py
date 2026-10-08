@@ -5,6 +5,14 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Hostname, Identifier
 
+__all__ = [
+    "BrowserEngineSwitched",
+    "BrowserHandoffResolved",
+    "BrowserImportTokenMinted",
+    "BrowserLoginsImported",
+    "BrowserTaskFinished",
+]
+
 
 class BrowserTaskFinished(ServerEvent):
     """A browser run finished; captured at the end, never on start, so attempts never count as successes."""
@@ -60,12 +68,3 @@ class BrowserLoginsImported(ServerEvent):
     host_count: int
     cookie_count: int
     source_browser: Identifier | None = None
-
-
-__all__ = [
-    "BrowserEngineSwitched",
-    "BrowserHandoffResolved",
-    "BrowserImportTokenMinted",
-    "BrowserLoginsImported",
-    "BrowserTaskFinished",
-]

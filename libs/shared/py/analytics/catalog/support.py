@@ -5,6 +5,11 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "FeedbackMessageSubmitted",
+    "SupportFormSubmitted",
+]
+
 
 class SupportFormSubmitted(ServerEvent):
     """A user submitted a support request; lengths and counts only, never the text."""
@@ -25,9 +30,3 @@ class FeedbackMessageSubmitted(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     is_positive: bool
-
-
-__all__ = [
-    "FeedbackMessageSubmitted",
-    "SupportFormSubmitted",
-]

@@ -568,6 +568,9 @@ class TestHandleSubscriptionActive:
         assert result.status == "processed"
         # No user_id in metadata → user is looked up by email through the repo.
         mock_webhook_users_collection.get_by_email.assert_awaited_with(FAKE_EMAIL)
+        # The row keeps Dodo's metadata verbatim, with no null user_id invented for it.
+        [stored] = mock_webhook_subscription_repository.create.await_args.args
+        assert stored.metadata == {}
 
     async def test_abandons_when_user_not_found_by_email(
         self,

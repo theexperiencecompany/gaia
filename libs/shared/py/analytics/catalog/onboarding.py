@@ -5,6 +5,22 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "FirstStepsCollapsed",
+    "FirstStepsStepClicked",
+    "NurtureEmailSent",
+    "OnboardingCheckoutRetried",
+    "OnboardingCompleted",
+    "OnboardingPhaseCompleted",
+    "OnboardingReset",
+    "OnboardingRestarted",
+    "OnboardingSkipped",
+    "OnboardingSocialProfilesConfirmed",
+    "OnboardingStarted",
+    "OnboardingWritingStyleExampleRegenerated",
+    "OnboardingWritingStyleSaved",
+]
+
 
 class OnboardingStarted(WebEvent):
     """The onboarding wizard mounted, after persisted state restored."""
@@ -124,20 +140,3 @@ class NurtureEmailSent(ServerEvent):
 
     step: Identifier
     day_offset: int
-
-
-__all__ = [
-    "FirstStepsCollapsed",
-    "FirstStepsStepClicked",
-    "NurtureEmailSent",
-    "OnboardingCheckoutRetried",
-    "OnboardingCompleted",
-    "OnboardingPhaseCompleted",
-    "OnboardingReset",
-    "OnboardingRestarted",
-    "OnboardingSkipped",
-    "OnboardingSocialProfilesConfirmed",
-    "OnboardingStarted",
-    "OnboardingWritingStyleExampleRegenerated",
-    "OnboardingWritingStyleSaved",
-]

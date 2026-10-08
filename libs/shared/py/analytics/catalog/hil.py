@@ -5,6 +5,14 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "ApprovalDecided",
+    "HilCardShown",
+    "HilDecisionSubmitted",
+    "HilResumed",
+    "HilRevoked",
+]
+
 
 class ApprovalDecided(ServerEvent):
     """A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved)."""
@@ -61,12 +69,3 @@ class HilResumed(ServerEvent):
 
     approval_id: Identifier
     owner_run_type: Literal["todo", "workflow"]
-
-
-__all__ = [
-    "ApprovalDecided",
-    "HilCardShown",
-    "HilDecisionSubmitted",
-    "HilResumed",
-    "HilRevoked",
-]

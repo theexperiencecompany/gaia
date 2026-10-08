@@ -940,6 +940,36 @@ class TestFileServiceUpdate:
         assert result.description == "New summary from content"
         mock_reindex.assert_awaited_once()
 
+    @pytest.mark.parametrize(
+        ("new_filename", "summarized_as"), [("renamed.pdf", "renamed.pdf"), (None, "doc.pdf")]
+    )
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_new_content_is_summarized_under_its_name_and_stores_every_page(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        sample_document_summary_model: DocumentSummaryModel,
+        new_filename: str | None,
+        summarized_as: str,
+    ):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
+
+        with (
+            _summary(sample_document_summary_model) as mock_summary,
+            patch("app.services.files.service.reindex_file", new_callable=AsyncMock),
+        ):
+            await FileService.update(
+                file_id="f-1",
+                user_id=USER_ID,
+                update_data=UpdateFileRequest(filename=new_filename),
+                file_content=b"new file bytes",
+            )
+
+        assert mock_summary.await_args.kwargs["filename"] == summarized_as
+        update = mock_file_repo.apply_metadata_update.await_args.kwargs["update"]
+        assert update.page_wise_summary == sample_document_summary_model.model_dump(mode="json")
+
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_file_content_generation_fails_raises_500(self, mock_del_cache, mock_file_repo):
         mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())

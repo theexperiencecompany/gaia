@@ -330,6 +330,34 @@ class TestMailAnalytics:
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
     )
+    async def test_a_reply_with_an_attachment_reports_it(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-005"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                    "thread_id": "thread-1",
+                },
+                files={"attachments": ("note.txt", b"hello", "text/plain")},
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id),
+            EmailReplied(has_attachments=True, attachment_count=1),
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
     async def test_send_without_thread_captures_email_sent(
         self, mock_send: AsyncMock, client: AsyncClient
     ):
