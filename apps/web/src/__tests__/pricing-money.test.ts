@@ -7,10 +7,11 @@ import { describe, expect, it } from "vitest";
 import {
   currencyExponent,
   formatMoney,
-  formatWholeOrCentsUSD,
+  formatWholeOrCents,
   toMajorUnits,
 } from "@/features/pricing/utils/money";
 import { getPriceDisplay } from "@/features/pricing/utils/priceDisplay";
+import { getSubscriptionSummary } from "@/features/settings/utils/subscriptionSummary";
 
 describe("money", () => {
   it("divides by the currency's own exponent", () => {
@@ -27,14 +28,46 @@ describe("money", () => {
   });
 
   it("a whole-dollar price drops its cents, and zero reads Free", () => {
-    expect(formatWholeOrCentsUSD(3000)).toBe("$30");
-    expect(formatWholeOrCentsUSD(3050)).toBe("$30.50");
-    expect(formatWholeOrCentsUSD(0)).toBe("Free");
+    expect(formatWholeOrCents(3000, "USD")).toBe("$30");
+    expect(formatWholeOrCents(3050, "USD")).toBe("$30.50");
+    expect(formatWholeOrCents(0, "USD")).toBe("Free");
   });
 
   it("a pricing card prices a zero-exponent currency in whole units", () => {
     expect(getPriceDisplay(1000, undefined, true, "JPY").perMonthDollars).toBe(
       1000,
     );
+  });
+
+  it("the settings summary prices a resolved plan in the plan's own currency", () => {
+    const summary = getSubscriptionSummary({
+      user_id: "user_1",
+      current_plan: {
+        id: "plan_jpy",
+        dodo_product_id: "pdt_jpy",
+        name: "Pro",
+        plan_type: "pro",
+        description: null,
+        amount: 1000,
+        currency: "JPY",
+        duration: "monthly",
+        max_users: 1,
+        features: [],
+        is_active: true,
+        created_at: "",
+        updated_at: "",
+      },
+      subscription: null,
+      is_subscribed: true,
+      days_remaining: null,
+      can_upgrade: true,
+      can_downgrade: true,
+      has_ever_subscribed: true,
+      has_subscription: true,
+      plan_type: "pro",
+      status: "active",
+    });
+
+    expect(summary.priceFormatted).toBe("¥1,000");
   });
 });
