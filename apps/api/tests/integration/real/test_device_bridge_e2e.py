@@ -30,6 +30,7 @@ import signal
 import subprocess
 import time
 
+from bson import ObjectId
 import httpx
 import pytest
 
@@ -418,7 +419,7 @@ def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
-OWNER_USER_ID = "6812f0b3c9a14e2b7d5a9201"
+OWNER_USER_ID = str(ObjectId())
 
 
 async def wait_device_online(
@@ -592,7 +593,7 @@ class TestDeviceServerRemoval:
         make_pro_subscription,
     ):
         """Device-initiated: gaia bridge rm clears local config and the cloud row."""
-        owner_id = "6812f0b3c9a14e2b7d5a9202"
+        owner_id = str(ObjectId())
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -629,7 +630,7 @@ class TestDeviceServerRemoval:
         make_pro_subscription,
     ):
         """Cloud-initiated: deleting the integration sends a server.remove frame down the live tunnel."""
-        owner_id = "6812f0b3c9a14e2b7d5a9203"
+        owner_id = str(ObjectId())
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -677,8 +678,8 @@ class TestCrossUserIsolation:
         self, tmp_path, live_api_server, clean_bridge_tables, warm_cli
     ):
         daemon = BridgeDaemon(tmp_path / "home")
-        owner = _client(live_api_server.url, "6812f0b3c9a14e2b7d5a9204")
-        intruder = _client(live_api_server.url, "6812f0b3c9a14e2b7d5a9205")
+        owner = _client(live_api_server.url, str(ObjectId()))
+        intruder = _client(live_api_server.url, str(ObjectId()))
         try:
             await daemon.start_login(live_api_server.url, "cross-user-test-machine")
             user_code = await daemon.wait_for_user_code()
@@ -748,7 +749,7 @@ class TestRefreshTokenReuseDetection:
         self, live_api_server, real_redis, clean_bridge_tables
     ):
         """Clears the 60s post-rotation grace-window Redis key directly, since no exposed API can skip it, to force the real reuse-detection branch."""
-        owner = _client(live_api_server.url, "6812f0b3c9a14e2b7d5a9206")
+        owner = _client(live_api_server.url, str(ObjectId()))
         anon = _client(live_api_server.url)
         try:
             start = await anon.post(
