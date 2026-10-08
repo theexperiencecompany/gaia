@@ -5,11 +5,22 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.py.analytics import PlatformIdentity, PostHogAnalytics, UserId, check_capture
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import Surface
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.analytics.catalog.voice import VoiceSessionStarted
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    MissingAnalyticsContextError,
+    analytics_context,
+)
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+VOICE_CALL = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.VOICE
+    )
+)
 
 
 @pytest.mark.parametrize(
@@ -55,9 +66,21 @@ def test_voice_capture_sends_the_event_name_identity_and_properties() -> None:
     client = MagicMock()
     with patch("shared.py.analytics.client.Posthog", return_value=client):
         analytics = PostHogAnalytics(project_token="phc_test")
-    analytics.capture(UserId(USER_ID), VoiceSessionStarted(room="voice_1"))
+    with analytics_context(VOICE_CALL):
+        analytics.capture(UserId(USER_ID), VoiceSessionStarted(room="voice_1"))
 
     kwargs = client.capture.call_args.kwargs
     assert kwargs["event"] == "voice:session_started"
     assert kwargs["distinct_id"] == USER_ID
     assert kwargs["properties"]["room"] == "voice_1"
+    assert (
+        kwargs["properties"]["actor"],
+        kwargs["properties"]["trigger"],
+        kwargs["properties"]["surface"],
+    ) == ("user", "interactive", "voice")
+
+
+def test_voice_capture_with_no_context_bound_fails_even_without_a_token() -> None:
+    analytics = PostHogAnalytics(project_token="")
+    with pytest.raises(MissingAnalyticsContextError):
+        analytics.capture(UserId(USER_ID), VoiceSessionStarted(room="voice_1"))

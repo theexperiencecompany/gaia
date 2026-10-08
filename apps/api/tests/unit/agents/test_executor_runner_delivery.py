@@ -41,7 +41,7 @@ from app.models.chat_models import ConversationSource, MessageModel, ToolDataEnt
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.wide_events import log
@@ -2672,23 +2672,21 @@ class TestTheCommsVerdictIsOnTheWideEvent:
 
 
 class TestResolutionAnalyticsIsOnePerUpdate:
-    """One chat:background_update_resolved per update, deduped on the task (or conversation) it resolved."""
+    """One chat:background_update_resolved per update, deduped on the run it resolved."""
 
-    async def test_a_queued_run_dedupes_on_its_task(self) -> None:
-        delivered = await _deliver_run(
-            _run(RunKind.QUEUED, task_id="task-7"), _Seams(comms_text="Done.", source=None)
-        )
+    async def test_a_queued_run_dedupes_on_its_task_and_dispatch_time(self) -> None:
+        run = _run(RunKind.QUEUED, task_id="task-7")
+        delivered = await _deliver_run(run, _Seams(comms_text="Done.", source=None))
 
         assert delivered.capture.call_args.kwargs == {
-            "dedupe_key": "chat_background_update_resolved:task-7"
+            "dedupe": Dedupe(key="task-7", occurred_at=run.dispatched_at)
         }
 
-    async def test_a_taskless_run_dedupes_on_its_conversation(self) -> None:
+    async def test_a_run_with_no_id_is_not_deduped_onto_its_conversation(self) -> None:
+        """Every update in a conversation would otherwise collapse into one row."""
         delivered = await _deliver_run(_run(), _Seams(comms_text="Done.", source=None))
 
-        assert delivered.capture.call_args.kwargs == {
-            "dedupe_key": "chat_background_update_resolved:conv-1"
-        }
+        assert delivered.capture.call_args.kwargs == {"dedupe": None}
 
     async def test_a_web_react_lands_as_a_badge(self) -> None:
         delivered = await _deliver_run(

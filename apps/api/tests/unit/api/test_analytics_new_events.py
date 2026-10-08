@@ -1533,7 +1533,7 @@ class TestPostHogIdentityBinding:
     def _request(self, user: AuthenticatedUser | None) -> Request:
         from starlette.requests import Request
 
-        req = Request({"type": "http", "headers": []})
+        req = Request({"type": "http", "headers": [], "path": "/api/v1/notes"})
         req.state.user = user
         return req
 

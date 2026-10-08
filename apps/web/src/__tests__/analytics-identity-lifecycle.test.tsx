@@ -169,4 +169,28 @@ describe("API request headers", () => {
 
     expect(sent?.headers.get("X-PostHog-Session-Id")).toBe("sess-3");
   });
+
+  async function sentClientType(): Promise<unknown> {
+    let sent: InternalAxiosRequestConfig | undefined;
+    await apiauth.get("/api/v1/notifications", {
+      adapter: async (config) => {
+        sent = config;
+        return { data: {}, status: 200, statusText: "OK", headers: {}, config };
+      },
+    });
+    return sent?.headers.get("X-Client-Type");
+  }
+
+  it("tells the server every request from the desktop app is from the desktop app", async () => {
+    vi.stubGlobal("api", { isElectron: true });
+    try {
+      expect(await sentClientType()).toBe("desktop");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sends no client type from the web app", async () => {
+    expect(await sentClientType()).toBeUndefined();
+  });
 });

@@ -28,24 +28,28 @@ class AgentRunStarted(_AgentRunEvent):
     """A comms or executor run (or a resumed executor segment) started."""
 
     event: ClassVar[str] = "agent:run_started"
+    budget_per_user_day: ClassVar[int] = 500
 
 
 class AgentRunCompleted(_AgentRunEndedEvent):
     """An agent run finished successfully."""
 
     event: ClassVar[str] = "agent:run_completed"
+    budget_per_user_day: ClassVar[int] = 500
 
 
 class AgentRunFailed(_AgentRunEndedEvent):
     """An agent run ended in an error."""
 
     event: ClassVar[str] = "agent:run_failed"
+    budget_per_user_day: ClassVar[int] = 20
 
 
 class ToolUsed(ServerEvent):
     """A tool ran; via splits bound calls from proxied execute calls, source marks MCP-app calls."""
 
     event: ClassVar[str] = "tool:used"
+    budget_per_user_day: ClassVar[int] = 5000
 
     tool_name: Identifier
     via: Literal["bound", "execute"] | None = None
@@ -56,6 +60,7 @@ class ToolExecuteFailed(ServerEvent):
     """A proxied dispatch failed before the tool ran; against tool:used{via=execute} it is retries per success."""
 
     event: ClassVar[str] = "tool:execute_failed"
+    budget_per_user_day: ClassVar[int] = 200
 
     tool_name: Identifier
     reason: Identifier
@@ -65,6 +70,7 @@ class AiLlmCallCompleted(ServerEvent):
     """A background model call outside an agent graph finished; graph calls are covered by $ai_generation."""
 
     event: ClassVar[str] = "ai:llm_call_completed"
+    budget_per_user_day: ClassVar[int] = 500
 
     feature: Identifier
     label: Identifier
@@ -77,4 +83,3 @@ class AiLlmCallCompleted(ServerEvent):
     cost_usd: float
     charged: bool
     cost_estimated: bool
-    surface: Identifier

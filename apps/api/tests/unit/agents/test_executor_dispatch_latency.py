@@ -28,7 +28,7 @@ from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
@@ -696,7 +696,7 @@ class TestCaptureExecutorTerminalWiring:
 
         capture.assert_not_called()
 
-    def test_dedupe_key_prefers_the_task_id_and_carries_exact_props(self) -> None:
+    def test_the_dedupe_is_the_task_dispatched_once_and_carries_exact_props(self) -> None:
         run = _run("s1", user=AuthenticatedUser(user_id=USER_ID), task_id="task-1")
 
         with patch.object(er, "capture") as capture:
@@ -717,7 +717,7 @@ class TestCaptureExecutorTerminalWiring:
                 queued=False,
                 executor_active_ms=12.5,
             ),
-            dedupe_key="task-1",
+            dedupe=Dedupe(key="task-1", occurred_at=run.dispatched_at),
         )
 
 

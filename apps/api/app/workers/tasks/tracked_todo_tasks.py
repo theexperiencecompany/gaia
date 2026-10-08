@@ -63,6 +63,8 @@ from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
 MAX_RETRY_ATTEMPTS = 3
@@ -118,8 +120,11 @@ async def execute_tracked_todo(
     if not acquired:
         return await _handle_held_lock(todo_id, pool, origin)
 
+    # The run is its schedule's or its trigger's, whoever armed it.
+    fired_by = worker_context(Trigger.INTEGRATION_TRIGGER if origin else Trigger.SCHEDULE)
     try:
-        return await _execute_todo_with_retry(todo_id, pool, origin)
+        with analytics_context(fired_by):
+            return await _execute_todo_with_retry(todo_id, pool, origin)
     finally:
         await pool.delete(lock_key)
 

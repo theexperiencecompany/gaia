@@ -36,12 +36,15 @@ from app.helpers.agent_helpers import (
     get_handoff_metadata,
     recent_user_messages,
 )
+from app.models.agent_models import run_analytics_context
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
 from app.models.subagent_models import Subagent
 from app.utils.agent_utils import IntegrationDisplayMetadata
 from app.utils.stream_publishers import ExtractedToolData
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 
 def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
@@ -277,6 +280,40 @@ class TestBuildAgentConfig:
 
         assert str(UUID(root["root_request_id"])) == root["root_request_id"]
         assert child["root_request_id"] == "root-req-1"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_run_tree_acts_as_the_agent_in_the_context_that_started_it(
+        self, mock_providers
+    ):
+        """Stamped at the root and inherited whole, so a run resumed by a cron keeps the user's turn."""
+        mock_providers.get.return_value = None
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.BOT
+            ),
+            posthog_session_id="sess-1",
+        )
+        with analytics_context(users_turn):
+            root = (
+                await build_agent_config(
+                    identity=AgentIdentity(
+                        conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                    ),
+                )
+            )["configurable"]
+        with analytics_context(worker_context(Trigger.SYSTEM)):
+            resumed = (
+                await build_agent_config(
+                    identity=AgentIdentity(
+                        conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
+                    ),
+                    thread=AgentThread(base_configurable=root),
+                )
+            )["configurable"]
+
+        expected = users_turn.acting_as(Actor.AGENT)
+        assert run_analytics_context(root) == expected
+        assert run_analytics_context(resumed) == expected
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self, mock_providers):

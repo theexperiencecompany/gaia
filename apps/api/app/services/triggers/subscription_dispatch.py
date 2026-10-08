@@ -40,7 +40,9 @@ from app.services.triggers.condition_matching import conditions_match
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
 COOLDOWN_KEY = "todo_subscription_cooldown:{subscription_id}"
@@ -52,7 +54,17 @@ async def dispatch_to_subscribed_todos(
     user_id: str | None,
     payload: dict[str, object],
 ) -> int:
-    """Run every matching subscription's action. Returns how many fired."""
+    """Run every matching subscription's action, as integration-triggered work. Returns how many fired."""
+    with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
+        return await _dispatch(trigger_name, trigger_id, user_id, payload)
+
+
+async def _dispatch(
+    trigger_name: str,
+    trigger_id: str | None,
+    user_id: str | None,
+    payload: dict[str, object],
+) -> int:
     todos = await _resolve_subscribers(trigger_name, trigger_id, user_id)
     if not todos:
         return 0

@@ -8,13 +8,21 @@ sits past it as a backstop only.
 
 import asyncio
 from collections.abc import Mapping
-from unittest.mock import patch
+import contextvars
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.workers.config.worker_settings import ARQ_BACKSTOP_GRACE_SECONDS
-from app.workers.queue import TRACE_ID_KWARG
+from app.workers.queue import TRACE_ID_KWARG, enqueue_worker_job
 from app.workers.task_envelope import arq_function, arq_task
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 from tests.helpers import WideEventRecorder
 
 pytestmark = pytest.mark.unit
@@ -139,3 +147,43 @@ def test_a_registered_tasks_retry_and_result_policy_reach_arq() -> None:
 
     assert registered.max_tries == 1
     assert registered.keep_result_s == 0
+
+
+async def _report_analytics_context(ctx: Mapping[str, object]) -> AnalyticsContext:
+    return current_analytics_context()
+
+
+async def test_a_job_runs_in_the_analytics_context_its_producer_carried() -> None:
+    """The job is attributed to what enqueued it, browser session included, in a fresh worker context."""
+    carried = AnalyticsContext(
+        attribution=Attribution(
+            actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
+        ),
+        posthog_session_id="sess-1",
+    )
+    pool = AsyncMock()
+    with analytics_context(carried):
+        await enqueue_worker_job(pool, "report")
+    # ARQ consumes its own _-prefixed controls; the task sees the rest.
+    job_kwargs = {
+        key: value
+        for key, value in pool.enqueue_job.call_args.kwargs.items()
+        if key.startswith("_gaia_") or not key.startswith("_")
+    }
+
+    with patch("shared.py.wide_events._loguru", WideEventRecorder()):
+        seen = await contextvars.Context().run(
+            asyncio.create_task, arq_task(_report_analytics_context)({}, **job_kwargs)
+        )
+
+    assert seen == carried
+
+
+async def test_a_job_nobody_attributed_is_the_workers_system_work() -> None:
+    """A cron fire has no producer, so its events are system work, never left unattributed."""
+    with patch("shared.py.wide_events._loguru", WideEventRecorder()):
+        seen = await contextvars.Context().run(
+            asyncio.create_task, arq_task(_report_analytics_context)({})
+        )
+
+    assert seen == worker_context(Trigger.SYSTEM)

@@ -12,15 +12,18 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.payment_models import PlanType
 from app.services.limit_upsell import (
     LimitHitOrigin,
     current_limit_origin,
-    mark_run_origin,
     schedule_limit_upsell,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.billing import RateLimitHit
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 MODULE = "app.services.limit_upsell"
 USER_1 = "6812f0b3c9a14e2b7d5a91c1"
@@ -107,17 +110,23 @@ class TestScheduleGate:
         spawn.assert_not_called()
 
 
-class TestTheRunOriginMarker:
-    """mark_run_origin decides which email a limit hit sends; an unmarked run reads as the user standing there."""
+class TestTheRunOrigin:
+    """The bound analytics trigger decides which email a limit hit sends: only an interactive run is the user standing there."""
 
-    def test_a_marked_run_reports_its_origin(self) -> None:
-        mark_run_origin(LimitHitOrigin.BACKGROUND)
-        assert current_limit_origin() is LimitHitOrigin.BACKGROUND
+    def test_a_users_own_turn_is_interactive(self) -> None:
+        with analytics_context(
+            AnalyticsContext(
+                attribution=Attribution(
+                    actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.BOT
+                )
+            )
+        ):
+            assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
 
-    def test_an_unmarked_run_is_treated_as_interactive(self) -> None:
-        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
-
-    def test_a_later_mark_replaces_an_earlier_one(self) -> None:
-        mark_run_origin(LimitHitOrigin.BACKGROUND)
-        mark_run_origin(LimitHitOrigin.INTERACTIVE)
-        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
+    @pytest.mark.parametrize(
+        "trigger",
+        [Trigger.SCHEDULE, Trigger.INTEGRATION_TRIGGER, Trigger.WEBHOOK, Trigger.SYSTEM],
+    )
+    def test_any_run_the_user_did_not_start_is_background(self, trigger: Trigger) -> None:
+        with analytics_context(worker_context(trigger)):
+            assert current_limit_origin() is LimitHitOrigin.BACKGROUND

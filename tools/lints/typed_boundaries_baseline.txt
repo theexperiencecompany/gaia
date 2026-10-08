@@ -168,7 +168,6 @@ apps/api/app/services/nurture/predicates.py	TB002
 apps/api/app/services/onboarding/inbox_scan_cache.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002
-apps/api/app/services/onboarding/intelligence_service.py	TB002
 apps/api/app/services/onboarding/onboarding_service.py	TB001	deferred-until=2026-11-08; _serialize_user feeds OnboardingResponse.user, a free-form object in the API contract; typing it changes openapi.json and the web types, a contract change kept out of the analytics catalog PR that only touched this file's capture (decided 2026-10-08)
 apps/api/app/services/onboarding/writing_style_service.py	TB002
 apps/api/app/services/payments/payment_webhook_service.py	TB001	deferred-until=2026-11-08; process_webhook reads the raw Dodo body before validating so a malformed delivery is still claimed, logged and abandoned; a lenient envelope model changes that money-path behaviour and needs its own PR (decided 2026-10-08)
@@ -224,7 +223,6 @@ apps/api/app/services/workflow/trigger_search.py	TB001
 apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/utils/device_onboarding.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
-apps/api/app/workers/queue.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002
 apps/api/app/workers/tasks/cleanup_tasks.py	TB001
@@ -237,7 +235,6 @@ apps/api/app/workers/tasks/memory_sweep_tasks.py	TB001
 apps/api/app/workers/tasks/nurture_tasks.py	TB001
 apps/api/app/workers/tasks/onboarding_tasks.py	TB001
 apps/api/app/workers/tasks/platform_link_tasks.py	TB001
-apps/api/app/workers/tasks/reminder_tasks.py	TB001
 apps/api/app/workers/tasks/sandbox_tasks.py	TB001
 apps/api/app/workers/tasks/scheduler_recovery_tasks.py	TB001
 apps/api/app/workers/tasks/session_tasks.py	TB001
