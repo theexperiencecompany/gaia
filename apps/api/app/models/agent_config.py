@@ -268,6 +268,7 @@ class RunMetadata(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     user_id: str | None = None
+    conversation_id: str | None = None
 
 
 class _RunConfigMetadataView(BaseModel):
@@ -278,14 +279,18 @@ class _RunConfigMetadataView(BaseModel):
     metadata: RunMetadata | None = None
 
 
+def read_run_metadata(config: AgentRunConfig | None) -> RunMetadata:
+    """Return a run config's metadata, parsed; empty when the config carries none."""
+    return _RunConfigMetadataView.model_validate(config or {}).metadata or RunMetadata()
+
+
 class RunUserMissingError(ValueError):
     """Raised when a run config names no user: build_agent_config always sets one, so it is a wiring bug."""
 
 
 def get_user_id(config: AgentRunConfig | None) -> str:
     """Return the user a run acts for, from configurable then metadata; RunUserMissingError when neither names one."""
-    metadata = _RunConfigMetadataView.model_validate(config or {}).metadata
-    user_id = read_agent_configurable(config).user_id or (metadata.user_id if metadata else None)
+    user_id = read_agent_configurable(config).user_id or read_run_metadata(config).user_id
     if not user_id:
         raise RunUserMissingError("user_id not found in RunnableConfig")
     return user_id

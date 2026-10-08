@@ -51,6 +51,7 @@ from app.models.agent_models import (
     AgentUserContext,
     SubagentKind,
     agent_configurable,
+    get_user_id,
 )
 from app.models.subagent_models import Subagent
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
@@ -116,14 +117,6 @@ class _CustomIntegrationDoc(BaseModel):
     name: str | None = None
     mcp_config: dict[str, object] | None = None
     icon_url: str | None = None
-
-
-class _RunMetadata(BaseModel):
-    """The ``metadata`` key of a ``RunnableConfig`` the handoff falls back on."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
 
 
 def _extract_service_username(metadata: dict[str, str] | None) -> str | None:
@@ -702,15 +695,11 @@ async def handoff(
     Runs on the same runner as spawn_subagent: in the background by default,
     so several handoffs run side by side while you keep working.
     """
+    user_id = get_user_id(config)
     try:
         configurable: AgentConfigurable = agent_configurable(config)
-        user_id = configurable.get("user_id")
-
-        # Fallback: try to get user_id from metadata if not in configurable
-        if not user_id:
-            user_id = _RunMetadata.model_validate(config.get("metadata") or {}).user_id
-            if user_id:
-                configurable["user_id"] = user_id
+        # The delegation reads the user off the bag, so name it there even when only metadata did.
+        configurable["user_id"] = user_id
 
         delegation = await build_handoff_delegation(subagent_id, task, configurable, tool_call_id)
         if isinstance(delegation, str):
