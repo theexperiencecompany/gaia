@@ -50,7 +50,6 @@ class TestMatching:
 
         assert [m.user_id.distinct_id for m in plan.merges] == [ALICE]
 
-    @pytest.mark.regression
     def test_surrounding_whitespace_on_either_side_still_matches(self) -> None:
         plan = match([_person("p1", " alice@x.com")], _owners((ALICE, "alice@x.com \n")))
 
