@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.runtime import Runtime
 import pytest
@@ -307,3 +308,44 @@ class TestToolCallsActAsTheRunsAgent:
         executor.wrap_tool_invocation.assert_not_awaited()
         (message,) = result["messages"]
         assert message.content == "hi"
+
+
+@tool
+def reports_its_thread(query: str, config: RunnableConfig) -> str:
+    """Name the thread of the run config the tool call was handed."""
+    return f"{query}:{config['configurable']['thread_id']}"
+
+
+def _config_with_thread() -> dict[str, Any]:
+    return {"configurable": {**_config_stamped()["configurable"], "thread_id": "thread-1"}}
+
+
+class TestToolCallsKeepTheRunConfig:
+    """Binding the analytics context must still hand the tool the run's own config."""
+
+    @pytest.mark.parametrize(
+        "middleware_executor", [None, MiddlewareExecutor([_Passthrough()])], ids=["plain", "chain"]
+    )
+    async def test_an_async_tool_call_sees_the_run_config(
+        self, middleware_executor: MiddlewareExecutor | None
+    ) -> None:
+        node = DynamicToolNode(
+            {"reports_its_thread": reports_its_thread}, middleware_executor=middleware_executor
+        )
+
+        result = await node._afunc(
+            _one_call("reports_its_thread", {"query": "q"}), _config_with_thread(), Runtime()
+        )
+
+        (message,) = result["messages"]
+        assert message.content == "q:thread-1"
+
+    def test_a_sync_tool_call_sees_the_run_config(self) -> None:
+        node = DynamicToolNode({"reports_its_thread": reports_its_thread})
+
+        result = node._func(
+            _one_call("reports_its_thread", {"query": "q"}), _config_with_thread(), Runtime()
+        )
+
+        (message,) = result["messages"]
+        assert message.content == "q:thread-1"

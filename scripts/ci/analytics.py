@@ -158,8 +158,14 @@ class Catalog:
         """Build from the analytics-catalog.json document `mise analytics:types` writes."""
         properties: dict[str, frozenset[str]] = {}
         renamed: dict[str, str] = {}
+        base_sets = {
+            name: frozenset(schema.get("properties", {}))
+            for name, schema in doc["base_properties"].items()
+        }
         for entry in doc["events"]:
-            properties[entry["event"]] = frozenset(entry["properties"].get("properties", {}))
+            own = frozenset(entry["properties"].get("properties", {}))
+            base = entry["base_properties"]
+            properties[entry["event"]] = own | base_sets[base] if base else own
             for old in entry["previous_names"]:
                 renamed[old] = entry["event"]
         return cls(properties=properties, renamed=renamed)
