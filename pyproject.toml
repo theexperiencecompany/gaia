@@ -389,6 +389,7 @@ unfixable = [
 "apps/api/app/services/feature_flags.py" = ["TID251"]  # flag evaluation is a separate PostHog product
 "apps/api/app/helpers/agent_helpers.py" = ["TID251"]  # LLM-generation tracing is a separate PostHog product
 "apps/api/tests/**" = ["TID251"]  # tests assert against the SDK's own context and handler types
+"apps/api/scripts/analytics_ops/posthog_api.py" = ["TID251"]  # builds the backfills' client; catalog events still go through prepare_capture
 # Docstrings in these trees are runtime data, not documentation: route handler
 # docstrings are the OpenAPI descriptions (apps/api/openapi.json is generated
 # from them and drift-gated), @tool bodies are the model-facing tool

@@ -5678,6 +5678,18 @@
             ],
             "default": null,
             "title": "Currency Charged"
+          },
+          "backfilled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Backfilled"
           }
         },
         "required": ["subscription_id", "plan_name", "currency"],
@@ -6785,6 +6797,18 @@
             ],
             "default": null,
             "title": "Signup Method"
+          },
+          "backfilled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Backfilled"
           }
         },
         "title": "UserSignedUp",

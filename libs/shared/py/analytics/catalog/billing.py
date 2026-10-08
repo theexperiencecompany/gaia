@@ -91,6 +91,8 @@ class SubscriptionActivated(ServerEvent):
     # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
     amount_charged_pre_tax: float | None = None
     currency_charged: CurrencyCode | None = None
+    # True on an event a backfill sent at its record's own time; new-subscriber tiles exclude it.
+    backfilled: bool | None = None
 
 
 class SubscriptionRenewed(ServerEvent):

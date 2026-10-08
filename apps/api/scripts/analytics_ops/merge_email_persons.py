@@ -1,0 +1,188 @@
+"""Merge each email-keyed PostHog person into the person of the GAIA user who owns that email.
+
+A merge is $merge_dangerously on the Mongo id with the email as alias, sent
+through the live pipeline. The survivor's properties win a merge, so when the
+email person is the older one its first-touch properties ($initial_* and
+first_seen) are set on the survivor afterwards. Only an exact, case-folded,
+unambiguous users.email match is merged; a person that already holds a Mongo
+id is skipped, so a re-run merges nothing twice.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+
+from pymongo.database import Database
+
+from shared.py.analytics import UserId
+
+from .mongo import Document
+from .posthog_api import REPO_ROOT, PostHogReader, Sender, hogql_complete
+
+MERGE_EVENT = "$merge_dangerously"
+FIRST_TOUCH_PREFIX = "$initial_"
+FIRST_SEEN = "first_seen"
+DEFAULT_SNAPSHOT_DIR = REPO_ROOT / ".agents" / "plans" / "posthog-backfill"
+
+EMAIL_PERSONS_HOGQL = (
+    "SELECT distinct_id, toString(person_id) FROM person_distinct_ids "
+    "WHERE distinct_id LIKE '%@%' LIMIT {limit}"
+)
+PERSON_DISTINCT_IDS_HOGQL = (
+    "SELECT distinct_id, toString(person_id) FROM person_distinct_ids "
+    "WHERE has({persons}, toString(person_id)) LIMIT {limit}"
+)
+PERSONS_HOGQL = (
+    "SELECT toString(id), toString(created_at), properties FROM persons "
+    "WHERE has({persons}, toString(id)) LIMIT {limit}"
+)
+SURVIVOR_CREATED_HOGQL = (
+    "SELECT distinct_id, toString(person.created_at) FROM person_distinct_ids "
+    "WHERE has({ids}, distinct_id) LIMIT {limit}"
+)
+
+
+@dataclass(frozen=True)
+class Merge:
+    """One email person and the GAIA user it belongs to."""
+
+    person_id: str
+    distinct_ids: tuple[str, ...]
+    created_at: str
+    properties: dict[str, object]
+    user_id: UserId
+
+    @property
+    def alias(self) -> str:
+        """Return the email distinct_id the merge names; the others share its person."""
+        return min(d for d in self.distinct_ids if "@" in d)
+
+    def first_touch(self) -> dict[str, object]:
+        """Return the person's first-touch properties."""
+        return {
+            key: value
+            for key, value in self.properties.items()
+            if key.startswith(FIRST_TOUCH_PREFIX) or key == FIRST_SEEN
+        }
+
+
+@dataclass(frozen=True)
+class MergePlan:
+    """Every email person, sorted into what the script may and may not do with it."""
+
+    merges: list[Merge]
+    already_merged: list[str]
+    unmatched: list[str]
+    ambiguous: list[str]
+
+    def summary(self) -> str:
+        """Return the bucket counts."""
+        return (
+            f"{len(self.merges)} to merge, {len(self.already_merged)} already merged, "
+            f"{len(self.unmatched)} with no GAIA user (not merged), "
+            f"{len(self.ambiguous)} matching more than one user (not merged)"
+        )
+
+
+def _is_user_id(distinct_id: str) -> bool:
+    try:
+        UserId(distinct_id)
+    except ValueError:
+        return False
+    return True
+
+
+def _users_by_email(db: Database[Document]) -> dict[str, set[str]]:
+    """Map each case-folded users.email to the ids holding it."""
+    owners: defaultdict[str, set[str]] = defaultdict(set)
+    for user in db.users.find({"email": {"$type": "string"}}, {"email": 1}):
+        owners[str(user["email"]).casefold()].add(str(user["_id"]))
+    return owners
+
+
+def _persons(
+    read: PostHogReader, person_ids: list[str]
+) -> dict[str, tuple[str, dict[str, object]]]:
+    rows = hogql_complete(read, PERSONS_HOGQL, {"persons": person_ids})
+    persons: dict[str, tuple[str, dict[str, object]]] = {}
+    for person_id, created_at, properties in rows:
+        parsed = json.loads(properties) if isinstance(properties, str) else properties
+        if not isinstance(parsed, dict):
+            raise SystemExit(f"person {person_id} has non-object properties: {type(parsed)}")
+        persons[str(person_id)] = (str(created_at), parsed)
+    return persons
+
+
+def plan(read: PostHogReader, db: Database[Document]) -> MergePlan:
+    """Read every email person and match it to a GAIA user."""
+    email_rows = hogql_complete(read, EMAIL_PERSONS_HOGQL, {})
+    person_ids = sorted({str(person_id) for _, person_id in email_rows})
+    distinct_ids: defaultdict[str, list[str]] = defaultdict(list)
+    for distinct_id, person_id in hogql_complete(
+        read, PERSON_DISTINCT_IDS_HOGQL, {"persons": person_ids}
+    ):
+        distinct_ids[str(person_id)].append(str(distinct_id))
+    persons = _persons(read, person_ids)
+    owners = _users_by_email(db)
+
+    result = MergePlan([], [], [], [])
+    for person_id in person_ids:
+        ids = tuple(sorted(distinct_ids[person_id]))
+        if any(_is_user_id(d) for d in ids):
+            result.already_merged.append(person_id)
+            continue
+        matches = set().union(*(owners.get(d.casefold(), set()) for d in ids if "@" in d))
+        if not matches:
+            result.unmatched.append(person_id)
+        elif len(matches) > 1:
+            result.ambiguous.append(person_id)
+        else:
+            created_at, properties = persons[person_id]
+            result.merges.append(
+                Merge(person_id, ids, created_at, properties, UserId(matches.pop()))
+            )
+    result.merges.sort(key=lambda merge: merge.created_at)
+    return result
+
+
+def write_snapshot(merges: list[Merge], snapshot_dir: Path) -> Path:
+    """Write the persons about to be merged to JSONL: the only record a merge can be read back from."""
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    path = snapshot_dir / f"merge-email-persons-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.jsonl"
+    with path.open("w", encoding="utf-8") as snapshot:
+        for merge in merges:
+            record = {
+                "person_id": merge.person_id,
+                "distinct_ids": merge.distinct_ids,
+                "created_at": merge.created_at,
+                "properties": merge.properties,
+                "merged_into": merge.user_id.distinct_id,
+            }
+            snapshot.write(json.dumps(record) + "\n")
+    return path
+
+
+def apply(read: PostHogReader, sender: Sender, merges: list[Merge]) -> int:
+    """Merge each person, then restore its first touch where it predates the survivor; return how many restored."""
+    survivors = {
+        str(distinct_id): str(created_at)
+        for distinct_id, created_at in hogql_complete(
+            read, SURVIVOR_CREATED_HOGQL, {"ids": [m.user_id.distinct_id for m in merges]}
+        )
+    }
+    restored = 0
+    for merge in merges:
+        survivor = merge.user_id.distinct_id
+        sender.client.capture(
+            event=MERGE_EVENT, distinct_id=survivor, properties={"alias": merge.alias}
+        )
+        survivor_created = survivors.get(survivor)
+        first_touch = merge.first_touch()
+        if first_touch and (survivor_created is None or merge.created_at < survivor_created):
+            sender.client.set(distinct_id=survivor, properties=first_touch)
+            restored += 1
+    return restored

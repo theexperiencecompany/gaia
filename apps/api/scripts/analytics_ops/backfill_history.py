@@ -1,0 +1,184 @@
+"""Backfill user:signed_up and subscription:activated for records that predate their tracking.
+
+Each event goes through prepare_capture with a Dedupe built from its record (the
+user or subscription id, and its Mongo created_at), so its uuid and timestamp
+are the same on every run: PostHog upserts a resend instead of adding a row,
+and a record whose person already has the event is not planned at all. Events
+are marked backfilled and carry no $set, which would overwrite today's person
+properties. They are attributed actor=user, trigger=system, surface=worker:
+the person did it, a backfill reported it.
+
+Sent with posthog-python's historical_migration client, the pipeline PostHog
+documents for imports; its docs say it needs a paid product-analytics plan.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from pymongo.database import Database
+
+from app.models.payment_models import SubscriptionDocument
+from app.services.payments.subscription_events import CENTS_PER_UNIT
+from shared.py.analytics import Dedupe, UserId, prepare_capture
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.auth import UserSignedUp
+from shared.py.analytics.catalog.base import ServerEvent, Surface
+from shared.py.analytics.catalog.billing import SubscriptionActivated
+from shared.py.analytics.context import AnalyticsContext, analytics_context
+
+from .mongo import Document
+from .posthog_api import PostHogReader, Sender, hogql_complete
+
+# The first user:signed_up PostHog holds; signups before it were never captured.
+FIRST_TRACKED_SIGNUP = datetime(2026, 1, 29, tzinfo=UTC)
+# The only plan GAIA has sold; subscription:activated names it.
+PRO_PLAN_NAME = "Pro"
+BACKFILL_CONTEXT = AnalyticsContext(
+    attribution=Attribution(actor=Actor.USER, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
+)
+
+# Users whose person already holds the event, under any of its distinct ids.
+USERS_WITH_EVENT_HOGQL = (
+    "SELECT distinct_id FROM person_distinct_ids WHERE has({ids}, distinct_id) "
+    "AND person_id IN (SELECT person_id FROM events WHERE event = {event} "
+    "AND timestamp >= toDateTime({since}, 'UTC')) LIMIT {limit}"
+)
+TRACKED_SUBSCRIPTIONS_HOGQL = (
+    "SELECT DISTINCT toString(properties.subscription_id) FROM events "
+    "WHERE event = {event} AND timestamp >= toDateTime({since}, 'UTC') LIMIT {limit}"
+)
+
+
+@dataclass(frozen=True)
+class Backfill:
+    """One historical event, keyed by the record it reports."""
+
+    user_id: UserId
+    event: ServerEvent
+    dedupe: Dedupe
+
+
+@dataclass(frozen=True)
+class HistoryPlan:
+    """What a run will send, and the records it cannot build an event from."""
+
+    signups: list[Backfill]
+    activations: list[Backfill]
+    unbuildable: list[str]
+
+    def summary(self) -> str:
+        """Return the counts."""
+        return (
+            f"{len(self.signups)} {UserSignedUp.event}, "
+            f"{len(self.activations)} {SubscriptionActivated.event}, "
+            f"{len(self.unbuildable)} records that cannot be built (not sent)"
+        )
+
+
+def _earliest(db: Database[Document], collection: str) -> datetime:
+    first = db[collection].find_one({"created_at": {"$type": "date"}}, sort=[("created_at", 1)])
+    if first is None:
+        return FIRST_TRACKED_SIGNUP
+    created: datetime = first["created_at"]
+    return created
+
+
+def _already_tracked(
+    read: PostHogReader, user_ids: list[str], event: str, since: datetime
+) -> set[str]:
+    rows = hogql_complete(
+        read,
+        USERS_WITH_EVENT_HOGQL,
+        {"ids": user_ids, "event": event, "since": since.strftime("%Y-%m-%d %H:%M:%S")},
+    )
+    return {str(distinct_id) for (distinct_id,) in rows}
+
+
+def plan_signups(read: PostHogReader, db: Database[Document]) -> list[Backfill]:
+    """Plan a signup for every user created before tracking whose person has none."""
+    users = list(
+        db.users.find(
+            {"created_at": {"$lt": FIRST_TRACKED_SIGNUP, "$type": "date"}}, {"created_at": 1}
+        )
+    )
+    tracked = _already_tracked(
+        read, [str(user["_id"]) for user in users], UserSignedUp.event, _earliest(db, "users")
+    )
+    return [
+        Backfill(
+            UserId(str(user["_id"])),
+            UserSignedUp(backfilled=True),
+            Dedupe(key=str(user["_id"]), occurred_at=user["created_at"]),
+        )
+        for user in users
+        if str(user["_id"]) not in tracked
+    ]
+
+
+def _activation(row: SubscriptionDocument) -> Backfill:
+    """Build the activation a subscription row reports; raise ValueError when it cannot be."""
+    if row.created_at is None or row.currency is None:
+        raise ValueError("no created_at or currency")
+    return Backfill(
+        UserId(row.user_id),
+        SubscriptionActivated(
+            subscription_id=row.dodo_subscription_id,
+            plan_name=PRO_PLAN_NAME,
+            currency=row.currency,
+            amount=row.recurring_pre_tax_amount / CENTS_PER_UNIT
+            if row.recurring_pre_tax_amount
+            else None,
+            backfilled=True,
+        ),
+        Dedupe(key=row.dodo_subscription_id, occurred_at=row.created_at),
+    )
+
+
+def plan_activations(
+    read: PostHogReader, db: Database[Document]
+) -> tuple[list[Backfill], list[str]]:
+    """Plan an activation for every subscription PostHog has none for, by id or on its owner's person."""
+    rows = [SubscriptionDocument.model_validate(raw) for raw in db.subscriptions.find({})]
+    earliest = _earliest(db, "subscriptions")
+    since = earliest.strftime("%Y-%m-%d %H:%M:%S")
+    tracked_ids = {
+        str(subscription_id)
+        for (subscription_id,) in hogql_complete(
+            read,
+            TRACKED_SUBSCRIPTIONS_HOGQL,
+            {"event": SubscriptionActivated.event, "since": since},
+        )
+    }
+    owners_tracked = _already_tracked(
+        read,
+        sorted({row.user_id for row in rows}),
+        SubscriptionActivated.event,
+        earliest,
+    )
+    planned: list[Backfill] = []
+    unbuildable: list[str] = []
+    for row in rows:
+        if row.dodo_subscription_id in tracked_ids or row.user_id in owners_tracked:
+            continue
+        try:
+            planned.append(_activation(row))
+        except ValueError as error:
+            unbuildable.append(f"subscription {row.dodo_subscription_id}: {error}")
+    return planned, unbuildable
+
+
+def plan(read: PostHogReader, db: Database[Document]) -> HistoryPlan:
+    """Plan both backfills."""
+    activations, unbuildable = plan_activations(read, db)
+    return HistoryPlan(plan_signups(read, db), activations, unbuildable)
+
+
+def apply(sender: Sender, backfills: list[Backfill]) -> None:
+    """Send each backfill through the catalog's capture preparation."""
+    with analytics_context(BACKFILL_CONTEXT):
+        for backfill in backfills:
+            prepare_capture(backfill.user_id, backfill.event, Surface.SERVER, backfill.dedupe).send(
+                sender.client
+            )

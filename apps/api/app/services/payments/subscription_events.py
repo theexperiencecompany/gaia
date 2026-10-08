@@ -346,20 +346,17 @@ def _capture_transition(
             )
 
 
-def _set_paid_person_properties(
-    user_id: str, status: SubscriptionStatus, *, cancel_at_period_end: bool
-) -> None:
-    """Mirror the row's paid state onto the person; a $0 discount-code subscription is a subscriber."""
+def paid_person_properties(
+    status: SubscriptionStatus, *, cancel_at_period_end: bool
+) -> dict[str, object]:
+    """Return the person properties mirroring a row's paid state; a $0 discount-code subscription is a subscriber."""
     is_subscribed = status is SubscriptionStatus.ACTIVE
-    identify_user(
-        UserId(user_id),
-        {
-            "plan": (PlanType.PRO if is_subscribed else PlanType.FREE).value,
-            "is_subscribed": is_subscribed,
-            "subscription_status": status.value,
-            "subscription_cancel_at_period_end": cancel_at_period_end,
-        },
-    )
+    return {
+        "plan": (PlanType.PRO if is_subscribed else PlanType.FREE).value,
+        "is_subscribed": is_subscribed,
+        "subscription_status": status.value,
+        "subscription_cancel_at_period_end": cancel_at_period_end,
+    }
 
 
 def _sync_paid_person_properties(
@@ -369,10 +366,12 @@ def _sync_paid_person_properties(
     if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
         return
     merged = row.model_copy(update=changes.model_dump(exclude_unset=True))
-    _set_paid_person_properties(
-        user_id,
-        SubscriptionStatus(merged.status),
-        cancel_at_period_end=bool(merged.cancel_at_next_billing_date),
+    identify_user(
+        UserId(user_id),
+        paid_person_properties(
+            SubscriptionStatus(merged.status),
+            cancel_at_period_end=bool(merged.cancel_at_next_billing_date),
+        ),
     )
 
 
@@ -415,7 +414,10 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     )
 
     _capture_transition(event, user_id, SubscriptionUpdate(status=SubscriptionStatus.ACTIVE.value))
-    _set_paid_person_properties(user_id, SubscriptionStatus.ACTIVE, cancel_at_period_end=False)
+    identify_user(
+        UserId(user_id),
+        paid_person_properties(SubscriptionStatus.ACTIVE, cancel_at_period_end=False),
+    )
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)

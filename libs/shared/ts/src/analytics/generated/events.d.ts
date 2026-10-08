@@ -880,6 +880,7 @@ export interface EventProperties {
     "amount"?: number;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
+    "backfilled"?: boolean;
   };
   "subscription:cancellation_requested": Record<string, never>;
   "subscription:cancelled": {
@@ -1007,6 +1008,7 @@ export interface EventProperties {
   };
   "user:signed_up": {
     "signup_method"?: string;
+    "backfilled"?: boolean;
   };
   "voice:mode_started": {
     "conversation_id"?: string;
