@@ -42,8 +42,6 @@ apps/api/app/agents/skills/parser.py	TB002
 apps/api/app/agents/skills/registry.py	TB001
 apps/api/app/agents/templates/mail_templates.py	TB001
 apps/api/app/agents/templates/mail_templates.py	TB002
-apps/api/app/agents/tools/coding/_context.py	TB001
-apps/api/app/agents/tools/coding/_context.py	TB002
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
