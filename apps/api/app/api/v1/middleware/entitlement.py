@@ -20,9 +20,9 @@ import re
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.routing import iter_route_contexts
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import compile_path
-from starlette.types import ASGIApp
 
 from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
@@ -48,13 +48,12 @@ UNMATCHED_ROUTE = "unmatched_route"
 
 @cache
 def _route_patterns(
-    app: ASGIApp,
+    app: Starlette,
 ) -> tuple[tuple[re.Pattern[str], str, frozenset[str] | None], ...]:
     """Compile every route's full path and methods once per app, in the router's match order."""
-    routes = getattr(app, "routes", ())
     return tuple(
         (compile_path(ctx.path)[0], ctx.path, frozenset(ctx.methods) if ctx.methods else None)
-        for ctx in iter_route_contexts(routes)
+        for ctx in iter_route_contexts(app.routes)
     )
 
 
