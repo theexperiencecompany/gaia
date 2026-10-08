@@ -25,6 +25,7 @@ from scripts.payment_setup import (
     fetch_product_price,
     invalidate_plan_cache,
     reconcile_plan,
+    setup_payment_plans,
 )
 
 from app.models.payment_models import PlanDuration, PlanTier
@@ -39,12 +40,14 @@ def _dodo_with(price: RecurringPrice | OneTimePrice) -> MagicMock:
     return client
 
 
-def _recurring(interval: str, amount: int = 57284, currency: str = "ZAR") -> RecurringPrice:
+def _recurring(
+    interval: str, amount: int = 57284, currency: str = "ZAR", count: int = 1
+) -> RecurringPrice:
     return RecurringPrice.model_validate(
         {
             "currency": currency,
             "discount": 0,
-            "payment_frequency_count": 1,
+            "payment_frequency_count": count,
             "payment_frequency_interval": interval,
             "price": amount,
             "purchasing_power_parity": False,
@@ -185,6 +188,29 @@ async def test_invalidate_plan_cache_drops_every_key() -> None:
     assert set(client.delete.await_args.args) == {"plans:active", "plans:all"}
 
 
+async def test_apply_clears_the_cached_catalogue_even_when_an_untagged_row_fails_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The new prices are already written, so a stale cache would serve the old ones for an hour."""
+    monkeypatch.setenv("DODO_PAYMENTS_API_KEY", "key")
+    price = ProductPrice(product_id="pdt_1", amount=3000, currency="USD")
+    invalidate = AsyncMock()
+    with (
+        patch("scripts.payment_setup.payment_service"),
+        patch("scripts.payment_setup.fetch_product_price", return_value=price),
+        patch("scripts.payment_setup.AsyncIOMotorClient"),
+        patch("scripts.payment_setup.cleanup_old_indexes", new=AsyncMock()),
+        patch("scripts.payment_setup.reconcile_plan", new=AsyncMock(return_value="unchanged")),
+        patch("scripts.payment_setup.deactivate_free_plan", new=AsyncMock(return_value=False)),
+        patch("scripts.payment_setup.count_untagged_plans", new=AsyncMock(return_value=1)),
+        patch("scripts.payment_setup.invalidate_plan_cache", new=invalidate),
+        pytest.raises(RuntimeError, match="1 plan row"),
+    ):
+        await setup_payment_plans("pdt_m", "pdt_y", dry_run=False)
+
+    invalidate.assert_awaited_once_with()
+
+
 async def test_invalidate_plan_cache_propagates_a_redis_failure() -> None:
     """A cache the API still reads from must fail the run, not print success."""
     client = MagicMock()
@@ -221,8 +247,27 @@ def test_fetch_product_price_reads_the_recurring_price() -> None:
 
 def test_fetch_product_price_refuses_a_product_billed_on_another_cycle() -> None:
     """A yearly id passed as the monthly one would price the monthly row at a year's charge."""
-    with pytest.raises(ValueError, match="bills every Year"):
+    with pytest.raises(ValueError) as excinfo:
         fetch_product_price(_dodo_with(_recurring("Year")), "pdt_1", PlanDuration.MONTHLY)
+
+    assert str(excinfo.value) == (
+        "Dodo product pdt_1 bills every 1 Year, not the monthly plan's 1 Month"
+    )
+
+
+@pytest.mark.parametrize(
+    ("interval", "duration"), [("Month", PlanDuration.MONTHLY), ("Year", PlanDuration.YEARLY)]
+)
+def test_fetch_product_price_refuses_a_product_billed_every_several_periods(
+    interval: str, duration: PlanDuration
+) -> None:
+    """A quarterly charge stored as the monthly row would show three months' price as one month's."""
+    with pytest.raises(ValueError) as excinfo:
+        fetch_product_price(_dodo_with(_recurring(interval, count=3)), "pdt_1", duration)
+
+    assert str(excinfo.value) == (
+        f"Dodo product pdt_1 bills every 3 {interval}, not the {duration} plan's 1 {interval}"
+    )
 
 
 def test_fetch_product_price_refuses_a_one_time_product() -> None:
