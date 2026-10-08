@@ -428,6 +428,27 @@ describe("receipts", () => {
       }
     `);
   });
+
+  it("prints the yearly preview before the webhook lands", () => {
+    const details = buildReceiptDetails(undefined, PRO_YEARLY);
+    const { container } = render(
+      <PostPaymentReceipt
+        stage="complete"
+        planName={details.planName}
+        amount={details.amount}
+        currency={details.currency}
+        billingPeriod={details.billingPeriod}
+        nextBillingDate={details.nextBillingDate}
+        subscriptionRef={details.subscriptionRef}
+        purchasedAt={details.purchasedAt}
+        quantity={details.quantity}
+        customerEmail="reader@example.com"
+      />,
+    );
+    expect(visibleText(container)).toMatchInlineSnapshot(
+      `"GAIAAnnual subscriptionTotal$300.00Order completeRECEIPTreader@example.comGAIA (Annual)$300.00Total$300.00BillingAnnual subscriptionStatusActiveYou're in. Everything's unlocked, welcome aboard!"`,
+    );
+  });
 });
 
 describe("founder's letter offer", () => {
