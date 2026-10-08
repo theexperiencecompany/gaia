@@ -342,8 +342,8 @@ def judge(
                 verdict.fail(f"{journey.name}: {expect.label()}: {problem}")
     for event in unexpected:
         verdict.fail(f"unexpected {event.event} at {event.timestamp} on {event.distinct_id}")
-    for event, distinct_id, count in strays:
-        verdict.fail(f"unexpected {event} x{count} on another distinct_id {distinct_id!r}")
+    for name, distinct_id, count in strays:
+        verdict.fail(f"unexpected {name} x{count} on another distinct_id {distinct_id!r}")
     sdk = sum(1 for event in received if event.event.startswith(SDK_PREFIX))
     print(f"\n{sdk} SDK/person-operation events ($set, $ai_*, ...) seen and not asserted")
 

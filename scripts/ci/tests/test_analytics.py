@@ -445,7 +445,7 @@ def _sync(
         scopes_asked.append(tuple(scopes))
         return project
 
-    monkeypatch.setattr(analytics, "_client", client)
+    monkeypatch.setattr(analytics, "client_from_env", client)
     return analytics.main(["sync-actions", *args]), scopes_asked
 
 

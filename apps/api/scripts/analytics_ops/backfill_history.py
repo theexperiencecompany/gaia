@@ -81,7 +81,14 @@ def _earliest(db: Database[Document], collection: str) -> datetime:
     first = db[collection].find_one({"created_at": {"$type": "date"}}, sort=[("created_at", 1)])
     if first is None:
         return FIRST_TRACKED_SIGNUP
-    created: datetime = first["created_at"]
+    return _created_at(first)
+
+
+def _created_at(record: Document) -> datetime:
+    """Return a record's created_at; the queries select only records whose created_at is a date."""
+    created = record["created_at"]
+    if not isinstance(created, datetime):
+        raise TypeError(f"{record['_id']} has created_at {created!r}, not a date")
     return created
 
 
@@ -110,7 +117,7 @@ def plan_signups(read: PostHogReader, db: Database[Document]) -> list[Backfill]:
         Backfill(
             UserId(str(user["_id"])),
             UserSignedUp(backfilled=True),
-            Dedupe(key=str(user["_id"]), occurred_at=user["created_at"]),
+            Dedupe(key=str(user["_id"]), occurred_at=_created_at(user)),
         )
         for user in users
         if str(user["_id"]) not in tracked

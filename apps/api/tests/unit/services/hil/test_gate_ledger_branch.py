@@ -768,6 +768,9 @@ class TestLedgerAutoMode:
             "tool_name": GATED_TOOL,
             "via": "auto",
             "timestamp": None,
+            "actor": "agent",
+            "trigger": "interactive",
+            "surface": "web",
         }
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:

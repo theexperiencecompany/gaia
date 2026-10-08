@@ -111,7 +111,9 @@ def mint(stack: Stack) -> None:
 
 def onboarding(stack: Stack) -> None:
     """Submit onboarding and advance its phase, as the browser does."""
-    request = OnboardingRequest(profession="engineer", needs=[OnboardingNeed.INBOX])
+    request = OnboardingRequest(
+        profession="engineer", needs=[OnboardingNeed.INBOX], other_need=None, timezone="UTC"
+    )
     phase = OnboardingPhaseUpdateRequest(phase=OnboardingPhase.GETTING_STARTED)
     with stack.client() as api:
         _expect(
