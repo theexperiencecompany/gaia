@@ -22,6 +22,7 @@ import fakeredis.aioredis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
+from posthog import Posthog
 import pytest
 
 # Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
@@ -810,6 +811,25 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
 
     yield install
     init_posthog()
+
+
+@pytest.fixture
+def posthog_events(posthog_provider: Callable[..., None]) -> list[dict[str, object]]:
+    """Install a real PostHog client and return the events it would have sent.
+
+    The SDK builds each message in full (context distinct_id, $session_id)
+    before before_send sees it; returning None there keeps it off the network.
+    """
+    events: list[dict[str, object]] = []
+
+    def record(message: dict[str, object]) -> None:
+        events.append(message)
+
+    posthog_provider(
+        available=True,
+        client=Posthog("phc_test", host="http://127.0.0.1:9", before_send=record, sync_mode=True),
+    )
+    return events
 
 
 @pytest.fixture

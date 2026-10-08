@@ -201,7 +201,8 @@ interface EventProperties {
 type PendingCall =
   | { kind: "identify"; userId: string; properties: Record<string, unknown> }
   | { kind: "capture"; event: string; properties: Record<string, unknown> }
-  | { kind: "person"; properties: UserProperties };
+  | { kind: "person"; properties: UserProperties }
+  | { kind: "reset" };
 
 const MAX_PENDING_CALLS = 50;
 const pendingCalls: PendingCall[] = [];
@@ -226,6 +227,9 @@ function send(call: PendingCall): void {
     case "person":
       posthog.setPersonProperties(call.properties);
       break;
+    case "reset":
+      posthog.reset();
+      break;
   }
 }
 
@@ -235,6 +239,28 @@ function dispatch(call: PendingCall): void {
     return;
   }
   send(call);
+}
+
+/** Sent on every API request so server events join this browser's session and replay. */
+const POSTHOG_SESSION_HEADER = "X-PostHog-Session-Id";
+
+/** The analytics headers for an API request; empty until PostHog has a session. */
+export function analyticsRequestHeaders(): Record<string, string> {
+  if (!isPostHogReady()) return {};
+  return { [POSTHOG_SESSION_HEADER]: posthog.get_session_id() };
+}
+
+const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+$/;
+
+/**
+ * Drop a distinct_id persisted from before #1007, when the web identified by email.
+ *
+ * Call after init and before the queue replays, so a queued identify links the
+ * fresh anonymous id to the Mongo id. Afterwards the id is a uuid, so it runs once.
+ */
+export function resetLegacyEmailIdentity(): void {
+  if (!isPostHogReady()) return;
+  if (EMAIL_SHAPED.test(posthog.get_distinct_id())) posthog.reset();
 }
 
 /** Replays everything captured before `posthog.init` finished, in order. */
@@ -253,6 +279,10 @@ export function identifyUser(
   properties?: UserProperties,
 ): void {
   if (!userId) return;
+  if (EMAIL_SHAPED.test(userId)) {
+    console.error("identifyUser refused an email-shaped id; pass the user_id");
+    return;
+  }
 
   dispatch({
     kind: "identify",
@@ -267,10 +297,11 @@ export function identifyUser(
 }
 
 /**
- * Reset user identity (call on logout).
+ * Reset user identity: on logout, or a 401 that ends a signed-in session.
+ * Queued like identify, since posthog.reset() before init is a silent no-op.
  */
 export function resetUser(): void {
-  posthog.reset();
+  dispatch({ kind: "reset" });
 }
 
 /**

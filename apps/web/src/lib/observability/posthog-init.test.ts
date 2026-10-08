@@ -14,6 +14,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const initMock = vi.fn();
 
 vi.mock("posthog-js", () => ({ default: { init: initMock } }));
+vi.mock("@sentry/nextjs", () => ({ init: vi.fn() }));
+
+async function runIdleLoader(): Promise<void> {
+  // instrumentation-client.ts only arms itself when `window` exists and
+  // schedules loading via the bare `requestIdleCallback` global.
+  let idleCallback: (() => Promise<void>) | undefined;
+  vi.stubGlobal("window", { requestIdleCallback: true });
+  vi.stubGlobal("requestIdleCallback", (callback: () => Promise<void>) => {
+    idleCallback = callback;
+  });
+  await import("../../../instrumentation-client");
+  expect(idleCallback).toBeDefined();
+  await idleCallback?.();
+}
 
 describe("instrumentation-client posthog init", () => {
   beforeEach(() => {
@@ -24,19 +38,7 @@ describe("instrumentation-client posthog init", () => {
   });
 
   it("passes an explicit session_recording block to posthog.init", async () => {
-    // instrumentation-client.ts only arms itself when `window` exists and
-    // schedules loading via the bare `requestIdleCallback` global.
-    // Capture the idle-time loader instead of waiting for it.
-    let idleCallback: (() => void) | undefined;
-    vi.stubGlobal("window", { requestIdleCallback: true });
-    vi.stubGlobal("requestIdleCallback", (callback: () => void) => {
-      idleCallback = callback;
-    });
-
-    await import("../../../instrumentation-client");
-    expect(idleCallback).toBeDefined();
-
-    idleCallback?.();
+    await runIdleLoader();
     await vi.waitFor(() => {
       expect(initMock).toHaveBeenCalledTimes(1);
     });
@@ -48,5 +50,20 @@ describe("instrumentation-client posthog init", () => {
     expect(token).toBe("phc_test_token");
     expect(config["disable_session_recording"]).not.toBe(true);
     expect(config["session_recording"]).toEqual({});
+  });
+
+  it("logs an error when a production build has no project token", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "");
+    vi.stubEnv("NODE_ENV", "production");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    await runIdleLoader();
+
+    expect(initMock).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN"),
+    );
   });
 });

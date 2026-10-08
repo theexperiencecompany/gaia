@@ -1,10 +1,12 @@
 "use client";
 
+import { ApiError } from "@shared/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
+  CURRENT_USER_QUERY_KEY,
   clearCurrentUser,
   currentUserQueryOptions,
 } from "@/features/auth/hooks/useCurrentUser";
@@ -16,6 +18,7 @@ import {
   resetUser,
   trackEvent,
 } from "@/lib/analytics";
+import { HTTP_UNAUTHORIZED } from "@/lib/api/outcome";
 
 // Exactly-once guard for the OAuth login analytics event — module scope so it
 // can be flipped during the render-phase redirect without writing a ref.
@@ -108,8 +111,14 @@ const useFetchUser = () => {
     if (!error || hasClearedOnError.current) return;
     hasClearedOnError.current = true;
     console.error("Error fetching user info:", error);
+    // Only a 401 that ends a signed-in session resets: an anonymous visitor's
+    // 401 would orphan their pre-signup history, and a 5xx is not a sign-out.
+    const endedSignedInSession =
+      error instanceof ApiError &&
+      error.status === HTTP_UNAUTHORIZED &&
+      queryClient.getQueryData(CURRENT_USER_QUERY_KEY) !== undefined;
     clearCurrentUser(queryClient);
-    resetUser();
+    if (endedSignedInSession) resetUser();
     hasIdentified.current = false;
   }, [error, queryClient]);
 };

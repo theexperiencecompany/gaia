@@ -83,10 +83,17 @@ if (typeof window !== "undefined") {
     }
 
     // PostHog (any environment where the project token is set). A missing
-    // token is the normal local setup, not an error: analytics stays off and
-    // nothing is logged, the same way Sentry above is skipped without a DSN.
+    // token is the normal local setup; in production it is an outage (web
+    // analytics went dark for 25 days this way), so it is never silent there.
     const posthogProjectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-    if (!posthogProjectToken) return;
+    if (!posthogProjectToken) {
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is unset in this production build: analytics is off",
+        );
+      }
+      return;
+    }
 
     try {
       const { default: posthog } = await import("posthog-js");
@@ -110,7 +117,10 @@ if (typeof window !== "undefined") {
 
       // Anything captured while init was queued at idle was buffered, not
       // dropped — replay it now, in order; imported dynamically to keep analytics off the critical rendering path.
-      const { flushPendingAnalytics } = await import("@/lib/analytics");
+      const { flushPendingAnalytics, resetLegacyEmailIdentity } = await import(
+        "@/lib/analytics"
+      );
+      resetLegacyEmailIdentity();
       flushPendingAnalytics();
     } catch {
       // Analytics should never break the app.

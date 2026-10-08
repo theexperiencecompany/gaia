@@ -3,14 +3,14 @@
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
-from posthog import identify_context, new_context
+from posthog import identify_context, new_context, set_context_session
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
 from app.config.settings import settings
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
@@ -34,11 +34,11 @@ def get_current_user(request: Request) -> AuthenticatedUser | None:
 
 
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind PostHog identity to the authenticated request context.
+    """Bind the request's PostHog identity and browser session to every capture in it.
 
-    WorkOS authentication runs before this middleware and supplies the stable
-    Mongo user id. Captures and exception autocapture in route handlers then
-    inherit that identity without each call site having to repeat it.
+    Runs inside WorkOS and bot authentication, so the user is the stable Mongo
+    id whichever way the request authenticated. The X-PostHog-Session-Id header
+    joins server events to the browser session that caused them.
     """
 
     async def dispatch(
@@ -46,7 +46,8 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         user = get_current_user(request)
         user_id = user.user_id if user else None
-        if not user_id or not providers.is_available("posthog"):
+        session_id = request.headers.get(POSTHOG_SESSION_HEADER)
+        if not (user_id or session_id) or not providers.is_available("posthog"):
             return await call_next(request)
 
         if providers.get(POSTHOG_PROVIDER_KEY) is None:
@@ -56,7 +57,10 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
         # unconfigured module-level posthog client, which raises and REPLACES
         # the real exception; unhandled_exception_handler already captures it.
         with new_context(capture_exceptions=False):  # pragma: no mutate — None is falsy too
-            identify_context(str(user_id))
+            if user_id:
+                identify_context(str(user_id))
+            if session_id:
+                set_context_session(session_id)
             return await call_next(request)
 
 

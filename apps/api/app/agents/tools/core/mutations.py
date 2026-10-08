@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
-from app.services.analytics_service import capture_context_event
+from app.services.analytics_service import capture_event
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -78,7 +78,7 @@ def define_mutation_tool(
             return f"Error: {name} did not complete ({type(e).__name__})."
 
         if event is not None:
-            capture_context_event(event, {"area": area})
+            capture_event(user_id, event, {"area": area})
         if resync is not None:
             resync(user_id)
         return result
