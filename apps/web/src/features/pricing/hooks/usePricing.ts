@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import { type Plan, pricingApi } from "../api/pricingApi";
+import { subscriptionStatusQuery } from "../api/queries";
 
 export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +33,8 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     error: subscriptionError,
     refetch: refetchSubscription,
   } = useQuery({
-    queryKey: ["subscription-status"],
-    queryFn: () => pricingApi.getSubscriptionStatus(),
-    staleTime: 1 * 60 * 1000, // 1 minute
+    ...subscriptionStatusQuery(),
     enabled: !!user.userId, // Only fetch once the persisted user store has a real id
-    retry: false, // Don't retry on auth failures
   });
 
   // Verify payment status
@@ -101,11 +99,8 @@ export const useUserSubscriptionStatus = () => {
   const user = useCurrentUser();
 
   return useQuery({
-    queryKey: ["subscription-status"],
-    queryFn: () => pricingApi.getSubscriptionStatus(),
-    staleTime: 1 * 60 * 1000, // 1 minute
+    ...subscriptionStatusQuery(),
     enabled: !!user.userId, // Only fetch once the persisted user store has a real id
-    retry: false, // Don't retry on auth failures
   });
 };
 
