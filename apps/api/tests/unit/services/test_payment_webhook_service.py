@@ -336,6 +336,22 @@ class TestProcessWebhookIdempotency:
             }
         ]
 
+    async def test_an_envelope_with_no_data_is_rejected_by_the_event_model(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+    ):
+        """A missing data object logs as empty fields; the reason given is the envelope's, not the log model's."""
+        bad_data = {"business_id": "biz_1", "type": "payment.succeeded", "timestamp": "t"}
+        with pytest.raises(ValidationError) as rejected:
+            DodoWebhookEvent(**bad_data)
+
+        result = await webhook_service.process_webhook(bad_data, "wh_no_data")
+
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_no_data")
+        assert result.status == "abandoned"
+        assert result.message == f"Invalid payload: {rejected.value!s}"
+
 
 class TestProcessWebhookLogFields:
     """The fields a delivery is logged with are read before its type picks a full model."""
