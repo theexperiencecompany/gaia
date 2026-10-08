@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -29,6 +30,7 @@ MERGE_EVENT = "$merge_dangerously"
 FIRST_TOUCH_PREFIX = "$initial_"
 FIRST_SEEN = "first_seen"
 DEFAULT_SNAPSHOT_DIR = REPO_ROOT / ".agents" / "plans" / "posthog-backfill"
+SNAPSHOT_MODE = 0o600
 
 EMAIL_PERSONS_HOGQL = (
     "SELECT distinct_id, toString(person_id) FROM person_distinct_ids "
@@ -80,13 +82,16 @@ class MergePlan:
     already_merged: list[str]
     unmatched: list[str]
     ambiguous: list[str]
+    # A merge moves every alias's activity, so one alias no user holds needs a human.
+    unowned_aliases: list[str]
 
     def summary(self) -> str:
         """Return the bucket counts."""
         return (
             f"{len(self.merges)} to merge, {len(self.already_merged)} already merged, "
             f"{len(self.unmatched)} with no GAIA user (not merged), "
-            f"{len(self.ambiguous)} matching more than one user (not merged)"
+            f"{len(self.ambiguous)} matching more than one user (not merged), "
+            f"{len(self.unowned_aliases)} with an email no GAIA user holds (not merged)"
         )
 
 
@@ -136,18 +141,21 @@ class EmailPerson:
 
 def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> MergePlan:
     """Sort each email person into merge, already merged, unmatched or ambiguous; merges oldest first."""
-    result = MergePlan([], [], [], [])
+    result = MergePlan([], [], [], [], [])
     for person in persons:
         if any(_is_user_id(d) for d in person.distinct_ids):
             result.already_merged.append(person.person_id)
             continue
-        matches = set().union(
-            *(owners.get(normalise_email(d), set()) for d in person.distinct_ids if "@" in d)
-        )
+        owners_per_email = [
+            owners.get(normalise_email(d), set()) for d in person.distinct_ids if "@" in d
+        ]
+        matches = set().union(*owners_per_email)
         if not matches:
             result.unmatched.append(person.person_id)
         elif len(matches) > 1:
             result.ambiguous.append(person.person_id)
+        elif not all(owners_per_email):
+            result.unowned_aliases.append(person.person_id)
         else:
             result.merges.append(
                 Merge(
@@ -191,7 +199,10 @@ def write_snapshot(merges: list[Merge], snapshot_dir: Path) -> Path:
     path = (
         snapshot_dir / f"merge-email-persons-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}.jsonl"
     )
-    with path.open("x", encoding="utf-8") as snapshot:
+    # Owner-only: the snapshot holds every merged person's properties, emails included.
+    with os.fdopen(
+        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, SNAPSHOT_MODE), "w", encoding="utf-8"
+    ) as snapshot:
         for merge in merges:
             record = {
                 "person_id": merge.person_id,

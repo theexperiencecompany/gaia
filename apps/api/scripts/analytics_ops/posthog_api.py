@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from types import ModuleType
+from types import ModuleType, TracebackType
 from typing import Protocol
 
 from posthog import Posthog
@@ -128,13 +128,28 @@ class Sender:
         )
         return cls(client, failures)
 
-    def close(self) -> None:
-        """Flush and stop the client; exit 1 if any batch failed to upload."""
+    def __enter__(self) -> Sender:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Flush and stop the client even when a send raised; exit 1 on a failed upload otherwise.
+
+        A send's own exception is left to propagate: the upload failures are
+        printed, never raised over it.
+        """
         self.client.shutdown()
-        if self.failures:
-            raise SystemExit(
-                f"{len(self.failures)} PostHog upload(s) failed; first: {self.failures[0]!r}"
-            )
+        if not self.failures:
+            return
+        message = f"{len(self.failures)} PostHog upload(s) failed; first: {self.failures[0]!r}"
+        if exc is not None:
+            print(message, file=sys.stderr)
+            return
+        raise SystemExit(message)
 
 
 # The most rows one query may return before a script refuses to trust it as complete.

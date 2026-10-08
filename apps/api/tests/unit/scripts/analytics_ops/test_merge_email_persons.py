@@ -20,6 +20,7 @@ from scripts.analytics_ops.merge_email_persons import (
     users_by_email,
     write_snapshot,
 )
+from scripts.analytics_ops.mongo import MONGO_URI_ENV
 from scripts.analytics_ops.posthog_api import Sender, TargetName
 
 from tests.unit.scripts.analytics_ops.conftest import FakeReader
@@ -27,6 +28,7 @@ from tests.unit.scripts.analytics_ops.conftest import FakeReader
 ALICE = "6ac74a19fa5dfaf1f5770471"
 BOB = "6ac74a19fa5dfaf1f5770472"
 CAROL = "6ac74a19fa5dfaf1f5770473"
+LOCAL_MONGO = "mongodb://localhost:27017"
 
 
 def _person(
@@ -220,16 +222,30 @@ class TestCommand:
             return recording_sender
 
         monkeypatch.setattr(cli, "ground_truth_db", _Db)
+        monkeypatch.setenv(MONGO_URI_ENV, LOCAL_MONGO)
         monkeypatch.setattr(cli, "reader", lambda *_args: reader)
         monkeypatch.setattr(Sender, "open", open_sender)
         return opens
 
-    def _run(self, tmp_path: Path, *, pilot: int | None = None, apply: bool = False) -> int:
+    def _run(
+        self,
+        tmp_path: Path,
+        *,
+        pilot: int | None = None,
+        apply: bool = False,
+        project: TargetName = TargetName.E2E,
+    ) -> int:
         return cli.cmd_merge(
-            argparse.Namespace(
-                project=TargetName.E2E, pilot=pilot, apply=apply, snapshot_dir=tmp_path
-            )
+            argparse.Namespace(project=project, pilot=pilot, apply=apply, snapshot_dir=tmp_path)
         )
+
+    def test_a_prod_merge_from_a_local_mongo_is_refused_before_anything_is_written(
+        self, opened: list[Sender], sent: list[dict[str, object]], tmp_path: Path
+    ) -> None:
+        with pytest.raises(SystemExit, match="prod"):
+            self._run(tmp_path, apply=True, project=TargetName.PROD)
+
+        assert (opened, sent, list(tmp_path.iterdir())) == ([], [], [])
 
     def test_a_dry_run_opens_no_sender_and_writes_no_snapshot(
         self, opened: list[Sender], sent: list[dict[str, object]], tmp_path: Path
@@ -261,3 +277,17 @@ def test_a_pilot_below_one_is_refused_before_anything_runs(pilot: str) -> None:
     """--pilot -1 would slice to every merge but the last: an irreversible bulk merge."""
     with pytest.raises(SystemExit):
         cli._parser().parse_args(["merge-email-persons", "--pilot", pilot])
+
+
+class TestEveryAliasMustBeOwned:
+    def test_a_person_with_an_alias_no_user_holds_is_held_for_review(self) -> None:
+        """Merging it would hand the unowned alias's activity to Alice."""
+        plan = match([_person("p1", "alice@x.com", "other@x.com")], _owners((ALICE, "alice@x.com")))
+
+        assert (plan.merges, plan.unowned_aliases) == ([], ["p1"])
+
+
+def test_a_snapshot_is_readable_only_by_its_owner(tmp_path: Path) -> None:
+    path = write_snapshot([_merge("p1", "alice@x.com", ALICE, "2026-01-01 00:00:00")], tmp_path)
+
+    assert path.stat().st_mode & 0o777 == 0o600

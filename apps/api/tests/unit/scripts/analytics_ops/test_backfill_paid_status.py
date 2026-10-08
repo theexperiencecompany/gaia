@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 import pytest
 from scripts.analytics_ops.backfill_paid_status import (
     PERSON_STATE_HOGQL,
+    SETTLE_ROUNDS,
     apply,
+    apply_until_settled,
     latest_states,
     stale_states,
 )
@@ -127,3 +129,38 @@ class TestResend:
         [message] = sent
         assert (message["event"], message["distinct_id"]) == ("$set", ALICE)
         assert message["$set"] == states[0].properties
+
+
+class TestSettle:
+    """A billing write between the read and the send would otherwise be overwritten by the older state."""
+
+    def test_a_state_that_moved_during_the_send_is_sent_again(
+        self, recording_sender: Sender, sent: list[dict[str, object]]
+    ) -> None:
+        before = latest_states([_row(ALICE, "active")])
+        after = latest_states([_row(ALICE, "on_hold", updated=2)])
+        reads = iter([after, after])
+
+        apply_until_settled(recording_sender, before, lambda: next(reads))
+
+        assert [m["$set"]["subscription_status"] for m in sent] == ["active", "on_hold"]
+
+    def test_an_unmoved_state_is_sent_once(
+        self, recording_sender: Sender, sent: list[dict[str, object]]
+    ) -> None:
+        states = latest_states([_row(ALICE, "active")])
+
+        apply_until_settled(recording_sender, states, lambda: states)
+
+        assert len(sent) == 1
+
+    def test_a_state_that_never_settles_stops_the_run(self, recording_sender: Sender) -> None:
+        flips = iter(
+            latest_states([_row(ALICE, status, updated=day)])
+            for day, status in enumerate(["on_hold", "active"] * SETTLE_ROUNDS, start=2)
+        )
+
+        with pytest.raises(SystemExit, match="still changing"):
+            apply_until_settled(
+                recording_sender, latest_states([_row(ALICE, "active")]), lambda: next(flips)
+            )

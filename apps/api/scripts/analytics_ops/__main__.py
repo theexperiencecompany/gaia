@@ -17,7 +17,7 @@ from pathlib import Path
 import sys
 
 from . import backfill_history, backfill_paid_status, e2e, merge_email_persons, reconcile
-from .mongo import ground_truth_db
+from .mongo import ground_truth_db, mongo_uri, require_mongo_for
 from .posthog_api import TARGETS, Sender, TargetName, reader
 
 SAMPLE_SIZE = 5
@@ -47,7 +47,8 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
 def cmd_paid_status(args: argparse.Namespace) -> int:
     """Plan, and with --apply send, the paid-state person properties."""
     target = TARGETS[_target(args)]
-    states = backfill_paid_status.latest_states(ground_truth_db().subscriptions.find({}))
+    db = ground_truth_db()
+    states = backfill_paid_status.latest_states(db.subscriptions.find({}))
     print(f"Mongo: {backfill_paid_status.summarize(states)}")
     read = reader(target)
     stale = backfill_paid_status.stale_states(read, states)
@@ -56,9 +57,11 @@ def cmd_paid_status(args: argparse.Namespace) -> int:
     if not args.apply:
         print("dry run; --apply sends one $set per differing user")
         return 0
-    sender = Sender.open(target, read)
-    backfill_paid_status.apply(sender, stale)
-    sender.close()
+    require_mongo_for(_target(args), mongo_uri())
+    with Sender.open(target, read) as sender:
+        backfill_paid_status.apply_until_settled(
+            sender, stale, lambda: backfill_paid_status.latest_states(db.subscriptions.find({}))
+        )
     print(f"sent {len(stale)} $set")
     return 0
 
@@ -74,12 +77,12 @@ def cmd_merge(args: argparse.Namespace) -> int:
     if args.pilot is None and not args.apply:
         print("dry run; --pilot N merges the N oldest, --apply merges all (IRREVERSIBLE)")
         return 0
+    require_mongo_for(_target(args), mongo_uri())
     merges = merge_plan.merges if args.apply else merge_plan.merges[: args.pilot]
     snapshot = merge_email_persons.write_snapshot(merges, args.snapshot_dir)
     print(f"snapshot of {len(merges)} persons: {snapshot}")
-    sender = Sender.open(target, read)
-    restored = merge_email_persons.apply(read, sender, merges)
-    sender.close()
+    with Sender.open(target, read) as sender:
+        restored = merge_email_persons.apply(read, sender, merges)
     print(f"merged {len(merges)}; restored first-touch properties on {restored}")
     return 0
 
@@ -104,9 +107,9 @@ def cmd_history(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    sender = Sender.open(target, read)
-    backfill_history.apply(sender, history.signups + history.activations)
-    sender.close()
+    require_mongo_for(_target(args), mongo_uri())
+    with Sender.open(target, read) as sender:
+        backfill_history.apply(sender, history.signups + history.activations)
     print(f"sent {len(history.signups) + len(history.activations)} historical events")
     return 0
 

@@ -9,7 +9,7 @@ re-run after an apply sends nothing.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -28,6 +28,8 @@ PERSON_STATE_HOGQL = (
 )
 # A row with no timestamps sorts before any that has one.
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+# Re-reads after a send before a still-moving state stops the run rather than racing it.
+SETTLE_ROUNDS = 3
 PROPERTY_ORDER = (
     "plan",
     "is_subscribed",
@@ -111,3 +113,29 @@ def apply(sender: Sender, states: list[PaidState]) -> None:
     """Send one $set per state."""
     for state in states:
         sender.client.set(distinct_id=state.user_id.distinct_id, properties=state.properties)
+
+
+def apply_until_settled(
+    sender: Sender, states: list[PaidState], reread: Callable[[], list[PaidState]]
+) -> None:
+    """Send states, then re-read Mongo and resend whatever moved, until nothing does.
+
+    A billing write that lands between the read and the send sets its newer
+    state first; the resend puts it back on top of the older one this run sent.
+    """
+    sent = {state.user_id.distinct_id: state for state in states}
+    pending = states
+    for _ in range(SETTLE_ROUNDS):
+        apply(sender, pending)
+        pending = [
+            state
+            for state in reread()
+            if state.user_id.distinct_id in sent and sent[state.user_id.distinct_id] != state
+        ]
+        if not pending:
+            return
+        sent.update((state.user_id.distinct_id, state) for state in pending)
+    raise SystemExit(
+        f"paid state still changing after {SETTLE_ROUNDS} re-reads for "
+        f"{[state.user_id.distinct_id for state in pending]}; re-run once billing settles"
+    )

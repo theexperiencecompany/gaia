@@ -15,6 +15,7 @@ historical_migration pipeline needs a paid plan this org does not have.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -166,16 +167,41 @@ def plan_activations(
         SubscriptionActivated.event,
         earliest,
     )
+    to_backfill, unbuildable = untracked_activations(rows, tracked_ids, owners_tracked)
     planned: list[Backfill] = []
-    unbuildable: list[str] = []
-    for row in rows:
-        if row.dodo_subscription_id in tracked_ids or row.user_id in owners_tracked:
-            continue
+    for row in to_backfill:
         try:
             planned.append(activation(row))
         except ValueError as error:
             unbuildable.append(f"subscription {row.dodo_subscription_id}: {error}")
     return planned, unbuildable
+
+
+def untracked_activations(
+    rows: list[SubscriptionDocument], tracked_ids: set[str], owners_tracked: set[str]
+) -> tuple[list[SubscriptionDocument], list[str]]:
+    """Split the subscriptions with no activation by id into ones to backfill and ones to review.
+
+    An activation found only on the owner's person proves one subscription: it
+    covers a lone untracked one, and leaves several for a human, since which
+    one it reports is unknown.
+    """
+    untracked: defaultdict[str, list[SubscriptionDocument]] = defaultdict(list)
+    for row in rows:
+        if row.dodo_subscription_id not in tracked_ids:
+            untracked[row.user_id].append(row)
+    to_backfill: list[SubscriptionDocument] = []
+    review: list[str] = []
+    for user_id, owned in untracked.items():
+        if user_id not in owners_tracked:
+            to_backfill += owned
+        elif len(owned) > 1:
+            ids = ", ".join(row.dodo_subscription_id for row in owned)
+            review.append(
+                f"user {user_id}: {len(owned)} subscriptions have no activation by id and one "
+                f"is on the person; which one it reports is unknown ({ids})"
+            )
+    return to_backfill, review
 
 
 def plan(read: PostHogReader, db: Database[Document]) -> HistoryPlan:

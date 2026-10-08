@@ -7,7 +7,13 @@ from uuid import UUID
 
 from bson import ObjectId
 import pytest
-from scripts.analytics_ops.backfill_history import Backfill, activation, apply, signup
+from scripts.analytics_ops.backfill_history import (
+    Backfill,
+    activation,
+    apply,
+    signup,
+    untracked_activations,
+)
 from scripts.analytics_ops.posthog_api import Sender
 
 from app.models.payment_models import SubscriptionDocument
@@ -115,3 +121,47 @@ class TestPayload:
     def test_a_subscription_with_no_creation_time_cannot_be_backfilled(self) -> None:
         with pytest.raises(ValueError, match="created_at"):
             activation(_subscription(created_at=None))
+
+
+class TestOwnerFallbackIsPerSubscription:
+    """An activation found only on the owner's person proves one subscription, not every one."""
+
+    def test_a_lone_untracked_subscription_of_a_tracked_owner_is_skipped(self) -> None:
+        rows = [_subscription(dodo_subscription_id="sub_1")]
+
+        assert untracked_activations(rows, tracked_ids=set(), owners_tracked={ALICE}) == ([], [])
+
+    def test_two_untracked_subscriptions_of_a_tracked_owner_go_to_review(self) -> None:
+        rows = [
+            _subscription(dodo_subscription_id="sub_1"),
+            _subscription(dodo_subscription_id="sub_2"),
+        ]
+
+        backfill, review = untracked_activations(rows, tracked_ids=set(), owners_tracked={ALICE})
+
+        assert backfill == []
+        assert review == [
+            f"user {ALICE}: 2 subscriptions have no activation by id and one is on the person; "
+            "which one it reports is unknown (sub_1, sub_2)"
+        ]
+
+    def test_a_subscription_tracked_by_id_never_counts_against_its_sibling(self) -> None:
+        rows = [
+            _subscription(dodo_subscription_id="sub_1"),
+            _subscription(dodo_subscription_id="sub_2"),
+        ]
+
+        assert untracked_activations(rows, tracked_ids={"sub_1"}, owners_tracked={ALICE}) == (
+            [],
+            [],
+        )
+
+    def test_an_untracked_owner_backfills_every_subscription(self) -> None:
+        rows = [
+            _subscription(dodo_subscription_id="sub_1"),
+            _subscription(dodo_subscription_id="sub_2"),
+        ]
+
+        backfill, review = untracked_activations(rows, tracked_ids=set(), owners_tracked=set())
+
+        assert ([row.dodo_subscription_id for row in backfill], review) == (["sub_1", "sub_2"], [])
