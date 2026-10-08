@@ -565,6 +565,33 @@ class TestMigrateLegacyCanvas:
 
 
 class TestResumePausedFor:
+    @pytest.mark.regression
+    async def test_one_todo_that_cannot_resume_does_not_strand_the_rest(self, mock_repo):
+        stuck = _todo_doc(pause_reason="subscription_lapsed")
+        fine = _todo_doc(id="todo-2", pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[stuck, fine])
+        mock_repo.update = AsyncMock(side_effect=[ConnectionError("mongo blip"), None])
+
+        with (
+            patch(f"{_MOD}.log") as log,
+            pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
+        ):
+            await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert [c.args[0] for c in mock_repo.update.call_args_list] == [TODO_ID, "todo-2"]
+        log.warning.assert_called_once_with(
+            "tracked_todo.resume_failed",
+            todo_id=TODO_ID,
+            user_id=USER_ID,
+            error="mongo blip",
+            error_type="ConnectionError",
+        )
+        log.set.assert_called_once_with(
+            tracked_todos_resumed=1, tracked_todos_resume_reason="subscription_lapsed"
+        )
+
     async def test_activation_clears_the_pause_and_fires_a_missed_run_now(self, mock_repo):
         missed = datetime.now(UTC) - timedelta(hours=3)
         paused = _todo_doc(pause_reason="subscription_lapsed", scheduled_at=missed)

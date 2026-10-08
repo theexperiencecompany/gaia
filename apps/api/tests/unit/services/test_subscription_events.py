@@ -600,19 +600,31 @@ class TestSideEffectsNeverFailTheEvent:
             user_id=FAKE_USER_ID,
         )
 
-    async def test_a_reminder_resume_failure_still_resumes_the_todos_and_is_logged(
+    async def test_a_reminder_resume_failure_still_resumes_the_todos_and_is_queued(
         self, mock_paywall_resume
     ) -> None:
         mock_paywall_resume.reminders.side_effect = RuntimeError("mongo exploded")
-        with patch(f"{EVENTS_MODULE}.log") as mock_log:
+        pool = object()
+        with (
+            patch(f"{EVENTS_MODULE}.log") as mock_log,
+            patch(f"{EVENTS_MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{EVENTS_MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
             await resume_paywall_pauses_safely(FAKE_USER_ID)
 
         mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
         mock_log.error.assert_called_once_with(
             "[PAYMENT] Failed to resume paywall-paused automation",
-            error="mongo exploded",
-            error_type="RuntimeError",
+            error="paywall-paused automation did not all resume (1 sub-exception)",
+            error_type="ExceptionGroup",
             user_id=FAKE_USER_ID,
+        )
+        enqueue.assert_awaited_once_with(
+            pool,
+            SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+            FAKE_USER_ID,
+            SubscriptionWorkflowSync.RESUME_PAUSED.value,
+            _job_id=f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{FAKE_USER_ID}:resume_paused",
         )
 
     async def test_a_deactivation_failure_is_swallowed_and_logged(self) -> None:

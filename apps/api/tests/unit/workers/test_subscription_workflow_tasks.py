@@ -8,16 +8,34 @@ import pytest
 
 from app.constants.payments import (
     SUBSCRIPTION_WORKFLOW_SYNC_RETRY_DELAY,
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
+from app.models.reminder_models import AgentType, ReminderDocument, StaticReminderPayload
+from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
+from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.workflow.subscription_pause import SubscriptionWorkflowSyncIncomplete
 from app.workers.tasks.subscription_workflow_tasks import (
     sync_workflows_for_subscription_state,
 )
 
 _MOD = "app.workers.tasks.subscription_workflow_tasks"
+_EVENTS = "app.services.payments.subscription_events"
+_REMINDERS = "app.services.reminder_service"
+_TODOS = "app.services.tracked_todo_service"
 
 USER_ID = "507f1f77bcf86cd799439011"
+
+
+def _paused_reminder(reminder_id: str) -> ReminderDocument:
+    return ReminderDocument(
+        id=reminder_id,
+        user_id=USER_ID,
+        agent=AgentType.STATIC,
+        payload=StaticReminderPayload(title="Meds", body="Take them"),
+        status=ScheduledTaskStatus.PAUSED,
+        pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED,
+    )
 
 
 def _actions(pause: AsyncMock, resume: AsyncMock) -> dict:
@@ -137,3 +155,38 @@ class TestSyncWorkflowsForSubscriptionState:
             "error_type": "SubscriptionWorkflowSyncIncomplete",
             "defer_seconds": SUBSCRIPTION_WORKFLOW_SYNC_RETRY_DELAY.total_seconds() * 4,
         }
+
+
+@pytest.mark.unit
+class TestAPaywallResumeThatFailsIsRetriedByTheSameTask:
+    @pytest.mark.regression
+    async def test_a_reminder_that_could_not_resume_is_resumed_by_the_retry(self) -> None:
+        stuck = _paused_reminder("64b64b64b64b64b64b64b64a")
+        fine = _paused_reminder("64b64b64b64b64b64b64b64b")
+        find = AsyncMock(side_effect=[[stuck, fine], [stuck]])
+        update = AsyncMock(side_effect=[ConnectionError("mongo blip"), fine, stuck])
+        pool = object()
+        with (
+            patch(f"{_REMINDERS}.reminder_repository.find_paused_for_reason", find),
+            patch(f"{_REMINDERS}.reminder_repository.update_for_user", update),
+            patch(f"{_TODOS}.todo_repository.find_paused_for_reason", AsyncMock(return_value=[])),
+            patch(f"{_EVENTS}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{_EVENTS}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
+            await resume_paywall_pauses_safely(USER_ID)
+            enqueue.assert_awaited_once_with(
+                pool,
+                SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+                USER_ID,
+                SubscriptionWorkflowSync.RESUME_PAUSED.value,
+                _job_id=f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{USER_ID}:resume_paused",
+            )
+
+            await sync_workflows_for_subscription_state(
+                {"job_try": 1}, USER_ID, enqueue.await_args.args[3]
+            )
+
+        assert [c.args[0] for c in update.await_args_list] == [stuck.id, fine.id, stuck.id]
+        assert all(
+            c.args[2].status is ScheduledTaskStatus.SCHEDULED for c in update.await_args_list
+        )

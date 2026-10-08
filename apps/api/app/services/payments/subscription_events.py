@@ -30,7 +30,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     SubscriptionUpdate,
 )
-from app.models.scheduler_models import DeactivationReason
 from app.models.webhook_models import DodoSubscriptionData
 from app.services.analytics_service import (
     AnalyticsEvents,
@@ -39,7 +38,6 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
-from app.services.reminder_service import reminder_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
@@ -178,25 +176,23 @@ async def deactivate_workflows_safely(user_id: str) -> None:
 async def resume_paywall_pauses_safely(user_id: str) -> None:
     """Resume the reminders and tracked todos paused because this user was not paid.
 
-    Never raises — see reactivate_workflows_safely. Each kind is resumed on its own,
-    so one failing does not strand the other.
+    Never raises — see reactivate_workflows_safely. What could not resume is
+    queued for the worker, the same retry a workflow resume gets.
     """
-    from app.services.tracked_todo_service import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
-        tracked_todo_service,
+    from app.services.workflow.subscription_pause import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+        resume_paywall_paused_automation,
     )
 
-    resumers = (reminder_scheduler.resume_paused_for, tracked_todo_service.resume_paused_for)
-    for resume in resumers:
-        try:
-            await resume(user_id, DeactivationReason.SUBSCRIPTION_LAPSED)
-        except Exception as e:
-            # Nothing retries this; the user can still resume each one by hand.
-            log.error(
-                f"{LogTag.PAYMENT} Failed to resume paywall-paused automation",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
+    try:
+        await resume_paywall_paused_automation(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.PAYMENT} Failed to resume paywall-paused automation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+        await _queue_workflow_sync(user_id, SubscriptionWorkflowSync.RESUME_PAUSED)
 
 
 async def send_welcome_email_safely(user_id: str) -> None:

@@ -22,6 +22,8 @@ from app.constants.payments import SubscriptionWorkflowSync
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
+from app.services.reminder_service import reminder_scheduler
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -128,9 +130,28 @@ async def reactivate_workflows_for_restored_subscription(user_id: str) -> int:
     return reactivated
 
 
-#: Both halves take a user id and answer how many workflows moved, so the retry
-#: task dispatches straight through this rather than adapting either of them.
+async def resume_paywall_paused_automation(user_id: str) -> int:
+    """Resume the reminders and tracked todos paused because user_id was not paid; return the count.
+
+    Both kinds are attempted even when one fails; the failures are then raised
+    together, so the retry task comes back for whatever is still paused.
+    """
+    resumed = 0
+    failures: list[Exception] = []
+    for resume in (reminder_scheduler.resume_paused_for, tracked_todo_service.resume_paused_for):
+        try:
+            resumed += await resume(user_id, DeactivationReason.SUBSCRIPTION_LAPSED)
+        except Exception as e:  # the other kind must still resume
+            failures.append(e)
+    if failures:
+        raise ExceptionGroup("paywall-paused automation did not all resume", failures)
+    return resumed
+
+
+#: Every action takes a user id and answers how many items moved, so the retry
+#: task dispatches straight through this rather than adapting any of them.
 SYNC_ACTIONS: dict[SubscriptionWorkflowSync, Callable[[str], Awaitable[int]]] = {
     SubscriptionWorkflowSync.PAUSE: deactivate_workflows_for_lapsed_subscription,
     SubscriptionWorkflowSync.RESUME: reactivate_workflows_for_restored_subscription,
+    SubscriptionWorkflowSync.RESUME_PAUSED: resume_paywall_paused_automation,
 }

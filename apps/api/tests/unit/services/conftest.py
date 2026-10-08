@@ -238,10 +238,10 @@ def mock_activation_workflow_reactivation():
 @pytest.fixture
 def mock_paywall_resume():
     """Patch both resumes of paywall-paused automation (reminders, tracked todos); opted into like mock_activation_workflow_reactivation."""
-    module = "app.services.payments.subscription_events"
     with (
         patch(
-            f"{module}.reminder_scheduler.resume_paused_for", new_callable=AsyncMock
+            "app.services.reminder_service.reminder_scheduler.resume_paused_for",
+            new_callable=AsyncMock,
         ) as reminders,
         patch(
             "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",

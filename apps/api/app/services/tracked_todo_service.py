@@ -314,19 +314,36 @@ class TrackedTodoService:
         """Resume the user's tracked todos the system paused for reason; return the count resumed.
 
         A run due while paused fires now: a tracked todo treats a missed run as
-        work still owed, the way the safety net does for a lost job.
+        work still owed, the way the safety net does for a lost job. One that
+        cannot resume does not stop the rest; their failures are raised together.
         """
         resumed = 0
+        failures: list[Exception] = []
         for todo in await todo_repository.find_paused_for_reason(user_id, reason):
-            await todo_repository.update(
-                todo.id, user_id=user_id, update=TodoUpdate(pause_reason=None)
-            )
-            if todo.scheduled_at is not None:
-                await TrackedTodoService.schedule_execution(
-                    todo.id, max(todo.scheduled_at, datetime.now(UTC))
+            try:
+                await todo_repository.update(
+                    todo.id, user_id=user_id, update=TodoUpdate(pause_reason=None)
                 )
+                if todo.scheduled_at is not None:
+                    await TrackedTodoService.schedule_execution(
+                        todo.id, max(todo.scheduled_at, datetime.now(UTC))
+                    )
+            except Exception as e:  # the rest of the user's todos must still resume
+                log.warning(
+                    "tracked_todo.resume_failed",
+                    todo_id=todo.id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                failures.append(e)
+                continue
             resumed += 1
         log.set(tracked_todos_resumed=resumed, tracked_todos_resume_reason=reason.value)
+        if failures:
+            raise ExceptionGroup(
+                f"{len(failures)} paused tracked todo(s) could not resume", failures
+            )
         return resumed
 
     @staticmethod
