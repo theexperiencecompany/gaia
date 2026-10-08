@@ -254,3 +254,10 @@ class TestCommand:
         assert self._run(tmp_path, apply=True) == 0
 
         assert len([m for m in sent if m["event"] == MERGE_EVENT]) == 3
+
+
+@pytest.mark.parametrize("pilot", ["0", "-1"])
+def test_a_pilot_below_one_is_refused_before_anything_runs(pilot: str) -> None:
+    """--pilot -1 would slice to every merge but the last: an irreversible bulk merge."""
+    with pytest.raises(SystemExit):
+        cli._parser().parse_args(["merge-email-persons", "--pilot", pilot])

@@ -111,6 +111,14 @@ def cmd_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _at_least_one(text: str) -> int:
+    """Parse a pilot size; 0 or a negative N would slice to a bulk merge, not a pilot."""
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("N must be at least 1")
+    return value
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="analytics_ops", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -142,7 +150,9 @@ def _parser() -> argparse.ArgumentParser:
     paid.add_argument("--apply", action="store_true", help="send the $set calls")
     merge = add("merge-email-persons", cmd_merge, MERGE_HELP)
     mode = merge.add_mutually_exclusive_group()
-    mode.add_argument("--pilot", type=int, metavar="N", help="merge only the N oldest persons")
+    mode.add_argument(
+        "--pilot", type=_at_least_one, metavar="N", help="merge only the N oldest persons"
+    )
     mode.add_argument("--apply", action="store_true", help="merge every matched person")
     merge.add_argument(
         "--snapshot-dir",
