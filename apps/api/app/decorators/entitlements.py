@@ -7,6 +7,7 @@ split so callers that resolve their own user (bots) can still gate.
 """
 
 from datetime import UTC, datetime
+import time
 from typing import ParamSpec, TypedDict, TypeVar
 
 from fastapi import HTTPException
@@ -94,9 +95,7 @@ async def require_active_subscription(user_id: str, feature: str) -> None:
 def capture_paywall_block(user_id: str, feature: str) -> None:
     """Capture paywall:blocked for user_id and feature, once per window: repeats inside it are one block."""
     window_seconds = PAYWALL_BLOCKED_WINDOW.total_seconds()
-    window_start = datetime.fromtimestamp(
-        datetime.now(UTC).timestamp() // window_seconds * window_seconds, UTC
-    )
+    window_start = datetime.fromtimestamp(time.time() // window_seconds * window_seconds, UTC)
     capture(
         UserId(user_id),
         PaywallBlocked(feature=feature),
