@@ -87,6 +87,7 @@ async def create_subscription_endpoint(
                 quantity=subscription_data.quantity,
                 source=subscription_data.source,
                 surface="redirect",
+                plan_id=subscription_data.product_id,
             ),
         )
         return result
@@ -139,6 +140,7 @@ async def create_checkout_session_endpoint(
             billing_cycle=payload.billing_cycle,
             source=payload.source,
             surface="overlay",
+            plan_id=pro_checkout.plan.dodo_product_id,
         ),
     )
     return pro_checkout.checkout

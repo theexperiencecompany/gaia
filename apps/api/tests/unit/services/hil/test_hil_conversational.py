@@ -687,6 +687,7 @@ class TestLedgerRows:
             )
             yield {"list_open": repo.list_open, "decide": decide, **resolver}
 
+    @pytest.mark.regression
     async def test_a_single_pending_row_is_decided_by_the_reply(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
@@ -703,7 +704,7 @@ class TestLedgerRows:
         assert action == "approve"
         ledger["list_open"].assert_awaited_once_with(CONVERSATION_ID)
         ledger["decide"].assert_awaited_once_with(
-            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None
+            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None, via="chat"
         )
         text = prompt_of(ledger["llm"])
         assert "Send email ap_1" in text

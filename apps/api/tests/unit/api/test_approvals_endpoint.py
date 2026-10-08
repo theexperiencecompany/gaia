@@ -376,6 +376,7 @@ class TestLedgerDecisionRouting:
             kind="approve",
             feedback="go ahead",
             v=3,
+            via="card",
         )
         log.set.assert_any_call(hil={"resolved": True})
         mock_resolve.assert_not_awaited()

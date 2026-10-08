@@ -8,10 +8,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
-from app.constants.auth import LOGIN_METHOD_WORKOS
+from app.constants.analytics import ANALYTICS_ONCE_KEY_PREFIX, POSTHOG_PROVIDER_KEY
 from app.core.lazy_loader import providers
-from app.models.payment_models import PlanType, SubscriptionStatus
+from app.db.redis import redis_cache
 from shared.py.analytics import AnalyticsId, UserId, check_capture, posthog_properties
 from shared.py.analytics.catalog.auth import UserLoggedIn, UserSignedUp
 from shared.py.analytics.catalog.base import ServerEvent, Surface
@@ -19,6 +18,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
     SubscriptionCancelled,
     SubscriptionExpired,
+    SubscriptionLapsed,
     SubscriptionRenewed,
 )
 from shared.py.wide_events import log
@@ -178,11 +178,21 @@ def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe_key: str | None
         )
 
 
+async def capture_once(
+    distinct_id: AnalyticsId, event: ServerEvent, *, scope: str, window_seconds: int
+) -> None:
+    """Capture event at most once per window for this person and scope; a repeat inside it is dropped."""
+    key = f"{ANALYTICS_ONCE_KEY_PREFIX}{event.event}:{distinct_id.distinct_id}:{scope}"
+    if await redis_cache.set_if_absent(key, "1", ttl=window_seconds):
+        capture(distinct_id, event, dedupe_key=scope)
+
+
 def track_signup(
     user_id: UserId,
     email: str,
     name: str | None = None,
-    signup_method: str = LOGIN_METHOD_WORKOS,
+    *,
+    signup_method: str | None,
 ) -> None:
     """Set the new user's person properties and capture user:signed_up."""
     identify_user(
@@ -201,7 +211,8 @@ def track_login(
     user_id: UserId,
     email: str,
     name: str | None = None,
-    login_method: str = LOGIN_METHOD_WORKOS,
+    *,
+    login_method: str | None,
 ) -> None:
     """Refresh the user's person properties and capture user:logged_in."""
     identify_user(
@@ -217,16 +228,16 @@ def track_login(
 
 
 SubscriptionLifecycleEvent: TypeAlias = (
-    SubscriptionActivated | SubscriptionRenewed | SubscriptionCancelled | SubscriptionExpired
+    SubscriptionActivated
+    | SubscriptionRenewed
+    | SubscriptionCancelled
+    | SubscriptionExpired
+    | SubscriptionLapsed
 )
 
 
 def track_subscription_event(user_id: UserId, event: SubscriptionLifecycleEvent) -> None:
-    """Capture a subscription transition and mirror it onto the user's person properties.
-
-    Person properties (not an event) let any chart segment pro vs free;
-    is_subscribed is the canonical flag, and a cancellation keeps access until expiry.
-    """
+    """Capture a subscription transition and name it on the wide event for billing support."""
     log.set(
         subscription={
             "user_id": user_id.distinct_id,
@@ -236,39 +247,3 @@ def track_subscription_event(user_id: UserId, event: SubscriptionLifecycleEvent)
         }
     )
     capture(user_id, event)
-
-    match event:
-        case SubscriptionActivated():
-            metadata: dict[str, object] = {
-                "plan": PlanType.PRO,
-                "is_subscribed": True,
-                "subscription_status": SubscriptionStatus.ACTIVE,
-                "subscription_activated_at": datetime.now(UTC).isoformat(),
-            }
-        case SubscriptionRenewed():
-            metadata = {
-                "plan": PlanType.PRO,
-                "is_subscribed": True,
-                "subscription_status": SubscriptionStatus.ACTIVE,
-            }
-        case SubscriptionCancelled():
-            metadata = {"subscription_status": SubscriptionStatus.CANCELLED}
-        case SubscriptionExpired():
-            metadata = {
-                "plan": PlanType.FREE,
-                "is_subscribed": False,
-                "subscription_status": SubscriptionStatus.EXPIRED,
-            }
-
-    client = _get_posthog_client()
-    if client is None:
-        return
-    try:
-        client.set(distinct_id=user_id.distinct_id, properties=metadata)
-    except Exception as e:
-        log.error(
-            "Failed to update user subscription properties",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id.distinct_id,
-        )

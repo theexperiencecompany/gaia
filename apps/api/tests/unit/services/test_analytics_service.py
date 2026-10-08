@@ -7,7 +7,6 @@ from uuid import UUID
 import pytest
 
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
-from app.models.payment_models import SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
     capture,
@@ -21,7 +20,6 @@ from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
     SubscriptionActivated,
     SubscriptionCancelled,
-    SubscriptionRenewed,
 )
 from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked
 from shared.py.analytics.catalog.memory import MemoryCleared
@@ -262,7 +260,7 @@ class TestCaptureDedupe:
 
 class TestTrackSignup:
     def test_calls_identify_and_capture(self, mock_posthog):
-        track_signup(USER_1, "user@example.com", name="Alice")
+        track_signup(USER_1, "user@example.com", name="Alice", signup_method="GoogleOAuth")
         assert mock_posthog.set.call_count == 1
         assert mock_posthog.set_once.call_count == 1
         assert mock_posthog.capture.call_count == 1
@@ -270,26 +268,20 @@ class TestTrackSignup:
         set_props = mock_posthog.set.call_args.kwargs.get("properties")
         assert set_props["email"] == "user@example.com"
         assert set_props["name"] == "Alice"
-        assert set_props["signup_method"] == "workos"
+        assert set_props["signup_method"] == "GoogleOAuth"
 
         capture_kwargs = mock_posthog.capture.call_args.kwargs
         assert capture_kwargs.get("event") == "user:signed_up"
-        assert capture_kwargs["properties"]["signup_method"] == "workos"
+        assert capture_kwargs["properties"]["signup_method"] == "GoogleOAuth"
 
-    def test_default_signup_method(self, mock_posthog):
-        track_signup(USER_1, "user@example.com")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "workos"
+    def test_a_method_workos_did_not_report_is_left_out(self, mock_posthog):
+        track_signup(USER_1, "user@example.com", signup_method=None)
 
-    def test_custom_signup_method(self, mock_posthog):
-        track_signup(USER_1, "user@example.com", signup_method="google")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "google"
-        assert mock_posthog.capture.call_args.kwargs["properties"]["signup_method"] == "google"
+        assert "signup_method" not in mock_posthog.capture.call_args.kwargs["properties"]
 
     def test_skips_when_no_client(self, mock_posthog_none):
         # Should not raise
-        track_signup(USER_1, "user@example.com")
+        track_signup(USER_1, "user@example.com", signup_method="GoogleOAuth")
 
 
 # ---------------------------------------------------------------------------
@@ -330,37 +322,6 @@ class TestTrackSubscriptionEvent:
         assert "amount" not in props
         assert "currency" not in props
         assert props["product_id"] == "prod_1"
-
-    def test_activated_event_updates_user_properties(self, mock_posthog):
-        track_subscription_event(USER_1, ACTIVATED)
-
-        assert mock_posthog.set.call_count >= 1
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["plan"] == "pro"
-        assert set_props["is_subscribed"] is True
-        assert set_props["subscription_status"] == "active"
-
-    def test_cancelled_event_updates_subscription_status(self, mock_posthog):
-        track_subscription_event(USER_1, CANCELLED)
-
-        mock_posthog.set.assert_called_once()
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props == {"subscription_status": SubscriptionStatus.CANCELLED}
-
-    def test_renewed_event_keeps_the_user_subscribed(self, mock_posthog):
-        track_subscription_event(
-            USER_1, SubscriptionRenewed(subscription_id="sub123", currency="USD")
-        )
-
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["is_subscribed"] is True
-        assert set_props["subscription_status"] == SubscriptionStatus.ACTIVE
-
-    def test_identify_error_handled(self, mock_posthog):
-        mock_posthog.set.side_effect = Exception("PostHog error")
-
-        # Should not raise despite set failure
-        track_subscription_event(USER_1, ACTIVATED)
 
     def test_skips_when_no_client(self, mock_posthog_none):
         # Should not raise

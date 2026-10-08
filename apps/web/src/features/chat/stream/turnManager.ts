@@ -66,6 +66,7 @@ const buildResumeArgs = (
     replyToMessage: null,
     conversationId,
     isOnboardingDemo: false,
+    isRetry: false,
     resumeStreamId,
   },
 });

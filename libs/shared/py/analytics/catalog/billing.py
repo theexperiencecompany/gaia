@@ -39,6 +39,8 @@ class PaymentCheckoutStarted(ServerEvent):
     quantity: int | None = None
     source: Identifier | None = None
     billing_cycle: Identifier | None = None
+    # The Dodo product id of the plan being bought; replaces the client's pricing:plan_selected.
+    plan_id: Identifier | None = None
 
 
 class PaymentSucceeded(ServerEvent):
@@ -121,6 +123,15 @@ class SubscriptionExpired(ServerEvent):
     subscription_id: Identifier
 
 
+class SubscriptionLapsed(ServerEvent):
+    """A subscription's renewal failed or Dodo put it on hold, so the user lost Pro."""
+
+    event: ClassVar[str] = "subscription:lapsed"
+
+    subscription_id: Identifier
+    status: Literal["failed", "on_hold"]
+
+
 class SubscriptionPageViewed(WebEvent):
     """The landing pricing page was viewed."""
 
@@ -176,20 +187,6 @@ class RateLimitHit(ServerEvent):
     feature: Identifier
     plan: Identifier
     origin: Identifier | None = None
-
-
-class PricingPlanSelected(WebEvent):
-    """A user clicked a pricing card's call to action."""
-
-    event: ClassVar[str] = "pricing:plan_selected"
-
-    price: float
-    is_monthly: bool
-    is_current_plan: bool
-    has_active_subscription: bool
-    is_free_plan: bool
-    plan_tier: Literal["free", "pro"]
-    plan_id: Identifier | None = None
 
 
 class UsageQueried(ServerEvent):

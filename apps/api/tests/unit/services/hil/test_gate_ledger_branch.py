@@ -747,6 +747,41 @@ class TestLedgerAutoMode:
         assert await gate.decide_tool_call(gated_request()) is None
         gate_seams.ledger.register.assert_not_awaited()
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
+    )
+    async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
+        self, gate_seams: GateSeams, outcome: str, decision: str
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.judge.return_value = IntentDecision(outcome, "asked")
+        posthog = MagicMock()
+
+        with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
+            await gate.decide_tool_call(gated_request())
+
+        [sent] = [c.kwargs for c in posthog.capture.call_args_list]
+        assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
+        assert sent["properties"] | {"timestamp": None} == {
+            "decision": decision,
+            "tool_name": GATED_TOOL,
+            "via": "auto",
+            "timestamp": None,
+        }
+
+    async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.judge.return_value = IntentDecision("ask", "the recipient is new")
+        posthog = MagicMock()
+
+        with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
+            await gate.decide_tool_call(gated_request())
+
+        assert "hil:decision_submitted" not in [
+            c.kwargs["event"] for c in posthog.capture.call_args_list
+        ]
+
     async def test_a_pausing_sibling_withholds_auto_approval(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.pausing_sibling.return_value = True

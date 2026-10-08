@@ -103,6 +103,9 @@ async def complete_composio_connection(
         )
         return ConnectionRejected(reason="user_mismatch")
 
+    is_reconnect = await user_integration_repository.has_connected_before(
+        str(user_id), integration_config.id
+    )
     await handle_oauth_connection(
         user_id=str(user_id),
         integration_config=integration_config,
@@ -112,7 +115,9 @@ async def complete_composio_connection(
     capture(
         UserId(str(user_id)),
         IntegrationConnected(
-            integration_id=integration_config.id, provider=integration_config.provider
+            integration_id=integration_config.id,
+            provider=integration_config.provider,
+            is_reconnect=is_reconnect,
         ),
     )
     log.info(

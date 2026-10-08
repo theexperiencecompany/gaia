@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.schemas.common import ResponseModel
+from shared.py.analytics.catalog.properties import Identifier
 
 
 class PlanType(str, Enum):
@@ -75,7 +76,7 @@ class SubscriptionStatus(str, Enum):
 class CreateSubscriptionRequest(BaseModel):
     """Simplified request model for creating a subscription - backend handles security."""
 
-    product_id: str = Field(..., description="Product ID to subscribe to")
+    product_id: Identifier = Field(..., description="Product ID to subscribe to")
     quantity: int = Field(1, description="Quantity of subscriptions")
     discount_code: str | None = Field(
         None, description="Discount code pre-applied on the hosted checkout page"

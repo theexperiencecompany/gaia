@@ -12,6 +12,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
@@ -159,6 +160,7 @@ class TestCreateSubscription:
             "status": "payment_link_created",
         }
 
+    @pytest.mark.regression
     async def test_create_subscription_default_quantity(self, client: AsyncClient):
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
@@ -180,9 +182,10 @@ class TestCreateSubscription:
         # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            PaymentCheckoutStarted(quantity=1, source=None, surface="redirect"),
+            PaymentCheckoutStarted(quantity=1, source=None, surface="redirect", plan_id="prod_abc"),
         )
 
+    @pytest.mark.regression
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
         self, client: AsyncClient
     ):
@@ -205,7 +208,9 @@ class TestCreateSubscription:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            PaymentCheckoutStarted(quantity=1, source="payment_retry", surface="redirect"),
+            PaymentCheckoutStarted(
+                quantity=1, source="payment_retry", surface="redirect", plan_id="prod_abc"
+            ),
         )
 
     async def test_create_subscription_rejects_an_unknown_source(self, client: AsyncClient):
@@ -301,6 +306,7 @@ class TestCreateCheckoutSession:
             "507f1f77bcf86cd799439011", PlanDuration.YEARLY, CheckoutSource.PRICING_CARD
         )
 
+    @pytest.mark.regression
     async def test_attributes_the_overlay_checkout_to_its_source(self, client: AsyncClient):
         """The server is the single emitter of payment:checkout_started, so the funnel's attribution has to arrive on this call."""
         with patch(
@@ -324,7 +330,10 @@ class TestCreateCheckoutSession:
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             PaymentCheckoutStarted(
-                billing_cycle=PlanDuration.MONTHLY, source="paywall_modal", surface="overlay"
+                billing_cycle=PlanDuration.MONTHLY,
+                source="paywall_modal",
+                surface="overlay",
+                plan_id="prod_abc",
             ),
         )
 

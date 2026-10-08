@@ -39,7 +39,7 @@ def test_a_raw_string_identity_cannot_be_captured() -> None:
 
 
 def test_a_surface_cannot_emit_another_surfaces_event() -> None:
-    event = ChatMessageSubmitted(source="web", has_files=False)
+    event = ChatMessageSubmitted(source="web", has_files=False, stream_id="s1", is_retry=False)
     with pytest.raises(TypeError, match="server event; voice may not emit it"):
         check_capture(UserId(USER_ID), event, Surface.VOICE)
 

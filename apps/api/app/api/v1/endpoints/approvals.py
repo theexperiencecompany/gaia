@@ -64,6 +64,7 @@ async def post_approval_decision(
             kind=payload.decision,
             feedback=payload.feedback,
             v=payload.v,
+            via="card",
         )
         if (
             payload.scope == "always_tool"

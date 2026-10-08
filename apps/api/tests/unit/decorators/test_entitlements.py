@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants import analytics as analytics_constants
 from app.decorators.entitlements import (
     PAYWALL_MESSAGE,
     SubscriptionRequiredException,
@@ -113,12 +114,12 @@ class TestRequireActiveSubscription:
                 AsyncMock(return_value=MagicMock(plan_type=PlanType.PRO)),
             ),
             patch(f"{ENT}.invalidate_plan_cache", new_callable=AsyncMock) as invalidate,
-            patch(f"{ENT}.capture") as mock_capture,
+            patch(f"{ENT}.capture_once", new_callable=AsyncMock) as mock_capture,
         ):
             await require_active_subscription(USER_ID, feature="chat")  # must not raise
 
         invalidate.assert_awaited_once_with(USER_ID)
-        mock_capture.assert_not_called()
+        mock_capture.assert_not_awaited()
 
     async def test_free_user_gets_the_exact_402_wire_contract(self) -> None:
         with (
@@ -175,28 +176,89 @@ class TestRequireActiveSubscription:
         assert exc_info.value.detail["discount_code"] == "SAVE20"
         assert exc_info.value.detail["checkout_url"] is None
 
-    async def test_block_is_captured_against_the_blocked_users_own_profile(self) -> None:
+    async def test_block_is_captured_against_the_blocked_users_own_profile(
+        self, fake_redis
+    ) -> None:
         """The paywall event must carry the blocked user's id, not an anonymous one — bot and worker paths have no request context."""
+        client = MagicMock()
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.FREE),
             ),
-            patch(f"{ENT}.capture") as mock_capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
         ):
             with pytest.raises(SubscriptionRequiredException):
                 await require_active_subscription(USER_ID, feature="get_token")
 
-        mock_capture.assert_called_once_with(UserId(USER_ID), PaywallBlocked(feature="get_token"))
+        sent = client.capture.call_args.kwargs
+        assert (sent["distinct_id"], sent["event"]) == (
+            UserId(USER_ID).distinct_id,
+            PaywallBlocked.event,
+        )
+        assert sent["properties"]["feature"] == "get_token"
 
-    async def test_pro_user_is_never_captured_as_blocked(self) -> None:
+    async def test_pro_user_is_never_captured_as_blocked(self, fake_redis) -> None:
+        client = MagicMock()
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.PRO),
             ),
-            patch(f"{ENT}.capture") as mock_capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
         ):
             await require_active_subscription(USER_ID, feature="get_token")
 
-        mock_capture.assert_not_called()
+        client.capture.assert_not_called()
+
+
+class TestOneBlockIsCountedPerRouteWindow:
+    """A page load hits ~5 gated routes and a reload repeats them; each must not be a new block."""
+
+    @pytest.mark.regression
+    async def test_repeated_blocks_on_one_route_are_captured_once(self, fake_redis) -> None:
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            for _ in range(5):
+                with pytest.raises(SubscriptionRequiredException):
+                    await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+
+        assert [c.kwargs["event"] for c in client.capture.call_args_list] == ["paywall:blocked"]
+
+    async def test_another_route_is_its_own_block(self, fake_redis) -> None:
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            for feature in ("/api/v1/conversations", "/api/v1/notifications"):
+                with pytest.raises(SubscriptionRequiredException):
+                    await require_active_subscription(USER_ID, feature=feature)
+
+        assert [c.kwargs["properties"]["feature"] for c in client.capture.call_args_list] == [
+            "/api/v1/conversations",
+            "/api/v1/notifications",
+        ]
+
+    async def test_the_window_ends_so_a_later_block_counts_again(self, fake_redis) -> None:
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=MagicMock()),
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+
+        [key] = await fake_redis.keys("*")
+        assert await fake_redis.ttl(key) == analytics_constants.PAYWALL_BLOCKED_WINDOW_SECONDS

@@ -56,6 +56,11 @@ def _callback_seams(
             return_value=resolved,
         ),
         patch(f"{_CALLBACK}.invalidate_user_integration_caches", new_callable=AsyncMock) as inv,
+        patch(
+            f"{_CALLBACK}.user_integration_repository.has_connected_before",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
         patch(f"{_MODULE}.get_api_base_url", return_value="http://api"),
         patch(f"{_MODULE}.get_frontend_url", return_value="http://frontend"),
         patch(f"{_CALLBACK}.capture") as capture,
@@ -93,7 +98,9 @@ class TestMCPOAuthCallback:
         seams["invalidate"].assert_awaited_once_with(USER_ID)
         seams["capture"].assert_called_once_with(
             UserId(USER_ID),
-            IntegrationConnected(integration_id="github", connection_method="oauth"),
+            IntegrationConnected(
+                integration_id="github", connection_method="oauth", is_reconnect=False
+            ),
         )
 
     async def test_success_honours_the_redirect_path_carried_in_state(

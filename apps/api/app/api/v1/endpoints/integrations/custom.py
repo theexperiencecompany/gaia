@@ -139,7 +139,7 @@ async def update_custom_mcp_integration(
             )
         log.set(integration_name=updated.name)
         log.set(outcome="success")
-        capture(UserId(user_id), IntegrationCustomUpdated())
+        capture(UserId(user_id), IntegrationCustomUpdated(integration_id=integration_id))
         return IntegrationSuccessResponse(
             message="Integration updated",
             integration_id=updated.integration_id,
@@ -175,7 +175,7 @@ async def delete_custom_mcp_integration(
                 status_code=404, detail="Integration not found or you are not the owner"
             )
         log.set(outcome="success")
-        capture(UserId(user_id), IntegrationCustomDeleted())
+        capture(UserId(user_id), IntegrationCustomDeleted(integration_id=integration_id))
         return IntegrationSuccessResponse(
             message="Integration deleted",
             integration_id=integration_id,
@@ -207,7 +207,7 @@ async def publish_integration(
         )
         public_url = await publish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
-        capture(UserId(user_id), IntegrationCustomPublished())
+        capture(UserId(user_id), IntegrationCustomPublished(integration_id=integration_id))
         return PublishIntegrationResponse(
             message="Integration published successfully",
             integration_id=integration_id,
@@ -240,7 +240,7 @@ async def unpublish_integration(
         )
         await unpublish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
-        capture(UserId(user_id), IntegrationCustomUnpublished())
+        capture(UserId(user_id), IntegrationCustomUnpublished(integration_id=integration_id))
         return UnpublishIntegrationResponse(
             message="Integration unpublished successfully",
             integration_id=integration_id,

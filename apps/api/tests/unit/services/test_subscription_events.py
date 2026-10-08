@@ -7,6 +7,7 @@ one handler: ordering, idempotency, recovery, and the scheduled cancel that
 must never downgrade early.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -924,3 +925,94 @@ class TestTheWriteTimeStaleFence:
         ]
         mock_subscription_plan_cache_drop.assert_not_awaited()
         mock_track_subscription.assert_not_called()
+
+
+@pytest.fixture
+def posthog_client() -> Iterator[MagicMock]:
+    client = MagicMock()
+    with patch("app.services.analytics_service._get_posthog_client", return_value=client):
+        yield client
+
+
+def _person_properties(client: MagicMock) -> dict[str, Any]:
+    [call] = client.set.call_args_list
+    return call.kwargs["properties"]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("mock_subscription_plan_cache_drop")
+class TestEveryStatusTransitionSetsThePaidPersonProperties:
+    """Paid status in PostHog is the row's status, set on every transition, never inferred from events."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("kind", [SubscriptionEventKind.ON_HOLD, SubscriptionEventKind.FAILED])
+    async def test_a_lapse_unsubscribes_the_person_and_is_captured(
+        self, kind: SubscriptionEventKind, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(last_event_at=None)
+        )
+
+        await _apply(kind)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "free",
+            "is_subscribed": False,
+            "subscription_status": kind.value,
+            "subscription_cancel_at_period_end": False,
+        }
+        sent = posthog_client.capture.call_args.kwargs
+        assert (sent["event"], sent["properties"]["status"]) == ("subscription:lapsed", kind.value)
+
+    @pytest.mark.regression
+    async def test_a_scheduled_cancel_keeps_the_person_subscribed_until_expiry(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(last_event_at=None)
+        )
+
+        await _apply(SubscriptionEventKind.CANCELLED, cancel_at_next_billing_date=True)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": True,
+        }
+
+    async def test_a_recovery_from_hold_resubscribes_the_person(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(status="on_hold", last_event_at=None)
+        )
+
+        await _apply(SubscriptionEventKind.RENEWED)
+
+        assert _person_properties(posthog_client)["is_subscribed"] is True
+
+    async def test_a_zero_amount_discount_code_subscriber_is_subscribed(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        posthog_client,
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
+
+        await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
+
+        properties = _person_properties(posthog_client)
+        assert (properties["is_subscribed"], properties["plan"]) == (True, "pro")
+
+    async def test_a_plan_change_leaves_the_paid_status_alone(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(product_id="prod_old", last_event_at=None)
+        )
+
+        await _apply(SubscriptionEventKind.PLAN_CHANGED)
+
+        posthog_client.set.assert_not_called()

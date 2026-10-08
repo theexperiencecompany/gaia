@@ -2,8 +2,8 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi import BackgroundTasks, HTTPException
+from workos.types.user_management.authentication_response import AuthenticationMethod
 
-from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.constants.email import SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS
 from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
@@ -69,7 +69,9 @@ def _returning_user_profile(
     return update_fields, stored_name
 
 
-async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -> None:
+async def _run_signup_side_effects(
+    user_id: str, email: str, signup_name: str, auth_method: AuthenticationMethod | None
+) -> None:
     """Outbound effects of a signup — none of them may fail the signup itself."""
     # Track signup with the stable Mongo user id as the PostHog distinct id.
     try:
@@ -77,7 +79,7 @@ async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -
             user_id=UserId(user_id),
             email=email,
             name=signup_name,
-            signup_method=LOGIN_METHOD_WORKOS,
+            signup_method=auth_method,
         )
         log.info(f"{LogTag.OAUTH} Signup tracked in PostHog for new user", user={"id": user_id})
     except Exception as e:
@@ -114,6 +116,7 @@ async def store_user_info(
     email: str,
     picture_url: str | None,
     *,
+    auth_method: AuthenticationMethod | None,
     external_side_effects: bool = True,
 ) -> tuple[str, bool]:
     """Store user info from a Google callback, updating or creating the user.
@@ -145,7 +148,7 @@ async def store_user_info(
                     user_id=UserId(existing_user.id),
                     email=email,
                     name=stored_name,
-                    login_method=LOGIN_METHOD_WORKOS,
+                    login_method=auth_method,
                 )
             except Exception as e:
                 log.error(
@@ -178,7 +181,7 @@ async def store_user_info(
     if not external_side_effects:
         return created.id, True
 
-    await _run_signup_side_effects(created.id, email, signup_name)
+    await _run_signup_side_effects(created.id, email, signup_name, auth_method)
 
     return created.id, True
 

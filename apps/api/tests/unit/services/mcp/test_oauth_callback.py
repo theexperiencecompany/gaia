@@ -202,6 +202,12 @@ class TestSanitizedErrorCode:
 
 
 class TestCompleteOauth:
+    @pytest.fixture(autouse=True)
+    def connected_before(self):
+        with patch(f"{MODULE}.user_integration_repository") as repo:
+            repo.has_connected_before = AsyncMock(return_value=False)
+            yield repo.has_connected_before
+
     async def _complete(self, client: MagicMock) -> None:
         await complete_oauth(
             client,
@@ -243,8 +249,23 @@ class TestCompleteOauth:
         invalidate.assert_awaited_once_with(USER_ID)
         capture.assert_called_once_with(
             UserId(USER_ID),
-            IntegrationConnected(integration_id=INTEGRATION_ID, connection_method="oauth"),
+            IntegrationConnected(
+                integration_id=INTEGRATION_ID, connection_method="oauth", is_reconnect=False
+            ),
         )
+
+    async def test_a_reconnect_of_an_integration_connected_before_is_marked(self, connected_before):
+        connected_before.side_effect = lambda user_id, integration_id: (
+            (user_id, integration_id) == (USER_ID, INTEGRATION_ID)
+        )
+
+        with (
+            patch(f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await self._complete(_client())
+
+        assert capture.call_args.args[1].is_reconnect is True
 
     async def test_clear_excluded_scopes_failure_does_not_fail_the_connect(self):
         client = _client()
@@ -262,7 +283,9 @@ class TestCompleteOauth:
         invalidate.assert_awaited_once_with(USER_ID)
         capture.assert_called_once_with(
             UserId(USER_ID),
-            IntegrationConnected(integration_id=INTEGRATION_ID, connection_method="oauth"),
+            IntegrationConnected(
+                integration_id=INTEGRATION_ID, connection_method="oauth", is_reconnect=False
+            ),
         )
         assert event["warnings"] == [
             {

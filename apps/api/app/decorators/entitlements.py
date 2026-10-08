@@ -11,8 +11,9 @@ from typing import ParamSpec, TypedDict, TypeVar
 from fastapi import HTTPException
 
 from app.config.settings import settings
+from app.constants.analytics import PAYWALL_BLOCKED_WINDOW_SECONDS
 from app.models.payment_models import PlanType
-from app.services.analytics_service import capture
+from app.services.analytics_service import capture_once
 from app.services.payments.payment_service import payment_service
 from app.services.payments.plan_cache import invalidate_plan_cache
 from shared.py.analytics import UserId
@@ -86,5 +87,10 @@ async def require_active_subscription(user_id: str, feature: str) -> None:
         user={"id": user_id},
         payment={"operation": "paywall_gate", "feature": feature},
     )
-    capture(UserId(user_id), PaywallBlocked(feature=feature))
+    await capture_once(
+        UserId(user_id),
+        PaywallBlocked(feature=feature),
+        scope=feature,
+        window_seconds=PAYWALL_BLOCKED_WINDOW_SECONDS,
+    )
     raise SubscriptionRequiredException()

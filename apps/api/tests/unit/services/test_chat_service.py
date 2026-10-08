@@ -16,6 +16,7 @@ from collections.abc import AsyncGenerator, Iterator
 import contextlib
 from datetime import datetime
 import json
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -727,6 +728,33 @@ class TestRunChatStreamBackground:
         assert props.queued is False
         assert props.e2e_ack_ms <= props.e2e_full_ms
         assert props.ttft_ms is None
+
+    @pytest.mark.regression
+    async def test_the_terminal_event_names_its_stream(self, test_user, existing_conv_body):
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_keyed",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="desktop",
+                t0_perf=time.perf_counter(),
+            )
+
+        event = mock_capture.call_args.args[1]
+        assert event.stream_id == "stream_keyed"
+        # Desktop turns share the web endpoint's clock; their latency is measured like any other.
+        assert event.e2e_full_ms is not None
 
     async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
         """Every other test leaves source None, so the branch that attaches it never ran with a value."""

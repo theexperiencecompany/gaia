@@ -26,12 +26,13 @@ from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, Subscription
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    PlanType,
     SubscriptionDocument,
     SubscriptionStatus,
     SubscriptionUpdate,
 )
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import track_subscription_event
+from app.services.analytics_service import identify_user, track_subscription_event
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.utils.redis_utils import RedisPoolManager
@@ -42,6 +43,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
     SubscriptionCancelled,
     SubscriptionExpired,
+    SubscriptionLapsed,
     SubscriptionRenewed,
 )
 from shared.py.wide_events import log
@@ -332,6 +334,46 @@ def _capture_transition(
             track_subscription_event(
                 UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
             )
+        case SubscriptionEventKind.FAILED | SubscriptionEventKind.ON_HOLD if (
+            "status" in changes.model_fields_set
+        ):
+            track_subscription_event(
+                UserId(user_id),
+                SubscriptionLapsed(
+                    subscription_id=data.subscription_id,
+                    status="failed" if event.kind is SubscriptionEventKind.FAILED else "on_hold",
+                ),
+            )
+
+
+def _set_paid_person_properties(
+    user_id: str, status: SubscriptionStatus, *, cancel_at_period_end: bool
+) -> None:
+    """Mirror the row's paid state onto the person; a $0 discount-code subscription is a subscriber."""
+    is_subscribed = status is SubscriptionStatus.ACTIVE
+    identify_user(
+        UserId(user_id),
+        {
+            "plan": (PlanType.PRO if is_subscribed else PlanType.FREE).value,
+            "is_subscribed": is_subscribed,
+            "subscription_status": status.value,
+            "subscription_cancel_at_period_end": cancel_at_period_end,
+        },
+    )
+
+
+def _sync_paid_person_properties(
+    user_id: str, row: SubscriptionDocument, changes: SubscriptionUpdate
+) -> None:
+    """Re-set the person's paid state when the write moved the status or the scheduled cancel."""
+    if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
+        return
+    merged = row.model_copy(update=changes.model_dump(exclude_unset=True))
+    _set_paid_person_properties(
+        user_id,
+        SubscriptionStatus(merged.status),
+        cancel_at_period_end=bool(merged.cancel_at_next_billing_date),
+    )
 
 
 async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
@@ -373,6 +415,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     )
 
     _capture_transition(event, user_id, SubscriptionUpdate(status=SubscriptionStatus.ACTIVE.value))
+    _set_paid_person_properties(user_id, SubscriptionStatus.ACTIVE, cancel_at_period_end=False)
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
@@ -441,6 +484,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
 
     new_status = changes.status
     _capture_transition(event, row.user_id, changes)
+    _sync_paid_person_properties(row.user_id, row, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:

@@ -138,13 +138,13 @@ def _make_integration_config(
 class TestStoreUserInfo:
     async def test_raises_400_when_email_is_empty(self, mock_user_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await store_user_info("Test", "", "https://pic.example.com/pic.jpg")
+            await store_user_info("Test", "", "https://pic.example.com/pic.jpg", auth_method=None)
         assert exc_info.value.status_code == 400
         assert "Email is required" in exc_info.value.detail
 
     async def test_raises_400_when_email_is_none(self, mock_user_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await store_user_info("Test", None, "https://pic.example.com/pic.jpg")
+            await store_user_info("Test", None, "https://pic.example.com/pic.jpg", auth_method=None)
         assert exc_info.value.status_code == 400
 
     async def test_updates_existing_user_with_picture(self, mock_user_repo, mock_track_login):
@@ -157,7 +157,10 @@ class TestStoreUserInfo:
         )
 
         result = await store_user_info(
-            "Alice Updated", "alice@test.com", "https://new-pic.example.com/new.jpg"
+            "Alice Updated",
+            "alice@test.com",
+            "https://new-pic.example.com/new.jpg",
+            auth_method=None,
         )
 
         assert result == (uid, False)
@@ -181,7 +184,7 @@ class TestStoreUserInfo:
         mock_track_login.side_effect = RuntimeError("PostHog unavailable")
 
         async with captured_wide_event() as event:
-            result = await store_user_info("Alice", "alice@test.com", None)
+            result = await store_user_info("Alice", "alice@test.com", None, auth_method=None)
 
         assert result == (uid, False)
         assert event["errors"] == [
@@ -204,7 +207,9 @@ class TestStoreUserInfo:
             picture="https://existing.example.com/pic.jpg",
         )
 
-        await store_user_info("alice", "alice@test.com", "https://new-pic.example.com/new.jpg")
+        await store_user_info(
+            "alice", "alice@test.com", "https://new-pic.example.com/new.jpg", auth_method=None
+        )
 
         fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
         assert "name" not in fields
@@ -219,7 +224,7 @@ class TestStoreUserInfo:
             picture="https://existing.example.com/pic.jpg",
         )
 
-        await store_user_info("Alice Wonderland", "alice@test.com", None)
+        await store_user_info("Alice Wonderland", "alice@test.com", None, auth_method=None)
 
         fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
         assert fields["name"] == "Alice Wonderland"
@@ -236,7 +241,7 @@ class TestStoreUserInfo:
             picture="https://existing.example.com/pic.jpg",
         )
 
-        result = await store_user_info("Alice Updated", "alice@test.com", None)
+        result = await store_user_info("Alice Updated", "alice@test.com", None, auth_method=None)
 
         assert result == (uid, False)
         # Nothing to write: no new picture URL and the stored name wins, so the
@@ -253,7 +258,7 @@ class TestStoreUserInfo:
             name="Alice",  # no picture
         )
 
-        result = await store_user_info("Alice Updated", "alice@test.com", None)
+        result = await store_user_info("Alice Updated", "alice@test.com", None, auth_method=None)
 
         assert result == (uid, False)
         fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
@@ -270,13 +275,41 @@ class TestStoreUserInfo:
             id=uid, name="Bob", email="bob@test.com", picture="https://pic.example.com/bob.jpg"
         )
 
-        result = await store_user_info("Bob", "bob@test.com", "https://pic.example.com/bob.jpg")
+        result = await store_user_info(
+            "Bob", "bob@test.com", "https://pic.example.com/bob.jpg", auth_method=None
+        )
 
         assert result == (uid, True)
         created = mock_user_repo.create.call_args.args[0]
         assert created.name == "Bob"
         assert created.email == "bob@test.com"
         assert created.picture == "https://pic.example.com/bob.jpg"
+
+    @pytest.mark.regression
+    async def test_signup_reports_the_method_workos_authenticated_with(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+
+        await store_user_info("Bob", "bob@test.com", None, auth_method="GoogleOAuth")
+
+        assert mock_track_signup.call_args.kwargs["signup_method"] == "GoogleOAuth"
+
+    @pytest.mark.regression
+    async def test_login_reports_the_method_workos_authenticated_with(
+        self, mock_user_repo, mock_track_login
+    ):
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=str(ObjectId()), name="Alice", email="alice@test.com"
+        )
+
+        await store_user_info("Alice", "alice@test.com", None, auth_method="MagicAuth")
+
+        assert mock_track_login.call_args.kwargs["login_method"] == "MagicAuth"
 
     async def test_creates_new_user_without_picture_defaults_to_empty(
         self,
@@ -287,7 +320,7 @@ class TestStoreUserInfo:
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
 
-        result = await store_user_info("Bob", "bob@test.com", None)
+        result = await store_user_info("Bob", "bob@test.com", None, auth_method=None)
 
         assert result == (uid, True)
         assert mock_user_repo.create.call_args.args[0].picture == ""
@@ -304,7 +337,7 @@ class TestStoreUserInfo:
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
-        await store_user_info("", "aryan.randeriya@test.com", None)
+        await store_user_info("", "aryan.randeriya@test.com", None, auth_method=None)
 
         assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
         assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
@@ -327,7 +360,7 @@ class TestStoreUserInfo:
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
 
-        await store_user_info("Bob Vance", "bob.vance@test.com", None)
+        await store_user_info("Bob Vance", "bob.vance@test.com", None, auth_method=None)
 
         assert mock_user_repo.create.call_args.args[0].name == "Bob Vance"
 
@@ -340,13 +373,13 @@ class TestStoreUserInfo:
         created = UserDocument(id=str(ObjectId()))
         mock_user_repo.create.return_value = created
 
-        await store_user_info("Bob", "bob@test.com", None)
+        await store_user_info("Bob", "bob@test.com", None, auth_method="Password")
 
         mock_track_signup.assert_called_once_with(
             user_id=UserId(created.id),
             email="bob@test.com",
             name="Bob",
-            signup_method="workos",
+            signup_method="Password",
         )
 
     async def test_new_user_queues_the_signup_email_delivery(
@@ -360,7 +393,7 @@ class TestStoreUserInfo:
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
-        await store_user_info("Bob", "bob@test.com", None)
+        await store_user_info("Bob", "bob@test.com", None, auth_method=None)
 
         # A real signup is created owing both deliveries. Stamping here instead
         # would mark them settled before the ESP was ever called, and the sweep
@@ -389,7 +422,9 @@ class TestStoreUserInfo:
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
-        await store_user_info("Bob", "bob@test.com", None, external_side_effects=False)
+        await store_user_info(
+            "Bob", "bob@test.com", None, auth_method=None, external_side_effects=False
+        )
 
         created = mock_user_repo.create.call_args.args[0]
         # Mongo stores a BSON date as UTC and reads a naive one back as though
@@ -412,7 +447,7 @@ class TestStoreUserInfo:
         mock_track_signup.side_effect = Exception("PostHog unavailable")
 
         # Should not raise
-        result = await store_user_info("Bob", "bob@test.com", None)
+        result = await store_user_info("Bob", "bob@test.com", None, auth_method=None)
         assert result == (uid, True)
 
     async def test_new_user_signup_survives_a_failed_email_enqueue(
@@ -427,7 +462,7 @@ class TestStoreUserInfo:
         mock_user_repo.create.return_value = UserDocument(id=uid)
         mock_redis_pool_manager.enqueue_job.side_effect = Exception("Redis down")
 
-        assert await store_user_info("Bob", "bob@test.com", None) == (uid, True)
+        assert await store_user_info("Bob", "bob@test.com", None, auth_method=None) == (uid, True)
 
 
 # ---------------------------------------------------------------------------

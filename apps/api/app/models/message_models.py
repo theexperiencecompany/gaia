@@ -88,6 +88,8 @@ class MessageRequestWithHistory(BaseModel):
     # the optimistic and persisted records share one key. Path-safe (pin route).
     turn_id: SafePathId | None = None
     is_onboarding_demo: bool = False
+    # The user resent an earlier message from its retry action; only the client knows it was one.
+    is_retry: bool = False
     # Voice sessions set this so the stream holds open until a delegated executor
     # delivers its narrated answer (a `voice_tts` SSE frame). Text clients leave
     # it False — their executor result arrives out-of-band over the WebSocket.

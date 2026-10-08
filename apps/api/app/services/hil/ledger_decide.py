@@ -54,7 +54,7 @@ from app.services.hil.resolution import (
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
 from shared.py.wide_events import log
 
 DecisionKind = Literal["approve", "deny"]
@@ -103,6 +103,7 @@ async def decide_ledger(
     kind: DecisionKind,
     feedback: str | None = None,
     v: int | None = None,
+    via: HilDecisionVia,
 ) -> LedgerDecision:
     """Commit one decision and wake the model with the ticket. Never blocks."""
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
@@ -153,7 +154,9 @@ async def decide_ledger(
         UserId(user_id),
         HilDecisionSubmitted(
             approval_id=approval_id,
-            decision=target.value,
+            decision="approved" if target is LedgerState.APPROVED else "denied",
+            tool_name=row.tool_name,
+            via=via,
             card_age_seconds=card_age_seconds,
             # The transition $incs v: the committed version is row.v + 1.
             ledger_version=row.v + 1,
@@ -216,6 +219,7 @@ async def decide_ledger_batch(
                 kind=item.decision,
                 feedback=item.feedback,
                 v=item.v,
+                via="batch",
             )
         except ApprovalRequestNotFoundError:
             outcomes.append(

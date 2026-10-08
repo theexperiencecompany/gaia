@@ -122,6 +122,7 @@ export type ServerEventName =
   | "subscription:cancellation_requested"
   | "subscription:cancelled"
   | "subscription:expired"
+  | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
   | "todos:created"
@@ -186,7 +187,6 @@ export type WebEventName =
   | "onboarding:started"
   | "paywall:modal_viewed"
   | "pin:viewed"
-  | "pricing:plan_selected"
   | "profile:link_copied"
   | "reddit:post_viewed"
   | "search:global_opened"
@@ -429,6 +429,7 @@ export interface EventProperties {
     "source": "new_chat_grid";
   };
   "chat:message_cancelled": {
+    "stream_id": string;
     "conversation_id": string;
     "voice_mode": boolean;
     "is_new_conversation": boolean;
@@ -440,6 +441,7 @@ export interface EventProperties {
     "source"?: string;
   };
   "chat:message_completed": {
+    "stream_id": string;
     "conversation_id": string;
     "voice_mode": boolean;
     "is_new_conversation": boolean;
@@ -458,6 +460,8 @@ export interface EventProperties {
   "chat:message_submitted": {
     "source": string;
     "has_files": boolean;
+    "stream_id": string;
+    "is_retry": boolean;
     "is_new_conversation"?: boolean;
     "message_count"?: number;
     "file_count"?: number;
@@ -614,9 +618,11 @@ export interface EventProperties {
     "background": boolean;
   };
   "hil:decision_submitted": {
-    "approval_id": string;
-    "decision": string;
-    "ledger_version": number;
+    "decision": "approved" | "denied";
+    "tool_name": string;
+    "via": "card" | "batch" | "chat" | "auto";
+    "approval_id"?: string;
+    "ledger_version"?: number;
     "card_age_seconds"?: number;
   };
   "hil:resumed": {
@@ -644,11 +650,20 @@ export interface EventProperties {
     "connection_method"?: "oauth";
     "provider"?: string;
     "is_new_link"?: boolean;
+    "is_reconnect"?: boolean;
   };
-  "integration:custom_deleted": Record<string, never>;
-  "integration:custom_published": Record<string, never>;
-  "integration:custom_unpublished": Record<string, never>;
-  "integration:custom_updated": Record<string, never>;
+  "integration:custom_deleted": {
+    "integration_id": string;
+  };
+  "integration:custom_published": {
+    "integration_id": string;
+  };
+  "integration:custom_unpublished": {
+    "integration_id": string;
+  };
+  "integration:custom_updated": {
+    "integration_id": string;
+  };
   "integration:disconnected": {
     "integration_id": string;
   };
@@ -657,7 +672,9 @@ export interface EventProperties {
     "status"?: number;
     "error_code"?: string;
   };
-  "integration:instructions_updated": Record<string, never>;
+  "integration:instructions_updated": {
+    "integration_id": string;
+  };
   "mcp:connection_tested": {
     "status": "connected" | "failed" | "requires_oauth";
     "tools_count"?: number;
@@ -745,6 +762,7 @@ export interface EventProperties {
     "quantity"?: number;
     "source"?: string;
     "billing_cycle"?: string;
+    "plan_id"?: string;
   };
   "payment:failed": {
     "payment_id": string;
@@ -773,15 +791,6 @@ export interface EventProperties {
   "pin:viewed": {
     "conversation_id": string;
     "message_id"?: string;
-  };
-  "pricing:plan_selected": {
-    "price": number;
-    "is_monthly": boolean;
-    "is_current_plan": boolean;
-    "has_active_subscription": boolean;
-    "is_free_plan": boolean;
-    "plan_tier": "free" | "pro";
-    "plan_id"?: string;
   };
   "profile:link_copied": {
     "holo_card_id": string;
@@ -885,6 +894,10 @@ export interface EventProperties {
     "source": "onboarding" | "payment_success_page";
     "reason": "declined" | "confirmation_timeout" | "verification_error";
   };
+  "subscription:lapsed": {
+    "subscription_id": string;
+    "status": "failed" | "on_hold";
+  };
   "subscription:page_viewed": {
     "source": "landing_pricing";
   };
@@ -985,7 +998,7 @@ export interface EventProperties {
   };
   "use_cases:prompt_inserted": Record<string, never>;
   "user:logged_in": {
-    "login_method": string;
+    "login_method"?: string;
   };
   "user:logged_out": Record<string, never>;
   "user:session_resumed": {
@@ -993,7 +1006,7 @@ export interface EventProperties {
     "has_completed_onboarding": boolean;
   };
   "user:signed_up": {
-    "signup_method": string;
+    "signup_method"?: string;
   };
   "voice:mode_started": {
     "conversation_id"?: string;

@@ -4198,6 +4198,7 @@
           },
           "product_id": {
             "description": "Product ID to subscribe to",
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
@@ -10202,6 +10203,11 @@
           "is_onboarding_demo": {
             "default": false,
             "title": "Is Onboarding Demo",
+            "type": "boolean"
+          },
+          "is_retry": {
+            "default": false,
+            "title": "Is Retry",
             "type": "boolean"
           },
           "message": {

@@ -11,7 +11,8 @@ class UserSignedUp(ServerEvent):
 
     event: ClassVar[str] = "user:signed_up"
 
-    signup_method: Identifier
+    # WorkOS's authentication_method (GoogleOAuth, MagicAuth, ...); absent when WorkOS reports none.
+    signup_method: Identifier | None = None
 
 
 class UserLoggedIn(ServerEvent):
@@ -19,7 +20,8 @@ class UserLoggedIn(ServerEvent):
 
     event: ClassVar[str] = "user:logged_in"
 
-    login_method: Identifier
+    # WorkOS's authentication_method (GoogleOAuth, MagicAuth, ...); absent when WorkOS reports none.
+    login_method: Identifier | None = None
 
 
 class UserLoggedOut(ServerEvent):

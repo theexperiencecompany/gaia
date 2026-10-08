@@ -1655,6 +1655,11 @@
         "additionalProperties": false,
         "description": "A chat turn the user stopped before it finished.",
         "properties": {
+          "stream_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Stream Id",
+            "type": "string"
+          },
           "conversation_id": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Conversation Id",
@@ -1727,6 +1732,7 @@
           }
         },
         "required": [
+          "stream_id",
           "conversation_id",
           "voice_mode",
           "is_new_conversation",
@@ -1749,6 +1755,11 @@
         "additionalProperties": false,
         "description": "A chat turn reached its terminal state; executor-leg timings ride on agent:run_completed.",
         "properties": {
+          "stream_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Stream Id",
+            "type": "string"
+          },
           "conversation_id": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Conversation Id",
@@ -1821,6 +1832,7 @@
           }
         },
         "required": [
+          "stream_id",
           "conversation_id",
           "voice_mode",
           "is_new_conversation",
@@ -1894,6 +1906,15 @@
           },
           "has_files": {
             "title": "Has Files",
+            "type": "boolean"
+          },
+          "stream_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "is_retry": {
+            "title": "Is Retry",
             "type": "boolean"
           },
           "is_new_conversation": {
@@ -2020,7 +2041,7 @@
             "title": "Is Reply"
           }
         },
-        "required": ["source", "has_files"],
+        "required": ["source", "has_files", "stream_id", "is_retry"],
         "title": "ChatMessageSubmitted",
         "type": "object"
       }
@@ -3238,26 +3259,52 @@
       "class": "HilDecisionSubmitted",
       "owner": "server",
       "domain": "hil",
-      "description": "A decision on a ledger approval committed; stale and lost-CAS attempts emit nothing.",
+      "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
       "previous_names": [],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
-        "description": "A decision on a ledger approval committed; stale and lost-CAS attempts emit nothing.",
+        "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
         "properties": {
-          "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Approval Id",
-            "type": "string"
-          },
           "decision": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "enum": ["approved", "denied"],
             "title": "Decision",
             "type": "string"
           },
+          "tool_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "via": {
+            "enum": ["card", "batch", "chat", "auto"],
+            "title": "Via",
+            "type": "string"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Approval Id"
+          },
           "ledger_version": {
-            "title": "Ledger Version",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ledger Version"
           },
           "card_age_seconds": {
             "anyOf": [
@@ -3272,7 +3319,7 @@
             "title": "Card Age Seconds"
           }
         },
-        "required": ["approval_id", "decision", "ledger_version"],
+        "required": ["decision", "tool_name", "via"],
         "title": "HilDecisionSubmitted",
         "type": "object"
       }
@@ -3524,6 +3571,18 @@
             ],
             "default": null,
             "title": "Is New Link"
+          },
+          "is_reconnect": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Reconnect"
           }
         },
         "required": ["integration_id"],
@@ -3542,7 +3601,14 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user deleted a custom integration.",
-        "properties": {},
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": ["integration_id"],
         "title": "IntegrationCustomDeleted",
         "type": "object"
       }
@@ -3558,7 +3624,14 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user published a custom integration to the marketplace.",
-        "properties": {},
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": ["integration_id"],
         "title": "IntegrationCustomPublished",
         "type": "object"
       }
@@ -3574,7 +3647,14 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user unpublished a custom integration.",
-        "properties": {},
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": ["integration_id"],
         "title": "IntegrationCustomUnpublished",
         "type": "object"
       }
@@ -3590,7 +3670,14 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited a custom integration.",
-        "properties": {},
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": ["integration_id"],
         "title": "IntegrationCustomUpdated",
         "type": "object"
       }
@@ -3677,7 +3764,14 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited an integration's custom instructions.",
-        "properties": {},
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": ["integration_id"],
         "title": "IntegrationInstructionsUpdated",
         "type": "object"
       }
@@ -4456,6 +4550,19 @@
             ],
             "default": null,
             "title": "Billing Cycle"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Plan Id"
           }
         },
         "required": ["surface"],
@@ -4738,69 +4845,6 @@
         },
         "required": ["conversation_id"],
         "title": "PinViewed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "pricing:plan_selected",
-      "class": "PricingPlanSelected",
-      "owner": "web",
-      "domain": "pricing",
-      "description": "A user clicked a pricing card's call to action.",
-      "previous_names": [],
-      "budget_per_user_day": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user clicked a pricing card's call to action.",
-        "properties": {
-          "price": {
-            "title": "Price",
-            "type": "number"
-          },
-          "is_monthly": {
-            "title": "Is Monthly",
-            "type": "boolean"
-          },
-          "is_current_plan": {
-            "title": "Is Current Plan",
-            "type": "boolean"
-          },
-          "has_active_subscription": {
-            "title": "Has Active Subscription",
-            "type": "boolean"
-          },
-          "is_free_plan": {
-            "title": "Is Free Plan",
-            "type": "boolean"
-          },
-          "plan_tier": {
-            "enum": ["free", "pro"],
-            "title": "Plan Tier",
-            "type": "string"
-          },
-          "plan_id": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Plan Id"
-          }
-        },
-        "required": [
-          "price",
-          "is_monthly",
-          "is_current_plan",
-          "has_active_subscription",
-          "is_free_plan",
-          "plan_tier"
-        ],
-        "title": "PricingPlanSelected",
         "type": "object"
       }
     },
@@ -5742,6 +5786,34 @@
       }
     },
     {
+      "event": "subscription:lapsed",
+      "class": "SubscriptionLapsed",
+      "owner": "server",
+      "domain": "subscription",
+      "description": "A subscription's renewal failed or Dodo put it on hold, so the user lost Pro.",
+      "previous_names": [],
+      "budget_per_user_day": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "A subscription's renewal failed or Dodo put it on hold, so the user lost Pro.",
+        "properties": {
+          "subscription_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Subscription Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["failed", "on_hold"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["subscription_id", "status"],
+        "title": "SubscriptionLapsed",
+        "type": "object"
+      }
+    },
+    {
       "event": "subscription:page_viewed",
       "class": "SubscriptionPageViewed",
       "owner": "web",
@@ -6629,12 +6701,19 @@
         "description": "An existing user logged in.",
         "properties": {
           "login_method": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Login Method",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Login Method"
           }
         },
-        "required": ["login_method"],
         "title": "UserLoggedIn",
         "type": "object"
       }
@@ -6695,12 +6774,19 @@
         "description": "A new user account was created.",
         "properties": {
           "signup_method": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Signup Method",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Signup Method"
           }
         },
-        "required": ["signup_method"],
         "title": "UserSignedUp",
         "type": "object"
       }

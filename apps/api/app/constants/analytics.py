@@ -12,3 +12,9 @@ FEATURE_CHOICE_PERSON_PROPERTY_PREFIX = "feature_"
 #: Request header carrying the browser's PostHog session id (set by the web API
 #: client), so server events join the session and replay of the click behind them.
 POSTHOG_SESSION_HEADER = "X-PostHog-Session-Id"
+
+#: Redis key prefix of capture_once's at-most-once-per-window claim.
+ANALYTICS_ONCE_KEY_PREFIX = "analytics:once:"
+
+#: One paywall:blocked per user and gated route per hour: a page load hits ~5 gated routes and a reload repeats them.
+PAYWALL_BLOCKED_WINDOW_SECONDS = 3600
