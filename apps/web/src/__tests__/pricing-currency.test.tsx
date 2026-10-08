@@ -104,6 +104,14 @@ describe("a non-USD catalogue", () => {
 });
 
 describe("a monthly and a yearly row in different currencies", () => {
+  it("the yearly card claims no months free", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockPlans = [{ ...PRO_MONTHLY, currency: "USD" }, PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    expect(container.textContent).not.toMatch(/months? free/);
+  });
+
   it("claims no yearly saving, and says why", () => {
     const error = vi
       .spyOn(console, "error")
