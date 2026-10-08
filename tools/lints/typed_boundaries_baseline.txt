@@ -224,7 +224,6 @@ apps/api/app/services/workflow/trigger_search.py	TB001
 apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/utils/device_onboarding.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
-apps/api/app/workers/queue.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002
 apps/api/app/workers/tasks/cleanup_tasks.py	TB001
@@ -237,7 +236,6 @@ apps/api/app/workers/tasks/memory_sweep_tasks.py	TB001
 apps/api/app/workers/tasks/nurture_tasks.py	TB001
 apps/api/app/workers/tasks/onboarding_tasks.py	TB001
 apps/api/app/workers/tasks/platform_link_tasks.py	TB001
-apps/api/app/workers/tasks/reminder_tasks.py	TB001
 apps/api/app/workers/tasks/sandbox_tasks.py	TB001
 apps/api/app/workers/tasks/scheduler_recovery_tasks.py	TB001
 apps/api/app/workers/tasks/session_tasks.py	TB001

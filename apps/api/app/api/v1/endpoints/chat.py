@@ -21,12 +21,13 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_id,
     get_user_timezone_from_preferences,
 )
+from app.api.v1.middleware.client_type import request_client_source
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
-from app.models.chat_models import CancelStreamResponse, ConversationSource
+from app.models.chat_models import CancelStreamResponse
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
@@ -48,21 +49,8 @@ _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _DELIVERY_FAILED = "The connection to the server was lost before this response finished."
-_CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
-
-
-def _resolve_source(request: Request) -> str:
-    """Map the client-type header to a conversation source.
-
-    Only the desktop app is trusted to claim a non-web source — it unlocks
-    desktop-executed tools, which are useless (harmless) anywhere else.
-    """
-    client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
-    if client_type == ConversationSource.DESKTOP.value:
-        return ConversationSource.DESKTOP.value
-    return ConversationSource.WEB.value
 
 
 def _build_chat_context(
@@ -218,7 +206,7 @@ async def chat_stream_endpoint(
             workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
             has_selected_calendar_event=bool(body.selectedCalendarEvent),
             is_reply=bool(body.replyToMessage),
-            source=_resolve_source(request),
+            source=request_client_source(request).value,
         ),
     )
 
@@ -228,7 +216,7 @@ async def chat_stream_endpoint(
             body=body,
             user=user,
             conversation_id=conversation_id,
-            source=_resolve_source(request),
+            source=request_client_source(request).value,
             t0_perf=t0_perf,
         )
     )

@@ -133,7 +133,7 @@ class TestScanThenEnqueueMemory:
         async def scan(user_id: str, ctx: Any) -> None:
             order.append("scan")
 
-        async def enqueue(job: str, uid: str) -> None:
+        async def enqueue(job: str, uid: str, **_stamps: object) -> None:
             order.append(f"enqueue:{job}")
 
         pool.enqueue_job = AsyncMock(side_effect=enqueue)

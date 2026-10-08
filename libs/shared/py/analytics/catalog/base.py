@@ -1,6 +1,7 @@
 """Base classes of the event catalog: one model per event, owned by exactly one surface."""
 
 from collections.abc import Mapping
+from datetime import timedelta
 from enum import Enum, StrEnum
 import re
 import types
@@ -8,6 +9,7 @@ from typing import Annotated, ClassVar, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict
 
+from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.catalog.properties import IdKind
 
 EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
@@ -54,9 +56,10 @@ def _is_allowed_kind(annotation: object, metadata: tuple[object, ...] = ()) -> b
 class AnalyticsEvent(BaseModel):
     """One analytics event: the ClassVars name it, the fields are its properties.
 
-    A concrete event sets ``event``; ``previous_names`` lists the names it was
-    captured under before a rename, and ``budget_per_user_day`` the most one
-    user may emit in a day before the volume alert treats it as a loop.
+    A concrete event sets event and budget_per_user_day, the most one user may
+    emit in a day before the volume alert treats it as a loop. base_properties
+    is what the surface's capture stamps on; at_most_once_ttl gates the event
+    to one send per dedupe key for that long.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -64,7 +67,9 @@ class AnalyticsEvent(BaseModel):
     event: ClassVar[str]
     owner: ClassVar[Surface]
     previous_names: ClassVar[tuple[str, ...]] = ()
-    budget_per_user_day: ClassVar[int | None] = None
+    budget_per_user_day: ClassVar[int]
+    base_properties: ClassVar[type[BaseModel] | None] = None
+    at_most_once_ttl: ClassVar[timedelta | None] = None
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: object) -> None:
@@ -84,6 +89,14 @@ class AnalyticsEvent(BaseModel):
                     f"{cls.__name__}.{field_name}: {field.annotation!r} is not a count, "
                     "enum, id kind, duration or boolean"
                 )
+        if cls.base_properties is not None:
+            shadowed = cls.model_fields.keys() & cls.base_properties.model_fields.keys()
+            if shadowed:
+                raise CatalogError(
+                    f"{cls.__name__}: {sorted(shadowed)} shadow the stamped base properties"
+                )
+        if not isinstance(getattr(cls, "budget_per_user_day", None), int):
+            raise CatalogError(f"{cls.__name__}: budget_per_user_day must be set")
         _REGISTRY[cls.event] = cls
 
     def to_properties(self) -> dict[str, object]:
@@ -95,6 +108,7 @@ class ServerEvent(AnalyticsEvent):
     """An event the API (or its workers) owns and emits."""
 
     owner: ClassVar[Surface] = Surface.SERVER
+    base_properties: ClassVar[type[BaseModel] | None] = Attribution
 
 
 class WebEvent(AnalyticsEvent):
@@ -113,6 +127,7 @@ class VoiceEvent(AnalyticsEvent):
     """An event the LiveKit voice worker owns."""
 
     owner: ClassVar[Surface] = Surface.VOICE
+    base_properties: ClassVar[type[BaseModel] | None] = Attribution
 
 
 def registered_events() -> Mapping[str, type[AnalyticsEvent]]:

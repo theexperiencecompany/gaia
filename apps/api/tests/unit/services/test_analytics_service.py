@@ -1,12 +1,20 @@
 """Unit tests for analytics service."""
 
-from datetime import datetime, timedelta
+import asyncio
+import contextvars
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
+from pydantic import ValidationError
 import pytest
+import time_machine
 
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.analytics import (
+    ANALYTICS_DAY_TIMEZONE,
+    AT_MOST_ONCE_TASK_NAME,
+    POSTHOG_PROVIDER_KEY,
+)
 from app.models.payment_models import SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
@@ -15,8 +23,9 @@ from app.services.analytics_service import (
     track_signup,
     track_subscription_event,
 )
-from shared.py.analytics import PlatformIdentity, UserId
-from shared.py.analytics.catalog.auth import UserLoggedOut, UserSignedUp
+from shared.py.analytics import Dedupe, PlatformIdentity, UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.auth import UserActive, UserLoggedOut, UserSignedUp
 from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
     SubscriptionActivated,
@@ -25,6 +34,12 @@ from shared.py.analytics.catalog.billing import (
 )
 from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked
 from shared.py.analytics.catalog.memory import MemoryCleared
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    MissingAnalyticsContextError,
+    analytics_context,
+    worker_context,
+)
 from tests.helpers import captured_wide_event
 
 USER_1 = UserId("6812f0b3c9a14e2b7d5a91cc")
@@ -32,6 +47,10 @@ USER_2 = UserId("6812f0b3c9a14e2b7d5a91dd")
 CANCELLED = SubscriptionCancelled(
     subscription_id="sub123", product_id="prod_1", billing_interval="Month"
 )
+OCCURRED_AT = datetime(2026, 10, 8, 6, 30, tzinfo=UTC)
+#: 23:00 IST on Oct 8, which is still Oct 8 17:30 UTC; two hours later is Oct 9 in IST.
+LATE_EVENING_IST = datetime(2026, 10, 8, 17, 30, tzinfo=UTC)
+IST_DAY_START = datetime(2026, 10, 8, tzinfo=ANALYTICS_DAY_TIMEZONE)
 ACTIVATED = SubscriptionActivated(
     subscription_id="sub123", plan_name="Pro", currency="USD", amount=9.99
 )
@@ -141,7 +160,6 @@ class TestCapture:
         assert call_args.kwargs.get("distinct_id") == USER_1.value
         props = call_args.kwargs.get("properties")
         assert props["deleted_count"] == 3
-        assert "timestamp" in props
 
     def test_a_none_field_is_left_out_not_sent_as_null(self, mock_posthog):
         capture(USER_1, PaymentSucceeded(payment_id="pay_1", currency="USD", amount=None))
@@ -155,14 +173,11 @@ class TestCapture:
 
         assert mock_posthog.capture.call_args.kwargs["distinct_id"] == "telegram:42"
 
-    def test_the_timestamp_is_offset_aware_utc(self, mock_posthog):
-        """datetime.now() without UTC yields naive local time; PostHog then reads the runner's own timezone."""
+    def test_no_timestamp_property_rides_along(self, mock_posthog):
+        """The event time is the SDK's timestamp; a "timestamp" property was a second, wrong copy."""
         capture(USER_1, UserLoggedOut())
 
-        stamped = mock_posthog.capture.call_args.kwargs["properties"]["timestamp"]
-        parsed = datetime.fromisoformat(stamped)
-        assert parsed.tzinfo is not None
-        assert parsed.utcoffset() == timedelta(0)
+        assert "timestamp" not in mock_posthog.capture.call_args.kwargs["properties"]
 
     def test_capture_skips_when_no_client(self, mock_posthog_none):
         # Should not raise
@@ -199,52 +214,58 @@ class TestCaptureRefusesUntypedInput:
 
 
 class TestCaptureDedupe:
-    """dedupe_key is the only thing standing between a retryable worker task and a double count.
+    """A Dedupe is the only thing standing between a re-sent fact and a double count.
 
-    It becomes a stable event uuid, and PostHog stores the same uuid once. Nothing
-    exercised it, so every way of getting that uuid wrong was invisible.
+    PostHog merges two rows only when uuid, event, timestamp and distinct_id all
+    match, so the uuid AND the timestamp must come from the fact, never now().
     """
 
-    def test_no_dedupe_key_sends_no_uuid(self, mock_posthog):
+    def test_no_dedupe_sends_no_uuid(self, mock_posthog):
         """A uuid derived from nothing would collapse genuinely repeated user actions into one."""
         capture(USER_1, MemoryCleared(deleted_count=1))
 
-        assert "uuid" not in mock_posthog.capture.call_args.kwargs
+        assert mock_posthog.capture.call_args.kwargs["uuid"] is None
+        assert mock_posthog.capture.call_args.kwargs["timestamp"] is None
 
-    def test_dedupe_key_attaches_a_uuid_alongside_the_normal_payload(self, mock_posthog):
-        capture(USER_1, MemoryCleared(deleted_count=1), dedupe_key="run-1")
+    def test_a_retry_with_the_same_dedupe_is_the_same_row(self, posthog_events):
+        """Through the real SDK: the retry's message matches on uuid, timestamp, event and distinct_id."""
+        fact = Dedupe(key="run-1", occurred_at=OCCURRED_AT)
 
-        mock_posthog.capture.assert_called_once()
-        kwargs = mock_posthog.capture.call_args.kwargs
-        assert kwargs["event"] == "memory:cleared"
-        assert kwargs["distinct_id"] == USER_1.value
-        assert kwargs["properties"]["deleted_count"] == 1
-        assert UUID(kwargs["uuid"]).version == 5
+        capture(USER_1, MemoryCleared(deleted_count=1), fact)
+        capture(USER_1, MemoryCleared(deleted_count=1), fact)
 
-    def test_the_same_capture_twice_carries_the_same_uuid(self, mock_posthog):
-        """The retry case: an ARQ task re-runs its whole body and must produce a matching uuid."""
-        capture(USER_1, MemoryCleared(deleted_count=1), dedupe_key="run-1")
-        capture(USER_1, MemoryCleared(deleted_count=2), dedupe_key="run-1")
-
-        first, second = (call.kwargs["uuid"] for call in mock_posthog.capture.call_args_list)
-        assert first == second
+        first, retry = posthog_events
+        for field in ("uuid", "timestamp", "event", "distinct_id"):
+            assert first[field] == retry[field], field
+        assert UUID(first["uuid"]).version == 5
+        assert datetime.fromisoformat(first["timestamp"]) == OCCURRED_AT
 
     def test_the_uuid_changes_with_event_user_and_key(self, mock_posthog):
         """A uuid that ignores any of its three inputs silently deduplicates events that are not repeats."""
-        capture(USER_1, MemoryCleared(deleted_count=1), dedupe_key="run-1")
-        capture(USER_1, UserLoggedOut(), dedupe_key="run-1")
-        capture(USER_2, MemoryCleared(deleted_count=1), dedupe_key="run-1")
-        capture(USER_1, MemoryCleared(deleted_count=1), dedupe_key="run-2")
+        capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))
+        capture(USER_1, UserLoggedOut(), Dedupe("run-1", OCCURRED_AT))
+        capture(USER_2, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))
+        capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-2", OCCURRED_AT))
 
         uuids = [call.kwargs["uuid"] for call in mock_posthog.capture.call_args_list]
         assert len(set(uuids)) == 4
+
+    def test_a_naive_occurrence_time_is_refused(self):
+        """A naive time is read in the runner's own zone, so two workers would stamp different rows."""
+        with pytest.raises(ValueError, match="timezone-aware"):
+            Dedupe("run-1", datetime(2026, 10, 8, 12, 0))
+
+    def test_an_at_most_once_event_needs_a_dedupe(self, mock_posthog):
+        with pytest.raises(ValueError, match="needs a Dedupe"):
+            capture(USER_1, UserActive())
+        mock_posthog.capture.assert_not_called()
 
     def test_a_deduped_capture_failure_is_reported_loudly(self, mock_posthog):
         """Analytics never raises into the caller, so this failure is visible only via the wide event."""
         mock_posthog.capture.side_effect = RuntimeError("PostHog error")
 
         with patch("app.services.analytics_service.log") as mock_log:
-            capture(USER_1, UserLoggedOut(), dedupe_key="run-1")
+            capture(USER_1, UserLoggedOut(), Dedupe("run-1", OCCURRED_AT))
 
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.args[0] == "Failed to capture event in PostHog"
@@ -253,6 +274,111 @@ class TestCaptureDedupe:
         assert kwargs["user_id"] == USER_1.value
         assert kwargs["error"] == "PostHog error"
         assert kwargs["error_type"] == "RuntimeError"
+
+
+class TestAttribution:
+    """Every server event says who acted, what started the run and where, from the bound context."""
+
+    def test_the_bound_context_is_stamped_on_the_event(self, posthog_events):
+        with analytics_context(worker_context(Trigger.SCHEDULE)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+
+        [event] = posthog_events
+        assert {key: event["properties"][key] for key in ("actor", "trigger", "surface")} == {
+            "actor": "agent",
+            "trigger": "schedule",
+            "surface": "worker",
+        }
+
+    def test_an_emitter_cannot_pass_attribution_by_hand(self):
+        with pytest.raises(ValidationError):
+            MemoryCleared(deleted_count=1, actor="user")  # type: ignore[call-arg]  # the extra field is the point: the model must refuse it
+
+    def test_a_capture_with_no_context_bound_fails(self, mock_posthog_none):
+        """Fails even with no client configured, so a missing entry point shows up in every local run."""
+        with pytest.raises(MissingAnalyticsContextError):
+            contextvars.Context().run(capture, USER_1, MemoryCleared(deleted_count=1))
+
+
+async def _drain_at_most_once_sends() -> None:
+    """Wait for the gated sends capture spawned, so their outcome is observable."""
+    await asyncio.gather(
+        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )
+
+
+def _user_context(surface: EntrySurface) -> AnalyticsContext:
+    return AnalyticsContext(
+        attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
+    )
+
+
+@pytest.mark.usefixtures("fake_redis")
+class TestUserActive:
+    """user:active is the one definition of an active user: once per user per IST day, any surface."""
+
+    @staticmethod
+    def _active_marks(events: list[dict[str, object]]) -> list[dict[str, object]]:
+        return [event for event in events if event["event"] == "user:active"]
+
+    async def test_many_user_events_on_many_surfaces_mark_the_user_active_once(
+        self, posthog_events
+    ):
+        with time_machine.travel(LATE_EVENING_IST, tick=False):
+            with analytics_context(_user_context(EntrySurface.WEB)):
+                capture(USER_1, MemoryCleared(deleted_count=1))
+                capture(USER_1, UserLoggedOut())
+            with analytics_context(_user_context(EntrySurface.BOT)):
+                capture(USER_1, MemoryCleared(deleted_count=2))
+            with analytics_context(_user_context(EntrySurface.VOICE)):
+                capture(USER_1, MemoryCleared(deleted_count=3))
+            await _drain_at_most_once_sends()
+
+        [mark] = self._active_marks(posthog_events)
+        assert mark["distinct_id"] == USER_1.value
+        # The first action's surface; the timestamp is the IST day's start, fixed.
+        assert mark["properties"]["surface"] == "web"
+        assert datetime.fromisoformat(mark["timestamp"]) == IST_DAY_START
+
+    async def test_the_next_ist_day_marks_the_user_active_again(self, posthog_events):
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            with time_machine.travel(LATE_EVENING_IST, tick=False):
+                capture(USER_1, MemoryCleared(deleted_count=1))
+                await _drain_at_most_once_sends()
+            with time_machine.travel(LATE_EVENING_IST + timedelta(hours=2), tick=False):
+                capture(USER_1, MemoryCleared(deleted_count=1))
+                await _drain_at_most_once_sends()
+
+        assert len(self._active_marks(posthog_events)) == 2
+
+    async def test_each_user_is_marked_on_their_own(self, posthog_events):
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+            capture(USER_2, MemoryCleared(deleted_count=1))
+            await _drain_at_most_once_sends()
+
+        assert {mark["distinct_id"] for mark in self._active_marks(posthog_events)} == {
+            USER_1.value,
+            USER_2.value,
+        }
+
+    async def test_agent_work_never_marks_the_user_active(self, posthog_events):
+        """A scheduled workflow running for an idle user is not that user being active."""
+        with analytics_context(worker_context(Trigger.SCHEDULE)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+        with analytics_context(_user_context(EntrySurface.WEB).acting_as(Actor.AGENT)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+        await _drain_at_most_once_sends()
+
+        assert self._active_marks(posthog_events) == []
+
+    async def test_an_unlinked_bot_user_is_not_marked(self, posthog_events):
+        """Only a GAIA user has a day to be active on; the platform id merges in on linking."""
+        with analytics_context(_user_context(EntrySurface.BOT)):
+            capture(PlatformIdentity("telegram", "42"), UserLoggedOut())
+            await _drain_at_most_once_sends()
+
+        assert self._active_marks(posthog_events) == []
 
 
 # ---------------------------------------------------------------------------

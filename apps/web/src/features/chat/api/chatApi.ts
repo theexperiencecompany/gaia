@@ -23,7 +23,6 @@ import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { apiBaseUrl, clientHeaders } from "@/lib/api/client";
 import { api, binaryField, formDataSerializer } from "@/lib/api/typed";
-import { desktopClientHeaders } from "@/lib/electron/api";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
@@ -301,7 +300,6 @@ export const chatApi = {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
         ...clientHeaders(),
-        ...desktopClientHeaders(),
       },
       credentials: "include",
       signal: controller.signal,
@@ -435,7 +433,7 @@ export const chatApi = {
       openWhenHidden: true,
       headers: {
         Accept: "text/event-stream",
-        ...desktopClientHeaders(),
+        ...clientHeaders(),
         // Resume cursor — the backend replays everything after this entry.
         ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
       },

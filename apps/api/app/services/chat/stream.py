@@ -415,7 +415,6 @@ async def _run_chat_stream(
                 _turn_ended_event(
                     body, state, conversation_id, source, is_new_conversation=is_new_conversation
                 ),
-                dedupe_key=stream_id,
             )
 
     except Exception as e:  # surface to client + flag the stream

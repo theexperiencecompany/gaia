@@ -1,19 +1,26 @@
 """Server-side PostHog capture: catalog events only, attributed to an AnalyticsId."""
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TypeAlias
-from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.analytics import (
+    ANALYTICS_DAY_TIMEZONE,
+    AT_MOST_ONCE_KEY_PREFIX,
+    AT_MOST_ONCE_TASK_NAME,
+    POSTHOG_PROVIDER_KEY,
+)
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
+from app.db.redis import redis_cache
 from app.models.payment_models import PlanType, SubscriptionStatus
-from shared.py.analytics import AnalyticsId, UserId, check_capture, posthog_properties
-from shared.py.analytics.catalog.auth import UserLoggedIn, UserSignedUp
+from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import AnalyticsId, Dedupe, PostHogCapture, UserId, prepare_capture
+from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.catalog.auth import UserActive, UserLoggedIn, UserSignedUp
 from shared.py.analytics.catalog.base import ServerEvent, Surface
 from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
@@ -21,6 +28,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionExpired,
     SubscriptionRenewed,
 )
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import log
 
 
@@ -135,46 +143,60 @@ def identify_user(user_id: UserId, properties: AnalyticsProperties | None = None
         )
 
 
-def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe_key: str | None = None) -> None:
+def analytics_day_start(now: datetime) -> datetime:
+    """Return the start of the analytics day now falls in: a once-per-day event's fixed timestamp."""
+    return now.astimezone(ANALYTICS_DAY_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe: Dedupe | None = None) -> None:
     """Capture a server-owned catalog event; the only way the API emits one.
 
-    dedupe_key makes it idempotent: derive it from what happened (a run id, a
-    user+phase) and PostHog collapses repeats. Required for anything emitted
-    from a retryable worker task, or an ARQ retry double-counts the milestone.
+    Stamps the bound analytics context. dedupe makes a resend the same PostHog
+    row, so anything a retried task or replayed request can emit needs one; an
+    at-most-once event is sent only by the first capture of its key. A user's
+    own event also marks them active for the day.
     """
-    check_capture(distinct_id, event, Surface.SERVER)
+    prepared = prepare_capture(distinct_id, event, Surface.SERVER, dedupe)
     client = _get_posthog_client()
     if client is None:
         log.debug("PostHog client not available, skipping event", event=event.event)
         return
 
     log.set(analytics={"user_id": distinct_id.distinct_id, "event": event.event})
-    try:
-        # A stable uuid is PostHog's dedupe key; uuid5 so the same inputs give
-        # the same id on any worker and any retry.
-        client.capture(
-            event=event.event,
-            distinct_id=distinct_id.distinct_id,
-            properties=posthog_properties(event),
-            **(
-                {
-                    "uuid": str(
-                        uuid5(
-                            NAMESPACE_URL, f"{event.event}:{distinct_id.distinct_id}:{dedupe_key}"
-                        )
-                    )
-                }
-                if dedupe_key
-                else {}
-            ),
+    if event.at_most_once_ttl is None:
+        _send(client, prepared)
+    else:
+        spawn_background_task(
+            _send_once(client, prepared, event.at_most_once_ttl), name=AT_MOST_ONCE_TASK_NAME
         )
+    if (
+        isinstance(distinct_id, UserId)
+        and not isinstance(event, UserActive)
+        and current_analytics_context().attribution.actor is Actor.USER
+    ):
+        today = analytics_day_start(datetime.now(UTC))
+        capture(distinct_id, UserActive(), Dedupe(key=today.date().isoformat(), occurred_at=today))
+
+
+async def _send_once(client: Posthog, prepared: PostHogCapture, ttl: timedelta) -> None:
+    """Send prepared only if no earlier capture claimed its uuid within ttl."""
+    claimed = await redis_cache.client.set(
+        f"{AT_MOST_ONCE_KEY_PREFIX}{prepared.uuid}", "1", nx=True, ex=int(ttl.total_seconds())
+    )
+    if claimed:
+        _send(client, prepared)
+
+
+def _send(client: Posthog, prepared: PostHogCapture) -> None:
+    try:
+        prepared.send(client)
     except Exception as e:
         log.error(
             "Failed to capture event in PostHog",
-            event=event.event,
+            event=prepared.event,
             error=str(e),
             error_type=type(e).__name__,
-            user_id=distinct_id.distinct_id,
+            user_id=prepared.distinct_id,
         )
 
 
