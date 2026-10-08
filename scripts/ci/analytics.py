@@ -222,6 +222,7 @@ class _Refs:
     actions: Mapping[int, set[str]]
     events: set[str] = field(default_factory=set)
     scope_events: set[str] = field(default_factory=set)
+    action_events: set[str] = field(default_factory=set)
     properties: list[tuple[str, frozenset[str] | None]] = field(default_factory=list)
     unreadable: list[BadRef] = field(default_factory=list)
 
@@ -294,6 +295,7 @@ def _add_action(refs: _Refs, action_id: int) -> frozenset[str] | None:
         return None
     steps = refs.actions[action_id]
     refs.scope_events |= steps
+    refs.action_events |= steps
     return frozenset(steps)
 
 
@@ -406,6 +408,14 @@ def bad_refs(
     found = set(refs.unreadable)
     for event in refs.events:
         if not event.startswith(SDK_PREFIX) and not catalog.has_event(event):
+            found.add(BadRef(RefKind.EVENT, event, catalog.suggest_event(event)))
+    # A continuity action deliberately steps on a previous name, so only a step that is neither is dead.
+    for event in refs.action_events - refs.events:
+        if (
+            not event.startswith(SDK_PREFIX)
+            and not catalog.has_event(event)
+            and event not in catalog.renamed
+        ):
             found.add(BadRef(RefKind.EVENT, event, catalog.suggest_event(event)))
     insight_scope = frozenset(refs.scope_events)
     for name, scope in refs.properties:

@@ -200,6 +200,20 @@ def test_a_property_an_sdk_event_in_the_same_query_may_carry_is_not_judged(catal
     assert _bad_query(query, catalog) == [("property", "agent_name", None)]
 
 
+def test_an_action_whose_step_is_no_catalog_event_is_a_bad_ref(catalog: Any) -> None:
+    query = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": 7}]}
+    stale = {7: {"hil:approval_decided"}}
+    assert [
+        (f.kind, f.name, f.suggestion) for f in analytics.bad_refs(query, catalog, actions=stale)
+    ] == [("event", "hil:approval_decided", "hil:decision_submitted")]
+
+
+def test_a_continuity_action_may_step_on_a_previous_name(catalog: Any) -> None:
+    query = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": 7}]}
+    continuity = {7: {"chat:message_sent", "chat:message_submitted"}}
+    assert analytics.bad_refs(query, catalog, actions=continuity) == []
+
+
 def test_an_action_that_no_longer_exists_is_a_bad_ref(catalog: Any) -> None:
     query = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": 99}]}
     assert _bad_query(query, catalog) == [("action", "99", None)]
@@ -385,6 +399,115 @@ def test_an_action_step_must_name_a_catalog_event_or_a_previous_name(catalog: An
         "Chat message submitted (continuous): step chat:first_message_sent is not a catalog event or a previous name"
         in gaps
     )
+
+
+class _ActionsProject:
+    """The action reads and writes sync-actions makes, recorded instead of sent."""
+
+    def __init__(self, live: list[dict[str, Any]], fail_updates: bool = False) -> None:
+        self.live = live
+        self.fail_updates = fail_updates
+        self.writes: list[tuple[str, int | None, dict[str, Any]]] = []
+
+    def actions(self) -> list[dict[str, Any]]:
+        return self.live
+
+    def create_action(self, action: dict[str, Any]) -> None:
+        self.writes.append(("create", None, action))
+
+    def update_action(self, action_id: int, action: dict[str, Any]) -> None:
+        if self.fail_updates:
+            raise analytics.PostHogError(f"PATCH actions/{action_id}/: HTTP 500")
+        self.writes.append(("update", action_id, action))
+
+
+NEW_ACTION = {
+    "name": "Signed up",
+    "description": "d",
+    "tags": ["canonical"],
+    "steps": [{"event": "user:signed_up"}],
+}
+
+
+def _sync(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    project: _ActionsProject,
+    expected: list[dict[str, Any]],
+    args: list[str],
+) -> tuple[int, list[tuple[str, ...]]]:
+    actions_json = tmp_path / "actions.json"
+    actions_json.write_text(json.dumps({"tag": "canonical", "actions": expected}))
+    monkeypatch.setattr(analytics, "ACTIONS_JSON", actions_json)
+    scopes_asked: list[tuple[str, ...]] = []
+
+    def client(scopes: tuple[str, ...]) -> _ActionsProject:
+        scopes_asked.append(tuple(scopes))
+        return project
+
+    monkeypatch.setattr(analytics, "_client", client)
+    return analytics.main(["sync-actions", *args]), scopes_asked
+
+
+def _stale_live() -> list[dict[str, Any]]:
+    stale = _live_action(
+        "Chat message submitted (continuous)", [{"event": "chat:message_submitted"}]
+    )
+    stale["id"] = 42
+    return [stale]
+
+
+def test_a_sync_dry_run_writes_nothing_and_asks_only_to_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _ActionsProject(_stale_live())
+    code, scopes = _sync(monkeypatch, tmp_path, project, [*EXPECTED, NEW_ACTION], [])
+    assert code == 0
+    assert project.writes == []
+    assert scopes == [tuple(analytics.READ_SCOPES)]
+    assert capsys.readouterr().out.splitlines() == [
+        "update  Chat message submitted (continuous) (action 42)",
+        "create  Signed up",
+        "2 change(s) planned (dry run; re-run with --apply to perform)",
+    ]
+
+
+def test_sync_apply_creates_the_missing_and_overwrites_the_changed_action(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project = _ActionsProject(_stale_live())
+    code, scopes = _sync(monkeypatch, tmp_path, project, [*EXPECTED, NEW_ACTION], ["--apply"])
+    assert code == 0
+    assert scopes == [(*analytics.READ_SCOPES, analytics.WRITE_SCOPE)]
+    assert project.writes == [
+        ("update", 42, EXPECTED[0]),
+        ("create", None, NEW_ACTION),
+    ]
+
+
+def test_sync_apply_leaves_an_action_equal_to_the_file_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    live_bounded = [{**BOUNDED[0], "value": None}]
+    same = _live_action(
+        "Chat message submitted (continuous)",
+        [
+            {"event": "chat:message_sent", "properties": live_bounded},
+            {"event": "chat:message_submitted"},
+        ],
+    )
+    project = _ActionsProject([same])
+    code, _ = _sync(monkeypatch, tmp_path, project, EXPECTED, ["--apply"])
+    assert code == 0
+    assert project.writes == []
+    assert capsys.readouterr().out.splitlines() == ["0 change(s) applied"]
+
+
+def test_a_failed_write_stops_the_sync(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project = _ActionsProject(_stale_live(), fail_updates=True)
+    with pytest.raises(analytics.PostHogError, match="PATCH actions/42/: HTTP 500"):
+        _sync(monkeypatch, tmp_path, project, [*EXPECTED, NEW_ACTION], ["--apply"])
+    assert project.writes == []
 
 
 # ---------------------------------------------------------------------------
