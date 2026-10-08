@@ -276,7 +276,6 @@ class TestABlockedFireDeactivatesOnlyThatWorkflow:
 
         scheduler.handle_recurring_task.assert_not_called()
 
-    @pytest.mark.regression
     async def test_a_stale_fire_of_a_workflow_the_user_switched_off_keeps_their_choice(
         self,
     ) -> None:
