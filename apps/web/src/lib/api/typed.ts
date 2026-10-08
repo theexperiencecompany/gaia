@@ -288,10 +288,10 @@ export const FORM_URLENCODED_HEADERS = {
 export const binaryField = (file: File): string =>
   file as unknown as string; /* the generator's `string` is the wire's binary */
 
-/** The response type of `METHOD path`, for callers that store or pass one on. */
 /** Who caused a request, for an API function that is called both by a user and by a poll. */
 export type RequestOrigin = Pick<ApiOptions, "background">;
 
+/** The response type of `METHOD path`, for callers that store or pass one on. */
 export type ApiResponse<M extends Method, P extends PathsWith<M>> = Data<P, M>;
 
 /**

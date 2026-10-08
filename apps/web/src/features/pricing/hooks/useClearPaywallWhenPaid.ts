@@ -5,7 +5,7 @@ import { useEffect } from "react";
 
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
-import { pricingApi } from "../api/pricingApi";
+import { subscriptionStatusQuery } from "../api/queries";
 import { PAYWALL_STATUS_POLL_MS } from "../constants";
 import { useIsPaid } from "./useIsPaid";
 
@@ -32,8 +32,7 @@ export function useClearPaywallWhenPaid(): void {
     // A poll from an idle tab, so it must not count the user as active.
     const poll = () =>
       void queryClient.prefetchQuery({
-        queryKey: ["subscription-status"],
-        queryFn: () => pricingApi.getSubscriptionStatus({ background: true }),
+        ...subscriptionStatusQuery({ background: true }),
         staleTime: 0,
       });
     const interval = setInterval(poll, PAYWALL_STATUS_POLL_MS);
