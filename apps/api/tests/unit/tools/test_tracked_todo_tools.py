@@ -143,7 +143,14 @@ class TestBuildScheduledAtUpdate:
     def test_past_datetime_rejected(self):
         fields: dict[str, object] = {}
         error = build_scheduled_at_update(_PAST_ISO, fields)
-        assert "must be in the future" in error
+        assert error == "Error: scheduled_at must be in the future."
+        assert fields == {}
+
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    def test_the_present_moment_is_not_the_future(self):
+        fields: dict[str, object] = {}
+        error = build_scheduled_at_update("2026-10-01T09:00:00+00:00", fields)
+        assert error == "Error: scheduled_at must be in the future."
         assert fields == {}
 
     def test_valid_future_datetime_sets_the_field(self):
@@ -303,6 +310,16 @@ class TestResolveFirstFire:
         assert error is None
         assert parsed is not None
         assert (parsed.hour, parsed.minute) == (3, 30)
+
+    def test_a_past_one_off_names_scheduled_at_in_its_error(self):
+        parsed, _notes, error = resolve_first_fire(None, _PAST_ISO, "UTC")
+        assert parsed is None
+        assert error == "Error: scheduled_at must be in the future."
+
+    def test_a_past_shortcut_anchor_names_scheduled_at_in_its_error(self):
+        parsed, _notes, error = resolve_first_fire("daily", _PAST_ISO, "UTC")
+        assert parsed is None
+        assert error == "Error: scheduled_at must be in the future."
 
     def test_invalid_cron_recurrence_is_rejected(self):
         parsed, notes, error = resolve_first_fire("not a cron", None, "UTC")
