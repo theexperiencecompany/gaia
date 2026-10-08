@@ -23,6 +23,3 @@ AT_MOST_ONCE_KEY_PREFIX = "analytics:once:"
 
 #: Task name of a gated at-most-once send, so its outcome can be awaited by name.
 AT_MOST_ONCE_TASK_NAME = "analytics_send_once"
-
-#: One paywall:blocked per user and gated route per hour: a page load hits ~5 gated routes and a reload repeats them.
-PAYWALL_BLOCKED_WINDOW_SECONDS = 3600

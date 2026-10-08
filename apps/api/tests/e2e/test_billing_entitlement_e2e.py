@@ -32,6 +32,7 @@ from app.decorators.entitlements import PAYWALL_MESSAGE
 from app.models.payment_models import PlanType
 from shared.py.analytics.catalog.billing import PaywallBlocked
 from tests.conftest import FAKE_USER, _create_test_app
+from tests.helpers import drain_at_most_once_sends
 
 pytestmark = pytest.mark.e2e
 
@@ -132,6 +133,7 @@ class TestLapsedUserSeesThePaywallContract:
             patch(f"{ANALYTICS}._get_posthog_client", return_value=MagicMock()) as posthog,
         ):
             response = await gated_client.get("/api/v1/todos")
+            await drain_at_most_once_sends()
 
         assert response.status_code == 402
         body = response.json()
@@ -159,6 +161,7 @@ class TestLapsedUserSeesThePaywallContract:
             patch(f"{ANALYTICS}._get_posthog_client", return_value=MagicMock()) as posthog,
         ):
             response = await gated_client.get("/api/v1/todos/someone@example.com")
+            await drain_at_most_once_sends()
 
         assert response.status_code == 402
         sent = posthog.return_value.capture.call_args.kwargs

@@ -187,27 +187,19 @@ def _track_evaluation(
 ) -> None:
     """Emit one event per user, flag and reason a day, for paths the SDK never sees.
 
-    Best-effort and enqueue-only so telemetry never breaks or slows a turn; the
-    at-most-once gate keeps one per day, and the reason is in its key so a kill
-    engaged mid-day still shows up the same day.
+    Enqueue-only, and capture logs its own delivery failures; the at-most-once
+    gate keeps one per day, and the reason is in its key so a kill engaged
+    mid-day still shows up the same day.
     """
     today = analytics_day_start(datetime.now(UTC))
-    try:
-        capture(
-            UserId(user_id),
-            FeatureFlagEvaluated(flag=flag.value, enabled=enabled, fallback_reason=fallback_reason),
-            dedupe=Dedupe(
-                key=f"{flag.value}:{fallback_reason}:{today.date().isoformat()}",
-                occurred_at=today,
-            ),
-        )
-    except Exception as e:
-        log.debug(
-            "Feature flag evaluation event skipped",
-            flag=flag.value,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    capture(
+        UserId(user_id),
+        FeatureFlagEvaluated(flag=flag.value, enabled=enabled, fallback_reason=fallback_reason),
+        dedupe=Dedupe(
+            key=f"{flag.value}:{fallback_reason}:{today.date().isoformat()}",
+            occurred_at=today,
+        ),
+    )
 
 
 def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:

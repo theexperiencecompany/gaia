@@ -1,9 +1,10 @@
 """OAuth integration models."""
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
 
 from app.models.mcp_config import (
     ComposioConfig,

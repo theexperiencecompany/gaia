@@ -199,15 +199,6 @@ def _send(client: Posthog, prepared: PostHogCapture) -> None:
         )
 
 
-async def capture_once(
-    distinct_id: AnalyticsId, event: ServerEvent, *, scope: str, window_seconds: int
-) -> None:
-    """Capture event at most once per window for this person and scope; a repeat inside it is dropped."""
-    key = f"{AT_MOST_ONCE_KEY_PREFIX}{event.event}:{distinct_id.distinct_id}:{scope}"
-    if await redis_cache.set_if_absent(key, "1", ttl=window_seconds):
-        capture(distinct_id, event)
-
-
 def track_signup(
     user_id: UserId,
     email: str,

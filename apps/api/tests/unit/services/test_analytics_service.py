@@ -1,6 +1,5 @@
 """Unit tests for analytics service."""
 
-import asyncio
 import contextvars
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -12,7 +11,6 @@ import time_machine
 
 from app.constants.analytics import (
     ANALYTICS_DAY_TIMEZONE,
-    AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
 from app.services.analytics_service import (
@@ -38,7 +36,7 @@ from shared.py.analytics.context import (
     analytics_context,
     worker_context,
 )
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, drain_at_most_once_sends
 
 USER_1 = UserId("6812f0b3c9a14e2b7d5a91cc")
 USER_2 = UserId("6812f0b3c9a14e2b7d5a91dd")
@@ -313,13 +311,6 @@ class TestAttribution:
             contextvars.Context().run(capture, USER_1, MemoryCleared(deleted_count=1))
 
 
-async def _drain_at_most_once_sends() -> None:
-    """Wait for the gated sends capture spawned, so their outcome is observable."""
-    await asyncio.gather(
-        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
-    )
-
-
 def _user_context(surface: EntrySurface) -> AnalyticsContext:
     return AnalyticsContext(
         attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
@@ -345,7 +336,7 @@ class TestUserActive:
                 capture(USER_1, MemoryCleared(deleted_count=2))
             with analytics_context(_user_context(EntrySurface.VOICE)):
                 capture(USER_1, MemoryCleared(deleted_count=3))
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         [mark] = self._active_marks(posthog_events)
         assert mark["distinct_id"] == USER_1.value
@@ -357,10 +348,10 @@ class TestUserActive:
         with analytics_context(_user_context(EntrySurface.WEB)):
             with time_machine.travel(LATE_EVENING_IST, tick=False):
                 capture(USER_1, MemoryCleared(deleted_count=1))
-                await _drain_at_most_once_sends()
+                await drain_at_most_once_sends()
             with time_machine.travel(LATE_EVENING_IST + timedelta(hours=2), tick=False):
                 capture(USER_1, MemoryCleared(deleted_count=1))
-                await _drain_at_most_once_sends()
+                await drain_at_most_once_sends()
 
         assert len(self._active_marks(posthog_events)) == 2
 
@@ -368,7 +359,7 @@ class TestUserActive:
         with analytics_context(_user_context(EntrySurface.WEB)):
             capture(USER_1, MemoryCleared(deleted_count=1))
             capture(USER_2, MemoryCleared(deleted_count=1))
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         assert {mark["distinct_id"] for mark in self._active_marks(posthog_events)} == {
             USER_1.value,
@@ -381,7 +372,7 @@ class TestUserActive:
             capture(USER_1, MemoryCleared(deleted_count=1))
         with analytics_context(_user_context(EntrySurface.WEB).acting_as(Actor.AGENT)):
             capture(USER_1, MemoryCleared(deleted_count=1))
-        await _drain_at_most_once_sends()
+        await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
 
@@ -389,7 +380,7 @@ class TestUserActive:
         """Only a GAIA user has a day to be active on; the platform id merges in on linking."""
         with analytics_context(_user_context(EntrySurface.BOT)):
             capture(PlatformIdentity("telegram", "42"), UserLoggedOut())
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
 

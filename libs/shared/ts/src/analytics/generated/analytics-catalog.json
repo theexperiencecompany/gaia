@@ -5047,14 +5047,14 @@
       "class": "PaywallBlocked",
       "owner": "server",
       "domain": "paywall",
-      "description": "A non-PRO caller was turned away from a paid-only surface.",
+      "description": "A non-PRO caller was turned away from a paid-only surface, once per feature per window.",
       "previous_names": [],
       "budget_per_user_day": 500,
-      "at_most_once_ttl_seconds": null,
+      "at_most_once_ttl_seconds": 3600,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A non-PRO caller was turned away from a paid-only surface.",
+        "description": "A non-PRO caller was turned away from a paid-only surface, once per feature per window.",
         "properties": {
           "feature": {
             "anyOf": [
@@ -6192,7 +6192,7 @@
       "domain": "subscription",
       "description": "A subscription's renewal failed or Dodo put it on hold, so the user lost Pro.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {

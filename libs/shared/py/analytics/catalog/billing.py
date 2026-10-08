@@ -1,5 +1,6 @@
 """Billing events: checkout, payments, subscriptions, paywalls, rate limits, pricing and usage."""
 
+from datetime import timedelta
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
@@ -137,7 +138,7 @@ class SubscriptionLapsed(ServerEvent):
     """A subscription's renewal failed or Dodo put it on hold, so the user lost Pro."""
 
     event: ClassVar[str] = "subscription:lapsed"
-    budget_per_user_day: ClassVar[int] = 10
+    budget_per_user_day: ClassVar[int] = 50
 
     subscription_id: Identifier
     status: Literal["failed", "on_hold"]
@@ -174,10 +175,15 @@ class SubscriptionFailed(WebEvent):
     reason: CheckoutFailureReason
 
 
+#: One paywall:blocked per user and feature per window: a page load hits ~5 gated routes and a reload repeats them.
+PAYWALL_BLOCKED_WINDOW = timedelta(hours=1)
+
+
 class PaywallBlocked(ServerEvent):
-    """A non-PRO caller was turned away from a paid-only surface."""
+    """A non-PRO caller was turned away from a paid-only surface, once per feature per window."""
 
     event: ClassVar[str] = "paywall:blocked"
+    at_most_once_ttl: ClassVar[timedelta | None] = PAYWALL_BLOCKED_WINDOW
     budget_per_user_day: ClassVar[int] = 500
 
     feature: UrlPath | Identifier

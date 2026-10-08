@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants import analytics as analytics_constants
 from app.decorators.entitlements import (
     PAYWALL_MESSAGE,
     SubscriptionRequiredException,
@@ -18,7 +17,9 @@ from app.decorators.entitlements import (
 )
 from app.models.payment_models import PlanType
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog import billing
 from shared.py.analytics.catalog.billing import PaywallBlocked
+from tests import helpers
 
 pytestmark = pytest.mark.unit
 
@@ -114,12 +115,12 @@ class TestRequireActiveSubscription:
                 AsyncMock(return_value=MagicMock(plan_type=PlanType.PRO)),
             ),
             patch(f"{ENT}.invalidate_plan_cache", new_callable=AsyncMock) as invalidate,
-            patch(f"{ENT}.capture_once", new_callable=AsyncMock) as mock_capture,
+            patch(f"{ENT}.capture") as mock_capture,
         ):
             await require_active_subscription(USER_ID, feature="chat")  # must not raise
 
         invalidate.assert_awaited_once_with(USER_ID)
-        mock_capture.assert_not_awaited()
+        mock_capture.assert_not_called()
 
     async def test_free_user_gets_the_exact_402_wire_contract(self) -> None:
         with (
@@ -190,6 +191,7 @@ class TestRequireActiveSubscription:
         ):
             with pytest.raises(SubscriptionRequiredException):
                 await require_active_subscription(USER_ID, feature="get_token")
+            await helpers.drain_at_most_once_sends()
 
         sent = client.capture.call_args.kwargs
         assert (sent["distinct_id"], sent["event"]) == (
@@ -228,6 +230,7 @@ class TestOneBlockIsCountedPerRouteWindow:
             for _ in range(5):
                 with pytest.raises(SubscriptionRequiredException):
                     await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
 
         assert [c.kwargs["event"] for c in client.capture.call_args_list] == ["paywall:blocked"]
 
@@ -243,6 +246,7 @@ class TestOneBlockIsCountedPerRouteWindow:
             for feature in ("/api/v1/conversations", "/api/v1/notifications"):
                 with pytest.raises(SubscriptionRequiredException):
                     await require_active_subscription(USER_ID, feature=feature)
+            await helpers.drain_at_most_once_sends()
 
         assert [c.kwargs["properties"]["feature"] for c in client.capture.call_args_list] == [
             "/api/v1/conversations",
@@ -259,6 +263,7 @@ class TestOneBlockIsCountedPerRouteWindow:
         ):
             with pytest.raises(SubscriptionRequiredException):
                 await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
 
         [key] = await fake_redis.keys("*")
-        assert await fake_redis.ttl(key) == analytics_constants.PAYWALL_BLOCKED_WINDOW_SECONDS
+        assert await fake_redis.ttl(key) == billing.PAYWALL_BLOCKED_WINDOW.total_seconds()
