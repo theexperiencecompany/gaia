@@ -44,6 +44,7 @@ from app.agents.workspace.system_docs import integration_skills_block
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.services.integration_instructions_service import get_instructions
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from shared.py.wide_events import log
@@ -68,6 +69,50 @@ class Section:
 
 
 # --- stable sections: change on a preference edit or a connect, not per turn ---
+
+
+async def _platform_banner(ctx: SectionContext) -> str:
+    """Build the banner naming which messaging app comms is replying in.
+
+    The model cannot read configurable directly, so this is the only way it
+    learns the platform. Applies to bot channels only, not web/mobile/desktop.
+    """
+    source = ConversationSource.coerce(ctx.source)
+    if source is None or source not in BOT_CONVERSATION_SOURCES:
+        return ""
+    name = source.display_name
+    return (
+        f"You are chatting with the user in their {name} chat right now. "
+        f"Write like a normal {name} message: plain text, short, no markdown "
+        "tables or rich cards."
+    )
+
+
+#: The sources a user chats from, as the executor's platform line names them.
+_USER_PLATFORMS: frozenset[ConversationSource] = (
+    frozenset({ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP})
+    | BOT_CONVERSATION_SOURCES
+)
+
+
+async def _executor_platform(ctx: SectionContext) -> str:
+    """State the platform the user is on, which decides the executor's output formats.
+
+    Desktop tools are named only on desktop: retrieval already gates them by
+    source, so naming them for every channel cost tokens off-desktop.
+    """
+    source = ConversationSource.coerce(ctx.source)
+    if source is None or source not in _USER_PLATFORMS:
+        return ""
+    line = f"The user is on {source.display_name}."
+    if source is ConversationSource.DESKTOP:
+        line += (
+            " Desktop tools are available (discover them with retrieve_tools): "
+            "take_screenshot, read_clipboard/write_clipboard, open_app, open_url, "
+            "list_windows. Use take_screenshot whenever the user references what "
+            "they are currently looking at."
+        )
+    return line
 
 
 async def _user_identity(ctx: SectionContext) -> str:
@@ -140,7 +185,7 @@ async def _custom_instructions(ctx: SectionContext) -> str:
         return ""
     integration = get_integration_by_id(target)
     label = (integration.name if integration else target).upper()
-    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user — honor these):\n{content.strip()}"
+    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user, honor these):\n{content.strip()}"
 
 
 async def _skills(ctx: SectionContext) -> str:
@@ -175,6 +220,20 @@ async def _skills(ctx: SectionContext) -> str:
 #: run banners deliberately sort last so their directives land with recency,
 #: immediately before the conversation begins.
 SECTIONS: tuple[Section, ...] = (
+    Section(
+        "platform_banner",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.COMMS}),
+        5,
+        _platform_banner,
+    ),
+    Section(
+        "executor_platform",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.EXECUTOR}),
+        5,
+        _executor_platform,
+    ),
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
     # Comms only: the executor never opens a conversation. Stable rather than

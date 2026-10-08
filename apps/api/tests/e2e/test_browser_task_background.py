@@ -1,0 +1,734 @@
+"""The user journeys of a browser task that runs in a worker instead of inside the turn.
+
+The real compiled executor graph runs against a scripted model; the real worker
+task body runs in this process, on a fake Redis, over a scripted Browser-Use
+agent. What that costs in fidelity: there is no process boundary and no ARQ
+serialization, and the browser is scripted rather than real, so nothing here
+proves a run survives an API restart or that Browser-Use behaves as scripted.
+"""
+
+import asyncio
+import json
+from typing import Any
+from unittest.mock import AsyncMock
+
+from langchain_core.tools import BaseTool
+import pytest
+
+from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
+from app.agents.tools.executor_tool import cancel_executor
+from app.constants.agents import AgentTag
+from app.constants.browser import (
+    BROWSER_RUN_SESSION_LOST_SUMMARY,
+    BROWSER_TAKEOVER_DONE_NOTE,
+    BrowserSessionStatus,
+    EngineSwitchReason,
+    HandoffStatus,
+)
+from app.constants.chat import SourceCategory
+from app.models.chat_models import ConversationSource
+from app.services.browser import job_runner, session as session_mod
+from app.services.browser.handoff import get_handoff
+from app.services.browser.jobs import get_conversation_slot
+from tests.e2e._harness.browser_job import (
+    LIVE_STORAGE_STATE,
+    REPLAY_URL,
+    SHOT_URL_TEMPLATE,
+    JobWorld,
+    ScriptedHost,
+    ScriptedStep,
+    browser_job_world,
+    long_waits_pass_quickly,
+)
+from tests.e2e._harness.graph_run import call, executor_graph, run_graph
+
+pytestmark = pytest.mark.e2e
+
+CONVERSATION = "conv-browser-e2e"
+STREAM = "stream-browser-e2e"
+USER = "user-e2e"
+
+RETRIEVE = call("retrieve_tools", {"exact_tool_names": ["browser_task"]}, "r1")
+START = call("browser_task", {"task": "book a table for two at 7pm"}, "b1")
+
+TWO_STEPS = [
+    ScriptedStep(
+        actions=[("go_to_url", {"url": "https://example.test/book"})],
+        outputs=["opened the booking page"],
+    ),
+    ScriptedStep(
+        actions=[("click", {"index": 4})],
+        url="https://example.test/confirm",
+        outputs=["confirmed the table"],
+    ),
+]
+
+
+#: The message the turn renders into, which the job's cards fold into.
+TURN_MESSAGE = "bot-msg-e2e"
+
+
+def _configurable(**extra: Any) -> dict[str, Any]:
+    return {
+        "conversation_id": CONVERSATION,
+        "stream_id": STREAM,
+        "bot_message_id": TURN_MESSAGE,
+        **extra,
+    }
+
+
+async def _drive(graph: Any, world: JobWorld, prompt: str = "book me a table") -> Any:
+    run = await run_graph(
+        graph,
+        prompt,
+        thread_id=CONVERSATION,
+        user_id=USER,
+        **_configurable(),
+    )
+    await world.settle()
+    return run
+
+
+async def test_the_runs_answer_is_told_once_by_the_executor_run_it_wakes() -> None:
+    """The tool call acks at once and carries no result: the answer has to land in the executor inbox, once, and wake a run to tell it."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
+            run = await _drive(graph, world)
+
+    assert run.ran("browser_task")
+    assert "started in the background" in (run.result_for("browser_task") or "")
+    assert len(world.enqueued) == 1
+    assert world.enqueued[0].in_background is True
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_RESULT]
+    assert world.result_told().startswith("The table is booked for 7pm on Friday.")
+    assert world.woken == [CONVERSATION]
+    # The run's thread group is keyed by the call that started it, injected by the tool node.
+    assert world.enqueued[0].tool_call_id == "b1"
+    groups = {
+        frame["subagent_start"]["subagent_id"]
+        for frame in world.frames()
+        if "subagent_start" in frame
+    }
+    assert groups == {"browser:b1"}
+
+
+async def test_the_browser_tool_is_bound_from_the_first_model_call_and_there_is_no_join() -> None:
+    """The result arrives on its own: a join tool would only give the model a second way to tell it."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run = await _drive(graph, world)
+
+    assert "browser_task" in run.bound[0]
+    assert all("wait_for_browser_task" not in bound for bound in run.bound)
+
+
+async def test_a_workflow_run_blocks_for_the_ending_and_tells_it_itself() -> None:
+    """A headless run has no live conversation to be woken in: the call returns the ending, and nothing else tells it."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "Booked."]) as graph:
+            run = await run_graph(
+                graph,
+                "book me a table",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                **_configurable(execution_mode="background"),
+            )
+            await world.settle()
+
+    assert world.enqueued[0].in_background is False
+    told = run.result_for("browser_task") or ""
+    assert told.startswith(
+        f"The browser task you started (job {world.enqueued[0].job_id}) has ended."
+    )
+    assert "The table is booked for 7pm on Friday." in told
+    assert world.told == []
+    assert world.woken == []
+
+
+async def test_every_step_card_reaches_the_jobs_stream_and_the_turns_message() -> None:
+    """The cards are produced in a worker with no stream of its own; without the relay the user watches nothing and reloads to nothing."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await _drive(graph, world)
+
+    cards = world.cards()
+    assert [card["kind"] for card in cards] == ["session", "step", "step", "result"]
+    assert [card["index"] for card in cards if card["kind"] == "step"] == [1, 2]
+    assert cards[3]["status"] == BrowserSessionStatus.COMPLETED.value
+    [(message_id, saved)] = world.saved
+    assert message_id == TURN_MESSAGE
+    assert [
+        entry["data"]["kind"] for entry in saved if entry["tool_name"] == "browser_task_data"
+    ] == ["session", "step", "step", "result"]
+
+
+async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_line() -> None:
+    """Bots never see the SSE stream: a run the worker does not mirror to the platform is a run a Discord user watches in silence."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await run_graph(
+                graph,
+                "book me a table",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                **_configurable(
+                    source_category=SourceCategory.BOT.value,
+                    conversation_source=ConversationSource.DISCORD.value,
+                ),
+            )
+            await world.settle()
+
+    assert world.bot_photos == [
+        SHOT_URL_TEMPLATE.format(index=1),
+        SHOT_URL_TEMPLATE.format(index=2),
+    ]
+    # Session start is silent, and the assistant voices the outcome once, so the
+    # progress channel closes with the recap link alone (else results arrive twice).
+    assert world.bot_messages == [f"📽 Here's a recap of the run: {REPLAY_URL}"]
+
+
+async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
+    """One browser per conversation: a second run would fight the first for the same live view, and the model would narrate whichever finished last."""
+    second = call("browser_task", {"task": "also check the menu"}, "b2")
+    # The first run waits on the page, so it still holds the conversation when the second asks.
+    still_running = [ScriptedStep(actions=[], await_stop=True)]
+    async with browser_job_world(STREAM, steps=still_running) as world:
+        async with executor_graph([RETRIEVE, START, second, "Started."]) as graph:
+            run = await run_graph(
+                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
+            )
+            await cancel_executor.ainvoke(
+                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
+            )
+            await world.settle()
+
+    assert len(world.enqueued) == 1
+    refusal = run.results_from("tools")
+    assert any("already running in this conversation" in text for text in refusal)
+    assert any(world.enqueued[0].job_id in text for text in refusal)
+
+
+async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> None:
+    """The run outlives the turn that started it, so a stop typed later has to reach the job itself rather than a stream nobody is on."""
+    waiting = [ScriptedStep(actions=[], await_stop=True)]
+    async with browser_job_world(STREAM, steps=waiting) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            # No settle here on purpose: the run is still on the page, which is
+            # the only state a stop can reach and the whole point of this journey.
+            await run_graph(
+                graph,
+                "book me a table",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                **_configurable(),
+            )
+            assert world.enqueued, "the job never reached the worker"
+
+            reply = await cancel_executor.ainvoke(
+                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
+            )
+            await world.settle()
+        assert await get_conversation_slot(CONVERSATION) is None
+
+    assert world.aborted == [world.enqueued[0].job_id]
+    assert reply == "Stopped the browser task."
+    assert world.cards()[-1]["status"] == BrowserSessionStatus.CANCELLED.value
+    # The stop already told the user: nobody is woken, and the thread only learns it ended.
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
+    assert world.woken == []
+
+
+async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation() -> None:
+    """A job that dies silently wedges the conversation's one browser slot and leaves the user watching a run that already stopped."""
+    async with browser_job_world(
+        STREAM, host=ScriptedHost(error=RuntimeError("the browser host fell over"))
+    ) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run = await _drive(graph, world)
+        assert await get_conversation_slot(CONVERSATION) is None
+
+    # Told once, by whichever run reads the inbox: the live one if the run failed before its
+    # next model call, else the one its landing woke.
+    drained = [
+        str(m.content)
+        for prompt in run.prompts
+        for m in prompt
+        if str(m.content).startswith("<browser_result>")
+    ]
+    told = [entry.text for entry in world.told if entry.tag is AgentTag.BROWSER_RESULT]
+    [said] = drained + told
+    assert "DID NOT COMPLETE" in said
+
+
+async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> None:
+    """The user takes over mid-run and leaves an instruction; the agent reads it as its takeover's result, and the closing reply answers it."""
+    from app.constants.browser import HandoffDecision, HandoffStatus
+    from app.services.browser.handoff import resolve_handoff
+
+    note = "skip the login, just tell me the opening hours"
+    steps = [
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
+    ]
+
+    async with browser_job_world(STREAM, steps=steps) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run_task = asyncio.create_task(
+                run_graph(
+                    graph,
+                    "book me a table",
+                    thread_id=CONVERSATION,
+                    user_id=USER,
+                    **_configurable(),
+                )
+            )
+            handoff_id = await _wait_for_pending_handoff(world)
+            assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER, note) == (
+                HandoffStatus.COMPLETED
+            )
+            await run_task
+            await world.settle()
+
+    assert world.browser.takeover_notes == [note]
+    handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
+    assert [card["status"] for card in handoffs] == ["pending", "completed"]
+    told = world.result_told()
+    # The closing reply is written against the original booking otherwise, and
+    # confirms a table nobody booked, so what the user said leads; a note is what
+    # they said, not a replaced request, until browser_step_done marks it one.
+    assert told.startswith(f'While it ran, the user said: "{note}"')
+    assert "REPLACED THE REQUEST" not in told
+    assert "The table is booked for 7pm on Friday." in told
+
+
+async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_result() -> None:
+    """Regression: the run read what the chat reply asked for and the closing still reported the login it had been told to skip."""
+    note = "never mind the login, just tell me the opening hours"
+    steps = [
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
+    ]
+
+    async with browser_job_world(STREAM, steps=steps) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run_task = asyncio.create_task(
+                run_graph(
+                    graph,
+                    "book me a table",
+                    thread_id=CONVERSATION,
+                    user_id=USER,
+                    **_configurable(),
+                )
+            )
+            await _wait_for_pending_handoff(world)
+            await _reply_in_chat(browser_step_done, {"note": note, "redirect": True})
+            await run_task
+            await world.settle()
+
+    assert world.browser.takeover_notes == [note]
+    told = world.result_told()
+    assert told.startswith("THE USER REPLACED THE REQUEST MID-RUN")
+    assert note in told.splitlines()[0]
+    assert told.index(note) < told.index("The table is booked for 7pm on Friday.")
+
+
+async def _wait_for_pending_handoff(world: JobWorld, count: int = 1) -> str:
+    """Return the id of the count-th handoff the run put on the turn's stream."""
+    for _ in range(500):
+        pending = [
+            card
+            for card in world.cards()
+            if card["kind"] == "handoff" and card["status"] == "pending"
+        ]
+        if len(pending) >= count:
+            return str(pending[count - 1]["handoff_id"])
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"the run asked the user to take over {len(pending)} times, not {count}")
+
+
+# ---------------------------------------------------------------------------
+# A handoff ends when the user says they are done, and only then
+# ---------------------------------------------------------------------------
+
+LOGIN_URL = "https://example.test/login"
+SIGNED_IN_URL = "https://example.test/account"
+SIGN_IN = ScriptedStep(
+    actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "credentials")
+)
+BOOK_SIGNED_IN = ScriptedStep(actions=[("click", {"index": 4})], url=SIGNED_IN_URL)
+
+
+async def _reply_in_chat(chat_tool: BaseTool, args: dict[str, Any]) -> None:
+    """Act on the paused task as comms does on the user's chat reply, from that turn's identity."""
+    await chat_tool.ainvoke(
+        args, config={"configurable": {"thread_id": CONVERSATION, "user_id": USER}}
+    )
+
+
+async def _still_pending(handoff_id: str) -> bool:
+    record = await get_handoff(handoff_id)
+    return record is not None and record.status is HandoffStatus.PENDING
+
+
+async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says_so() -> None:
+    """Regression: a login handoff ended itself once the page left the sign-in path, and its cookies were saved as the user's login."""
+    async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
+        with long_waits_pass_quickly():
+            async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+                run_task = asyncio.create_task(_drive(graph, world))
+                handoff_id = await _wait_for_pending_handoff(world)
+                await world.sit_through_lease_renewals(1)
+                world.browser.url = SIGNED_IN_URL
+                # Ten minutes on the signed-in page, and the user has said nothing.
+                await world.sit_through_lease_renewals(20)
+                assert await _still_pending(handoff_id)
+                assert world.browser.takeover_notes == []
+
+                await _reply_in_chat(browser_step_done, {})
+                await run_task
+        saves = session_mod.save_storage_state.await_args_list
+
+    handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
+    assert [card["status"] for card in handoffs] == ["pending", "completed"]
+    assert world.browser.takeover_notes == [BROWSER_TAKEOVER_DONE_NOTE]
+    assert world.browser.next_step == 2
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["success"]) for card in results] == [
+        (BrowserSessionStatus.COMPLETED.value, True)
+    ]
+    assert [call.args[1:] for call in saves] == [("example.test", LIVE_STORAGE_STATE)]
+
+
+async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_nothing() -> None:
+    """Regression: the user said done while the login had failed, and the failed attempt's cookies were saved over their login."""
+    async with browser_job_world(STREAM, steps=[SIGN_IN, SIGN_IN, BOOK_SIGNED_IN]) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run_task = asyncio.create_task(_drive(graph, world))
+            await _wait_for_pending_handoff(world)
+            # Said while the page is still the sign-in form: the login did not take.
+            await _reply_in_chat(browser_step_done, {})
+            await _wait_for_pending_handoff(world, count=2)
+            await _reply_in_chat(stop_browser_task, {})
+            await run_task
+        saves = session_mod.save_storage_state.await_args_list
+
+    handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
+    assert [card["status"] for card in handoffs] == ["pending", "completed", "pending", "cancelled"]
+    assert world.browser.next_step == 2
+    assert saves == []
+
+
+# ---------------------------------------------------------------------------
+# A stuck run ends with what it found
+# ---------------------------------------------------------------------------
+
+
+async def test_a_stuck_run_ends_failed_with_what_it_read_and_why() -> None:
+    """Nobody is asked how to go on: a run that cannot finish says what it found, and that is what the executor tells."""
+    closing = "The booking page lists tables at 6pm and 8pm; I could not reserve one."
+    steps = [ScriptedStep(actions=[("done", {"text": closing, "success": False})])]
+
+    async with browser_job_world(STREAM, steps=steps, successful=False, summary=closing) as world:
+        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
+            await _drive(graph, world)
+
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["summary"]) for card in results] == [
+        (BrowserSessionStatus.FAILED.value, closing)
+    ]
+    told = world.result_told()
+    assert "DID NOT COMPLETE" in told
+    assert closing in told
+
+
+def _step_actions(world: JobWorld) -> list[dict[str, Any]]:
+    """Return the action each step card carries, which is what the policy actually decided."""
+    return [
+        {action["name"]: action["inputs"] for action in card["actions"]}
+        for card in world.cards()
+        if card["kind"] == "step" and card["actions"]
+    ]
+
+
+async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine() -> None:
+    """The primary engine crashing under a run is not the task failing: the run moves to the fallback engine, back on the page it was reading, and finishes there."""
+    steps = [
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
+        ScriptedStep(actions=[], engine_dies=True),
+        ScriptedStep(
+            actions=[("navigate", {"url": "https://example.test/book"})],
+            url="https://example.test/book",
+        ),
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
+    ]
+
+    async with browser_job_world(
+        STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
+    ) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await _drive(graph, world)
+        history = job_runner.record_browser_task.await_args.kwargs
+
+    sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
+    assert sessions == ["sess-1", "sess-2"]
+    # One count across both engines: the fallback's first step follows the
+    # primary's last, so no step card, recap frame or history row is overwritten.
+    step_cards = [card for card in world.cards() if card["kind"] == "step"]
+    assert [card["index"] for card in step_cards] == [1, 2, 3]
+    assert history["step_screenshots"] == [SHOT_URL_TEMPLATE.format(index=i) for i in (1, 2, 3)]
+    assert all(history["step_goals"])
+    assert [next(iter(action)) for action in _step_actions(world)] == [
+        "input",
+        "navigate",
+        "input",
+    ]
+    assert _step_actions(world)[1]["navigate"]["url"] == "https://example.test/book"
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["success"], card["steps"]) for card in results] == [
+        (BrowserSessionStatus.COMPLETED.value, True, 3)
+    ]
+    assert world.result_told().startswith("The table is booked for 7pm on Friday.")
+    # A dead engine has no state to give: the fallback opens with saved logins.
+    assert world.storage_reads == []
+    assert world.seeded_states == [None, None]
+
+
+async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engines() -> None:
+    """Regression: a user signed in through the live view, the next page did not work in the fast engine, and the full browser opened signed out."""
+    from app.constants.browser import HandoffDecision, HandoffStatus
+    from app.services.browser import session as session_mod
+    from app.services.browser.handoff import resolve_handoff
+
+    steps = [
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(
+            actions=[], switch=EngineSwitchReason.STAYS_EMPTY, url="https://example.test/book"
+        ),
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
+    ]
+
+    async with browser_job_world(
+        STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
+    ) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            run_task = asyncio.create_task(_drive(graph, world))
+            handoff_id = await _wait_for_pending_handoff(world)
+            assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER) == (
+                HandoffStatus.COMPLETED
+            )
+            await run_task
+        saves = session_mod.save_storage_state.await_args_list
+
+    sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
+    assert sessions == ["sess-1", "sess-2"]
+    # The fallback opened as the browser the user signed in on, not a fresh one.
+    assert world.storage_reads == ["sess-1"]
+    assert world.seeded_states == [None, LIVE_STORAGE_STATE]
+    # The completed sign-in is saved once, from the browser that holds it last.
+    assert [call.args[1:] for call in saves] == [("example.test", LIVE_STORAGE_STATE)]
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["success"]) for card in results] == [
+        (BrowserSessionStatus.COMPLETED.value, True)
+    ]
+
+
+#: A memory of an earlier run of the exact task the user is asking for again.
+_MEMORY_OF_THE_LAST_LOGIN = (
+    "Logged the user in to the-internet.herokuapp.com through the browser; the page "
+    "showed 'You logged into a secure area!'"
+)
+_JOURNAL_OF_THE_LAST_LOGIN = "Logged in to the-internet.herokuapp.com with the browser"
+_LOGIN_REQUEST = "Use the browser to log me in to https://the-internet.herokuapp.com/login"
+
+
+def _block_holding(slot: str, text: str) -> str:
+    """Return the blank-line-separated block of slot that holds text."""
+    return next(block for block in slot.split("\n\n") if text in block)
+
+
+async def _executor_thread_remembering_the_last_login(brief: str) -> list[Any]:
+    """Seed the executor's thread the way prepare_executor_execution does, with the login remembered."""
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.agents.context.tiers import AgentTier
+    from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
+    from app.helpers.message_helpers import create_system_message
+    from app.memory.context import RECENT_ACTIVITY_HEADING
+    from app.models.memory_models import MemoryEntry, MemorySearchResult
+
+    memory = MagicMock()
+    memory.recall = AsyncMock(
+        return_value=MemorySearchResult(
+            memories=[
+                MemoryEntry(
+                    content=_MEMORY_OF_THE_LAST_LOGIN,
+                    occurred_start=datetime(2026, 9, 23, tzinfo=UTC),
+                )
+            ],
+            total_count=1,
+        )
+    )
+    memory.get_core_context = AsyncMock(
+        return_value=f"{RECENT_ACTIVITY_HEADING}\n- {_JOURNAL_OF_THE_LAST_LOGIN}"
+    )
+    with patch("app.agents.context.fetchers.memory_engine", memory):
+        return await build_initial_messages(
+            system_message=create_system_message(user_id=USER, agent_type="executor"),
+            agent_name="executor_agent",
+            task=brief,
+            seed=ThreadSeed(
+                tier=AgentTier.EXECUTOR,
+                configurable={"user_id": USER, "thread_id": CONVERSATION},
+                user_id=USER,
+            ),
+        )
+
+
+async def test_a_browser_request_the_executor_remembers_doing_still_runs_the_browser() -> None:
+    """Regression: with a memory of the same login, the executor answered from it and never called browser_task."""
+    from app.agents.context.slots import MEMORY_RECALL_MARKER
+    from app.agents.context.text import MEMORY_IS_PAST_NOTE
+    from app.agents.core.subagents.subagent_runner import compose_executor_brief
+    from app.constants.agents import DONE_EVIDENCE_RULE
+    from tests.e2e._harness.graph_run import NUDGE_NODE
+
+    brief = compose_executor_brief(
+        _LOGIN_REQUEST,
+        ["The user is logged in at the-internet.herokuapp.com"],
+        verbatim_request=_LOGIN_REQUEST,
+    )
+    messages = await _executor_thread_remembering_the_last_login(brief)
+    answer_from_memory = "You are already logged in; the earlier run did it."
+
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([answer_from_memory, START, "Started."]) as graph:
+            run = await run_graph(
+                graph,
+                brief,
+                thread_id=CONVERSATION,
+                user_id=USER,
+                state={"messages": messages, "todos": []},
+                **_configurable(),
+            )
+            await world.settle()
+
+    # Offered: bound before the model's first word, never left to retrieval.
+    assert "browser_task" in run.bound[0]
+    # Framed: the memory reaches the model as a record of the past, not a result.
+    first_prompt = run.prompts[0]
+    memory_slot = next(
+        str(m.content) for m in first_prompt if m.additional_kwargs.get(MEMORY_RECALL_MARKER)
+    )
+    # Each block of remembered history carries it: the recalled memory and the journal.
+    assert MEMORY_IS_PAST_NOTE in _block_holding(memory_slot, _MEMORY_OF_THE_LAST_LOGIN)
+    assert MEMORY_IS_PAST_NOTE in _block_holding(memory_slot, _JOURNAL_OF_THE_LAST_LOGIN)
+    # Required: the brief's definition of done asks for this run's own evidence,
+    assert DONE_EVIDENCE_RULE in brief
+    # and an answer from memory alone is sent back until the browser actually runs.
+    assert NUDGE_NODE in run.visited
+    assert run.ran("browser_task")
+    assert len(world.enqueued) == 1
+
+
+_FORM = "https://forms.test/web-form.html"
+_SENT = "https://forms.test/submitted-form.html?my-text=Aryan"
+
+
+_SECRET = "gaia-test-123"
+
+
+async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> None:
+    """A form sent by GET carries the password in the page it lands on; the user reads cards and the answer, never it."""
+    landed = f"{_SENT}&my-password={_SECRET}"
+    steps = [
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": _SECRET})],
+            url=_FORM,
+            fields={1: {"type": "password", "name": "my-password"}},
+            outputs=[f"Typed {_SECRET}"],
+        ),
+        ScriptedStep(
+            actions=[("click", {"index": 2})], url=landed, outputs=[f"landed on {landed}"]
+        ),
+    ]
+    answer = f"Signed in with {_SECRET}; landed on {landed}."
+
+    async with browser_job_world(STREAM, steps=steps, summary=answer) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await _drive(graph, world)
+
+    assert _SECRET not in json.dumps(world.cards())
+    assert _SECRET not in world.result_told()
+
+
+# ---------------------------------------------------------------------------
+# A stop and a lost browser end the run where they should
+# ---------------------------------------------------------------------------
+
+
+async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
+    from app.agents.tools import executor_tool
+    from app.config.settings import settings
+
+    # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
+    monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 5)
+    # A stop-everything also clears the conversation's approvals, which live in Mongo:
+    # stand in for them, as the executor tool's own tests do, so this journey only
+    # exercises the browser stop and never reaches the process-wide Mongo client.
+    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", AsyncMock(return_value=[]))
+    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", AsyncMock(return_value=[]))
+    async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await run_graph(
+                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
+            )
+            handoff_id = await _wait_for_pending_handoff(world)
+            reply = await cancel_executor.ainvoke(
+                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
+            )
+            await world.settle()
+        record = await get_handoff(handoff_id)
+        # Read inside the world: outside it the fake Redis is gone and this would reach
+        # the process-wide client, bound to an earlier test's closed loop.
+        slot = await get_conversation_slot(CONVERSATION)
+
+    assert reply == "Stopped the browser task."
+    assert record is not None
+    assert record.status is HandoffStatus.CANCELLED
+    handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]
+    assert handoffs == ["pending", "cancelled"]
+    results = [card["status"] for card in world.cards() if card["kind"] == "result"]
+    assert results == [BrowserSessionStatus.CANCELLED.value]
+    assert world.browser.next_step == 1
+    assert slot is None
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
+    assert world.woken == []
+
+
+async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_run() -> None:
+    """The host reaped the paused browser: nobody can finish the step there, so the run ends failed instead of asking until its window runs out."""
+    async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
+        with long_waits_pass_quickly():
+            async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+                run_task = asyncio.create_task(_drive(graph, world))
+                await _wait_for_pending_handoff(world)
+                world.dead_sessions.add("sess-1")
+                await run_task
+
+    handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]
+    assert handoffs == ["pending", HandoffStatus.FAILED.value]
+    results = [
+        (card["status"], card["summary"]) for card in world.cards() if card["kind"] == "result"
+    ]
+    assert results == [(BrowserSessionStatus.FAILED.value, BROWSER_RUN_SESSION_LOST_SUMMARY)]
+    assert world.browser.next_step == 1

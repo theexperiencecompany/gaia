@@ -114,7 +114,7 @@ export default function BotsPage() {
             Your AI, Where You Already Work
           </h1>
           <p className="max-w-xl text-center text-lg text-zinc-400">
-            Chat, delegate tasks, and get answers — right inside Discord,
+            Chat, delegate tasks, and get answers, right inside Discord,
             Telegram, Slack, WhatsApp, or iMessage.
           </p>
         </div>

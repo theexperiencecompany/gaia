@@ -5,21 +5,19 @@
  * They are used by the shared command handlers in commands.ts
  * and can also be called directly when assembling custom responses.
  *
- * formatBotError is the single error formatter for all bots.
- * It checks for GaiaApiError (preserves HTTP status), then
- * falls back to axios-style errors, then generic Error messages.
+ * formatBotError is the single error formatter for all bots: it words the
+ * reason classifyBotFailure gives, then falls back to generic Error messages.
  */
 import { slackifyMarkdown } from "slackify-markdown";
-import { GaiaApiError } from "../api";
 import type {
   BotConversation,
   BotTodo,
   BotWorkflow,
   PlatformName,
 } from "../types";
-import { getErrorReason, getHttpStatus } from "./logger";
-import { isTableRow, isTableSeparator } from "./text";
-import { wideLog } from "./wide-events";
+import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
+import { getErrorReason } from "./logger";
+import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
 
 /**
  * Formats a workflow for display in a bot message.
@@ -457,7 +455,7 @@ export function renderForPlatform(
 export function buildAuthLinkMessage(authUrl: string): string {
   return (
     "**Link your account to GAIA**\n\n" +
-    "Tap below to sign in — once you're connected, you can use everything right here.\n" +
+    "Tap below to sign in. Once you're connected, you can use everything right here.\n" +
     `${authUrl}`
   );
 }
@@ -528,25 +526,43 @@ function serverMessage(error: unknown): string | null {
     : null;
 }
 
-/**
- * Formats an error message for user display.
- */
-export function formatBotError(error: unknown): string {
-  const status =
-    error instanceof GaiaApiError ? error.status : getHttpStatus(error);
+/** The actionable reply when the platform account has no GAIA user behind it. */
+function buildAccountNotLinkedMessage(platform?: PlatformName): string {
+  const account = platform
+    ? `Your ${PLATFORM_DISPLAY_NAMES[platform]} account`
+    : "Your account";
+  return `🔗 ${account} isn't linked to GAIA yet. Send /auth to link it.`;
+}
 
-  if (status === 401) {
+/**
+ * Formats an error message for user display. Pure: the caller records the
+ * failure (recordBotFailure) before showing this.
+ */
+export function formatBotError(
+  error: unknown,
+  platform?: PlatformName,
+): string {
+  const reason = classifyBotFailure(error);
+
+  if (reason === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
+    return buildAccountNotLinkedMessage(platform);
+  }
+
+  if (reason === BOT_FAILURE_REASON.BOT_API_KEY_INVALID) {
+    return "❌ This bot can't reach GAIA right now. We've been alerted; please try again later.";
+  }
+
+  if (reason === BOT_FAILURE_REASON.UNAUTHORIZED) {
     return "❌ Authentication required. Use `/auth` to link your account.";
   }
 
-  if (status === 404) {
+  if (reason === BOT_FAILURE_REASON.NOT_FOUND) {
     return "❌ Not found. Please check the ID and try again.";
   }
 
-  if (status === 429) {
+  if (reason === BOT_FAILURE_REASON.RATE_LIMITED) {
     // Three different walls return 429 (flat anti-spam, plan message quota, daily AI-usage
-    // budget) and only the body says which. Collapsing them all to "you're sending too fast"
-    // told an out-of-allowance user to slow down, which waiting never fixes.
+    // budget) and only the body says which; waiting never fixes an exhausted allowance.
     const fromServer = serverMessage(error);
     return fromServer
       ? `⏳ ${fromServer}`
@@ -556,7 +572,7 @@ export function formatBotError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
 
   if (message.includes("timed out") || message.includes("timeout")) {
-    return "⏳ The request timed out. The server may be busy — please try again in a moment.";
+    return "⏳ The request timed out. The server may be busy. Please try again in a moment.";
   }
 
   if (
@@ -582,8 +598,7 @@ export function formatBotError(error: unknown): string {
     message.includes("ECONNRESET") ||
     message.includes("socket hang up") ||
     // Node's premature-close error, raised verbatim as `aborted` when a proxy
-    // hangs up mid-response. Without this it lands in the unhandled bucket
-    // below and shows up as a spurious `unhandled_bot_error`.
+    // hangs up mid-response.
     message === "aborted"
   ) {
     return "🔌 Connection interrupted. Please try again.";
@@ -593,6 +608,5 @@ export function formatBotError(error: unknown): string {
     return "⚠️ Response was incomplete. Please try again.";
   }
 
-  wideLog.error("unhandled_bot_error", undefined, error);
   return "❌ Something went wrong. Please try again later.";
 }

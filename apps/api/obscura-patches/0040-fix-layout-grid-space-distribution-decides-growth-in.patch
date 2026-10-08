@@ -1,0 +1,111 @@
+From 928c4d6babe5aa7f12e3e967a49f80974369a0d4 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 04:32:53 +0530
+Subject: [PATCH] fix(layout): grid space distribution decides growth, increase
+ and freezing from one headroom
+
+distribute_space_up_to_limits chose the tracks that share space by
+`size + increase < limit` but applied an increase only when
+`size + increase <= limit + THRESHOLD` held for the computed amount, and took
+the iteration's increase from `limit - size - increase` again. In f32 a track
+one ulp below its limit passed the first test, made the computed increase
+round to zero, and was never frozen: the loop spun forever (Wikipedia's
+nested navbox tables). Patch 0024 capped the iterations, which ended the hang
+but threw away whatever space was still to hand out when the cap hit.
+
+Every test now reads one value, the track's remaining headroom: a track
+shares space while it is positive, its increase is bounded by it, and a
+track that reaches its limit lands on it exactly and is frozen. Each
+iteration therefore hands out all the space or freezes a track, so the loop
+ends within one iteration per track in exact and in f32 arithmetic; the
+bound remains only for non-finite inputs.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ vendor/taffy/src/compute/grid/track_sizing.rs | 56 +++++++++----------
+ 1 file changed, 26 insertions(+), 30 deletions(-)
+
+diff --git a/vendor/taffy/src/compute/grid/track_sizing.rs b/vendor/taffy/src/compute/grid/track_sizing.rs
+index 90aa5c4..1cbf35e 100644
+--- a/vendor/taffy/src/compute/grid/track_sizing.rs
++++ b/vendor/taffy/src/compute/grid/track_sizing.rs
+@@ -1386,53 +1386,49 @@ fn distribute_space_up_to_limits(
+     /// extra space when it gets to exactly zero, we will stop when it falls below this amount
+     const THRESHOLD: f32 = 0.01;
+ 
+-    // Each iteration freezes at least one track at its limit, so the loop always completes within
+-    // `tracks.len() + 1` iterations in exact arithmetic. In f32 a track can sit one ulp below its limit
+-    // while `limit - size - increase` rounds to zero: it is neither frozen nor able to grow, and no space
+-    // is ever distributed. Non-finite values can stall the loop the same way. Bound the iteration count
+-    // so termination does not depend on rounding.
+-    let max_iterations = tracks.len() + 1;
++    // A track can still grow while its remaining headroom is positive. The same headroom value decides
++    // which tracks share this iteration's space, bounds the increase, and freezes the track that reaches
++    // its limit, so every iteration either hands out all the space or freezes at least one track. (With
++    // the filter and the update testing different expressions, f32 rounding left a track one ulp below
++    // its limit that was never frozen and never grew, and the loop spun forever.)
++    let headroom = |track: &GridTrack| {
++        track_limit(track) - (track_affected_property(track) + track.item_incurred_increase)
++    };
++    let can_grow = |track: &GridTrack| track_is_affected(track) && headroom(track) > 0.0;
+ 
+     let mut space_to_distribute = space_to_distribute;
+-    for _ in 0..max_iterations {
++    // At most one iteration per track plus the final one, by the argument above; the bound only
++    // guards against non-finite inputs, for which comparisons do not order.
++    for _ in 0..=tracks.len() {
+         if space_to_distribute <= THRESHOLD {
+             break;
+         }
+-        let track_distribution_proportion_sum: f32 = tracks
+-            .iter()
+-            .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
+-            .filter(|track| track_is_affected(track))
+-            .map(&track_distribution_proportion)
+-            .sum();
+-
+-        if track_distribution_proportion_sum == 0.0 {
++        let track_distribution_proportion_sum: f32 =
++            tracks.iter().filter(|track| can_grow(track)).map(&track_distribution_proportion).sum();
++        if track_distribution_proportion_sum <= 0.0 {
+             break;
+         }
+ 
+-        // Compute item-incurred increase for this iteration
+         let min_increase_limit = tracks
+             .iter()
+-            .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
+-            .filter(|track| track_is_affected(track))
+-            .map(|track| {
+-                (track_limit(track)
+-                    - track_affected_property(track)
+-                    - track.item_incurred_increase)
+-                    / track_distribution_proportion(track)
+-            })
++            .filter(|track| can_grow(track))
++            .map(|track| headroom(track) / track_distribution_proportion(track))
+             .min_by(|a, b| a.total_cmp(b))
+-            .unwrap(); // We will never pass an empty track list to this function
++            .unwrap(); // A positive proportion sum means at least one track can grow
+         let iteration_item_incurred_increase =
+             f32_min(min_increase_limit, space_to_distribute / track_distribution_proportion_sum);
+ 
+-        for track in tracks.iter_mut().filter(|track| track_is_affected(track)) {
+-            let current_size = track_affected_property(track) + track.item_incurred_increase;
+-            let limit = track_limit(track);
+-            if current_size >= limit {
++        for track in tracks.iter_mut() {
++            if !can_grow(track) {
+                 continue;
+             }
++            let remaining = headroom(track);
+             let increase = iteration_item_incurred_increase * track_distribution_proportion(track);
+-            if increase > 0.0 && current_size + increase <= limit + THRESHOLD {
++            if increase >= remaining {
++                // The track reaches its limit: land on it exactly, so it is frozen from now on.
++                track.item_incurred_increase = track_limit(track) - track_affected_property(track);
++                space_to_distribute -= remaining;
++            } else {
+                 track.item_incurred_increase += increase;
+                 space_to_distribute -= increase;
+             }

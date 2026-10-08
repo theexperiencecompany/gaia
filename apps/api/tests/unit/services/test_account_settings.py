@@ -187,7 +187,7 @@ class TestSetPreferencesEdges:
 
         assert excinfo.value.message == "Response style cannot be empty"
         assert excinfo.value.fix == (
-            "Use one of brief, detailed, casual, professional — or pass a custom label"
+            "Use one of brief, detailed, casual, professional, or pass a custom label"
         )
         assert excinfo.value.status_code == 400
         repo.update_prefs.assert_not_awaited()

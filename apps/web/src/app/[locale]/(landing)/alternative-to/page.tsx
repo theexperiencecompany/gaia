@@ -156,7 +156,7 @@ export default async function AlternativesHubPage() {
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
             Honest breakdowns of how GAIA replaces 30 popular productivity, AI,
-            and automation tools — with fit scores and migration steps for each.
+            and automation tools, with fit scores and migration steps for each.
           </p>
         </header>
 

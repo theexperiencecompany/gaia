@@ -646,23 +646,25 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         *,
         field: Literal["activity_content", "log_content"],
         suffix: str,
+        once: str | None = None,
     ) -> TodoDocument | None:
         """Append suffix to a note body in one atomic update so concurrent appends cannot lose each other.
 
         Leading newlines are stripped so an append onto an empty body starts clean.
+        With once, a body that already contains it is left as is, so a write
+        retried after its acknowledgement was lost cannot append twice.
         """
+        body: dict[str, object] = {"$ifNull": ["$" + field, ""]}
+        appended: dict[str, object] = {
+            "$ltrim": {"input": {"$concat": [body, suffix]}, "chars": "\n"}
+        }
+        value = (
+            appended
+            if once is None
+            else {"$cond": [{"$gte": [{"$indexOfCP": [body, once]}, 0]}, body, appended]}
+        )
         pipeline: list[dict[str, object]] = [
-            {
-                "$set": {
-                    field: {
-                        "$ltrim": {
-                            "input": {"$concat": [{"$ifNull": ["$" + field, ""]}, suffix]},
-                            "chars": "\n",
-                        }
-                    },
-                    "updated_at": datetime.now(UTC),
-                }
-            }
+            {"$set": {field: value, "updated_at": datetime.now(UTC)}}
         ]
         raw = await self._raw_collection().find_one_and_update(
             {**self._identity_filter(todo_id), "user_id": user_id},

@@ -39,7 +39,7 @@ export function DevSkipOnboarding() {
       router.push("/c");
     } catch (error) {
       console.error("[DevSkipOnboarding] skip failed:", error);
-      toast.error("Dev skip failed — check the console.");
+      toast.error("Dev skip failed. Check the console.");
     } finally {
       setLoading(false);
     }

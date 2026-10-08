@@ -118,6 +118,16 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         pool.shutdown(wait=False)
 
 
+def _warn_metadata_unavailable(user_id: str, error: Exception) -> None:
+    """Record that an event card goes out without calendar names and colors, and why."""
+    log.warning(
+        f"{LogTag.TOOL} Calendar metadata unavailable, events shown without calendar names",
+        user_id=user_id,
+        error_type=type(error).__name__,
+        error=str(error),
+    )
+
+
 def _extract_datetime(dt: GoogleCalendarEventDateTime) -> str:
     """Return the timed dateTime of a Google start/end, else its all-day date."""
     return dt.dateTime or dt.date or ""
@@ -302,7 +312,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         try:
             user = _run_sync(user_repository.get(user_id), timeout=5)
             user_timezone = user.timezone if user else None
-        except Exception:
+        except Exception as e:
+            log.warning(
+                f"{LogTag.TOOL} Could not load user for day summary timezone, using UTC",
+                user_id=user_id,
+                error_type=type(e).__name__,
+            )
             user_timezone = None
 
         # Timezone.parse is offset-safe (a stored ±HH:MM home zone makes
@@ -341,7 +356,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             formatted_events = [event.model_dump() for event in events]
 
         busy_minutes: float = 0.0
@@ -427,7 +443,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             calendar_fetch_data = [event.model_dump() for event in events]
 
         writer = _optional_stream_writer()
@@ -467,7 +484,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in result.matching_events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             calendar_search_data = events
 
         writer = _optional_stream_writer()
@@ -713,7 +731,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             color_map, name_map = {}, {}
 
         created_events: list[CreatedEventSummary] = []

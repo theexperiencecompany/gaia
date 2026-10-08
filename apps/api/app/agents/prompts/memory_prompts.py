@@ -1606,29 +1606,6 @@ AUTOMATION PATTERNS:
 """,
 )
 
-BROWSERBASE_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Browserbase",
-    entity_instructions="""
-## BROWSERBASE-SPECIFIC EXTRACTION:
-
-1. URL PATTERNS:
-   - Common sites visited
-   - Navigation patterns
-
-2. AUTOMATION PATTERNS:
-   - Workflow types
-   - Session configurations
-""",
-    provider_specific_instructions="""
-## BROWSERBASE-SPECIFIC MEMORIES:
-
-BROWSER PATTERNS:
-- Navigation workflows
-- Form filling preferences
-- Screenshot/capture patterns
-""",
-)
-
 POSTHOG_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
     provider_name="PostHog",
     entity_instructions="""
@@ -1755,5 +1732,165 @@ WEBINAR PREFERENCES:
    - Q&A handling preferences
    - Panelist organization
    - Recording auto-start settings
+""",
+)
+
+# =============================================================================
+# CAL.COM MEMORY PROMPT
+# =============================================================================
+
+CALCOM_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Cal.com",
+    entity_instructions="""
+## CAL.COM-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. EVENT TYPE MAPPINGS (CRITICAL):
+   - Event type name <-> slug <-> id <-> duration
+   - "The '30 Min Intro' event type is slug 'intro' (id 123456), 30 minutes"
+
+2. BOOKING LINKS:
+   - User's Cal.com username and public booking URLs
+   - "User's Cal.com page is https://cal.com/janedoe"
+
+3. RECURRING ATTENDEES:
+   - Attendee name <-> email for people who book with the user regularly
+""",
+    provider_specific_instructions="""
+## CAL.COM-SPECIFIC MEMORIES TO CAPTURE:
+
+SCHEDULING PREFERENCES:
+   - Which event type to use for which kind of meeting
+   - "User sends the 15 min event type for quick calls with candidates"
+   - Preferred meeting hours, buffers, and timezone
+""",
+)
+
+# =============================================================================
+# CALENDLY MEMORY PROMPT
+# =============================================================================
+
+CALENDLY_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Calendly",
+    entity_instructions="""
+## CALENDLY-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. EVENT TYPE MAPPINGS (CRITICAL):
+   - Event type name <-> URI <-> duration
+   - "The 'Discovery Call' Calendly event type is https://api.calendly.com/event_types/ABC123 (45 min)"
+
+2. USER IDENTITY:
+   - User's Calendly user URI and organization URI
+   - User's public scheduling page URL
+
+3. RECURRING INVITEES:
+   - Invitee name <-> email for people who book regularly
+""",
+    provider_specific_instructions="""
+## CALENDLY-SPECIFIC MEMORIES TO CAPTURE:
+
+SHARING PREFERENCES:
+   - Whether the user prefers single-use links or the public page
+   - Which event type to share with which audience
+   - "User shares the 'Discovery Call' link with new prospects"
+""",
+)
+
+# =============================================================================
+# OUTLOOK MEMORY PROMPT
+# =============================================================================
+
+OUTLOOK_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Outlook",
+    entity_instructions="""
+## OUTLOOK-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. CONTACT MAPPINGS (CRITICAL):
+   - Name <-> email address for people the user corresponds with
+   - "Priya Nair is priya.nair@contoso.com (finance team)"
+
+2. MAIL FOLDERS AND CALENDARS:
+   - Folder name <-> folder id for folders the user files mail into
+   - Calendar name <-> calendar id when the user works with more than one
+
+3. MAILBOX IDENTITY:
+   - The user's Outlook address and mailbox timezone
+""",
+    provider_specific_instructions="""
+## OUTLOOK-SPECIFIC MEMORIES TO CAPTURE:
+
+EMAIL PREFERENCES:
+   - Tone, sign-off and signature conventions the user approves
+   - Which folders specific senders' mail is filed into
+
+MEETING PREFERENCES:
+   - Whether meetings should include a Teams link by default
+   - Default meeting length and preferred hours
+""",
+)
+
+# =============================================================================
+# JIRA MEMORY PROMPT
+# =============================================================================
+
+JIRA_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Jira",
+    entity_instructions="""
+## JIRA-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. PROJECT MAPPINGS (CRITICAL):
+   - Project name <-> project key <-> site
+   - "The 'Mobile App' project has key MOB"
+
+2. PEOPLE:
+   - Display name <-> Jira accountId for assignees the user works with
+   - "Alex Kim's Jira accountId is 5b10ac8d82e05b22cc7d4ef5"
+
+3. BOARDS AND SPRINTS:
+   - Board name <-> board id; the user's active sprint naming
+""",
+    provider_specific_instructions="""
+## JIRA-SPECIFIC MEMORIES TO CAPTURE:
+
+WORKFLOW CONVENTIONS:
+   - Default issue type, priority and labels the user applies
+   - Transition names for the team's workflow ("In Review", "Ready for QA")
+   - JQL filters the user relies on
+""",
+)
+
+# =============================================================================
+# DROPBOX MEMORY PROMPT
+# =============================================================================
+
+DROPBOX_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Dropbox",
+    entity_instructions="""
+## DROPBOX-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. PATH MAPPINGS (CRITICAL):
+   - Friendly name <-> exact Dropbox path
+   - "The client contracts folder is /Work/Clients/Contracts"
+
+2. KEY FILES:
+   - Frequently used files with their paths and purpose
+   - "The monthly invoice template is /Finance/Templates/invoice.docx"
+""",
+    provider_specific_instructions="""
+## DROPBOX-SPECIFIC MEMORIES TO CAPTURE:
+
+ORGANIZATION PREFERENCES:
+   - Where the user files new documents by type
+   - Naming conventions for files and folders
+   - Who the user regularly shares folders with
 """,
 )

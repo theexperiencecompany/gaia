@@ -16,8 +16,16 @@ import random
 from typing import cast
 from uuid import uuid4
 
+from arq import Retry
+
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
+from app.agents.core.background.todo_run_delivery import (
+    FinishedTodoRun,
+    finish_todo_run,
+    hand_unfinished_run_to_job,
+    report_unfinished_run,
+)
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     SILENT_RUN_GUIDANCE,
@@ -27,6 +35,8 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
+    TODO_RUN_FINISH_MAX_TRIES,
+    TODO_RUN_FINISH_RETRY_DELAY,
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_EVENTS_PROMPT_MAX_CHARS,
     TodoActivityEvent,
@@ -64,6 +74,7 @@ from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 MAX_RETRY_ATTEMPTS = 3
@@ -648,6 +659,29 @@ async def resume_tracked_todo(
         raise
     finally:
         await pool.delete(lock_key)
+
+
+async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -> str:
+    """Finish the delivery a tracked todo run's own attempt could not: send, then record.
+
+    The todo is never run again for it. Each try picks up only what is still
+    undone, so a message already sent is not sent twice.
+    """
+    # The envelope already puts the job id (the run's) and job_try on the event.
+    log.set(todo_id=undone.todo_id)
+    user, _ = await _load_user_with_tz(undone.user_id)
+    left = await finish_todo_run(undone, user)
+    if left is None:
+        return f"finished:{undone.todo_id}"
+    if left.finish_entry != undone.finish_entry:
+        # Sent on this try, entry not written: a replay of this job would send again.
+        await hand_unfinished_run_to_job(left)
+        return f"sent:{undone.todo_id} (entry handed on)"
+    job_try = ctx["job_try"]
+    if job_try < TODO_RUN_FINISH_MAX_TRIES:
+        raise Retry(defer=TODO_RUN_FINISH_RETRY_DELAY * 2 ** (job_try - 1))
+    report_unfinished_run(left, f"still failing after {job_try} tries")
+    return f"failed:{undone.todo_id} (gave up)"
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:

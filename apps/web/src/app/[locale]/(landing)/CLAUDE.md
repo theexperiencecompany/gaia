@@ -21,8 +21,8 @@ title: { template: `%s | GAIA` }
 **Never include "GAIA" or "| GAIA" in a page's own title string** — it renders as `Page | GAIA | GAIA`.
 
 ```typescript
-// Wrong — "Features — GAIA | GAIA"
-export const metadata = { title: "Features — GAIA" };
+// Wrong — "Features: GAIA | GAIA"
+export const metadata = { title: "Features: GAIA" };
 
 // Wrong — "AI Chief of Staff | GAIA | GAIA"
 export const metadata = { title: "AI Chief of Staff | GAIA" };
@@ -30,15 +30,15 @@ export const metadata = { title: "AI Chief of Staff | GAIA" };
 // Correct — "Features | GAIA"
 export const metadata = { title: "Features" };
 
-// Correct — "AI Chief of Staff — Your Proactive AI | GAIA"
-export const metadata = { title: "AI Chief of Staff — Your Proactive AI" };
+// Correct — "AI Chief of Staff: Your Proactive AI | GAIA"
+export const metadata = { title: "AI Chief of Staff: Your Proactive AI" };
 ```
 
 This applies to both static `export const metadata` objects and dynamic `generateMetadata()` functions — strip `| GAIA` from any returned title string.
 
 **Title formatting:**
 - Lead with the most descriptive keyword, not the brand name
-- Use em-dash `—` (not pipe `|`) to separate primary topic from subtitle
+- Use a colon (not a pipe `|`, never an em dash) to separate primary topic from subtitle: `AI Chief of Staff: Your Proactive AI That Runs Your Day`
 - Keep under 60 characters where possible
 - No trailing punctuation
 

@@ -31,11 +31,14 @@ from app.agents.core.background.executor_channel import ExecutorInbox, decide_dr
 from app.agents.core.background.executor_queue import (
     LockClaim,
     PreparedQueuedTask,
+    build_lock_value,
     build_run_item,
     close_detached_stream,
     extend_lock_if_owned,
-    is_executor_busy,
+    hold_run_alive,
+    keep_alive,
     prepare_run_from_item,
+    reclaim_dead_lock,
     release_lock_if_owned,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
@@ -54,10 +57,11 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
     thread_messages,
 )
-from app.constants.agents import AgentTag
+from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
+    EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
@@ -70,6 +74,7 @@ from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
@@ -147,6 +152,9 @@ async def run_executor_background(
         if executor_user_id:
             capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
 
+        alive = await keep_alive(
+            run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
+        )
         try:
             with span() as elapsed_active:
                 result = await _execute_executor(task, configurable, run, resume)
@@ -185,6 +193,7 @@ async def run_executor_background(
                 result_type=result_type,
             )
         finally:
+            alive.cancel()
             await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
             if resume is not None:
                 # This run held the conversation's resume slot (claimed at dispatch).
@@ -338,6 +347,31 @@ class _ExecutorResult(NamedTuple):
     ctx: SubagentExecutionContext | None = None
 
 
+async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
+    """Stop the browser job a failed run left in flight, so it cannot speak a second ending.
+
+    The job outlives the turn, so without this its result wakes a new run
+    minutes after comms said this one failed.
+    """
+    try:
+        job_id = await stop_browser_job(conversation_id)
+    except Exception as e:  # the run's own error message must still reach comms
+        log.error(
+            f"{LogTag.AGENT} Could not cancel the browser job left by a failed executor run",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            error=str(e),
+        )
+        return
+    if job_id is not None:
+        log.warning(
+            f"{LogTag.AGENT} Cancelled the browser job orphaned by a failed executor run",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            browser={"job_id": job_id},
+        )
+
+
 async def _execute_executor(
     task: str,
     configurable: AgentConfigurable,
@@ -394,10 +428,15 @@ async def _execute_executor(
             stream_id=stream_id,
             error=str(e),
         )
+        await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
         return _ExecutorResult(EXECUTOR_STEP_LIMIT_MESSAGE, "error", ctx=ctx)
     except Exception as e:
+        # The raw exception is for the log, never for comms: a bare string (often
+        # empty) is not a story, so comms invented one and offered to re-run work
+        # that may have half-landed. Say what happened and ask instead.
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
-        return _ExecutorResult(str(e), "error", ctx=ctx)
+        await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
+        return _ExecutorResult(EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx)
 
 
 async def _finalize_executor_run(
@@ -531,6 +570,14 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
     held until resolve_approval resumes this thread. Re-arms the lock's TTL to
     cover the approval window, and still signals SSE so the user sees the approval card.
     """
+    # A parked run has no process to beat for it: it lives as long as its park.
+    await hold_run_alive(
+        run.conversation_id,
+        build_lock_value(run.stream_id, run.task_id or ""),
+        HIL_PAUSED_LOCK_TTL_SECONDS,
+    )
+    # Work handed over until the resume must still be there when it reads.
+    await ExecutorInbox(run.conversation_id).keep_for(HIL_PAUSED_LOCK_TTL_SECONDS)
     if not await extend_lock_if_owned(
         run.conversation_id, run.stream_id, run.task_id, HIL_PAUSED_LOCK_TTL_SECONDS
     ):
@@ -666,12 +713,12 @@ async def deliver_to_executor(
 
     A live run absorbs the task through its inbox, an idle one gets a run started
     to carry it; never a second parallel answer. Tagged work (a subagent result)
-    always travels through the inbox so it arrives framed. The busy check is a
-    fast path — the claim inside _start_executor_run is the atomic decision.
+    always travels through the inbox so it arrives framed. A free (or freed) lock is
+    a fast path — the claim inside _start_executor_run is the atomic decision.
     """
     if (
         tag is None
-        and not await is_executor_busy(conversation_id)
+        and await reclaim_dead_lock(conversation_id)
         and await _start_executor_run(
             conversation_id, user, task, workflow_execution_id=workflow_execution_id
         )
@@ -682,9 +729,25 @@ async def deliver_to_executor(
         f"{LogTag.AGENT} Work handed to the live executor run",
         conversation_id=conversation_id,
     )
-    # Recheck AFTER appending: only a free lock needs a rescue, and the rescue
-    # carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
-    if not await is_executor_busy(conversation_id) and await _start_executor_run(
+    await wake_executor_for_inbox(
+        conversation_id, user, workflow_execution_id=workflow_execution_id
+    )
+
+
+async def wake_executor_for_inbox(
+    conversation_id: str,
+    user: AuthenticatedUser,
+    *,
+    workflow_execution_id: str | None = None,
+) -> None:
+    """Start a run to read work already in the inbox when no live run will drain it.
+
+    Checked after the append: only a free lock needs a rescue, and the rescue
+    carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
+    A lock whose run died with its process is reclaimed first, or it would hold
+    the work back for the lock's whole TTL.
+    """
+    if await reclaim_dead_lock(conversation_id) and await _start_executor_run(
         conversation_id,
         user,
         EXECUTOR_CARRY_TASK,
@@ -772,7 +835,7 @@ async def _carry_pending_into_new_run(
         for entry in drain.retire:
             await inbox.retire(entry)
         carry = drain.inject
-        if not any(entry.tag is not AgentTag.EXECUTOR_INTERRUPTED for entry in carry):
+        if all(entry.tag in NON_WAKING_TAGS for entry in carry):
             return
 
         # Leave the carried entries in the inbox: the new run's drain hook injects

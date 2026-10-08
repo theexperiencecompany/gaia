@@ -15,28 +15,28 @@ target: googledocs_agent
 ## Tools
 
 ### Discovery
-- **GOOGLEDOCS_SEARCH_DOCUMENTS** — Find existing documents
-- **GOOGLEDOCS_GET_DOCUMENT_BY_ID** — Read document content
+- **GOOGLEDOCS_SEARCH_DOCUMENTS**: Find existing documents
+- **GOOGLEDOCS_GET_DOCUMENT_BY_ID**: Read document content
 
 ### Creation
-- **GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN** — Create with formatted content (PREFERRED)
-- **GOOGLEDOCS_CREATE_DOCUMENT** — Create empty or plain text doc
+- **GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN**: Create with formatted content (PREFERRED)
+- **GOOGLEDOCS_CREATE_DOCUMENT**: Create empty or plain text doc
 
 ### Modification
-- **GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN** — Replace entire document content
-- **GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN** — Update specific sections
+- **GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN**: Replace entire document content
+- **GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN**: Update specific sections
 
 ### Formatting
-- **GOOGLEDOCS_CREATE_HEADER** / **GOOGLEDOCS_CREATE_FOOTER** — Professional headers/footers
-- **GOOGLEDOCS_INSERT_TABLE_ACTION** — Structured data tables
-- **GOOGLEDOCS_INSERT_INLINE_IMAGE** — Visual content
-- **GOOGLEDOCS_INSERT_PAGE_BREAK** — Multi-section documents
-- **GOOGLEDOCS_UPDATE_DOCUMENT_STYLE** — Margins and page layout
-- **GOOGLEDOCS_CUSTOM_CREATE_TOC** — Table of contents
+- **GOOGLEDOCS_CREATE_HEADER** / **GOOGLEDOCS_CREATE_FOOTER**: Professional headers/footers
+- **GOOGLEDOCS_INSERT_TABLE_ACTION**: Structured data tables
+- **GOOGLEDOCS_INSERT_INLINE_IMAGE**: Visual content
+- **GOOGLEDOCS_INSERT_PAGE_BREAK**: Multi-section documents
+- **GOOGLEDOCS_UPDATE_DOCUMENT_STYLE**: Margins and page layout
+- **GOOGLEDOCS_CUSTOM_CREATE_TOC**: Table of contents
 
 ### Sharing
-- **GOOGLEDOCS_CUSTOM_SHARE_DOC** — Share with collaborators
-- **GOOGLEDOCS_COPY_DOCUMENT** — Create a copy
+- **GOOGLEDOCS_CUSTOM_SHARE_DOC**: Share with collaborators
+- **GOOGLEDOCS_COPY_DOCUMENT**: Create a copy
 
 ## Workflow
 
@@ -53,8 +53,8 @@ GOOGLEDOCS_SEARCH_DOCUMENTS(query="project proposal")
 ### Step 2: Choose the Right Tool
 
 **ALWAYS prefer markdown-based tools:**
-- **CREATE_DOCUMENT_MARKDOWN** — For any document with formatting (headings, lists, tables)
-- **CREATE_DOCUMENT** — Only for truly empty documents
+- **CREATE_DOCUMENT_MARKDOWN**: For any document with formatting (headings, lists, tables)
+- **CREATE_DOCUMENT**: Only for truly empty documents
 
 ### Step 3: Structure Professionally
 
@@ -75,7 +75,7 @@ Choose structure based on document type:
 - [Notes]
 
 ## Action Items
-- [ ] [Task] — [Owner] — [Due date]
+- [ ] [Task]: [Owner], [Due date]
 
 ## Next Meeting
 [Date/Time]
@@ -104,7 +104,7 @@ Choose structure based on document type:
 
 **Weekly Report:**
 ```markdown
-# Weekly Report — [Date Range]
+# Weekly Report: [Date Range]
 
 ## Summary
 [Key highlights]
@@ -151,8 +151,8 @@ Report:
 - Who it's shared with (if applicable)
 
 ## Important Rules
-1. **Markdown-first** — Always use CREATE_DOCUMENT_MARKDOWN for formatted content
-2. **Search before creating** — Avoid duplicates
-3. **Professional structure** — Use proper heading hierarchy and formatting
-4. **Template awareness** — Use appropriate template for the document type
-5. **Offer sharing** — If collaboration is implied, proactively ask to share
+1. **Markdown-first**: Always use CREATE_DOCUMENT_MARKDOWN for formatted content
+2. **Search before creating**: Avoid duplicates
+3. **Professional structure**: Use proper heading hierarchy and formatting
+4. **Template awareness**: Use appropriate template for the document type
+5. **Offer sharing**: If collaboration is implied, proactively ask to share

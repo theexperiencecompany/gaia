@@ -22,6 +22,10 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.api.v1.endpoints.chat import _stream_from_redis
 from app.core.stream_manager import stream_manager
 from app.models.agent_models import RunningSubagent
+from app.schemas.browser_job import BrowserJobStatus
+from app.services.browser import job_stop
+from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
+from tests.browser_factories import make_browser_job_state
 from tests.conftest import FAKE_USER, FAKE_USER_2
 
 pytestmark = pytest.mark.unit
@@ -345,6 +349,28 @@ class TestCancelStream:
         assert response.json() == {"success": True, "stream_id": TURN, "error": None}
         assert await stream_manager.is_cancelled(TURN)
         assert await stream_manager.is_cancelled(subagent_stream)
+
+    async def test_stop_reaches_the_conversations_browser_run_whichever_turn_it_is_pressed_on(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A browser run outlives the turn that started it; the stream's own signal never reached it once that turn ended."""
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=True))
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        await set_latest_job(CONVERSATION, "job-1")
+        await put_job_state(
+            make_browser_job_state(
+                "job-1",
+                status=BrowserJobStatus.RUNNING,
+                task="t",
+                conversation_id="conv-of-the-job",
+                user_id="u1",
+                in_background=True,
+            )
+        )
+
+        await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert await job_cancel_requested("job-1")
 
     async def test_another_users_stream_is_refused_and_nothing_stops(
         self, client: AsyncClient

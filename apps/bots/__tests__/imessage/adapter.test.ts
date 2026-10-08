@@ -172,11 +172,10 @@ type PrivateAdapter = {
   ) => Promise<void>;
   messageQueues: Map<string, Promise<void>>;
   deliverOutbound: (destinationId: string, text: string) => Promise<void>;
-  deliverOutboundFile: (
+  sendOutboundFile: (
     destinationId: string,
-    a: Record<string, unknown>,
+    file: Record<string, unknown>,
   ) => Promise<void>;
-  fetchOutboundArtifact: ReturnType<typeof vi.fn>;
   imInstance: unknown;
   commands: Map<string, { execute: (p: unknown) => Promise<void> }>;
 };
@@ -415,7 +414,7 @@ describe("handleInboundMessage routing", () => {
 
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
-      "Voice notes aren't supported here yet — please type your message instead.",
+      "Voice notes aren't supported here yet. Please type your message instead.",
     );
     expect(sent.some((text) => text.includes("Something went wrong"))).toBe(
       false,
@@ -633,7 +632,7 @@ describe("multi-part (group) content", () => {
     expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
-      "Voice notes aren't supported here yet — please type your message instead.",
+      "Voice notes aren't supported here yet. Please type your message instead.",
     );
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
@@ -739,20 +738,18 @@ describe("outbound delivery", () => {
     expect(outSpace.send).toHaveBeenCalledWith("reminder text");
   });
 
-  it("deliverOutboundFile sends an attachment built from the artifact", async () => {
+  it("sendOutboundFile sends an attachment built from the artifact", async () => {
     const { priv } = makeAdapter();
     const outSpace = makeSpace();
     priv.imInstance = {
       space: { create: vi.fn(async () => outSpace), get: vi.fn() },
       user: vi.fn(),
     };
-    priv.fetchOutboundArtifact = vi.fn(async () => ({
-      data: new Uint8Array([1, 2, 3]),
-      contentType: "application/pdf",
-    }));
-    await priv.deliverOutboundFile("+15550100", {
+    await priv.sendOutboundFile("+15550100", {
+      data: Buffer.from([1, 2, 3]),
+      mime: "application/pdf",
       filename: "report.pdf",
-      content_type: "application/pdf",
+      caption: undefined,
     });
     expect(attachment).toHaveBeenCalledWith(expect.any(Buffer), {
       name: "report.pdf",

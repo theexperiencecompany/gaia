@@ -26,6 +26,7 @@ from app.models.integrations.reddit_hooks import (
     RedditPostThing,
     RedditSearchData,
 )
+from app.utils.composio_hooks.gmail_hooks import gmail_compose_require_subject_schema_modifier
 from app.utils.composio_hooks.reddit_hooks import (
     process_reddit_comment,
     process_reddit_post,
@@ -615,6 +616,19 @@ class TestGmailSchemaModifiers:
         result = gmail_send_email_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
         assert "GMAIL_CREATE_EMAIL_DRAFT" in result.description
         assert "GMAIL_SEND_DRAFT" in result.description
+
+    def test_compose_schema_requires_a_subject_and_says_what_to_write(self) -> None:
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"subject": {"type": "string"}}, "required": []}
+        )
+        result = gmail_compose_require_subject_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
+        subject = result.input_parameters["properties"]["subject"]
+        assert result.input_parameters["required"] == ["subject"]
+        assert subject["minLength"] == 1
+        assert subject["description"] == (
+            "Email subject line. Required: write a clear, specific subject "
+            "that summarizes the email. Never leave it blank."
+        )
 
     def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import (

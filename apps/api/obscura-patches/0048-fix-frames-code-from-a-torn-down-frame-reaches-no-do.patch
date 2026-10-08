@@ -1,0 +1,191 @@
+From 8f20a963c5b6b886c1e1b465ca2909d65c9aa1a6 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:39:28 +0530
+Subject: [PATCH] fix(frames): code from a torn-down frame reaches no document,
+ not the page's
+
+An op resolves its document from the calling realm's frame id or entered
+context. Once a frame was removed its realm left the registry, and both
+lookups fell back to the page: a function the page kept from a removed
+frame then wrote the frame's title and nodes into the page's document
+(node ids from the frame's tree naming unrelated page nodes), and the same
+fallback gave such code the page's cookies and navigation. A torn-down
+realm now resolves to a document-less state. The page's own realm is
+recognised by its context rather than by being the fallback.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/ops.rs                | 41 +++++++++++++++++--
+ crates/obscura-js/src/runtime.rs            |  4 +-
+ crates/obscura/tests/child_frame_scripts.rs | 44 +++++++++++++++++++++
+ 3 files changed, 84 insertions(+), 5 deletions(-)
+
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 8c0a4f5..19905c3 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -650,18 +650,43 @@ pub type SharedState = Rc<RefCell<ObscuraState>>;
+ /// from the event loop, where nothing had the chance to swap anything. Without
+ /// this a frame's `setTimeout` callback runs with the frame's globals but
+ /// writes to the *parent's* DOM.
+-#[derive(Default)]
+ pub struct RealmStates {
+     entries: Vec<(v8::Global<v8::Context>, u32, SharedState)>,
++    /// The page's own realm.
++    main: Option<v8::Global<v8::Context>>,
++    /// Whether any frame realm was ever registered; until then every caller is
++    /// the page, and the lookup is skipped.
++    had_frames: bool,
++    /// What a frame realm that has been torn down resolves to: a document-less
++    /// state, so code that outlives its frame (a function the page kept, a
++    /// late callback) reaches nothing rather than the page's document,
++    /// cookies or navigation.
++    detached: SharedState,
++}
++
++impl Default for RealmStates {
++    fn default() -> Self {
++        Self {
++            entries: Vec::new(),
++            main: None,
++            had_frames: false,
++            detached: Rc::new(RefCell::new(ObscuraState::new())),
++        }
++    }
+ }
+ 
+ impl RealmStates {
++    pub fn set_main(&mut self, context: v8::Global<v8::Context>) {
++        self.main = Some(context);
++    }
++
+     pub fn register(
+         &mut self,
+         context: v8::Global<v8::Context>,
+         frame_id: u32,
+         state: SharedState,
+     ) {
++        self.had_frames = true;
+         self.entries.push((context, frame_id, state));
+     }
+ 
+@@ -699,7 +724,12 @@ pub fn frame_state(op_state: &OpState, frame_id: u32) -> SharedState {
+         return page();
+     }
+     match op_state.try_borrow::<Rc<RefCell<RealmStates>>>() {
+-        Some(registry) => registry.borrow().by_frame_id(frame_id).unwrap_or_else(page),
++        Some(registry) => {
++            let registry = registry.borrow();
++            registry
++                .by_frame_id(frame_id)
++                .unwrap_or_else(|| registry.detached.clone())
++        }
+         None => page(),
+     }
+ }
+@@ -716,19 +746,22 @@ pub fn realm_state(scope: &mut v8::HandleScope, op_state: &OpState) -> SharedSta
+         None => return page(),
+     };
+     let registry = registry.borrow();
+-    if registry.entries.is_empty() {
++    if !registry.had_frames {
+         return page();
+     }
+     // Not `get_current_context`: an op is a native function bound in the page
+     // realm, so V8 reports that realm as current no matter who called it. This
+     // one answers "whose code is running", which is the question.
+     let current = scope.get_entered_or_microtask_context();
++    if registry.main.as_ref().is_none_or(|main| *main == current) {
++        return page();
++    }
+     registry
+         .entries
+         .iter()
+         .find(|(context, _, _)| *context == current)
+         .map(|(_, _, state)| state.clone())
+-        .unwrap_or_else(page)
++        .unwrap_or_else(|| registry.detached.clone())
+ }
+ 
+ #[derive(Clone, Copy, Debug, Default)]
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index b820fd1..aee0a9d 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -572,7 +572,9 @@ impl ObscuraJsRuntime {
+                 op_state.put(state_clone);
+                 // Empty until a frame realm exists, which is what keeps the
+                 // lookup free for pages that have no frames.
+-                op_state.put(Rc::new(RefCell::new(crate::ops::RealmStates::default())));
++                let mut realms = crate::ops::RealmStates::default();
++                realms.set_main(runtime.main_context());
++                op_state.put(Rc::new(RefCell::new(realms)));
+             }
+ 
+             let isolate_handle = runtime.v8_isolate().thread_safe_handle();
+diff --git a/crates/obscura/tests/child_frame_scripts.rs b/crates/obscura/tests/child_frame_scripts.rs
+index 9b72126..e7c0aee 100644
+--- a/crates/obscura/tests/child_frame_scripts.rs
++++ b/crates/obscura/tests/child_frame_scripts.rs
+@@ -43,6 +43,17 @@ const RESET_PARENT_HTML: &str = r#"<!doctype html><html><head><title>parent</tit
+ </script>
+ </body></html>"#;
+ 
++/// A frame whose function the page keeps after removing the frame.
++const DETACHED_CHILD_HTML: &str = r#"<!doctype html><html><head><title>child</title></head><body>
++<p>child</p>
++<script>
++  window.write = function () {
++    document.title = "WRITTEN-BY-DEAD-FRAME";
++    for (const p of document.querySelectorAll('p')) p.textContent = "WRITTEN-BY-DEAD-FRAME";
++  };
++</script>
++</body></html>"#;
++
+ const STATIC_PARENT_HTML: &str = r#"<!doctype html><html><head><title>parent</title></head><body>
+ <iframe src="/child.html"></iframe>
+ </body></html>"#;
+@@ -96,6 +107,8 @@ fn spawn_server(parent_html: &'static str) -> String {
+             let read = stream.read(&mut buf).unwrap_or(0);
+             let body = if buf[..read].starts_with(b"GET /child.html ") {
+                 CHILD_HTML
++            } else if buf[..read].starts_with(b"GET /child-detached.html ") {
++                DETACHED_CHILD_HTML
+             } else if buf[..read].starts_with(b"GET /child-messaging.html ") {
+                 MESSAGING_CHILD_HTML
+             } else {
+@@ -353,3 +366,34 @@ async fn changing_iframe_src_releases_the_previous_realm() {
+         );
+     }
+ }
++
++#[tokio::test]
++async fn a_removed_frames_functions_do_not_write_into_the_page() {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    let base = spawn_server(
++        r#"<!doctype html><html><head><title>parent</title></head><body>
++        <p id="kept">parent text</p><iframe src="/child-detached.html"></iframe></body></html>"#,
++    );
++
++    let browser = Browser::new().unwrap();
++    let mut page = browser.new_page().await.unwrap();
++    page.goto(&base).await.unwrap();
++    page.settle(2000).await;
++    assert_eq!(page.frame_urls().len(), 1, "the child frame never loaded");
++
++    page.evaluate(
++        "const frame = document.querySelector('iframe'); window.__write = frame.contentWindow.write; \
++         frame.remove(); true",
++    );
++    page.settle(200).await;
++    assert!(page.frame_urls().is_empty(), "the removed frame's realm survived");
++    page.evaluate("(() => { try { __write(); } catch (e) {} return true; })()");
++
++    assert_eq!(page.evaluate("document.title").as_str().unwrap_or(""), "parent");
++    assert_eq!(
++        page.evaluate("document.getElementById('kept').textContent")
++            .as_str()
++            .unwrap_or(""),
++        "parent text",
++    );
++}

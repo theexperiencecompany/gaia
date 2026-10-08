@@ -1,6 +1,6 @@
 """Shared fixtures for the worker task suites."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -46,5 +46,6 @@ def _free_conversation():
         patch("app.workers.tasks.workflow_tasks.try_acquire_lock", AsyncMock(return_value=True)),
         patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
         patch("app.workers.tasks.workflow_tasks.get_lock_holder", AsyncMock(return_value=None)),
+        patch("app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())),
     ):
         yield

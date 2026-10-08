@@ -25,12 +25,14 @@ from app.agents.context.text import (
     BUILTIN_OVERLAP_LINE,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
+    MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
 )
 from app.agents.prompts.new_user_prompts import build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
+from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
@@ -38,6 +40,7 @@ from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
+from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.device.device_service import (
@@ -162,8 +165,42 @@ async def build_agenda_and_activity_block(ctx: SectionContext) -> str:
     if agenda:
         parts.append(f"{AGENDA_HEADING}{agenda}")
     if activity:
-        parts.append(f"{RECENT_ACTIVITY_HEADING}{activity}")
+        # The journal is where a finished task shows up, so it says what it is.
+        parts.append(f"{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}{activity}")
     return "\n\n".join(parts)
+
+
+async def _recall(user_id: str, query: str) -> MemorySearchResult | None:
+    try:
+        return await memory_engine.recall(user_id, query, limit=MEMORY_RECALL_BLOCK_LIMIT)
+    except Exception as e:
+        log.warning(
+            "Error retrieving memories",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+        return None
+
+
+async def _recall_for_turn(ctx: SectionContext) -> MemorySearchResult | None:
+    """Reuse the recall comms made on the user's request; recall on query only when it missed.
+
+    Comms recalled on request_query moments ago, so that call is a cache hit. The
+    brief found the same memories on real turns plus noise its template words matched;
+    it earns its own recall only when the request matched nothing confidently ("yes do it").
+    """
+    if not ctx.user_id:
+        return None
+    if ctx.request_query and ctx.request_query != ctx.query:
+        shared = await _recall(ctx.user_id, ctx.request_query)
+        reused = shared is not None and shared.has_confident_match
+        log.set_ns("dynamic_context", memory_recall_reused=reused)
+        if reused:
+            return shared
+    if not ctx.query:
+        return None
+    return await _recall(ctx.user_id, ctx.query)
 
 
 async def build_memory_recall_block(ctx: SectionContext) -> str:
@@ -173,19 +210,8 @@ async def build_memory_recall_block(ctx: SectionContext) -> str:
     something happened — "how long ago", "which came first" — directly from the
     injected text instead of having to ask.
     """
-    if not (ctx.user_id and ctx.query):
-        return ""
-    try:
-        results = await memory_engine.recall(ctx.user_id, ctx.query, limit=5)
-    except Exception as e:
-        log.warning(
-            "Error retrieving memories",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=ctx.user_id,
-        )
-        return ""
-    if not results.memories:
+    results = await _recall_for_turn(ctx)
+    if results is None or not results.memories:
         return ""
     log.info("Added memories to context", memories_count=len(results.memories))
     notes = "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)

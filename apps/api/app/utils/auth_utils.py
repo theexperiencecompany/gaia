@@ -73,6 +73,7 @@ def build_user_context(
         first_steps=user_doc.first_steps,
         welcome_email_sent_at=user_doc.welcome_email_sent_at,
         marketing_contact_added_at=user_doc.marketing_contact_added_at,
+        feature_flags=user_doc.feature_flags,
     )
 
 

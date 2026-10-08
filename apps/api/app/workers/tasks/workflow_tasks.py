@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from app.agents.core.background.executor_queue import (
     build_lock_value,
     get_lock_holder,
+    keep_alive,
     release_lock_if_owned,
     try_acquire_lock,
 )
@@ -399,7 +400,7 @@ def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: d
 
 async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
     """Quota-exhausted copy, naming the reset time in the user's timezone when it can be rendered."""
-    body = f"'{workflow.title}' couldn't run — you've used all your workflow executions for today."
+    body = f"'{workflow.title}' couldn't run. You've used all your workflow executions for today."
     try:
         reset_dt = datetime.fromisoformat(reset_time_str)
         if reset_dt.tzinfo is None:
@@ -436,7 +437,7 @@ async def _rate_limit_failure_content(
         # different copy. Runs resume after the daily reset; the caller's
         # re-arm keeps the cron.
         body = (
-            f"'{workflow.title}' couldn't run — you're out of "
+            f"'{workflow.title}' couldn't run. You're out of "
             f"AI usage for today. It will run again after your usage resets."
         )
         if not is_pro:
@@ -449,8 +450,8 @@ async def _rate_limit_failure_content(
         # Plan-gated — feature isn't available on their plan at all. Only a
         # free user can reach here (Pro has access).
         body = (
-            f"'{workflow.title}' couldn't run — "
-            f"automated workflow execution is not available on your current plan. "
+            f"'{workflow.title}' couldn't run. "
+            f"Automated workflow execution is not available on your current plan. "
             f"Upgrade to {upgrade_plan} to unlock this feature."
         )
 
@@ -1185,6 +1186,18 @@ async def _admit_fire(
     return None
 
 
+async def _give_back_reservation(
+    conversation_id: str | None, lock_task_id: str | None, alive: asyncio.Task[None] | None
+) -> None:
+    """Stop saying the reservation lives, then give its lock back if this fire still holds it."""
+    if alive is not None:
+        alive.cancel()
+    # Ownership-checked, so the agent path's executor — which adopted this
+    # reservation and outlives the task — keeps the lock it now owns.
+    if conversation_id and lock_task_id:  # pragma: no mutate — set together, so and/or agree
+        await release_lock_if_owned(conversation_id, "", lock_task_id)
+
+
 async def _reserve_conversation(workflow: Workflow, workflow_id: str) -> tuple[str, str]:
     """Claim this workflow's conversation for the whole fire, or drop the fire.
 
@@ -1486,6 +1499,8 @@ async def execute_workflow_by_id(
     # every exit path. Both stay None until the reservation is actually taken.
     conversation_id: str | None = None  # pragma: no mutate — only read as truthy; "" equals None
     lock_task_id: str | None = None  # pragma: no mutate — only read as truthy; "" equals None
+    # Renews the reservation's liveness while this fire holds it, as every lock holder must.
+    reservation_alive: asyncio.Task[None] | None = None
 
     try:
         workflow = await scheduler.get_task(workflow_id)
@@ -1522,6 +1537,7 @@ async def execute_workflow_by_id(
         # overlaps an in-flight run must not spend quota on a run that never
         # happens, nor consume read-and-deleted trigger events it would then lose.
         conversation_id, lock_task_id = await _reserve_conversation(workflow, workflow_id)
+        reservation_alive = await keep_alive(conversation_id, build_lock_value(None, lock_task_id))
 
         # Cost wall BEFORE any execution record or LLM work: a spent daily budget
         # skips the run cleanly (no "failed" row); the except branch notifies and
@@ -1590,10 +1606,7 @@ async def execute_workflow_by_id(
             )
         return await _record_run_failure(e, workflow, workflow_id, execution_id, stamp.trigger_type)
     finally:
-        # Ownership-checked, so the agent path's executor — which adopted this
-        # reservation and outlives the task — keeps the lock it now owns.
-        if conversation_id and lock_task_id:  # pragma: no mutate — set together, so and/or agree
-            await release_lock_if_owned(conversation_id, "", lock_task_id)
+        await _give_back_reservation(conversation_id, lock_task_id, reservation_alive)
         await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)
 
 

@@ -122,7 +122,7 @@ export default function ApprovalRequestSection({
       markApprovalDecided(conversationId);
       onDecided(settled, attachedFeedback);
     } catch {
-      toast.error("Couldn't submit your decision — please try again");
+      toast.error("Couldn't submit your decision, please try again");
       setSubmitting(null);
       setPhase("idle");
     }

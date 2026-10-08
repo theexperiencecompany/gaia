@@ -32,12 +32,12 @@ Create a new email draft.
 - `attachments` is a list. Each item references ONE file by EITHER `workspace_path` (a file in the current session workspace, e.g. one the user uploaded or that a tool saved there) OR `url` (a fetchable link). Optionally add `name` to set the attachment filename.
 - To attach a **Google Drive** file: hand off to the Google Drive agent to find and download it (`GOOGLEDRIVE_DOWNLOAD_FILE`), then pass the download URL it returns as the attachment's `url`.
 - Example: `attachments: [{ "workspace_path": "sessions/<conv>/uploads/report.pdf" }, { "url": "<drive download url>", "name": "Deck.pdf" }]`.
-- Keep the total message under 25 MB. If a file cannot be read or uploaded, the draft is NOT created and you get an error — surface it to the user instead of pretending the draft was made.
+- Keep the total message under 25 MB. If a file cannot be read or uploaded, the draft is NOT created and you get an error. Surface it to the user instead of pretending the draft was made.
 
 **Body formatting:**
 - Write the body as Markdown. The backend converts it to HTML before Gmail sends, so `**bold**`, `### headings`, `- lists`, and `[links](url)` all render correctly in the recipient's inbox.
 - Draft beautiful, readable emails: short paragraphs, blank lines between sections, meaningful subject lines.
-- Do not emit raw HTML (`<p>`, `<div>`, etc.) — write Markdown and let the pipeline handle it.
+- Do not emit raw HTML (`<p>`, `<div>`, etc.): write Markdown and let the pipeline handle it.
 
 **Signature:**
 - Use the user's proper name from context (`User Name:`) in the sign-off.

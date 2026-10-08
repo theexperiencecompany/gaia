@@ -127,11 +127,16 @@ async def write_activity(
     return False
 
 
-async def append_activity(todo_id: str, user_id: str, entry: str) -> bool:
-    """Append an entry at the end of the activity log (chronological order)."""
+async def append_activity(
+    todo_id: str, user_id: str, entry: str, *, once: str | None = None
+) -> bool:
+    """Append an entry at the end of the activity log (chronological order).
+
+    once names the entry: a log that already holds it is left as is.
+    """
     suffix = entry if entry.startswith("\n") else f"\n{entry}"
     updated = await todo_repository.append_text_field(
-        todo_id, user_id, field="activity_content", suffix=suffix
+        todo_id, user_id, field="activity_content", suffix=suffix, once=once
     )
     if updated is None:
         log.warning("todo_canvas.activity_append_missing_todo", todo_id=todo_id)

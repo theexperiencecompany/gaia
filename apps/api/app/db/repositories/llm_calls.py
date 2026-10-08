@@ -165,6 +165,13 @@ class LLMCallUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class _TokenTotals(BaseModel):
+    """One user's summed calls, as the token_totals_for_user aggregation groups them."""
+
+    input: int = 0
+    output: int = 0
+
+
 class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
     collection_name = "llm_calls"
     document_model = LLMCallDocument
@@ -193,6 +200,24 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
         ]
         result = await self._raw_collection().bulk_write(operations, ordered=False)
         return int(result.upserted_count)
+
+    async def token_totals_for_user(self, user_id: str) -> tuple[int, int]:
+        """Return the input and output tokens every call made for one user adds up to."""
+        pipeline: list[dict[str, object]] = [
+            {"$match": {"user_id": user_id}},
+            {
+                "$group": {
+                    "_id": None,
+                    "input": {"$sum": "$input_tokens"},
+                    "output": {"$sum": "$output_tokens"},
+                }
+            },
+        ]
+        # One group, so one row at most: the first is the whole answer.
+        async for row in self._raw_collection().aggregate(pipeline):
+            totals = _TokenTotals.model_validate(row)
+            return totals.input, totals.output
+        return 0, 0
 
 
 llm_calls_repository = LLMCallsRepository()

@@ -11,8 +11,10 @@ turn's. HIL approval resume and deliver_to_executor are its consumers.
 Preparing is this module's job, spawning the runner's — the one-way dependency (runner -> queue) that keeps the import graph acyclic.
 """
 
+import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
+import time
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
@@ -26,7 +28,16 @@ from app.agents.core.background.session import (
     create_session,
     teardown_session,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_ALIVE_BEAT_SECONDS,
+    EXECUTOR_ALIVE_GIVE_UP_SECONDS,
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_ALIVE_TASK_NAME,
+    EXECUTOR_ALIVE_TTL,
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_STREAM_STARTED, DetachedStreamKind
 from app.core.stream_manager import StreamManager
@@ -37,6 +48,7 @@ from app.models.agent_models import (
     CONFIGURABLE_RUN_SCOPED_KEYS,
     AgentConfigurable,
 )
+from app.utils.background_tasks import spawn_background_task
 from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -211,15 +223,82 @@ async def get_lock_holder(conversation_id: str) -> str | None:
     return None if raw is None else decode_raw_item(raw)
 
 
-async def is_executor_busy(conversation_id: str) -> bool:
-    """Whether ANY executor run (running or parked) holds this conversation's lock.
+def _alive_key(conversation_id: str, lock_value: str) -> str:
+    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{lock_value}"
 
-    Redis-unavailable degrades to False, so deliver_to_executor attempts a run
-    start, whose own claim then decides.
+
+async def hold_run_alive(
+    conversation_id: str, lock_value: str, ttl_seconds: int = EXECUTOR_ALIVE_TTL
+) -> None:
+    """Say the holder named lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
+    await redis_cache.client.set(
+        _alive_key(conversation_id, lock_value), lock_value, ex=ttl_seconds
+    )
+
+
+async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
+    """Hold lock_value's liveness now and renew it until the returned task is cancelled.
+
+    The one liveness contract: whatever holds the busy lock keeps this running for
+    as long as it holds it, so a holder whose process died stops renewing. The
+    calling task is the holder: if its liveness cannot be written in time, it is
+    cancelled before the key can lapse and another run take the conversation.
     """
-    if not redis_cache.client:
+    # Always set: a coroutine awaited on the loop runs inside a task.
+    holder = cast("asyncio.Task[object]", asyncio.current_task())
+    await hold_run_alive(conversation_id, lock_value)
+    return spawn_background_task(
+        _renew_alive(conversation_id, lock_value, holder), name=EXECUTOR_ALIVE_TASK_NAME
+    )
+
+
+async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Task[object]) -> None:
+    proven_at = time.monotonic()
+    while True:
+        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
+        try:
+            await hold_run_alive(conversation_id, lock_value)
+            proven_at = time.monotonic()
+        except Exception as e:  # one failed write must not end the renewal of a live holder
+            unproven = time.monotonic() - proven_at
+            # Its key could lapse before the next write lands: stop rather than run beside
+            # whoever reclaims the lock.
+            stopping = unproven >= EXECUTOR_ALIVE_GIVE_UP_SECONDS
+            log.error(
+                f"{LogTag.AGENT} Could not renew an executor lock holder's liveness",
+                conversation_id=conversation_id,
+                holder=lock_value,
+                unproven_seconds=round(unproven, 1),
+                stopping_holder=stopping,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            if stopping:
+                holder.cancel("executor liveness lost")
+                return
+
+
+async def reclaim_dead_lock(conversation_id: str) -> bool:
+    """Free a busy lock whose holder died with its process; return whether no run holds the lock now.
+
+    Dead takes evidence: the holder's liveness lapsed, and the lock is older than
+    a holder takes to start renewing it. Compare-and-delete, so a live re-acquire stands.
+    """
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return True
+    if await redis_cache.client.exists(_alive_key(conversation_id, holder)):
         return False
-    return await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}") is not None
+    remaining = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+    # Every lock this code takes expires: one without a TTL has no age to judge it by.
+    if remaining < 0 or EXECUTOR_BUSY_TTL - remaining < EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS:
+        return False
+    log.warning(
+        f"{LogTag.AGENT} Reclaimed the busy lock of an executor run that died",
+        conversation_id=conversation_id,
+        holder=holder,
+    )
+    return await break_holder_lock(conversation_id, holder)
 
 
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:

@@ -220,7 +220,7 @@ export default function HomePage() {
           <DashboardSummary sections={sections} hasTodayItems={hasTodayItems} />
         ) : (
           <p className="text-lg text-zinc-400">
-            Your day is clear — time to plan ahead!
+            Your day is clear. Time to plan ahead!
           </p>
         )}
       </div>
