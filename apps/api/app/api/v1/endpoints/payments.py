@@ -270,10 +270,9 @@ async def handle_dodo_webhook(
         # below is driven by what GAIA managed to do with the event.
         webhook_data: dict[str, Any] = json.loads(payload)
 
-        log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
-
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
+        log.set_ns("payment", event_type=result.event_type)
 
         log.audit(
             "payment webhook processed",

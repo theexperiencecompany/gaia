@@ -12,6 +12,7 @@ from fastapi import BackgroundTasks
 from app.config.oauth_config import get_integration_by_config
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models.oauth_models import OAuthStateData
 from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection
@@ -32,7 +33,7 @@ class ConnectionRejected:
     reason: Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
 
 
-async def stored_connected_account_id(state_data: dict[str, str]) -> str | None:
+async def stored_connected_account_id(state_data: OAuthStateData) -> str | None:
     """Return the id minted at initiate time — the source of truth for the callback.
 
     Composio's hosted Connect Link redirects back without the connectedAccountId

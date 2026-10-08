@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 from app.models.files_models import FileDocument
-from app.schemas.file import FileDeletedResponse
+from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 
 FILE_BASE = "/api/v1"
 
@@ -191,7 +191,7 @@ class TestUpdateFile:
         call_kwargs = mock_update.call_args.kwargs
         assert call_kwargs["file_id"] == "file-001"
         assert call_kwargs["user_id"] == "507f1f77bcf86cd799439011"
-        assert call_kwargs["update_data"] == {"description": "New desc"}
+        assert call_kwargs["update_data"] == UpdateFileRequest(description="New desc")
 
     @patch(
         "app.api.v1.endpoints.file.FileService.update",

@@ -24,6 +24,7 @@ from app.constants.nurture import (
     NurtureStep,
 )
 from app.db.repositories.users import user_repository
+from app.models.nurture_models import NurtureHistoryEntry, NurtureState, NurtureStepStatus
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.email import EmailMessage, render_email_template, send_email
@@ -37,11 +38,11 @@ from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 from shared.py.wide_events import log
 
 
-def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
+def _within_frequency_caps(history: list[NurtureHistoryEntry], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history
-        if entry.get("status") == "sent" and (sent_at := as_utc(entry.get("at")))
+        if entry.status == NurtureStepStatus.SENT and (sent_at := as_utc(entry.at))
     ]
     if not sent_times:
         return True
@@ -51,7 +52,9 @@ def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
     return now - max(sent_times) >= timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)
 
 
-async def _record_step(user_id: str, step_key: str, now: datetime, status: str) -> None:
+async def _record_step(
+    user_id: str, step_key: str, now: datetime, status: NurtureStepStatus
+) -> None:
     await user_repository.record_nurture_step(user_id, step_key, at=now, status=status)
 
 
@@ -114,7 +117,7 @@ async def _select_step(
         if not _step_pending(step, days_since_signup, completed, onboarded):
             continue
         if step.skip_predicate and await SKIP_PREDICATES[step.skip_predicate](user):
-            await _record_step(user.id, step.key, now, status="skipped")
+            await _record_step(user.id, step.key, now, status=NurtureStepStatus.SKIPPED)
             continue
         return step
     return None
@@ -136,17 +139,17 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     if not created_at:
         return False
 
-    state = user.nurture or {}
-    if not _within_frequency_caps(state.get("history") or [], now):
+    state = NurtureState.model_validate(user.nurture or {})
+    if not _within_frequency_caps(state.history, now):
         return False
 
-    completed = set(state.get("completed_steps") or [])
+    completed = set(state.completed_steps)
     step = await _select_step(user, (now - created_at).days, completed, now)
     if step is None:
         return False
 
     await _send_step(user, step)
-    await _record_step(user.id, step.key, now, status="sent")
+    await _record_step(user.id, step.key, now, status=NurtureStepStatus.SENT)
     capture(UserId(user.id), NurtureEmailSent(step=step.key, day_offset=step.day_offset))
     log.set(user={"id": user.id}, nurture={"step": step.key})
     log.info(f"{LogTag.MAIL} Nurture email sent", step_key=step.key)

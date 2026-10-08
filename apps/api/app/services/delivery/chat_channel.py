@@ -78,7 +78,7 @@ def pick_chat_channel(
     skipped and falls through to the next. None means no bot platform is usable.
     """
     for platform in priority:
-        entry = linked.get(platform)
+        entry: PlatformLinkEntry | None = linked.get(platform)
         if entry is None or not preferences.get(platform, True):
             continue
         source = ConversationSource.coerce(platform)

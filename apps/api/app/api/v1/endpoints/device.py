@@ -68,7 +68,7 @@ async def _current_device(authorization: str = Header(default="")) -> DeviceToke
     server integrations the revoke just deleted, up to the token TTL.
     """
     token = authorization[7:] if authorization.startswith("Bearer ") else None
-    info = verify_device_token(token) if token else None
+    info: DeviceTokenClaims | None = verify_device_token(token) if token else None
     if not info:
         raise HTTPException(status_code=401, detail="Invalid or missing device token")
     device = await get_active_device(info["device_id"])

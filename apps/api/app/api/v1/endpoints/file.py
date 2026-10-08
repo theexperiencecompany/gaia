@@ -111,7 +111,7 @@ async def update_file_endpoint(
         result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
-            update_data=payload.model_dump(exclude_none=True),
+            update_data=payload,
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")

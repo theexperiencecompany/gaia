@@ -15,7 +15,7 @@ workflows, leaving it pauses them, and each analytics event fires once per
 transition.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -206,7 +206,7 @@ async def resolve_subscription_owner(sub_data: DodoSubscriptionData) -> str | No
     Callers acting on a client-supplied subscription id must compare this
     against the authenticated user before activating anything.
     """
-    metadata_user_id = sub_data.metadata.get("user_id")
+    metadata_user_id = sub_data.metadata.user_id
     if metadata_user_id:
         return str(metadata_user_id)
 
@@ -271,13 +271,15 @@ DESIRED_STATE: dict[SubscriptionEventKind, Callable[[DodoSubscriptionData], Subs
 }
 
 
-def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> dict[str, object]:
-    """Return the desired fields whose value differs from the row's."""
-    return {
-        field: value
-        for field, value in desired.model_dump(exclude_unset=True).items()
-        if getattr(row, field) != value
-    }
+def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> SubscriptionUpdate:
+    """Return desired narrowed to the fields whose value differs from the row's."""
+    return SubscriptionUpdate.model_validate(
+        {
+            field: value
+            for field, value in desired.model_dump(exclude_unset=True).items()
+            if getattr(row, field) != value
+        }
+    )
 
 
 def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
@@ -287,7 +289,7 @@ def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
 
 
 def _capture_transition(
-    event: SubscriptionEvent, user_id: str, changes: Mapping[str, object]
+    event: SubscriptionEvent, user_id: str, changes: SubscriptionUpdate
 ) -> None:
     """Fire the one analytics event this transition names, if it names one.
 
@@ -297,9 +299,7 @@ def _capture_transition(
     """
     data = event.data
     match event.kind:
-        case SubscriptionEventKind.ACTIVATED if (
-            changes.get("status") == SubscriptionStatus.ACTIVE.value
-        ):
+        case SubscriptionEventKind.ACTIVATED if changes.status == SubscriptionStatus.ACTIVE.value:
             track_subscription_event(
                 UserId(user_id),
                 SubscriptionActivated(
@@ -317,8 +317,8 @@ def _capture_transition(
                 SubscriptionRenewed(subscription_id=data.subscription_id, currency=data.currency),
             )
         case SubscriptionEventKind.CANCELLED if (
-            changes.get("cancel_at_next_billing_date") is True
-            or changes.get("status") == SubscriptionStatus.CANCELLED.value
+            changes.cancel_at_next_billing_date is True
+            or changes.status == SubscriptionStatus.CANCELLED.value
         ):
             track_subscription_event(
                 UserId(user_id),
@@ -328,7 +328,7 @@ def _capture_transition(
                     billing_interval=data.payment_frequency_interval,
                 ),
             )
-        case SubscriptionEventKind.EXPIRED if "status" in changes:
+        case SubscriptionEventKind.EXPIRED if "status" in changes.model_fields_set:
             track_subscription_event(
                 UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
             )
@@ -367,12 +367,12 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
                 "last_event_at": event.occurred_at,
                 "created_at": now,
                 "updated_at": now,
-                "metadata": data.metadata,
+                "metadata": data.metadata.model_dump(exclude_unset=True),
             }
         )
     )
 
-    _capture_transition(event, user_id, {"status": SubscriptionStatus.ACTIVE.value})
+    _capture_transition(event, user_id, SubscriptionUpdate(status=SubscriptionStatus.ACTIVE.value))
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
@@ -413,7 +413,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         return SubscriptionEventResult(SubscriptionEventOutcome.STALE, row.user_id)
 
     changes = _changes(row, DESIRED_STATE[event.kind](event.data))
-    if not changes:
+    if not changes.model_fields_set:
         log.info(
             f"{LogTag.PAYMENT} Subscription already in the reported state",
             event_kind=event.kind.value,
@@ -427,7 +427,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     # Matching on the id alone would let this older patch land on top of it.
     if not await subscription_repository.apply_update_by_dodo_id(
         data.subscription_id,
-        SubscriptionUpdate.model_validate({**changes, "last_event_at": event.occurred_at}),
+        changes.model_copy(update={"last_event_at": event.occurred_at}),
         if_not_newer_than=event.occurred_at,
     ):
         log.warning(
@@ -439,7 +439,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         return SubscriptionEventResult(SubscriptionEventOutcome.STALE, row.user_id)
     await invalidate_plan_cache(row.user_id)
 
-    new_status = changes.get("status")
+    new_status = changes.status
     _capture_transition(event, row.user_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)

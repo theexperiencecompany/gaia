@@ -286,7 +286,7 @@ class PaymentWebhookService:
         own metadata. Without a valid one the event is not sent (an anonymous
         payment would split the person's funnel) and the gap is logged.
         """
-        raw_user_id = payment_data.metadata.get("user_id")
+        raw_user_id = payment_data.metadata.user_id
         try:
             user_id = UserId(str(raw_user_id))
         except ValueError:

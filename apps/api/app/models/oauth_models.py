@@ -1,8 +1,8 @@
 """OAuth integration models."""
 
-from typing import Literal
+from typing import Annotated, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
 
 from app.models.mcp_config import (
@@ -13,6 +13,14 @@ from app.models.mcp_config import (
     SubAgentConfig,
 )
 from app.models.trigger_config import TriggerConfig
+
+
+class OAuthStateData(TypedDict):
+    """The OAuth state a callback consumes from Redis; validation rejects a missing or empty field."""
+
+    user_id: Annotated[str, StringConstraints(min_length=1)]
+    redirect_path: Annotated[str, StringConstraints(min_length=1)]
+    integration_id: Annotated[str, StringConstraints(min_length=1)]
 
 
 class IntegrationHowItWorksStep(BaseModel):

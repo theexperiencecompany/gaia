@@ -13,6 +13,7 @@ from app.constants.nurture import (
     NURTURE_MIN_DAYS_BETWEEN_EMAILS,
     NurtureStep,
 )
+from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.nurture.service import (
     _process_user,
@@ -42,31 +43,35 @@ def _step(**overrides) -> NurtureStep:
     return NurtureStep(**fields)
 
 
+def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
+    return NurtureHistoryEntry(step="step_a", at=at, status=status)
+
+
 class TestWithinFrequencyCaps:
     def test_empty_history_allows_send(self) -> None:
         assert _within_frequency_caps([], NOW) is True
 
     def test_ignores_non_sent_entries(self) -> None:
-        history = [{"status": "skipped", "at": NOW.replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SKIPPED, NOW.replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is True
 
     def test_blocks_after_weekly_cap(self) -> None:
         history = [
-            {"status": "sent", "at": (NOW - timedelta(days=d)).replace(tzinfo=None)}
+            _entry(NurtureStepStatus.SENT, (NOW - timedelta(days=d)).replace(tzinfo=None))
             for d in (1, 2, 3)
         ]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_under_weekly_cap_but_blocks_recent_send(self) -> None:
-        history = [{"status": "sent", "at": (NOW - timedelta(hours=1)).replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SENT, (NOW - timedelta(hours=1)).replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_when_last_send_is_old_enough(self) -> None:
         history = [
-            {
-                "status": "sent",
-                "at": (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
-            }
+            _entry(
+                NurtureStepStatus.SENT,
+                (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
+            )
         ]
         assert _within_frequency_caps(history, NOW) is True
 

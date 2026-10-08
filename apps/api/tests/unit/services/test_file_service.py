@@ -17,6 +17,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
+from app.schemas.file import UpdateFileRequest
 from app.services.files.service import (
     FileService,
     _log_upload_context,
@@ -864,7 +865,7 @@ class TestFileServiceUpdate:
             await FileService.update(
                 file_id="f-missing",
                 user_id=USER_ID,
-                update_data={"filename": "new.pdf"},
+                update_data=UpdateFileRequest(filename="new.pdf"),
             )
         assert exc_info.value.status_code == 404
 
@@ -876,7 +877,7 @@ class TestFileServiceUpdate:
         result = await FileService.update(
             file_id="f-1",
             user_id=USER_ID,
-            update_data={"filename": "new.pdf"},
+            update_data=UpdateFileRequest(filename="new.pdf"),
         )
 
         assert result.filename == "new.pdf"
@@ -891,15 +892,17 @@ class TestFileServiceUpdate:
         await FileService.update(
             file_id="f-1",
             user_id=USER_ID,
-            update_data={
-                "filename": "new.pdf",
-                # Everything below is attacker-supplied and must be dropped.
-                "user_id": "someone-else",
-                "file_id": "f-hijack",
-                "created_at": datetime(2000, 1, 1, tzinfo=UTC),
-                "is_admin": True,
-                "type": "text/html",
-            },
+            update_data=UpdateFileRequest.model_validate(
+                {
+                    "filename": "new.pdf",
+                    # Everything below is attacker-supplied and must be dropped.
+                    "user_id": "someone-else",
+                    "file_id": "f-hijack",
+                    "created_at": datetime(2000, 1, 1, tzinfo=UTC),
+                    "is_admin": True,
+                    "type": "text/html",
+                }
+            ),
         )
 
         call = mock_file_repo.apply_metadata_update.await_args
@@ -929,7 +932,7 @@ class TestFileServiceUpdate:
             result = await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
-                update_data={},
+                update_data=UpdateFileRequest(),
                 file_content=b"new file bytes",
                 conversation_id="conv-1",
             )
@@ -950,7 +953,7 @@ class TestFileServiceUpdate:
                 await FileService.update(
                     file_id="f-1",
                     user_id=USER_ID,
-                    update_data={},
+                    update_data=UpdateFileRequest(),
                     file_content=b"content",
                 )
             assert exc_info.value.status_code == 500
@@ -972,7 +975,7 @@ class TestFileServiceUpdate:
             result = await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
-                update_data={"description": "new desc"},
+                update_data=UpdateFileRequest(description="new desc"),
             )
         assert result.description == "new desc"
 
@@ -986,7 +989,7 @@ class TestFileServiceUpdate:
             await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
-                update_data={"filename": "new.pdf"},
+                update_data=UpdateFileRequest(filename="new.pdf"),
             )
         assert exc_info.value.status_code == 404
         assert "not found after update" in exc_info.value.detail
@@ -1007,7 +1010,7 @@ class TestFileServiceUpdate:
             await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
-                update_data={"description": "updated desc"},
+                update_data=UpdateFileRequest(description="updated desc"),
                 conversation_id=None,
             )
 
@@ -1025,7 +1028,7 @@ class TestFileServiceUpdate:
         result = await FileService.update(
             file_id="f-1",
             user_id=USER_ID,
-            update_data={"filename": "doc.pdf"},  # same name
+            update_data=UpdateFileRequest(filename="doc.pdf"),  # same name
         )
         assert result is not None
 
@@ -1044,7 +1047,7 @@ class TestFileServiceUpdate:
             await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
-                update_data={"filename": "renamed.pdf"},
+                update_data=UpdateFileRequest(filename="renamed.pdf"),
             )
 
         mock_reindex.assert_not_awaited()

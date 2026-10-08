@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError, field_validator
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -66,6 +66,17 @@ class DodoBillingData(BaseModel):
     zipcode: str | None = None
 
 
+class DodoCheckoutMetadata(BaseModel):
+    """Metadata GAIA stamps on a checkout; other keys are kept verbatim.
+
+    user_id is whatever JSON Dodo echoes back; every reader validates it as a GAIA id.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    user_id: JsonValue = None
+
+
 class DodoPaymentData(BaseModel):
     """Payment data from payment webhook."""
 
@@ -89,7 +100,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoCheckoutMetadata = Field(default_factory=DodoCheckoutMetadata)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -117,7 +128,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoCheckoutMetadata = Field(default_factory=DodoCheckoutMetadata)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 
