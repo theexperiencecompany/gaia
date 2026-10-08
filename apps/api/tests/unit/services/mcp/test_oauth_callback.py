@@ -27,6 +27,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 MODULE = "app.services.mcp.oauth_callback"
+STATUS_MODULE = "app.services.integrations.user_integration_status"
 INTEGRATION_ID = "agentmail"
 REDIRECT_URI = "http://api/api/v1/mcp/oauth/callback"
 REDIRECT_PATH = "/integrations"
@@ -278,6 +279,7 @@ class TestCompleteOauth:
         with (
             patch(f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
             patch(f"{MODULE}.capture") as capture,
+            patch(f"{STATUS_MODULE}.log") as status_log,
         ):
             await self._complete(client)
 
@@ -288,6 +290,7 @@ class TestCompleteOauth:
                 integration_id=INTEGRATION_ID, connection_method="oauth", is_reconnect=None
             ),
         )
+        assert status_log.warning.call_args.kwargs["integration_id"] == INTEGRATION_ID
 
     async def test_clear_excluded_scopes_failure_does_not_fail_the_connect(self):
         client = _client()
