@@ -5,6 +5,7 @@ excluded paths, agent-only paths, session refresh cookie setting,
 and the _authenticate_session helper.
 """
 
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -775,7 +776,9 @@ class TestPostHogSessionJoin:
         app = FastAPI()
 
         class _Authenticate(BaseHTTPMiddleware):
-            async def dispatch(self, request, call_next):
+            async def dispatch(
+                self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
                 if user is not None:
                     request.state.user = user
                 return await call_next(request)
@@ -790,7 +793,9 @@ class TestPostHogSessionJoin:
 
         return app
 
-    def test_session_header_reaches_an_authenticated_capture(self, posthog_events) -> None:
+    def test_session_header_reaches_an_authenticated_capture(
+        self, posthog_events: list[dict[str, object]]
+    ) -> None:
         client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
 
         client.post("/notes", headers={POSTHOG_SESSION_HEADER: "sess-1"})
@@ -800,7 +805,7 @@ class TestPostHogSessionJoin:
         assert event["properties"]["$session_id"] == "sess-1"
 
     def test_session_header_reaches_an_explicit_capture_on_an_unauthenticated_route(
-        self, posthog_events
+        self, posthog_events: list[dict[str, object]]
     ) -> None:
         client = TestClient(self._app(None))
 
@@ -809,7 +814,7 @@ class TestPostHogSessionJoin:
         [event] = _route_events(posthog_events)
         assert event["properties"]["$session_id"] == "sess-2"
 
-    def test_no_header_means_no_session(self, posthog_events) -> None:
+    def test_no_header_means_no_session(self, posthog_events: list[dict[str, object]]) -> None:
         client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
 
         client.post("/notes")
