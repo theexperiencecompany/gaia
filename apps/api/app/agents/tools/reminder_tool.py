@@ -2,14 +2,14 @@
 
 from datetime import datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.reminder_models import (
     AgentType,
     CreateReminderToolRequest,
@@ -80,8 +80,8 @@ async def create_reminder_tool(
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id")
+        configurable = read_agent_configurable(config)
+        user_id = configurable.user_id
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
         if repeat is not None:
@@ -104,7 +104,7 @@ async def create_reminder_tool(
             home_timezone=home_timezone_from_config(config).value,
             # The chat this reminder was created in — delivered back into it when
             # it fires. None for a non-chat root (e.g. a REST/UI-created reminder).
-            source_conversation_id=configurable.get("conversation_id"),
+            source_conversation_id=configurable.conversation_id,
         )
 
         request_model = tool_request.to_create_reminder_request()
@@ -133,11 +133,11 @@ async def list_user_reminders_tool(
         ReminderStatus | None,
         "Filter by reminder status (scheduled, completed, cancelled, paused)",
     ] = None,
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """List user reminders tool function."""
     try:
         log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to list reminders"}
 
@@ -159,11 +159,11 @@ async def list_user_reminders_tool(
 async def get_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder"],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Get full details of a specific reminder by ID"""
     try:
         log.set(tool={"name": "get_reminder_tool", "action": "get"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to get reminder"}
 
@@ -187,7 +187,7 @@ async def delete_reminder_tool(
     """Cancel a scheduled reminder by ID"""
     try:
         log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to delete reminder"}
@@ -235,13 +235,13 @@ async def update_reminder_tool(
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
     payload: Annotated[
-        dict[str, Any] | None, "Additional data for the reminder task (optional)"
+        dict[str, object] | None, "Additional data for the reminder task (optional)"
     ] = None,
 ) -> dict[str, str]:
     """Update attributes of an existing reminder"""
     try:
         log.set(tool={"name": "update_reminder_tool", "action": "update"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to update reminder"}
 
@@ -278,18 +278,18 @@ async def update_reminder_tool(
 async def search_reminders_tool(
     config: RunnableConfig,
     query: Annotated[str, "Search keyword(s) to match against reminders"],
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """Search reminders by keyword or content"""
     try:
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to search reminders"}
 
         reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         for r in reminders:
             # mode="json" ISO-formats datetimes — a python-mode dump keeps native
             # datetime objects that stdlib json.dumps cannot encode (#917).

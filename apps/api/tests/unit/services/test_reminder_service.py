@@ -23,6 +23,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
     TaskOutcome,
+    TaskRearm,
 )
 from app.services.reminder_service import ReminderScheduler
 from app.utils.schedule import InvalidScheduleError
@@ -515,7 +516,7 @@ class TestUpdateTaskStatus:
 
         oid = str(ObjectId())
         result = await scheduler.update_task_status(
-            oid, ScheduledTaskStatus.COMPLETED, {"occurrence_count": 5}
+            oid, ScheduledTaskStatus.COMPLETED, TaskRearm(occurrence_count=5)
         )
 
         assert result is True

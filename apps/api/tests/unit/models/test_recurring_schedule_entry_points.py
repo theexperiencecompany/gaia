@@ -21,7 +21,6 @@ from app.models.reminder_models import (
 from app.models.scheduler_models import ScheduleConfig
 from app.models.todo_models import TodoModel, TodoUpdate, TodoUpdateRequest
 from app.models.workflow_models import CreateWorkflowRequest, UpdateWorkflowRequest
-from app.services.workflow.subagent_output import FinalizedOutput
 
 pytestmark = pytest.mark.unit
 
@@ -46,14 +45,6 @@ ENTRY_POINTS: dict[str, Callable[[str], BaseModel]] = {
         title="Digest", prompt="Summarize", trigger_config=_workflow_trigger(cron)
     ),
     "PUT /workflows": lambda cron: UpdateWorkflowRequest(trigger_config=_workflow_trigger(cron)),
-    "workflow subagent draft": lambda cron: FinalizedOutput(
-        type="finalized",
-        title="Digest",
-        description="Daily digest",
-        prompt="Summarize",
-        trigger_type="scheduled",
-        cron_expression=cron,
-    ),
     "POST /todos": lambda cron: TodoModel(title="Check inbox", recurrence=cron),
     "PUT /todos": lambda cron: TodoUpdateRequest(recurrence=cron),
     "tracked todo $set": lambda cron: TodoUpdate(recurrence=cron),

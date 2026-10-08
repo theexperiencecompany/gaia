@@ -59,8 +59,6 @@ apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; m
 apps/api/app/agents/tools/memory_tools.py	TB002
 apps/api/app/agents/tools/playbook_tools.py	TB001
 apps/api/app/agents/tools/playbook_tools.py	TB002
-apps/api/app/agents/tools/reminder_tool.py	TB001
-apps/api/app/agents/tools/reminder_tool.py	TB002
 apps/api/app/agents/tools/subscription_tool.py	TB002
 apps/api/app/agents/tools/todo_tools.py	TB001
 apps/api/app/agents/tools/todo_tools.py	TB002
@@ -96,7 +94,6 @@ apps/api/app/db/mongodb/collections.py	TB001
 apps/api/app/db/mongodb/mongodb.py	TB001
 apps/api/app/db/postgresql.py	TB001
 apps/api/app/db/repositories/usage_daily.py	TB002
-apps/api/app/db/repositories/workflows.py	TB001
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002
 apps/api/app/memory/embeddings.py	TB001
@@ -115,8 +112,6 @@ apps/api/app/models/playbook_models.py	TB002
 apps/api/app/models/trigger_configs.py	TB001
 apps/api/app/models/trigger_configs.py	TB002
 apps/api/app/models/workflow_execution_models.py	TB001
-apps/api/app/models/workflow_models.py	TB001
-apps/api/app/models/workflow_models.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
@@ -189,10 +184,7 @@ apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/provider_metadata_service.py	TB001
 apps/api/app/services/provider_metadata_service.py	TB002
-apps/api/app/services/reminder_service.py	TB001
-apps/api/app/services/reminder_service.py	TB002
 apps/api/app/services/sandbox/lifecycle.py	TB002
-apps/api/app/services/scheduler_service.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB002
 apps/api/app/services/storage/gaia_tasks_vfs.py	TB001
@@ -228,8 +220,6 @@ apps/api/app/services/workflow/playbook/parser.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB002
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
-apps/api/app/services/workflow/scheduler.py	TB001
-apps/api/app/services/workflow/scheduler.py	TB002
 apps/api/app/services/workflow/subagent_output.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB002
 apps/api/app/services/workflow/trigger_search.py	TB001

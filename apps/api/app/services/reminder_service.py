@@ -1,7 +1,6 @@
 """Reminder scheduler for managing reminder tasks."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from arq.connections import RedisSettings
 
@@ -20,6 +19,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
     TaskOutcome,
+    TaskRearm,
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
@@ -241,22 +241,18 @@ class ReminderScheduler(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """Update reminder status (plus the scheduler's re-arm fields).
-
-        BaseSchedulerService only ever passes occurrence_count and/or
-        scheduled_at in update_data (updated_at is auto-stamped by the
-        repository), so those are threaded through as typed arguments.
-        """
-        data = update_data or {}
+        """Update reminder status plus its re-arm fields; a reminder has no next_run or repeat to write."""
+        rearm = rearm or TaskRearm()
+        scheduled_at = rearm.scheduled_at if isinstance(rearm.scheduled_at, datetime) else None
         return await reminder_repository.set_status(
             task_id,
             status,
             user_id=user_id,
-            occurrence_count=data.get("occurrence_count"),
-            scheduled_at=data.get("scheduled_at"),
+            occurrence_count=rearm.occurrence_count,
+            scheduled_at=scheduled_at,
         )
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:

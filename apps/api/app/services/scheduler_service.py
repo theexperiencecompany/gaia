@@ -2,19 +2,21 @@
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Protocol
 
 from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
 
 from app.config.settings import settings
 from app.models.scheduler_models import (
+    UNSET,
     BaseScheduledTask,
     DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
     TaskOutcome,
+    TaskRearm,
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -138,14 +140,14 @@ class BaseSchedulerService(ABC):
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.COMPLETED,
-                {"occurrence_count": occurrence_count},
+                TaskRearm(occurrence_count=occurrence_count),
             )
             log.info("Completed one-time task", task_id=task_id)
         else:
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
-                {"occurrence_count": occurrence_count, "updated_at": datetime.now(UTC)},
+                TaskRearm(occurrence_count=occurrence_count),
             )
             log.warning(
                 "One-time task failed", task_id=task_id, failure_reason=execution_result.message
@@ -162,8 +164,7 @@ class BaseSchedulerService(ABC):
         success = await self.update_task_status(
             task_id,
             ScheduledTaskStatus.CANCELLED,
-            {"updated_at": datetime.now(UTC)},
-            user_id,
+            user_id=user_id,
         )
 
         if success:
@@ -219,7 +220,7 @@ class BaseSchedulerService(ABC):
             await self.update_task_status(
                 task.id,
                 ScheduledTaskStatus.COMPLETED,
-                {"occurrence_count": occurrence_count},
+                TaskRearm(occurrence_count=occurrence_count),
             )
             log.info("Completed recurring task", id=task.id)
 
@@ -274,12 +275,12 @@ class BaseSchedulerService(ABC):
         # dropping it for want of a next occurrence.
         next_run = get_next_run_time(task.repeat, now, schedule_tz) if task.repeat else None
 
-        update_fields: dict[str, Any] = {"scheduled_at": next_run or task.scheduled_at}
         trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
-        if next_run is not None and trigger_config is not None:
-            update_fields["trigger_config.next_run"] = next_run
-
-        await self.update_task_status(task_id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        rearm = TaskRearm(
+            scheduled_at=next_run or task.scheduled_at,
+            next_run=next_run if next_run is not None and trigger_config is not None else UNSET,
+        )
+        await self.update_task_status(task_id, ScheduledTaskStatus.SCHEDULED, rearm)
         rearm_at = next_run or task.scheduled_at
         if rearm_at is not None:
             await self.reschedule_task(task_id, rearm_at)
@@ -326,17 +327,15 @@ class BaseSchedulerService(ABC):
         trigger_config: TriggerConfigLike | None,
     ) -> None:
         """Persist the next occurrence and re-enqueue the recurring task."""
-        # Store scheduled_at as a native datetime so the `$lte` scan can match it.
-        update_fields: dict[str, Any] = {
-            "scheduled_at": next_run,
-            "occurrence_count": occurrence_count,
-        }
-        # hasattr check despite the Protocol: trigger_config arrives via getattr
-        # (unchecked at runtime), so a config with no next_run must not get a
-        # phantom trigger_config.next_run key written into Mongo.
-        if trigger_config is not None and hasattr(trigger_config, "next_run"):
-            update_fields["trigger_config.next_run"] = next_run
-        await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        # hasattr despite the Protocol: trigger_config arrives via an unchecked getattr,
+        # and a config with no next_run must not get a phantom key written into Mongo.
+        has_next_run = trigger_config is not None and hasattr(trigger_config, "next_run")
+        rearm = TaskRearm(
+            scheduled_at=next_run,
+            occurrence_count=occurrence_count,
+            next_run=next_run if has_next_run else UNSET,
+        )
+        await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, rearm)
         await self.reschedule_task(task.id, next_run)
         log.info("Rescheduled recurring task for", id=task.id, next_run=next_run)
 
@@ -444,10 +443,10 @@ class BaseSchedulerService(ABC):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """Update task status and any additional fields."""
+        """Update task status plus any re-arm fields."""
 
     @abstractmethod
     async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:

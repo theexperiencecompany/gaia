@@ -219,9 +219,8 @@ async def resolve_subscription_owner(sub_data: DodoSubscriptionData) -> str | No
     Callers acting on a client-supplied subscription id must compare this
     against the authenticated user before activating anything.
     """
-    metadata_user_id = sub_data.metadata.get("user_id")
-    if metadata_user_id:
-        return str(metadata_user_id)
+    if sub_data.metadata.user_id:
+        return sub_data.metadata.user_id
 
     user = await user_repository.get_by_email(sub_data.customer.email)
     return str(user.id) if user else None
@@ -390,7 +389,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
                 "last_event_at": event.occurred_at,
                 "created_at": now,
                 "updated_at": now,
-                "metadata": data.metadata,
+                "metadata": data.metadata.model_dump(exclude_unset=True),
             }
         )
     )

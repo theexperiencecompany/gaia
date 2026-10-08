@@ -313,66 +313,31 @@ class Workflow(BaseScheduledTask, ResponseModel):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data: Any) -> None:  # noqa: ANN401 -- framework contract
-        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
+    @model_validator(mode="after")
+    def schedule_from_trigger(self) -> "Workflow":
+        """Take scheduled_at and repeat from the trigger when the caller did not give them.
 
-        ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
-        produces 4 errors on the ``super().__init__(**data)`` below, because
-        BaseScheduledTask's generated ``__init__`` declares per-field types
-        (``str``, ``datetime``, ``ScheduledTaskStatus``, ``int``) that a
-        ``dict[str, object]`` bag cannot satisfy. The two "before" validators in
-        this module were narrowed to ``object`` and did not need it.
+        Only cron-triggered workflows get a scheduled_at (from next_run); others stay
+        None rather than a fabricated "now", which would look due to the recovery scan.
         """
-        # Ensure user_id is provided (it's required by BaseScheduledTask)
-        if "user_id" not in data:
-            raise ValueError("user_id is required for workflow creation")
+        if "scheduled_at" not in self.model_fields_set and self.trigger_config.next_run:
+            self.scheduled_at = self.trigger_config.next_run
+        if "repeat" not in self.model_fields_set and self.trigger_config.cron_expression:
+            self.repeat = self.trigger_config.cron_expression
+        return self
 
-        # Map trigger_config fields to BaseScheduledTask fields if not provided
-        if "trigger_config" in data:
-            trigger_config = data["trigger_config"]
-
-            # Handle both dict and TriggerConfig object
-            if isinstance(trigger_config, dict):
-                # Map scheduled_at from trigger_config.next_run if not provided
-                if "scheduled_at" not in data and trigger_config.get("next_run"):
-                    data["scheduled_at"] = trigger_config["next_run"]
-
-                # Map repeat from trigger_config.cron_expression if not provided
-                if "repeat" not in data and trigger_config.get("cron_expression"):
-                    data["repeat"] = trigger_config["cron_expression"]
-            else:
-                # TriggerConfig is already a Pydantic model
-                # Map scheduled_at from trigger_config.next_run if not provided
-                if (
-                    "scheduled_at" not in data
-                    and hasattr(trigger_config, "next_run")
-                    and trigger_config.next_run
-                ):
-                    data["scheduled_at"] = trigger_config.next_run
-
-                # Map repeat from trigger_config.cron_expression if not provided
-                if (
-                    "repeat" not in data
-                    and hasattr(trigger_config, "cron_expression")
-                    and trigger_config.cron_expression
-                ):
-                    data["repeat"] = trigger_config.cron_expression
-
-        # Only cron-triggered workflows get a scheduled_at (from next_run); others
-        # stay None rather than a fabricated "now", which would look due to the
-        # recovery scan.
-        super().__init__(**data)
-
-    @model_validator(mode="before")
+    @field_validator("description", "prompt", mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards **data into BaseScheduledTask's typed __init__
-        """Ensure legacy records still expose prompt and non-null description."""
-        if isinstance(data, dict):
-            description = data.get("description") or ""
-            prompt = data.get("prompt") or description
-            data["description"] = description
-            data["prompt"] = prompt
-        return data
+    def legacy_null_text_is_empty(cls, value: object) -> object:
+        """Read a legacy record's null description or prompt as empty text."""
+        return "" if value is None else value
+
+    @model_validator(mode="after")
+    def legacy_prompt_falls_back_to_description(self) -> "Workflow":
+        """Give a legacy record with no prompt its description as the prompt."""
+        if not self.prompt:
+            self.prompt = self.description
+        return self
 
     @property
     def effective_prompt(self) -> str:
@@ -883,32 +848,6 @@ class WorkflowUpdate(BaseModel):
     playbook_declined_run: str | None = None
     blocked_on_integrations: list[str] | None = None
     last_playbook_discard: PlaybookDiscard | None = None
-
-
-class _Unset:
-    """Sentinel for a ``WorkflowRearm`` field that was not provided — distinct
-    from an explicit ``None``, which the recovery scan legitimately writes (a
-    reaped non-recurring workflow clears its ``scheduled_at``)."""
-
-
-UNSET = _Unset()
-
-
-@dataclass(slots=True, frozen=True)
-class WorkflowRearm:
-    """Optional re-arm fields for ``WorkflowsRepository.set_status``.
-
-    ``scheduled_at``/``next_run`` (written as ``trigger_config.next_run``) default
-    to the ``UNSET`` sentinel because ``None`` is a meaningful value the recovery
-    scan writes — an omitted field is left untouched, an explicit ``None`` clears
-    it. ``occurrence_count``/``repeat`` are only set when provided (they never
-    need clearing to ``None``).
-    """
-
-    scheduled_at: datetime | _Unset | None = UNSET
-    occurrence_count: int | None = None
-    repeat: str | None = None
-    next_run: datetime | _Unset | None = UNSET
 
 
 @dataclass(slots=True, frozen=True)

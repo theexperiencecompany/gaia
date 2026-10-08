@@ -7,9 +7,12 @@ from langchain_core.exceptions import OutputParserException
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     UNSET,
+    DeactivationReason,
+    ScheduledTaskStatus,
+)
+from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedPromptOutput,
     GeneratedStep,
@@ -2015,29 +2018,6 @@ class TestWorkflowScheduler:
             WORKFLOW_ID, ScheduledTaskStatus.EXECUTING
         )
         assert result is False
-
-    @patch("app.services.workflow.scheduler.workflow_repository")
-    async def test_update_task_status_threads_all_rearm_fields(self, mock_repo):
-        mock_repo.set_status = AsyncMock(return_value=True)
-        scheduled_at = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
-        next_run = datetime(2026, 1, 2, 4, 4, tzinfo=UTC)
-
-        await WorkflowScheduler().update_task_status(
-            WORKFLOW_ID,
-            ScheduledTaskStatus.COMPLETED,
-            update_data={
-                "scheduled_at": scheduled_at,
-                "occurrence_count": 5,
-                "repeat": "0 9 * * *",
-                "trigger_config.next_run": next_run,
-            },
-        )
-
-        rearm = mock_repo.set_status.call_args.kwargs["rearm"]
-        assert rearm.scheduled_at == scheduled_at
-        assert rearm.occurrence_count == 5
-        assert rearm.repeat == "0 9 * * *"
-        assert rearm.next_run == next_run
 
     @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_omits_absent_rearm_fields_with_unset(self, mock_repo):

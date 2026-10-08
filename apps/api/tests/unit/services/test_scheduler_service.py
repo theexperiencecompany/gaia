@@ -3,7 +3,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import ConfigDict
@@ -16,6 +15,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
     TaskOutcome,
+    TaskRearm,
 )
 from app.services.scheduler_service import STALE_EXECUTING_THRESHOLD, BaseSchedulerService
 from app.utils.timezone import Timezone
@@ -50,10 +50,10 @@ class ConcreteSchedulerService(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        return await self.mock_update_task_status(task_id, status, update_data, user_id)
+        return await self.mock_update_task_status(task_id, status, rearm, user_id)
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
@@ -713,7 +713,7 @@ class TestReapStaleExecutingExact:
         service.mock_update_task_status.assert_awaited_once_with(
             "t-rec",
             ScheduledTaskStatus.SCHEDULED,
-            {"scheduled_at": next_run, "trigger_config.next_run": next_run},
+            TaskRearm(scheduled_at=next_run, next_run=next_run),
             None,
         )
         service.reschedule_task.assert_awaited_once_with("t-rec", next_run)
@@ -734,7 +734,7 @@ class TestReapStaleExecutingExact:
         assert await service.reap_stale_executing() == 1
         # No next occurrence: scheduled_at stays, and trigger_config.next_run is NOT written.
         service.mock_update_task_status.assert_awaited_once_with(
-            "t-one", ScheduledTaskStatus.SCHEDULED, {"scheduled_at": task.scheduled_at}, None
+            "t-one", ScheduledTaskStatus.SCHEDULED, TaskRearm(scheduled_at=task.scheduled_at), None
         )
         service.reschedule_task.assert_awaited_once_with("t-one", task.scheduled_at)
 

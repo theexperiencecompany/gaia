@@ -2,6 +2,7 @@
 Base scheduler models for task scheduling system.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -143,3 +144,27 @@ class TaskExecutionResult(BaseModel):
     def success(self) -> bool:
         """Whether the task actually ran to completion."""
         return self.outcome is TaskOutcome.EXECUTED
+
+
+class _Unset:
+    """Sentinel for a TaskRearm field that was not provided — distinct from an
+    explicit None, which the recovery scan legitimately writes (a reaped
+    non-recurring workflow clears its scheduled_at)."""
+
+
+UNSET = _Unset()
+
+
+@dataclass(slots=True, frozen=True)
+class TaskRearm:
+    """The scheduler's re-arm fields that ride along with a status write.
+
+    scheduled_at/next_run (a workflow's trigger_config.next_run) default to
+    UNSET because None is a meaningful value the recovery scan writes: an
+    omitted field is left untouched, an explicit None clears it.
+    """
+
+    scheduled_at: datetime | _Unset | None = UNSET
+    occurrence_count: int | None = None
+    repeat: str | None = None
+    next_run: datetime | _Unset | None = UNSET

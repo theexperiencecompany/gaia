@@ -27,16 +27,19 @@ from app.constants.cache import (
 )
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
-from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
+from app.models.scheduler_models import (
+    DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+    _Unset,
+)
 from app.models.workflow_models import (
     PublicWorkflowRow,
     SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
-    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
-    _Unset,
 )
 from app.utils.creator import creator_lookup_stage
 from app.utils.occurrence import occurrence_window
@@ -83,13 +86,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     @staticmethod
     def _list_query(
         user_id: str, *, exclude_todo_workflows: bool, exclude_system_workflows: bool = False
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Build the shared filter for a user's listed workflows.
 
         The single source of truth for both list_for_user and count_for_user,
         so a paginated list and its total can never drift apart.
         """
-        query: dict[str, Any] = {"user_id": user_id}
+        query: dict[str, object] = {"user_id": user_id}
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -405,7 +408,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._count(self._step_category_match(category))
 
     @staticmethod
-    def _step_category_match(category: str) -> dict[str, Any]:
+    def _step_category_match(category: str) -> dict[str, object]:
         return {
             "$or": [{"is_public": True}, {"is_explore": True}],
             "steps": {"$elemMatch": {"category": {"$regex": re.escape(category), "$options": "i"}}},
@@ -581,9 +584,9 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return result is not None
 
     @staticmethod
-    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, Any]:
-        """Translate a WorkflowRearm into a Mongo $set fragment (see WorkflowRearm for UNSET-vs-None)."""
-        set_fields: dict[str, Any] = {}
+    def _rearm_set_fields(rearm: TaskRearm) -> dict[str, object]:
+        """Translate a TaskRearm into a Mongo $set fragment (see TaskRearm for UNSET-vs-None)."""
+        set_fields: dict[str, object] = {}
         if not isinstance(rearm.scheduled_at, _Unset):
             set_fields["scheduled_at"] = rearm.scheduled_at
         if rearm.occurrence_count is not None:
@@ -600,7 +603,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         status: ScheduledTaskStatus,
         *,
         user_id: str | None = None,
-        rearm: WorkflowRearm | None = None,
+        rearm: TaskRearm | None = None,
     ) -> bool:
         """Set a workflow's run-state status plus the scheduler's re-arm fields.
 
@@ -612,7 +615,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             filter_["user_id"] = user_id
         set_fields: dict[str, Any] = {
             "status": status.value,
-            **self._rearm_set_fields(rearm or WorkflowRearm()),
+            **self._rearm_set_fields(rearm or TaskRearm()),
         }
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE

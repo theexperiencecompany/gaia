@@ -94,6 +94,14 @@ class DodoPaymentData(BaseModel):
     error_message: str | None = None
 
 
+class DodoSubscriptionMetadata(BaseModel):
+    """The metadata GAIA stamps on a subscription at checkout; anything else Dodo carries is kept."""
+
+    model_config = ConfigDict(extra="allow")
+
+    user_id: str | None = None
+
+
 class DodoSubscriptionData(BaseModel):
     """Subscription data from subscription webhook."""
 
@@ -117,7 +125,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 

@@ -1,7 +1,6 @@
 """Workflow scheduler extending BaseSchedulerService for robust scheduling."""
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from arq.connections import RedisSettings
 
@@ -14,8 +13,12 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
     TaskOutcome,
+    TaskRearm,
 )
-from app.models.workflow_models import UNSET, TriggerType, Workflow, WorkflowRearm
+from app.models.workflow_models import (
+    TriggerType,
+    Workflow,
+)
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.occurrence import occurrence_stamp
 from shared.py.wide_events import log
@@ -57,7 +60,9 @@ class WorkflowScheduler(BaseSchedulerService):
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
 
-    def _build_job_args(self, task_id: str, scheduled_at: datetime) -> tuple[str, dict[str, Any]]:
+    def _build_job_args(
+        self, task_id: str, scheduled_at: datetime
+    ) -> tuple[str, dict[str, object]]:
         """Mark scheduler-originated fires so the executor re-arms the next occurrence.
 
         scheduled_for pins the occurrence this job was armed for — ARQ has no
@@ -151,10 +156,10 @@ class WorkflowScheduler(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """Update workflow status and other fields."""
+        """Update workflow status and its re-arm fields."""
         if status not in WORKFLOW_RUN_STATUSES:
             raise ValueError(
                 f"Workflow {task_id}: refusing to write status={status.value!r}. "
@@ -163,19 +168,8 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
         try:
-            # scheduled_at / trigger_config.next_run use the UNSET sentinel
-            # because None is a meaningful clear (reap).
-            data = update_data or {}
             matched = await workflow_repository.set_status(
-                task_id,
-                status,
-                user_id=user_id,
-                rearm=WorkflowRearm(
-                    scheduled_at=data.get("scheduled_at", UNSET),
-                    occurrence_count=data.get("occurrence_count"),
-                    repeat=data.get("repeat"),
-                    next_run=data.get("trigger_config.next_run", UNSET),
-                ),
+                task_id, status, user_id=user_id, rearm=rearm or TaskRearm()
             )
 
             if matched:
@@ -262,17 +256,10 @@ class WorkflowScheduler(BaseSchedulerService):
         """Reschedule an existing workflow."""
         try:
             # Update the workflow's scheduling fields in database
-            update_data: dict[str, Any] = {
-                "scheduled_at": new_scheduled_at,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            }
-
-            if repeat is not None:
-                update_data["repeat"] = repeat
-
-            # Update database status
             db_success = await self.update_task_status(
-                workflow_id, ScheduledTaskStatus.SCHEDULED, update_data
+                workflow_id,
+                ScheduledTaskStatus.SCHEDULED,
+                TaskRearm(scheduled_at=new_scheduled_at, repeat=repeat),
             )
 
             if not db_success:
