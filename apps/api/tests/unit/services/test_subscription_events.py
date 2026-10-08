@@ -16,9 +16,9 @@ from dodopayments.types import Subscription
 from pymongo.errors import PyMongoError
 import pytest
 
+from app.constants import payments as payment_constants
 from app.constants.log_tags import LogTag
 from app.constants.payments import (
-    PAID_PERSON_SYNC_TASK,
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
@@ -1078,10 +1078,36 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         posthog_client.set.assert_not_called()
         enqueue.assert_awaited_once_with(
             pool,
-            PAID_PERSON_SYNC_TASK,
+            payment_constants.PAID_PERSON_SYNC_TASK,
             FAKE_USER_ID,
             "sub_xyz789",
-            _job_id=f"{PAID_PERSON_SYNC_TASK}:{FAKE_USER_ID}:sub_xyz789",
+            _job_id=f"{payment_constants.PAID_PERSON_SYNC_TASK}:{FAKE_USER_ID}:sub_xyz789",
+        )
+
+    async def test_an_unreadable_row_with_the_queue_down_names_whose_sync_was_lost(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+        )
+
+        with (
+            patch(
+                f"{EVENTS_MODULE}.RedisPoolManager.get_pool",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("redis down"),
+            ),
+            patch(f"{EVENTS_MODULE}.log") as log,
+        ):
+            await _apply(SubscriptionEventKind.FAILED)
+
+        log.error.assert_any_call(
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=payment_constants.PAID_PERSON_SYNC_TASK,
+            error="redis down",
+            error_type="ConnectionError",
+            user_id=FAKE_USER_ID,
+            subscription_id="sub_xyz789",
         )
 
     async def test_a_plan_change_leaves_the_paid_status_alone(
