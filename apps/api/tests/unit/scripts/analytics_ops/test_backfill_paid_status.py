@@ -74,6 +74,25 @@ class TestProjection:
 
         assert state.properties["subscription_status"] == "active"
 
+    def test_an_active_row_wins_over_an_older_subscription_that_lapsed_later(self) -> None:
+        """The app reads the newest active row; a replaced subscription expiring after must not demote the user."""
+        replacement = _row(ALICE, "active", updated=3, created_at=datetime(2026, 1, 3, tzinfo=UTC))
+        replaced = _row(ALICE, "expired", updated=9)
+
+        [state] = latest_states([replacement, replaced])
+
+        assert (state.properties["subscription_status"], state.properties["is_subscribed"]) == (
+            "active",
+            True,
+        )
+
+    def test_with_no_active_row_the_newest_lapsed_row_wins(self) -> None:
+        rows = [_row(ALICE, "cancelled", updated=4), _row(ALICE, "expired", updated=7)]
+
+        [state] = latest_states(rows)
+
+        assert state.properties["subscription_status"] == "expired"
+
     def test_a_row_owned_by_a_non_user_id_stops_the_run(self) -> None:
         with pytest.raises(SystemExit, match="system"):
             latest_states([_row("system", "active")])

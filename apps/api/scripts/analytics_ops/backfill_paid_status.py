@@ -1,4 +1,4 @@
-"""Set each subscriber's paid-state person properties from their latest Mongo subscription.
+"""Set each subscriber's paid-state person properties from the Mongo subscription the app reads.
 
 The projection is the webhook's own (paid_person_properties), so a backfilled
 person reads exactly as one the webhook set. Sent as a plain $set at now:
@@ -49,17 +49,20 @@ def _as_posthog_string(value: object) -> str:
     return str(value).lower() if isinstance(value, bool) else str(value)
 
 
-def _recency(row: SubscriptionDocument) -> tuple[datetime, datetime]:
-    return (row.updated_at or _EPOCH, row.created_at or _EPOCH)
+def _preference(row: SubscriptionDocument) -> tuple[bool, datetime, datetime]:
+    """Rank a user's rows as the app reads them: the newest active row, else the newest lapsed one."""
+    if row.status == SubscriptionStatus.ACTIVE.value:
+        return (True, row.created_at or _EPOCH, row.updated_at or _EPOCH)
+    return (False, row.updated_at or _EPOCH, row.created_at or _EPOCH)
 
 
 def latest_states(rows: Iterable[Document]) -> list[PaidState]:
-    """Project every user's newest subscription row; exit 1 on a row whose owner is not a user id."""
+    """Project the row the app reads for each user; exit 1 on a row whose owner is not a user id."""
     latest: dict[str, SubscriptionDocument] = {}
     for raw in rows:
         row = SubscriptionDocument.model_validate(raw)
         current = latest.get(row.user_id)
-        if current is None or _recency(row) >= _recency(current):
+        if current is None or _preference(row) >= _preference(current):
             latest[row.user_id] = row
     owners: dict[str, UserId] = {}
     bad_owners: list[str] = []
