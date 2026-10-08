@@ -21,7 +21,11 @@ import type {
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
-import { apiBaseUrl, clientHeaders } from "@/lib/api/client";
+import {
+  apiBaseUrl,
+  clientHeaders,
+  requestOriginHeaders,
+} from "@/lib/api/client";
 import {
   api,
   binaryField,
@@ -448,6 +452,8 @@ export const chatApi = {
       headers: {
         Accept: "text/event-stream",
         ...clientHeaders(),
+        // A background executor's output, or a reload re-attaching to a live turn.
+        ...requestOriginHeaders(true),
         // Resume cursor — the backend replays everything after this entry.
         ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
       },
