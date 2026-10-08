@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from dodopayments.types import Subscription
+from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
@@ -1028,17 +1029,45 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
             "subscription_cancel_at_period_end": False,
         }
 
-    async def test_a_row_gone_after_its_own_write_fails_loudly_naming_it(
-        self, mock_webhook_subscription_repository, posthog_client
+    async def test_a_row_gone_after_its_own_write_still_lapses_the_workflows(
+        self, mock_webhook_subscription_repository, posthog_client, mock_deactivate_workflows
     ) -> None:
+        """A redelivery reads the written row as unchanged, so a raise here strands the workflows."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             side_effect=[_row(last_event_at=None), None]
         )
 
-        with pytest.raises(LookupError, match="subscription sub_xyz789 vanished"):
-            await _apply(SubscriptionEventKind.FAILED)
+        with patch(f"{EVENTS_MODULE}.log") as log:
+            result = await _apply(SubscriptionEventKind.FAILED)
 
+        assert result.outcome is SubscriptionEventOutcome.APPLIED
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         posthog_client.set.assert_not_called()
+        log.error.assert_called_once_with(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
+            subscription_id="sub_xyz789",
+            user_id=FAKE_USER_ID,
+        )
+
+    async def test_an_unreadable_row_after_the_write_still_lapses_the_workflows(
+        self, mock_webhook_subscription_repository, posthog_client, mock_deactivate_workflows
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+        )
+
+        with patch(f"{EVENTS_MODULE}.log") as log:
+            result = await _apply(SubscriptionEventKind.FAILED)
+
+        assert result.outcome is SubscriptionEventOutcome.APPLIED
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+        posthog_client.set.assert_not_called()
+        log.error.assert_called_once_with(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row could not be read",
+            subscription_id="sub_xyz789",
+            user_id=FAKE_USER_ID,
+            error_type="PyMongoError",
+        )
 
     async def test_a_plan_change_leaves_the_paid_status_alone(
         self, mock_webhook_subscription_repository, posthog_client
