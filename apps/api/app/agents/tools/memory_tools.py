@@ -262,19 +262,20 @@ def _document_payload(document: MemoryDocument) -> DocumentPayload:
 
 def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[EpisodePayload]:
     """Group journal search hits by day into the shared episodes payload shape."""
-    by_date: dict[date_type, EpisodePayload] = {}
+    summaries: dict[date_type, str] = {}
+    lines: dict[date_type, list[JournalLinePayload]] = {}
     for hit in hits:
-        day = by_date.setdefault(
-            hit.date,
-            EpisodePayload(date=hit.date.isoformat(), entries=[], summary=None),
-        )
+        day_lines = lines.setdefault(hit.date, [])
         text = _cap(hit.text, MEMORY_TOOL_CONTENT_MAX_CHARS)
         if hit.time is None:
             # Timeless hits are day-summary matches, not journal lines.
-            day["summary"] = text
+            summaries[hit.date] = text
         else:
-            day["entries"].append(JournalLinePayload(time=hit.time, text=text, source=None))
-    return [by_date[day] for day in sorted(by_date, reverse=True)]
+            day_lines.append(JournalLinePayload(time=hit.time, text=text, source=None))
+    return [
+        EpisodePayload(date=day.isoformat(), entries=lines[day], summary=summaries.get(day))
+        for day in sorted(lines, reverse=True)
+    ]
 
 
 def _format_entry_line(index: int, entry: MemoryEntry) -> str:

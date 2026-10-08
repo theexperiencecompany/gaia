@@ -56,7 +56,6 @@ apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
 apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
-apps/api/app/agents/tools/memory_tools.py	TB002
 apps/api/app/agents/tools/playbook_tools.py	TB001
 apps/api/app/agents/tools/playbook_tools.py	TB002
 apps/api/app/agents/tools/reminder_tool.py	TB001
