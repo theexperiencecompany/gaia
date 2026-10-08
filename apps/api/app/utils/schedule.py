@@ -5,7 +5,6 @@ load so the user can see it, fix it, or resume it once fixed.
 """
 
 from collections.abc import Sequence
-from datetime import datetime
 from typing import Annotated
 
 from croniter import CroniterBadDateError, CroniterError, croniter
@@ -52,7 +51,7 @@ def schedule_rejection(expression: str) -> ScheduleRejection | None:
     if len(minutes) != 1 or not isinstance(minutes[0], int):
         return ScheduleRejection.TOO_FREQUENT
     try:
-        cron.get_next(datetime)
+        cron.get_next()
     except CroniterBadDateError:
         return ScheduleRejection.NEVER_FIRES
     return None

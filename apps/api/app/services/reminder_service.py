@@ -126,26 +126,31 @@ class ReminderScheduler(BaseSchedulerService):
     async def resume(self, reminder: ReminderModel) -> bool:
         """Return a paused reminder to SCHEDULED at its next fire in its own timezone.
 
-        Raises InvalidScheduleError when its stored schedule breaks the rule; only
-        the user can fix that, so it stays paused.
+        A series whose stop_after or max_occurrences ran out while paused completes
+        instead. Raises InvalidScheduleError when its stored schedule breaks the
+        rule; only the user can fix that, so it stays paused.
         """
         if not reminder.id:
             raise ValueError("Reminder must have an ID to resume")
         update = ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
         if reminder.repeat:
             validate_recurring_schedule(reminder.repeat)
-            update.scheduled_at = get_next_run_time(
-                reminder.repeat, tz=Timezone.parse(reminder.timezone)
-            )
+            next_run = get_next_run_time(reminder.repeat, tz=Timezone.parse(reminder.timezone))
+            if self._should_continue_recurring(reminder, reminder.occurrence_count, next_run):
+                update.scheduled_at = next_run
+            else:
+                update.status = ReminderStatus.COMPLETED
         return await self.update_reminder(reminder.id, update, reminder.user_id)
 
     async def resume_paused_for(self, user_id: str, reason: DeactivationReason) -> int:
         """Resume every reminder the system paused for reason; return the count resumed.
 
-        One that cannot resume is logged and the rest still run; a broken
-        schedule is re-marked INVALID_SCHEDULE so no later resume retries it.
+        One that cannot resume does not stop the rest; their failures are raised
+        together at the end. A broken schedule is re-marked INVALID_SCHEDULE so no
+        later resume retries it.
         """
         resumed = 0
+        failures: list[Exception] = []
         for reminder in await reminder_repository.find_paused_for_reason(user_id, reason):
             try:
                 await self.resume(reminder)
@@ -158,8 +163,20 @@ class ReminderScheduler(BaseSchedulerService):
                     schedule_rejection=e.reason.value,
                 )
                 continue
+            except Exception as e:  # the rest of the user's reminders must still resume
+                log.warning(
+                    "Paused reminder could not resume",
+                    reminder_id=reminder.id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                failures.append(e)
+                continue
             resumed += 1
         log.set(reminders_resumed=resumed, reminders_resume_reason=reason.value)
+        if failures:
+            raise ExceptionGroup(f"{len(failures)} paused reminder(s) could not resume", failures)
         return resumed
 
     async def list_user_reminders(

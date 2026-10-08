@@ -333,8 +333,9 @@ class TestProcessTaskExecution:
         assert result.success is True
         # EXECUTING is the claim itself (one atomic transition), then COMPLETED.
         service.mock_claim_task.assert_awaited_once_with("task123", None)
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.COMPLETED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task123", ScheduledTaskStatus.COMPLETED, TaskRearm(occurrence_count=1), None
+        )
 
     async def test_recurring_task_rescheduled(self, service, recurring_task):
         service.mock_get_task.return_value = recurring_task
@@ -368,8 +369,9 @@ class TestProcessTaskExecution:
 
         assert result.success is True
         # Should be marked as COMPLETED since max_occurrences reached
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.COMPLETED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task_max", ScheduledTaskStatus.COMPLETED, TaskRearm(occurrence_count=5), None
+        )
 
     async def test_recurring_task_stop_after_reached(self, service, recurring_task_stop_after):
         service.mock_get_task.return_value = recurring_task_stop_after
@@ -396,8 +398,9 @@ class TestProcessTaskExecution:
 
         assert result.success is False
         assert "Execution error" in result.message
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.FAILED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task123", ScheduledTaskStatus.FAILED, TaskRearm(occurrence_count=1), None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +585,60 @@ class TestHandleRecurringTask:
             call_args = mock_next_run.call_args
             # get_next_run_time now receives a Timezone value object, not a raw str.
             assert call_args[0][2].value == "America/New_York"
+
+
+class _TaskWithTriggerConfig(BaseScheduledTask):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    trigger_config: object = None
+
+
+class TestTheReArmWrite:
+    """What _reschedule_recurring_task persists: next fire, count, and next_run only where it exists."""
+
+    NEXT = datetime(2030, 1, 2, 9, 0, tzinfo=UTC)
+
+    async def _rearm(self, service, trigger_config: object) -> None:
+        task = _TaskWithTriggerConfig(
+            _id="t-rearm",
+            user_id="user1",
+            repeat="0 9 * * *",
+            status=ScheduledTaskStatus.EXECUTING,
+            trigger_config=trigger_config,
+        )
+        service.reschedule_task = AsyncMock()
+        with patch("app.services.scheduler_service.get_next_run_time", return_value=self.NEXT):
+            await service.handle_recurring_task(task, 3)
+        service.reschedule_task.assert_awaited_once_with("t-rearm", self.NEXT)
+
+    async def test_a_task_without_a_trigger_config_writes_no_next_run(self, service):
+        await self._rearm(service, None)
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3),
+            None,
+        )
+
+    async def test_a_trigger_config_with_next_run_gets_it_advanced(self, service):
+        await self._rearm(service, SimpleNamespace(timezone=None, next_run=None))
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3, next_run=self.NEXT),
+            None,
+        )
+
+    async def test_a_trigger_config_without_next_run_gets_no_phantom_key(self, service):
+        await self._rearm(service, SimpleNamespace(timezone=None))
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3),
+            None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -785,8 +842,15 @@ class TestReapStaleExecutingExact:
 
         service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
         fake_log.error.assert_called_once()
-        assert fake_log.error.call_args.kwargs["task_id"] == "t-bad"
-        assert fake_log.error.call_args.kwargs["error_type"] == "CronError"
+        assert fake_log.error.call_args.args == ("Could not reap task stuck in EXECUTING",)
+        logged = fake_log.error.call_args.kwargs
+        assert {key: logged[key] for key in ("task_id", "scheduler_class", "error_type")} == {
+            "task_id": "t-bad",
+            "scheduler_class": "ConcreteSchedulerService",
+            "error_type": "CronError",
+        }
+        assert isinstance(logged["error"], str) and logged["error"]
+        assert set(logged) == {"task_id", "scheduler_class", "error", "error_type"}
 
     async def test_the_count_accumulates_across_every_reaped_task(self, service):
         service.mock_find_stale_executing.return_value = [

@@ -11,6 +11,7 @@ from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
     ScheduledTaskStatus,
+    TaskRearm,
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -2081,6 +2082,11 @@ class TestWorkflowScheduler:
         new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time, repeat="0 10 * * *")
         assert result is True
+        scheduler.update_task_status.assert_awaited_once_with(
+            WORKFLOW_ID,
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=new_time, repeat="0 10 * * *"),
+        )
 
     async def test_reschedule_workflow_db_failure(self):
         scheduler = WorkflowScheduler()

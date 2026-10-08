@@ -48,10 +48,12 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.analytics_service import AnalyticsEvents
 from app.workers.tasks.tracked_todo_tasks import (
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_RETRY_ATTEMPTS,
+    PAYWALL_FEATURE_TRACKED_TODO,
     RETRY_BACKOFF,
     TRIGGER_TODO_FEATURE_KEY,
     _build_execution_prompt,
@@ -1691,3 +1693,37 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
         repo.update_if_scheduled_at.assert_not_awaited()
         assert [c.args[1] for c in capture.call_args_list] == ["paywall:blocked"]
+
+    async def test_the_pause_is_recorded_against_the_owner_and_the_todo(
+        self, paid_owner: AsyncMock
+    ) -> None:
+        paid_owner.return_value = False
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(recurrence="every_1h"))
+        repo.update = AsyncMock()
+        record = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.log") as log,
+        ):
+            result = await _execute_todo_with_retry("todo-1", _pool())
+
+        assert result == "paused:todo-1 (subscription required)"
+        paid_owner.assert_awaited_once_with("user-1")
+        log.warning.assert_called_once_with(
+            "tracked_todo.paused_subscription_required", todo_id="todo-1", user_id="user-1"
+        )
+        capture.assert_called_once_with(
+            "user-1", AnalyticsEvents.PAYWALL_BLOCKED, {"feature": PAYWALL_FEATURE_TRACKED_TODO}
+        )
+        assert [(c.args, c.kwargs["user_id"]) for c in repo.update.call_args_list] == [
+            (("todo-1",), "user-1")
+        ]
+        record.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            TodoActivityEvent.RUN_SKIPPED,
+            "paused: runs need an active subscription, and resume when it starts",
+        )

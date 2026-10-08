@@ -204,7 +204,7 @@ async def delete_reminder_tool(
 def _parse_tool_stop_after(stop_after: str, offset: str | None) -> datetime:
     """Parse the agent's stop_after; it stays naive unless the user named an offset."""
     try:
-        parsed = datetime.fromisoformat(stop_after.replace(" ", "T"))
+        parsed = datetime.fromisoformat(stop_after)
     except ValueError as e:
         raise ValueError(
             f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."

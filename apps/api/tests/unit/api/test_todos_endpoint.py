@@ -505,7 +505,6 @@ class TestUpdateTodoReschedule:
 
 
 class TestUpdateTodoRecurrence:
-    @pytest.mark.regression
     async def test_a_mobile_rrule_round_trips_unchanged(self, client: AsyncClient) -> None:
         """The mobile detail sheet sends an RRULE as display-only recurrence on a plain todo."""
         rrule = "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"

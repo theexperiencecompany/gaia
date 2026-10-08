@@ -366,10 +366,13 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
-        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={})
+        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={"campaign": "spring"})
 
         mock_webhook_users_collection.get_by_email.assert_awaited_once_with(FAKE_EMAIL)
         assert result.user_id == FAKE_USER_ID
+        # Stored as Dodo sent it: no user_id key it never carried.
+        created = mock_webhook_subscription_repository.create.await_args.args[0]
+        assert created.metadata == {"campaign": "spring"}
 
     async def test_a_subscription_belonging_to_nobody_is_not_written(
         self,

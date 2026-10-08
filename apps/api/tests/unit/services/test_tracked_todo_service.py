@@ -18,6 +18,7 @@ from app.services.tracked_todo_service import (
     TrackedTodoService,
     tracked_todo_service,
 )
+from tests.helpers import captured_wide_event
 
 _MOD = "app.services.tracked_todo_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -572,11 +573,20 @@ class TestResumePausedFor:
         schedule = AsyncMock(return_value=True)
         before = datetime.now(UTC)
         with patch.object(TrackedTodoService, "schedule_execution", schedule):
-            resumed = await tracked_todo_service.resume_paused_for(
-                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
-            )
+            async with captured_wide_event() as wide:
+                resumed = await tracked_todo_service.resume_paused_for(
+                    USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+                )
 
         assert resumed == 2
+        assert (wide["tracked_todos_resumed"], wide["tracked_todos_resume_reason"]) == (
+            2,
+            "subscription_lapsed",
+        )
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            (("todo-2",), USER_ID),
+        ]
         mock_repo.find_paused_for_reason.assert_awaited_once_with(
             USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
         )

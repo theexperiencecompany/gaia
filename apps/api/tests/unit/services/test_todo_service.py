@@ -681,7 +681,6 @@ class TestUpdateTodo:
                 FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
 
-    @pytest.mark.regression
     async def test_a_plain_todos_display_recurrence_is_stored_exactly_as_sent(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):

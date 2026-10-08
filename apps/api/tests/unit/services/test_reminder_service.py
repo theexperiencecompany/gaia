@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
 import pytest
@@ -488,8 +488,9 @@ class TestExecuteTask:
 
         result = await scheduler.execute_task(mock_task)
 
-        assert result.success is False
-        assert "not a ReminderModel" in (result.message or "")
+        assert result == TaskExecutionResult(
+            outcome=TaskOutcome.FAILED, message="Task is not a ReminderModel"
+        )
 
     async def test_returns_failure_on_execution_error(self, scheduler, sample_reminder_doc):
         reminder = ReminderModel(**sample_reminder_doc)
@@ -523,6 +524,15 @@ class TestUpdateTaskStatus:
         kwargs = mock_repo.set_status.call_args.kwargs
         assert mock_repo.set_status.call_args.args == (oid, ScheduledTaskStatus.COMPLETED)
         assert kwargs["occurrence_count"] == 5
+
+    async def test_a_rearm_time_is_written_as_the_next_fire(
+        self, scheduler, mock_repo, future_time
+    ):
+        await scheduler.update_task_status(
+            "rem-1", ScheduledTaskStatus.SCHEDULED, TaskRearm(scheduled_at=future_time)
+        )
+
+        assert mock_repo.set_status.call_args.kwargs["scheduled_at"] == future_time
 
     async def test_no_extra_data_passes_none(self, scheduler, mock_repo):
         mock_repo.set_status.return_value = True
@@ -570,6 +580,7 @@ class TestResume:
 
         update = mock_repo.update_for_user.call_args.args[2]
         next_fire = datetime(2026, 10, 9, 3, 30, tzinfo=UTC)
+        assert mock_repo.update_for_user.call_args.args[:2] == (reminder.id, FAKE_USER_ID)
         assert update.status is ScheduledTaskStatus.SCHEDULED
         assert update.scheduled_at == next_fire
         assert "pause_reason" in update.model_fields_set and update.pause_reason is None
@@ -583,29 +594,117 @@ class TestResume:
 
         mock_repo.update_for_user.assert_not_awaited()
 
+    async def test_a_reminder_with_no_id_cannot_resume(self, scheduler):
+        with pytest.raises(ValueError, match="^Reminder must have an ID to resume$"):
+            await scheduler.resume(_reminder_document().model_copy(update={"id": None}))
+
+    async def test_a_reminder_with_no_id_cannot_pause(self, scheduler):
+        with pytest.raises(ValueError, match="^Reminder must have an ID to pause$"):
+            await scheduler.pause_for_reason(
+                _reminder_document().model_copy(update={"id": None}),
+                DeactivationReason.SUBSCRIPTION_LAPSED,
+            )
+
     async def test_activation_resumes_only_the_reminders_paused_for_the_subscription(
         self, scheduler, mock_repo, mock_scheduler_base
     ):
         good = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="0 9 * * *")
+        also_good = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="30 8 * * *")
         broken = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="* * * * *")
-        mock_repo.find_paused_for_reason.return_value = [broken, good]
+        mock_repo.find_paused_for_reason.return_value = [broken, good, also_good]
         mock_repo.update_for_user.return_value = good
 
-        resumed = await scheduler.resume_paused_for(
-            FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
-        )
+        with patch("app.services.reminder_service.log") as log:
+            resumed = await scheduler.resume_paused_for(
+                FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
 
-        assert resumed == 1
+        assert resumed == 2
+        log.warning.assert_called_once_with(
+            "Paused reminder kept paused: its schedule breaks the rule",
+            reminder_id=broken.id,
+            user_id=FAKE_USER_ID,
+            schedule_rejection="too_frequent",
+        )
+        assert log.set.call_args_list[-1] == call(
+            reminders_resumed=2, reminders_resume_reason="subscription_lapsed"
+        )
         mock_repo.find_paused_for_reason.assert_awaited_once_with(
             FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
         )
-        assert mock_repo.update_for_user.call_args.args[0] == good.id
+        assert [c.args[0] for c in mock_repo.update_for_user.call_args_list] == [
+            good.id,
+            also_good.id,
+        ]
         # The broken one is re-marked so no later resume keeps retrying it.
         mock_repo.set_status.assert_awaited_once_with(
             broken.id,
             ScheduledTaskStatus.PAUSED,
             pause_reason=DeactivationReason.INVALID_SCHEDULE,
         )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "limits",
+        [
+            {"stop_after": datetime(2026, 10, 1, tzinfo=UTC)},
+            {"max_occurrences": 3, "occurrence_count": 3},
+        ],
+        ids=["stop_after-passed", "max-occurrences-reached"],
+    )
+    @time_machine.travel(datetime(2026, 10, 8, 12, 0, tzinfo=UTC), tick=False)
+    async def test_a_series_that_ended_while_paused_completes_instead_of_firing_again(
+        self, scheduler, mock_repo, mock_scheduler_base, limits
+    ):
+        reminder = _reminder_document(
+            status=ScheduledTaskStatus.PAUSED,
+            repeat="0 9 * * *",
+            pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED,
+            **limits,
+        )
+        mock_repo.update_for_user.return_value = reminder
+
+        assert await scheduler.resume(reminder) is True
+
+        update = mock_repo.update_for_user.call_args.args[2]
+        assert update.status is ScheduledTaskStatus.COMPLETED
+        assert "pause_reason" in update.model_fields_set and update.pause_reason is None
+        assert "scheduled_at" not in update.model_fields_set
+        mock_scheduler_base[1].assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_one_reminder_that_cannot_resume_does_not_strand_the_rest(
+        self, scheduler, mock_repo, mock_scheduler_base
+    ):
+        failing = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="0 9 * * *")
+        good = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="0 10 * * *")
+        mock_repo.find_paused_for_reason.return_value = [failing, good]
+        mock_repo.update_for_user.side_effect = [ConnectionError("mongo down"), good]
+
+        with (
+            patch("app.services.reminder_service.log") as log,
+            pytest.raises(
+                ExceptionGroup, match=r"^1 paused reminder\(s\) could not resume"
+            ) as raised,
+        ):
+            await scheduler.resume_paused_for(FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED)
+
+        log.warning.assert_called_once_with(
+            "Paused reminder could not resume",
+            reminder_id=failing.id,
+            user_id=FAKE_USER_ID,
+            error="mongo down",
+            error_type="ConnectionError",
+        )
+        assert log.set.call_args_list[-1] == call(
+            reminders_resumed=1, reminders_resume_reason="subscription_lapsed"
+        )
+
+        assert [call.args[0] for call in mock_repo.update_for_user.call_args_list] == [
+            failing.id,
+            good.id,
+        ]
+        assert [type(e) for e in raised.value.exceptions] == [ConnectionError]
 
 
 # ---------------------------------------------------------------------------

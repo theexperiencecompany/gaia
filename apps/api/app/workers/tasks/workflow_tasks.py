@@ -1467,7 +1467,10 @@ async def _skip_unpaid_fire(
         AnalyticsEvents.PAYWALL_BLOCKED,
         {"feature": PAYWALL_FEATURE_WORKFLOW},
     )
-    await scheduler.pause_for_reason(workflow, DeactivationReason.SUBSCRIPTION_LAPSED)
+    # A stale job of a workflow already switched off must not overwrite why it is off:
+    # SUBSCRIPTION_LAPSED would let the next activation turn it back on.
+    if workflow.activated:
+        await scheduler.pause_for_reason(workflow, DeactivationReason.SUBSCRIPTION_LAPSED)
     return f"Workflow {workflow_id} skipped — subscription required"
 
 

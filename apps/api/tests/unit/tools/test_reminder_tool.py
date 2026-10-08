@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.reminder_models import StaticReminderPayload
 
 # ---------------------------------------------------------------------------
@@ -406,9 +407,10 @@ class TestRecurringScheduleRule:
 
         from app.agents.tools.reminder_tool import update_reminder_tool
 
-        result = await cast(Any, update_reminder_tool).coroutine(
-            config=_cfg(), reminder_id="rem-1", repeat=repeat
-        )
+        with patch(f"{MODULE}.log") as mock_log:
+            result = await cast(Any, update_reminder_tool).coroutine(
+                config=_cfg(), reminder_id="rem-1", repeat=repeat
+            )
 
         assert result == {
             "error": message,
@@ -416,6 +418,9 @@ class TestRecurringScheduleRule:
             "reason": reason,
             "suggestion": _SCHEDULE_SUGGESTION,
         }
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=reason
+        )
         mock_scheduler.update_reminder.assert_not_called()
 
     @pytest.mark.regression
@@ -428,9 +433,12 @@ class TestRecurringScheduleRule:
 
         from app.agents.tools.reminder_tool import create_reminder_tool
 
-        result = await cast(Any, create_reminder_tool).coroutine(
-            config=_cfg(), payload=StaticReminderPayload(title="Stretch", body="Now"), repeat=repeat
-        )
+        with patch(f"{MODULE}.log") as mock_log:
+            result = await cast(Any, create_reminder_tool).coroutine(
+                config=_cfg(),
+                payload=StaticReminderPayload(title="Stretch", body="Now"),
+                repeat=repeat,
+            )
 
         assert result == {
             "error": message,
@@ -438,6 +446,9 @@ class TestRecurringScheduleRule:
             "reason": reason,
             "suggestion": _SCHEDULE_SUGGESTION,
         }
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=reason
+        )
         mock_scheduler.create_reminder.assert_not_called()
 
     @patch(f"{MODULE}.reminder_scheduler")

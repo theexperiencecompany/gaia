@@ -275,3 +275,21 @@ class TestABlockedFireDeactivatesOnlyThatWorkflow:
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         scheduler.handle_recurring_task.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_a_stale_fire_of_a_workflow_the_user_switched_off_keeps_their_choice(
+        self,
+    ) -> None:
+        # Overwriting their off switch with SUBSCRIPTION_LAPSED would let the next
+        # subscription activation turn the workflow back on.
+        workflow = _make_workflow(user_id="user-free-6")
+        workflow.activated = False
+        scheduler, p_scheduler = _patch_scheduler(workflow)
+        with (
+            p_scheduler,
+            patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
+        ):
+            result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
+
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
+        scheduler.pause_for_reason.assert_not_called()

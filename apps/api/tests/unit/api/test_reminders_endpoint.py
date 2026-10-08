@@ -515,6 +515,29 @@ class TestResumeReminder:
         # 12:00Z is 17:30 IST, so the next 09:00 IST is 03:30Z tomorrow, not 09:00Z.
         assert written.scheduled_at == datetime(2026, 10, 9, 3, 30, tzinfo=UTC)
 
+    async def test_a_reminder_whose_schedule_breaks_the_rule_is_refused_with_why(
+        self, client: AsyncClient
+    ) -> None:
+        paused = ReminderDocument(
+            id="64b64b64b64b64b64b64b64b",
+            user_id=USER_ID,
+            agent="static",
+            repeat="* * * * *",
+            status="paused",
+            scheduled_at=datetime(2026, 9, 1, 3, 30, tzinfo=UTC),
+            payload={"title": "Meds", "body": "Take your meds"},
+        )
+        update = AsyncMock(return_value=paused)
+        with (
+            patch(f"{REMINDER_REPO}.get_for_user", AsyncMock(return_value=paused)),
+            patch(f"{REMINDER_REPO}.update_for_user", update),
+        ):
+            resp = await client.post(f"{API}/{paused.id}/resume")
+
+        assert resp.status_code == 400
+        assert resp.json()["message"] == "Schedules can repeat at most once an hour."
+        update.assert_not_awaited()
+
     async def test_resume_not_paused(self, client: AsyncClient) -> None:
         """Resuming a reminder that isn't paused should fail with 400."""
         active_reminder = _reminder_model("rem_1", status="scheduled")
