@@ -628,6 +628,7 @@ async def test_a_failed_call_emits_a_wide_event_like_any_other_call() -> None:
     assert fields["llm_event"] == "llm_call"
     assert fields["status"] == "error"
     assert fields["error_family"] == "timeout"
+    assert fields["error_type"] == "TimeoutError"
     assert fields["agent_name"] == "executor_agent"
     assert fields["model"] == "deepseek/deepseek-v4-flash"
     assert fields["user_id"] == "u1"
@@ -679,9 +680,29 @@ async def test_a_call_that_reports_no_usage_is_recorded_as_a_loud_error() -> Non
 
     assert doc.status == "error"
     assert doc.error_family == "no_usage"
+    assert (doc.user_id, doc.model_requested) == ("u1", "deepseek/deepseek-v4-flash")
     assert (doc.cost_usd, doc.input_tokens, doc.output_tokens) == (0.0, 0, 0)
-    errored.assert_called_once()
-    assert errored.call_args.kwargs["agent_name"] == "executor_agent"
+    errored.assert_called_once_with(
+        f"{LogTag.AGENT} model call reported no token usage and no cost — "
+        "its spend is unknown and recorded as a no_usage error",
+        agent_name="executor_agent",
+        model="deepseek/deepseek-v4-flash",
+        model_served="deepseek/deepseek-v4",
+    )
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        TokenUsage(input_tokens=1200, output_tokens=0, cached_tokens=0, reasoning_tokens=0),
+        TokenUsage(input_tokens=0, output_tokens=90, cached_tokens=0, reasoning_tokens=0),
+    ],
+    ids=["input-only", "output-only"],
+)
+async def test_either_token_count_alone_is_metered_as_a_success(usage: TokenUsage) -> None:
+    doc = await _record(usage=usage, provider_cost=None)
+
+    assert doc.status == "ok"
 
 
 async def test_a_call_with_no_usage_is_never_charged_to_the_user() -> None:

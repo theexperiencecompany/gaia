@@ -90,3 +90,20 @@ def test_an_operator_valued_id_targets_no_single_doc() -> None:
 
     assert repo._filter_doc_id({"_id": {"$in": ["a", "b"]}}) is None
     assert repo._filter_doc_id({"_id": {"$ne": "a"}}) is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "doc_id", "valid"),
+    [
+        ({"uses_object_id": True}, "6812f0b3c9a14e2b7d5a91cc", True),
+        ({"uses_object_id": True}, "user-1", False),
+        ({"uses_object_id": True, "identity_field": "conversation_id"}, "user-1", True),
+        ({"uses_object_id": False}, "user-1", True),
+        ({"uses_object_id": False}, "", False),
+    ],
+    ids=["object-id", "not-an-object-id", "business-key", "string-id", "empty"],
+)
+def test_an_id_is_valid_by_the_collections_own_identity(
+    overrides: dict[str, Any], doc_id: str, valid: bool
+) -> None:
+    assert _concrete(**overrides)().is_valid_id(doc_id) is valid

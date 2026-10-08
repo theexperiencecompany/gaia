@@ -759,7 +759,7 @@ def _resolve_fallback(
     return with_llm_retry(resolved), requested
 
 
-def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str | None:
+def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool = False) -> str | None:
     """Return the provider's sticky-routing key for this call, or None when unset.
 
     Auxiliary one-shots get their own suffixed session: sharing the conversation's key
@@ -984,7 +984,7 @@ def invoke_llm(
             # Passed through like the async path — this branch used to hand
             # _resolve_fallback nothing, so a sync fallback silently landed
             # on whatever provider the router picked.
-            session_id=opts.sticky_session_id or _sticky_session_id(config, auxiliary=False),
+            session_id=opts.sticky_session_id or _sticky_session_id(config),
         )
         return _stamp_fallback(
             fallback_runnable.invoke(

@@ -2494,6 +2494,69 @@ class TestFallbackKeepsItsLanesStickySession:
         fallback.bind.assert_not_called()
 
 
+class TestTheSyncFallback:
+    """invoke_llm's fallback branch: same session, label, error and served-model stamp as the async path."""
+
+    @staticmethod
+    def _failing_primary() -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.invoke = MagicMock(side_effect=ConnectionError("provider down"))
+        return runnable
+
+    @staticmethod
+    def _fallback() -> NonCallableMagicMock:
+        runnable = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
+        runnable.model_name = "fallback-model"
+        runnable.invoke = MagicMock(side_effect=lambda *_a, **_k: AIMessage(content="ok"))
+        return runnable
+
+    @patch("app.agents.llm.client.log")
+    def test_the_fallback_binds_the_conversation_session_and_names_itself(
+        self, mock_log: MagicMock
+    ) -> None:
+        fallback = self._fallback()
+
+        result = invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            label="memory_extraction",
+            options=LLMInvokeOptions(max_attempts=1),
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+        assert result.response_metadata["gaia_fallback_model"] == "fallback-model"
+        assert mock_log.warning.call_args.kwargs["llm"] == {
+            "label": "memory_extraction",
+            "error_type": "ConnectionError",
+            "fell_back": True,
+        }
+
+    def test_an_explicit_sticky_session_outranks_the_runs(self) -> None:
+        fallback = self._fallback()
+
+        invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            options=LLMInvokeOptions(max_attempts=1, sticky_session_id="explicit"),
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "explicit"}
+
+    def test_no_fallback_available_re_raises_the_primarys_error(self) -> None:
+        with pytest.raises(ConnectionError, match="provider down"):
+            invoke_llm(
+                self._failing_primary(),
+                "hi",
+                fallback=lambda: None,
+                options=LLMInvokeOptions(max_attempts=1),
+            )
+
+
 class TestTheInvokeTimeoutIsEnforced:
     """The caller's timeout is the ceiling on a whole attempt, retries included.
 

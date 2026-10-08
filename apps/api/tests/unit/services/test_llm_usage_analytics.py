@@ -227,6 +227,12 @@ def test_a_graph_row_is_charged_chat_spend(posthog: Any) -> None:
     assert props["charge_to_budget"] is True
 
 
+def test_a_row_inside_a_workflow_is_charged_workflow_spend(posthog: Any) -> None:
+    capture_llm_call(_row(agent_name="comms_agent", background=False, workflow_id="wf-1"))
+
+    assert _captured(posthog)["properties"]["feature"] == "workflow"
+
+
 def test_an_error_row_says_it_failed_and_why(posthog: Any) -> None:
     """The ledger keeps failures so an outage reads as errors, not a dip in traffic; the event must too."""
     capture_llm_call(

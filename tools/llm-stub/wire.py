@@ -55,6 +55,11 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // _CHARS_PER_TOKEN)
 
 
+def prompt_tokens(messages: list[dict[str, Any]]) -> int:
+    """Approximate prompt size of a request's messages, the input side of its usage."""
+    return estimate_tokens(json.dumps(messages, ensure_ascii=False))
+
+
 def _usage(prompt_tokens: int, response: Response) -> dict[str, int]:
     """OpenAI usage block: the request's size in, the scripted reply's size out."""
     if isinstance(response, ToolCallResponse):

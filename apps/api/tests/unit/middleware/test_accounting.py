@@ -19,10 +19,12 @@ from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.llm.lane import ModelLane
 from app.agents.middleware import accounting
 from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
     _latest_ai_message,
+    _serving_model,
 )
 from app.config.model_pricing import calculate_token_cost
 from app.config.rate_limits import (
@@ -1259,3 +1261,36 @@ async def test_a_bag_that_does_carry_a_lane_warns_about_nothing() -> None:
         await mw.aafter_model(_state(_ai()), None)
 
     assert warned == []
+
+
+_SERVING_LANE = ModelLane(
+    provider="openrouter",
+    model="deepseek/deepseek-v4-flash-0731",
+    reasoning=None,
+    provider_pin=None,
+    max_input_tokens=DEFAULT_MAX_TOKENS,
+)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "lane", "served"),
+    [
+        (
+            {"gaia_fell_back": True, "gaia_fallback_model": "gemini-3.1-flash-lite"},
+            _SERVING_LANE,
+            "gemini-3.1-flash-lite",
+        ),
+        (
+            {"gaia_fell_back": False, "gaia_fallback_model": "gemini-3.1-flash-lite"},
+            _SERVING_LANE,
+            "deepseek/deepseek-v4-flash-0731",
+        ),
+        ({"gaia_fell_back": True}, _SERVING_LANE, "deepseek/deepseek-v4-flash-0731"),
+        ({}, None, accounting.UNKNOWN_MODEL_NAME),
+    ],
+    ids=["fallback-served", "fallback-named-but-not-taken", "fell-back-unnamed", "no-lane"],
+)
+def test_the_serving_model_is_the_fallback_only_when_one_answered(
+    metadata: dict[str, object], lane: ModelLane | None, served: str
+) -> None:
+    assert _serving_model(AIMessage(content="x", response_metadata=metadata), lane) == served
