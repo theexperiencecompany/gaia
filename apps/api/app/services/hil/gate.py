@@ -17,7 +17,6 @@ on replay, re-reading the record instead of remembering.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 import json
 from typing import Any
 
@@ -93,7 +92,7 @@ from app.services.hil.utils import (
     unpack_tool_call,
 )
 from app.utils.general_utils import clip_text
-from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.wide_events import log
 
@@ -556,7 +555,6 @@ async def _judge(
                 tool_name=call.name,
                 via="auto",
             ),
-            Dedupe(key=call.id, occurred_at=datetime.now(UTC)),
         )
     return decision
 
