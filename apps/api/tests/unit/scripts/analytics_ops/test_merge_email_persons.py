@@ -18,6 +18,7 @@ from scripts.analytics_ops.merge_email_persons import (
     apply,
     match,
     users_by_email,
+    write_snapshot,
 )
 from scripts.analytics_ops.posthog_api import Sender, TargetName
 
@@ -153,6 +154,33 @@ class TestApply:
 
         assert [m["event"] for m in sent] == [MERGE_EVENT]
         assert restored == 0
+
+    def test_two_older_persons_of_one_user_restore_only_the_oldests_first_touch(
+        self, recording_sender: Sender, sent: list[dict[str, object]]
+    ) -> None:
+        """Merges run oldest first; the second must not overwrite the first's earlier first touch."""
+        oldest = _merge("p1", "Alice@x.com", ALICE, "2025-09-01 00:00:00", first_seen="2025-09-01")
+        later = _merge("p2", "alice@x.com", ALICE, "2025-11-01 00:00:00", first_seen="2025-11-01")
+
+        restored = apply(
+            _survivors({ALICE: "2026-02-01 00:00:00"}), recording_sender, [oldest, later]
+        )
+
+        sets = [m["$set"] for m in sent if m["event"] == "$set"]
+        assert sets == [{"first_seen": "2025-09-01"}]
+        assert restored == 1
+
+
+class TestSnapshot:
+    def test_two_snapshots_in_one_second_are_two_files(self, tmp_path: Path) -> None:
+        """A snapshot is the only record of an irreversible merge; a later run must never replace it."""
+        merge = _merge("p1", "alice@x.com", ALICE, "2026-05-01 00:00:00")
+
+        first = write_snapshot([merge], tmp_path)
+        second = write_snapshot([merge], tmp_path)
+
+        assert first != second
+        assert len(list(tmp_path.iterdir())) == 2
 
 
 class TestCommand:

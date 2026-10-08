@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+from uuid import uuid4
 
 from pymongo.database import Database
 
@@ -186,8 +187,11 @@ def plan(read: PostHogReader, db: Database[Document]) -> MergePlan:
 def write_snapshot(merges: list[Merge], snapshot_dir: Path) -> Path:
     """Write the persons about to be merged to JSONL: the only record a merge can be read back from."""
     snapshot_dir.mkdir(parents=True, exist_ok=True)
-    path = snapshot_dir / f"merge-email-persons-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.jsonl"
-    with path.open("w", encoding="utf-8") as snapshot:
+    # Unique per run and created exclusively: no later run can replace an earlier record.
+    path = (
+        snapshot_dir / f"merge-email-persons-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}.jsonl"
+    )
+    with path.open("x", encoding="utf-8") as snapshot:
         for merge in merges:
             record = {
                 "person_id": merge.person_id,
@@ -218,5 +222,7 @@ def apply(read: PostHogReader, sender: Sender, merges: list[Merge]) -> int:
         first_touch = merge.first_touch()
         if first_touch and (survivor_created is None or merge.created_at < survivor_created):
             sender.client.set(distinct_id=survivor, properties=first_touch)
+            # The survivor now carries this person's first touch; a newer one must not replace it.
+            survivors[survivor] = merge.created_at
             restored += 1
     return restored
