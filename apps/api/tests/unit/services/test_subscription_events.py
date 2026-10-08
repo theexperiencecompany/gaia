@@ -824,7 +824,9 @@ class TestResultsNameTheOwnerAndTheRow:
         result = await _apply(SubscriptionEventKind.RENEWED)
 
         assert result == SubscriptionEventResult(SubscriptionEventOutcome.APPLIED, FAKE_USER_ID)
-        mock_webhook_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_xyz789")
+        assert {
+            c.args for c in mock_webhook_subscription_repository.get_by_dodo_id.await_args_list
+        } == {("sub_xyz789",)}
         dodo_id, update = (
             mock_webhook_subscription_repository.apply_update_by_dodo_id.await_args.args
         )
@@ -950,7 +952,7 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         self, kind: SubscriptionEventKind, mock_webhook_subscription_repository, posthog_client
     ) -> None:
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            return_value=_row(last_event_at=None)
+            side_effect=[_row(last_event_at=None), _row(status=kind.value, last_event_at=NOW)]
         )
 
         await _apply(kind)
@@ -969,7 +971,10 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         self, mock_webhook_subscription_repository, posthog_client
     ) -> None:
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            return_value=_row(last_event_at=None)
+            side_effect=[
+                _row(last_event_at=None),
+                _row(cancel_at_next_billing_date=True, last_event_at=NOW),
+            ]
         )
 
         await _apply(SubscriptionEventKind.CANCELLED, cancel_at_next_billing_date=True)
@@ -981,11 +986,24 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
             "subscription_cancel_at_period_end": True,
         }
 
+    @pytest.mark.regression
+    async def test_a_lapse_overtaken_by_a_newer_renewal_leaves_the_person_subscribed(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        """A delivery that resumes after a newer one already wrote must send the row's state now, not its own snapshot."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), _row(status="active", last_event_at=NOW)]
+        )
+
+        await _apply(SubscriptionEventKind.FAILED)
+
+        assert _person_properties(posthog_client)["is_subscribed"] is True
+
     async def test_a_recovery_from_hold_resubscribes_the_person(
         self, mock_webhook_subscription_repository, posthog_client
     ) -> None:
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            return_value=_row(status="on_hold", last_event_at=None)
+            side_effect=[_row(status="on_hold", last_event_at=None), _row(last_event_at=NOW)]
         )
 
         await _apply(SubscriptionEventKind.RENEWED)

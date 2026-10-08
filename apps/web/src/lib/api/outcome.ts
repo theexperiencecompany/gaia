@@ -117,6 +117,12 @@ function trackRequestFailure(
   if (last !== undefined && now - last < REQUEST_FAILED_DEDUPE_WINDOW_MS) {
     return;
   }
+  // Forget the keys whose window has passed, so a long-lived tab holds only live windows.
+  for (const [seenKey, seenAt] of lastRequestFailureAt) {
+    if (now - seenAt >= REQUEST_FAILED_DEDUPE_WINDOW_MS) {
+      lastRequestFailureAt.delete(seenKey);
+    }
+  }
   lastRequestFailureAt.set(key, now);
   track("api:request_failed", {
     method,

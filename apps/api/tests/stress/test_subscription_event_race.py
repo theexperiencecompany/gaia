@@ -100,9 +100,13 @@ class _RacingSubscriptionRepository:
         self._write_order = write_order
         self._turn = 0
         self._turn_changed = asyncio.Condition()
+        self._reads = 0
 
     async def get_by_dodo_id(self, dodo_subscription_id: str) -> SubscriptionDocument | None:
-        await self._both_read.wait()
+        # Only each reducer's first read is held at the barrier; later reads see the row as it is.
+        self._reads += 1
+        if self._reads <= self._both_read.parties:
+            await self._both_read.wait()
         return self.row.model_copy(deep=True)
 
     async def apply_update_by_dodo_id(

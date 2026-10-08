@@ -362,17 +362,23 @@ def _set_paid_person_properties(
     )
 
 
-def _sync_paid_person_properties(
-    user_id: str, row: SubscriptionDocument, changes: SubscriptionUpdate
+async def _sync_paid_person_properties(
+    user_id: str, dodo_subscription_id: str, changes: SubscriptionUpdate
 ) -> None:
-    """Re-set the person's paid state when the write moved the status or the scheduled cancel."""
+    """Re-set the person's paid state from the row as it stands now, when the write moved it.
+
+    Read after the write rather than taken from this event's snapshot: a newer
+    delivery may have landed meanwhile, and its state is the one to keep.
+    """
     if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
         return
-    merged = row.model_copy(update=changes.model_dump(exclude_unset=True))
+    current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    if current is None:
+        raise LookupError(f"subscription {dodo_subscription_id} vanished after its own write")
     _set_paid_person_properties(
         user_id,
-        SubscriptionStatus(merged.status),
-        cancel_at_period_end=bool(merged.cancel_at_next_billing_date),
+        SubscriptionStatus(current.status),
+        cancel_at_period_end=bool(current.cancel_at_next_billing_date),
     )
 
 
@@ -484,7 +490,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
 
     new_status = changes.status
     _capture_transition(event, row.user_id, changes)
-    _sync_paid_person_properties(row.user_id, row, changes)
+    await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
