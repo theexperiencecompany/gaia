@@ -47,7 +47,6 @@ apps/api/app/agents/tools/coding/_context.py	TB002
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
-apps/api/app/agents/tools/context_tool.py	TB001
 apps/api/app/agents/tools/core/mutations.py	TB002
 apps/api/app/agents/tools/desktop_tools.py	TB001
 apps/api/app/agents/tools/desktop_tools.py	TB002
@@ -56,19 +55,18 @@ apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
 apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
-apps/api/app/agents/tools/memory_tools.py	TB002
-apps/api/app/agents/tools/playbook_tools.py	TB001
-apps/api/app/agents/tools/playbook_tools.py	TB002
+apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
+apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/reminder_tool.py	TB001
 apps/api/app/agents/tools/reminder_tool.py	TB002
 apps/api/app/agents/tools/subscription_tool.py	TB002
 apps/api/app/agents/tools/todo_tools.py	TB001
 apps/api/app/agents/tools/todo_tools.py	TB002
 apps/api/app/agents/tools/webpage_tool.py	TB001
-apps/api/app/agents/tools/workflow_shared_tools.py	TB001
-apps/api/app/agents/tools/workflow_shared_tools.py	TB002
-apps/api/app/agents/tools/workflow_tool.py	TB001
-apps/api/app/agents/tools/workflow_tool.py	TB002
+apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
+apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
+apps/api/app/agents/tools/workflow_tool.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
+apps/api/app/agents/tools/workflow_tool.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/workspace/offload.py	TB001
 apps/api/app/agents/workspace/offload.py	TB002
 apps/api/app/api/v1/endpoints/device.py	TB002
@@ -115,8 +113,8 @@ apps/api/app/models/playbook_models.py	TB002
 apps/api/app/models/trigger_configs.py	TB001
 apps/api/app/models/trigger_configs.py	TB002
 apps/api/app/models/workflow_execution_models.py	TB001
-apps/api/app/models/workflow_models.py	TB001
-apps/api/app/models/workflow_models.py	TB002
+apps/api/app/models/workflow_models.py	TB001	deferred-until=2026-11-08; the only change here adds DeactivationReason.OWNER_NOT_FOUND (run-owner fix); the remaining Any/dict reads are Workflow.__init__ and its before-validators forwarding **data into BaseScheduledTask, a pydantic-contract change kept out of this fix (decided 2026-10-08)
+apps/api/app/models/workflow_models.py	TB002	deferred-until=2026-11-08; the only change here adds DeactivationReason.OWNER_NOT_FOUND (run-owner fix); the remaining Any/dict reads are Workflow.__init__ and its before-validators forwarding **data into BaseScheduledTask, a pydantic-contract change kept out of this fix (decided 2026-10-08)
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002

@@ -44,10 +44,9 @@ from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.agent_models import AgentConfigurable, RunMetadata, agent_configurable
 from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
-from app.models.integrations.composio_hooks import RunMetadata
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,

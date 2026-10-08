@@ -19,6 +19,7 @@ from langchain_core.tools import tool
 from app.agents.tools.coding._context import (
     canonical_path,
     get_session_id,
+    get_user_id,
     safe_emit,
 )
 from app.agents.workspace.paths import WORKSPACE_ROOT
@@ -26,7 +27,6 @@ from app.agents.workspace.system_files import system_file_body
 from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import get_user_id
 from app.services import gaia_task_files
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file

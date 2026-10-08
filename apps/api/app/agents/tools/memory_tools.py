@@ -260,7 +260,7 @@ def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[EpisodePayload]:
     """Group journal search hits by day into the shared episodes payload shape."""
     by_date: dict[date_type, EpisodePayload] = {}
     for hit in hits:
-        day = by_date.setdefault(
+        day: EpisodePayload = by_date.setdefault(
             hit.date,
             EpisodePayload(date=hit.date.isoformat(), entries=[], summary=None),
         )

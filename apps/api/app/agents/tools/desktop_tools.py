@@ -12,11 +12,11 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.agents.tools.coding._context import get_session_id
+from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
-from app.models.agent_models import agent_configurable, get_user_id
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
 from app.services.storage import write_session_file

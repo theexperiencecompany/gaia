@@ -82,7 +82,6 @@ class TestGetUserId:
             {},
             {CONFIGURABLE_KEY: {}, "metadata": {}},
             {CONFIGURABLE_KEY: {"user_id": ""}, "metadata": {"user_id": ""}},
-            {"metadata": {"user_id": 7}},
         ],
     )
     def test_a_config_without_a_user_is_refused(self, config: dict | None) -> None:

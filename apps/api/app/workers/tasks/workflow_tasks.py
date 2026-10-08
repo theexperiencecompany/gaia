@@ -774,13 +774,7 @@ class _Fire:
     reservation: str
 
 
-async def _run_workflow(
-    workflow: Workflow,
-    workflow_id: str,
-    context: dict[str, object],
-    reservation: str,
-    user: AuthenticatedUser,
-) -> tuple[str, list[RecordedCall], str]:
+async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
     """Run the fire on whichever path can carry it, returning conversation, trace, and summary.
 
     A playbook replays only while its workflow_hash still matches the
@@ -791,6 +785,8 @@ async def _run_workflow(
     # ONE charge per fire regardless of path: a fallback to the agent must not
     # bill twice, and charging up front stops an over-quota user before any
     # side effect. Real consumption is metered separately by enforce_daily_cost_budget.
+    workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
+    reservation = fire.reservation
     await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
 
     # A playbook is an optimisation, never a precondition: if this read fails
@@ -882,13 +878,7 @@ async def _run_workflow(
     # the next fire reads an empty record and repeats every side effect.
     try:
         return await _finish_after_replay(
-            _Fire(
-                workflow=workflow,
-                workflow_id=workflow_id,
-                context=context,
-                user=user,
-                reservation=reservation,
-            ),
+            fire,
             playbook,
             conversation_id,
             result,
@@ -1259,26 +1249,17 @@ async def _drain_trigger_events(
     return merged, None
 
 
-async def _run_and_record_success(
-    workflow: Workflow,
-    workflow_id: str,
-    trigger_type: str,
-    context: dict[str, object] | None,
-    execution_id: str,
-    reservation: str,
-    owner: AuthenticatedUser,
-) -> str:
+async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:
     # Stamps the execution id onto the wide event before any model call: the
     # llm_calls ledger reads it to attribute cost (it exists only here, never
     # in config.configurable). Applies to replay-fallback runs too.
+    workflow, workflow_id = fire.workflow, fire.workflow_id
     log.set(workflow=WorkflowContext(id=workflow_id, execution_id=execution_id))
 
     # Replay the playbook when it still describes this workflow, else run the
     # agent (a partial replay hands the rest over, carrying what it did). Agent
     # path delivers from the background path; a replay via _finish_after_replay.
-    conversation_id, trace, summary = await _run_workflow(
-        workflow, workflow_id, context or {}, reservation, owner
-    )
+    conversation_id, trace, summary = await _run_workflow(fire)
 
     # Track successful execution
     await WorkflowService.increment_execution_count(
@@ -1585,15 +1566,14 @@ async def execute_workflow_by_id(
         )
         execution_id = execution.execution_id
 
-        return await _run_and_record_success(
-            workflow,
-            workflow_id,
-            trigger_type,
-            context,
-            execution_id,
-            build_lock_value(None, lock_task_id),
-            owner,
+        fire = _Fire(
+            workflow=workflow,
+            workflow_id=workflow_id,
+            context=context or {},
+            user=owner,
+            reservation=build_lock_value(None, lock_task_id),
         )
+        return await _run_and_record_success(fire, trigger_type, execution_id)
 
     except WorkflowFireOverlapped as never_ran:
         # Recorded on the wide event from the block that caught it; the helper

@@ -1,7 +1,7 @@
 """Shared helpers for the persistent coding tools.
 
 Centralizes:
-  - session_id extraction from RunnableConfig
+  - user_id / session_id extraction from RunnableConfig
   - path canonicalization + workspace-containment checks (session-aware)
   - shell quoting
   - shorthand for emitting custom stream events to the frontend
@@ -32,6 +32,16 @@ from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
+
+
+def get_user_id(config: RunnableConfig) -> str:
+    """Extract user_id from config or raise a clear error."""
+    configurable = agent_configurable(config)
+    metadata = config.get("metadata", {}) if config else {}
+    user_id = configurable.get("user_id") or metadata.get("user_id")
+    if not isinstance(user_id, str) or not user_id:
+        raise ValueError("user_id not found in RunnableConfig")
+    return user_id
 
 
 def get_session_id(config: RunnableConfig) -> str | None:
@@ -159,6 +169,7 @@ __all__ = [
     "canonical_rel",
     "detect_content_type",
     "get_session_id",
+    "get_user_id",
     "safe_emit",
     "sh_quote",
 ]

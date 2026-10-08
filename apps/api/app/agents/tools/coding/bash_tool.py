@@ -20,6 +20,7 @@ from prometheus_client import Counter
 from app.agents.tools.coding._artifacts import publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
+    get_user_id,
     safe_emit,
     sh_quote,
 )
@@ -41,7 +42,6 @@ from app.constants.sandbox import (
     WORKSPACE_TMP_SUFFIX,
 )
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import get_user_id
 from app.services.feature_flags import is_code_mode_enabled
 from app.services.sandbox import (
     SandboxAcquisitionError,
