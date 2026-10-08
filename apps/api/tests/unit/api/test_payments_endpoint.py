@@ -135,6 +135,16 @@ class TestGetDiscountCodes:
         assert response.status_code == 200
         assert response.json() == {"founder_letter": "THANKYOU40"}
 
+    async def test_wide_event_names_the_caller_and_the_operation(self, client: AsyncClient):
+        with patch("app.api.v1.endpoints.payments.log") as mock_log:
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": "507f1f77bcf86cd799439011"},
+            payment={"operation": "get_discount_codes"},
+        )
+
     async def test_an_unset_code_is_null(self, client: AsyncClient):
         with patch("app.services.payments.discount_codes.settings") as settings:
             settings.FOUNDER_LETTER_DISCOUNT_CODE = None

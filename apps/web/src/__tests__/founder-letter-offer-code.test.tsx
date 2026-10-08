@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,10 @@ vi.mock("@/features/pricing/api/pricingApi", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { FOUNDER_LETTER_SHOWN: "founder_letter:shown" },
+  ANALYTICS_EVENTS: {
+    FOUNDER_LETTER_SHOWN: "founder_letter:shown",
+    FOUNDER_LETTER_DISMISSED: "founder_letter:dismissed",
+  },
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
@@ -87,5 +90,20 @@ describe("founder letter offer code", () => {
 
     await waitFor(() => expect(trackEvent).toHaveBeenCalled());
     expect(result.current.liveOfferCode).toBeNull();
+  });
+
+  it("counts the letter as shown even when it is dismissed before the code arrives", async () => {
+    const codes = Promise.withResolvers<{ founder_letter: string }>();
+    getDiscountCodes.mockReturnValue(codes.promise);
+
+    const { result } = renderHook(() => useFounderLetter(false), { wrapper });
+    act(() => result.current.dismissLetter());
+    await act(async () => codes.resolve({ founder_letter: "THANKYOU40" }));
+
+    await waitFor(() =>
+      expect(trackEvent).toHaveBeenCalledWith("founder_letter:shown", {
+        discount_code: "THANKYOU40",
+      }),
+    );
   });
 });

@@ -94,7 +94,7 @@ import { LetterOffer } from "@/features/chat/components/interface/founder-letter
 import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PostPaymentReceipt } from "@/features/pricing/components/PostPaymentReceipt";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
-import { ProDailyPrice } from "@/features/pricing/components/ProDailyPrice";
+import { ProDailyPriceHeading } from "@/features/pricing/components/ProDailyPriceHeading";
 import { DiscountBanner } from "@/features/pricing/components/UpgradeModal";
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
@@ -356,23 +356,40 @@ describe("sidebar promo", () => {
   });
 });
 
-describe("per-day price", () => {
+describe("per-day price heading", () => {
+  const heading = (
+    <ProDailyPriceHeading
+      afterPrice="a day to never work again."
+      withoutPrice="Never work again."
+    />
+  );
+
   it("spreads the monthly catalogue price over a 30-day month", () => {
-    const { container } = render(<ProDailyPrice />);
-    expect(visibleText(container)).toMatchInlineSnapshot(`"$1"`);
+    const { container } = render(heading);
+    expect(visibleText(container)).toMatchInlineSnapshot(
+      `"$1 a day to never work again."`,
+    );
   });
 
   it("follows the catalogue when the monthly price moves", () => {
     mockPlans = [{ ...PRO_MONTHLY, amount: 4500 }, PRO_YEARLY];
-    const { container } = render(<ProDailyPrice />);
-    expect(visibleText(container)).toBe("$1.50");
+    const { container } = render(heading);
+    expect(visibleText(container)).toBe("$1.50 a day to never work again.");
   });
 
-  it("holds a skeleton, never a figure, until the catalogue arrives", () => {
+  it("holds the price as a skeleton while the catalogue loads", () => {
     mockPlans = [];
-    const { container } = render(<ProDailyPrice />);
-    expect(visibleText(container)).toBe("");
+    mockPlansLoading = true;
+    const { container } = render(heading);
+    expect(visibleText(container)).toBe("a day to never work again.");
     expect(container.querySelector(SKELETON)).not.toBeNull();
+  });
+
+  it("drops the price, not the page, when the catalogue could not be read", () => {
+    mockPlans = [];
+    const { container } = render(heading);
+    expect(visibleText(container)).toBe("Never work again.");
+    expect(container.querySelector(SKELETON)).toBeNull();
   });
 });
 

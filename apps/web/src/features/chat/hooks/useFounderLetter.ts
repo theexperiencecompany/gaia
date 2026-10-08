@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isOfferLive } from "@/config/offer";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -41,8 +41,15 @@ export function useFounderLetter(hidden: boolean) {
 
   const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
+  // Whether the envelope appeared on this load, decided at mount: a reader who
+  // dismisses it before the code arrives was still shown it.
+  const shownOnMount = useRef(false);
+  const shownTracked = useRef(false);
+
   useEffect(() => {
-    setDismissed(!!window.localStorage.getItem(LETTER_DISMISSED_KEY));
+    const isDismissed = !!window.localStorage.getItem(LETTER_DISMISSED_KEY);
+    shownOnMount.current = !isDismissed;
+    setDismissed(isDismissed);
     setHasOpened(!!window.localStorage.getItem(LETTER_OPENED_KEY));
     setOfferWindowOpen(isOfferLive());
   }, []);
@@ -51,8 +58,9 @@ export function useFounderLetter(hidden: boolean) {
   // open rate has no base to divide by. Sent once the code is known, so it
   // names the code the reader was actually offered.
   useEffect(() => {
-    if (!discountCodesFetched) return;
-    if (window.localStorage.getItem(LETTER_DISMISSED_KEY)) return;
+    if (!discountCodesFetched || !shownOnMount.current || shownTracked.current)
+      return;
+    shownTracked.current = true;
     trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_SHOWN, {
       discount_code: discountCode,
     });
