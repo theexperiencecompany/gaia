@@ -181,8 +181,12 @@ def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe: Dedupe | None 
 
 async def _send_once(client: Posthog, prepared: PostHogCapture, ttl: timedelta) -> None:
     """Send prepared only if no earlier capture claimed its uuid within ttl."""
+    # The key's existence is the claim; its value is never read.
     claimed = await redis_cache.client.set(
-        f"{AT_MOST_ONCE_KEY_PREFIX}{prepared.uuid}", "1", nx=True, ex=int(ttl.total_seconds())
+        f"{AT_MOST_ONCE_KEY_PREFIX}{prepared.uuid}",
+        "1",  # pragma: no mutate — equivalent
+        nx=True,
+        ex=int(ttl.total_seconds()),
     )
     if claimed:
         _send(client, prepared)
