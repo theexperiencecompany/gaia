@@ -323,6 +323,7 @@ class TestActivationCreatesTheRow:
             event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id="sub_xyz789",
             plan=SubscriptionPlan(name="Pro", amount=9.99, currency="USD"),
+            properties={"amount_charged_pre_tax": 9.99, "currency_charged": "USD"},
         )
         mock_webhook_send_email.assert_awaited_once_with(
             user_name="Alice", user_email=FAKE_EMAIL, user_id=FAKE_USER_ID
@@ -330,7 +331,7 @@ class TestActivationCreatesTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
 
-    async def test_a_zero_amount_subscription_reports_no_price(
+    async def test_a_fully_discounted_subscription_reports_zero_not_nothing(
         self,
         mock_webhook_subscription_repository,
         mock_webhook_users_collection,
@@ -338,9 +339,31 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
+        """Regression: a 100%-discount subscriber's 0 was dropped, so revenue sums lost them."""
         await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
 
-        assert mock_track_subscription.call_args.kwargs["plan"].amount is None
+        kwargs = mock_track_subscription.call_args.kwargs
+        assert kwargs["plan"].amount == 0
+        assert kwargs["properties"]["amount_charged_pre_tax"] == 0
+
+    async def test_a_localised_subscription_reports_its_own_currency(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+    ) -> None:
+        await _apply(
+            SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=57284, currency="ZAR"
+        )
+
+        kwargs = mock_track_subscription.call_args.kwargs
+        assert kwargs["plan"] == SubscriptionPlan(name="Pro", amount=572.84, currency="ZAR")
+        assert kwargs["properties"] == {
+            "amount_charged_pre_tax": 572.84,
+            "currency_charged": "ZAR",
+        }
 
     async def test_falls_back_to_the_customer_email_to_find_the_owner(
         self,
@@ -837,7 +860,8 @@ class TestResultsNameTheOwnerAndTheRow:
             user_id=FAKE_USER_ID,
             event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
             subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(currency="USD"),
+            plan=SubscriptionPlan(name="Pro", amount=9.99, currency="USD"),
+            properties={"amount_charged_pre_tax": 9.99, "currency_charged": "USD"},
         )
 
     async def test_a_stale_event_still_names_the_owner(

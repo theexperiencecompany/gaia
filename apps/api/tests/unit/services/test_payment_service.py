@@ -1253,6 +1253,7 @@ class TestVerifyPaymentCompletion:
             event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id="sub_from_checkout",
             plan=SubscriptionPlan(name="Pro", amount=300.0, currency="USD"),
+            properties={"amount_charged_pre_tax": 300.0, "currency_charged": "USD"},
         )
         materialize_mocks.send_email.assert_awaited_once()
 
