@@ -21,6 +21,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 
+from pymongo.errors import PyMongoError
+
 from app.constants.log_tags import LogTag
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
 from app.db.repositories.subscriptions import subscription_repository
@@ -368,13 +370,29 @@ async def _sync_paid_person_properties(
     """Re-set the person's paid state from the row as it stands now, when the write moved it.
 
     Read after the write rather than taken from this event's snapshot: a newer
-    delivery may have landed meanwhile, and its state is the one to keep.
+    delivery may have landed meanwhile, and its state is the one to keep. The
+    billing write already committed, so a failed read is logged, never raised:
+    a redelivery would read the row as unchanged and redo nothing.
     """
     if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
         return
-    current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    try:
+        current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    except PyMongoError as e:
+        log.error(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row could not be read",
+            subscription_id=dodo_subscription_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+        )
+        return
     if current is None:
-        raise LookupError(f"subscription {dodo_subscription_id} vanished after its own write")
+        log.error(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
+            subscription_id=dodo_subscription_id,
+            user_id=user_id,
+        )
+        return
     _set_paid_person_properties(
         user_id,
         SubscriptionStatus(current.status),
@@ -490,11 +508,11 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
 
     new_status = changes.status
     _capture_transition(event, row.user_id, changes)
-    await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
+    await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)
 
     log.info(
         f"{LogTag.PAYMENT} Subscription event applied",
