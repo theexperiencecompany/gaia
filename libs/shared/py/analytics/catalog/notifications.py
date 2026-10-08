@@ -49,3 +49,12 @@ class NotificationViewed(WebEvent):
 
     notification_id: Identifier
     source: Literal["popover"]
+
+
+__all__ = [
+    "NotificationActionExecuted",
+    "NotificationBulkAction",
+    "NotificationRead",
+    "NotificationUnsubscribed",
+    "NotificationViewed",
+]

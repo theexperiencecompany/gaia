@@ -158,3 +158,20 @@ class TodosViewChanged(WebEvent):
         "label",
         "project",
     ]
+
+
+__all__ = [
+    "ProjectsCreated",
+    "ProjectsDeleted",
+    "ProjectsUpdated",
+    "SubscriptionFailureReason",
+    "TodosCreated",
+    "TodosDeleted",
+    "TodosRunResultDelivered",
+    "TodosSubscriptionFailed",
+    "TodosSubscriptionRegistered",
+    "TodosToggled",
+    "TodosTriggerFired",
+    "TodosUpdated",
+    "TodosViewChanged",
+]

@@ -61,7 +61,7 @@ class TestCallAgentReal:
                     gen = await call_agent(
                         request=body,
                         conversation_id="call-agent-conv-1",
-                        user=make_authenticated_user(user_id="agent-user-1", name="Test"),
+                        user=make_authenticated_user(name="Test"),
                     )
 
                     chunks = []
@@ -93,7 +93,7 @@ class TestCallAgentReal:
             gen = await call_agent(
                 request=body,
                 conversation_id="call-agent-conv-2",
-                user=make_authenticated_user(user_id="agent-user-2"),
+                user=make_authenticated_user(),
             )
 
             chunks = []

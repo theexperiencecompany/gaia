@@ -60,3 +60,13 @@ class WakeWordDetected(WebEvent):
 
     event: ClassVar[str] = "wake_word:detected"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "VoiceModeStarted",
+    "VoiceModeStopped",
+    "VoiceSessionEnded",
+    "VoiceSessionStarted",
+    "VoiceTranscriptionReceived",
+    "WakeWordDetected",
+]

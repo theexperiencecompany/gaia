@@ -180,3 +180,28 @@ class EmailComposeOpened(WebEvent):
 
     event: ClassVar[str] = "email:compose_opened"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "EmailArchived",
+    "EmailComposeOpened",
+    "EmailDraftComposed",
+    "EmailDraftCreated",
+    "EmailDraftDeleted",
+    "EmailDraftUpdated",
+    "EmailLabelApplied",
+    "EmailLabelCreated",
+    "EmailLabelDeleted",
+    "EmailLabelRemoved",
+    "EmailLabelUpdated",
+    "EmailMarkedRead",
+    "EmailMarkedUnread",
+    "EmailMovedToInbox",
+    "EmailOpened",
+    "EmailReplied",
+    "EmailSent",
+    "EmailStarred",
+    "EmailTrashed",
+    "EmailUnstarred",
+    "EmailUntrashed",
+]

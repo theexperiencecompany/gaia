@@ -11,13 +11,18 @@ from composio.types import Tool
 from app.models.user_models import AuthenticatedUser
 
 
+def make_user_id() -> str:
+    """Return a fresh GAIA user id: a real ObjectId, as UserId and every capture require."""
+    return str(ObjectId())
+
+
 def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
     """Build the request.state.user a signed-in test caller carries.
 
     Built as a WorkOS session; overrides are AuthenticatedUser fields.
     """
     defaults: dict[str, Any] = {
-        "user_id": str(ObjectId()),
+        "user_id": make_user_id(),
         "auth_provider": "workos",
         "email": "test@example.com",
         "name": "Test User",
@@ -30,7 +35,7 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
 
 def make_user(**overrides) -> dict:
     defaults = {
-        "user_id": str(ObjectId()),
+        "user_id": make_user_id(),
         "email": "test@example.com",
         "name": "Test User",
         "created_at": datetime.now(UTC).isoformat(),
@@ -45,7 +50,7 @@ def make_user(**overrides) -> dict:
 def make_conversation(user_id: str | None = None, **overrides) -> dict:
     defaults = {
         "conversation_id": str(uuid4()),
-        "user_id": user_id or str(ObjectId()),
+        "user_id": user_id or make_user_id(),
         "description": "Test conversation",
         "messages": [],
         "created_at": datetime.now(UTC).isoformat(),
@@ -123,7 +128,7 @@ def make_config(
     **overrides,
 ) -> dict:
     configurable = {
-        "user_id": user_id or str(ObjectId()),
+        "user_id": user_id or make_user_id(),
         "thread_id": thread_id or str(uuid4()),
     }
     configurable.update(overrides.pop("configurable", {}))
@@ -150,7 +155,7 @@ def make_integration(provider: str, **overrides) -> dict:
     defaults = {
         "integration_id": str(uuid4()),
         "provider": provider,
-        "user_id": str(ObjectId()),
+        "user_id": make_user_id(),
         "status": "active",
         "credentials": {
             "access_token": f"test_token_{uuid4().hex[:8]}",

@@ -32,8 +32,16 @@ from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 from tests.helpers import captured_wide_event
+
+_DISPATCH = "app.services.triggers.subscription_dispatch"
 
 pytestmark = pytest.mark.unit
 
@@ -589,3 +597,18 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-2"})
 
         deps.capture.assert_not_called()
+
+
+class TestDispatchAttribution:
+    async def test_the_fan_out_is_integration_triggered_agent_work(self) -> None:
+        """Whatever request delivered the webhook, the todos it wakes are the trigger's."""
+        seen: list[AnalyticsContext] = []
+
+        async def _record(*_args: object) -> list[TodoDocument]:
+            seen.append(current_analytics_context())
+            return []
+
+        with patch(f"{_DISPATCH}._resolve_subscribers", _record):
+            await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]

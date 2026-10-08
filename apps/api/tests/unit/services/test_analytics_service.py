@@ -12,12 +12,14 @@ import time_machine
 
 from app.constants.analytics import (
     ANALYTICS_DAY_TIMEZONE,
+    AT_MOST_ONCE_KEY_PREFIX,
     AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
 from app.models.payment_models import SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
+    analytics_day_start,
     capture,
     identify_user,
     track_signup,
@@ -313,6 +315,18 @@ def _user_context(surface: EntrySurface) -> AnalyticsContext:
     )
 
 
+class TestAnalyticsDayStart:
+    def test_the_last_instant_of_an_ist_day_starts_at_its_midnight(self):
+        last_instant = datetime(2026, 10, 8, 23, 59, 59, 999999, tzinfo=ANALYTICS_DAY_TIMEZONE)
+
+        assert analytics_day_start(last_instant) == IST_DAY_START
+
+    def test_a_utc_evening_already_in_the_next_ist_day_starts_there(self):
+        assert analytics_day_start(LATE_EVENING_IST + timedelta(hours=1)) == datetime(
+            2026, 10, 9, tzinfo=ANALYTICS_DAY_TIMEZONE
+        )
+
+
 @pytest.mark.usefixtures("fake_redis")
 class TestUserActive:
     """user:active is the one definition of an active user: once per user per IST day, any surface."""
@@ -371,6 +385,16 @@ class TestUserActive:
         await _drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
+
+    async def test_the_gate_outlives_the_day_it_keys(self, posthog_events, fake_redis):
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+            await _drain_at_most_once_sends()
+
+        [key] = await fake_redis.keys(f"{AT_MOST_ONCE_KEY_PREFIX}*")
+        ttl = UserActive.at_most_once_ttl
+        assert ttl is not None
+        assert await fake_redis.ttl(key) == int(ttl.total_seconds())
 
     async def test_an_unlinked_bot_user_is_not_marked(self, posthog_events):
         """Only a GAIA user has a day to be active on; the platform id merges in on linking."""

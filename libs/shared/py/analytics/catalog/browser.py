@@ -60,3 +60,12 @@ class BrowserLoginsImported(ServerEvent):
     host_count: int
     cookie_count: int
     source_browser: Identifier | None = None
+
+
+__all__ = [
+    "BrowserEngineSwitched",
+    "BrowserHandoffResolved",
+    "BrowserImportTokenMinted",
+    "BrowserLoginsImported",
+    "BrowserTaskFinished",
+]

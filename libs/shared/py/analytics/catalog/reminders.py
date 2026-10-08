@@ -51,3 +51,13 @@ class ReminderDeleted(ServerEvent):
 
     event: ClassVar[str] = "reminder:deleted"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "ReminderCompleted",
+    "ReminderCreated",
+    "ReminderDeleted",
+    "ReminderPaused",
+    "ReminderResumed",
+    "ReminderUpdated",
+]

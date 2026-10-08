@@ -53,3 +53,12 @@ class UserSessionResumed(WebEvent):
 
     method: Literal["wos_session_cookie"]
     has_completed_onboarding: bool
+
+
+__all__ = [
+    "UserActive",
+    "UserLoggedIn",
+    "UserLoggedOut",
+    "UserSessionResumed",
+    "UserSignedUp",
+]

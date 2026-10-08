@@ -469,6 +469,20 @@ class TestPrepareRunFromItem:
         assert prepared is not None
         assert prepared.run.analytics_dedupe == Dedupe(key="task-7", occurred_at=dispatched_at)
 
+    async def test_an_item_stored_before_dispatch_times_is_dispatched_now_in_utc(
+        self, redis, stream_side
+    ) -> None:
+        """A naive time would be read in the worker's own zone, and Dedupe refuses one."""
+        item = _item()
+        del item["dispatched_at"]
+        before = datetime.now(UTC)
+
+        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.SEIZE)
+
+        assert prepared is not None
+        assert prepared.run.dispatched_at.tzinfo is UTC
+        assert prepared.run.dispatched_at >= before
+
     async def test_acquire_refuses_a_conversation_someone_else_holds(
         self, redis, stream_side
     ) -> None:

@@ -10,7 +10,11 @@ from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
-from app.api.v1.middleware.client_type import request_client_source
+from app.api.v1.middleware.client_type import (
+    BACKGROUND_REQUEST_ORIGIN,
+    REQUEST_ORIGIN_HEADER,
+    request_client_source,
+)
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
@@ -44,10 +48,11 @@ WEBHOOK_PATH_PREFIXES = ("/api/v1/payments/webhooks/", "/api/v1/webhook/")
 
 
 def request_analytics_context(request: Request) -> AnalyticsContext:
-    """Attribute a request: a webhook is the worker's, anything else is its caller's own action.
+    """Attribute a request: a webhook is the worker's, a client's automatic request is system work.
 
-    The surface is the client that sent it: a bot (its API key), the voice
-    worker (the agent token only voice sessions mint) or the web or desktop app.
+    Anything else is its caller's own action. The surface is the client that
+    sent it: a bot (its API key), the voice worker (the agent token only voice
+    sessions mint) or the web or desktop app.
     """
     if request.url.path.startswith(WEBHOOK_PATH_PREFIXES):
         return worker_context(Trigger.WEBHOOK)
@@ -60,9 +65,14 @@ def request_analytics_context(request: Request) -> AnalyticsContext:
         surface = EntrySurface.DESKTOP
     else:
         surface = EntrySurface.WEB
+    automatic = request.headers.get(REQUEST_ORIGIN_HEADER) == BACKGROUND_REQUEST_ORIGIN
+    attribution = (
+        Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=surface)
+        if automatic
+        else Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
+    )
     return AnalyticsContext(
-        attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface),
-        posthog_session_id=_posthog_session_id(request),
+        attribution=attribution, posthog_session_id=_posthog_session_id(request)
     )
 
 

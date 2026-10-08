@@ -25,3 +25,9 @@ class FeedbackMessageSubmitted(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     is_positive: bool
+
+
+__all__ = [
+    "FeedbackMessageSubmitted",
+    "SupportFormSubmitted",
+]

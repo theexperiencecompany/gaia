@@ -48,3 +48,11 @@ class CalendarPreferencesUpdated(ServerEvent):
 
     event: ClassVar[str] = "calendar:preferences_updated"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "CalendarEventCreated",
+    "CalendarEventDeleted",
+    "CalendarEventUpdated",
+    "CalendarPreferencesUpdated",
+]

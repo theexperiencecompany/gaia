@@ -221,3 +221,30 @@ class UseCasesClicked(WebEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     use_case_id: Identifier
+
+
+__all__ = [
+    "BlogArticleViewed",
+    "CtaGetStartedClicked",
+    "FounderLetterCodeCopied",
+    "FounderLetterDiscountCtaClicked",
+    "FounderLetterDismissed",
+    "FounderLetterMeetingClicked",
+    "FounderLetterOpened",
+    "FounderLetterShown",
+    "NavigationCtaClicked",
+    "NavigationGithubClicked",
+    "NavigationNavbarDropdownOpened",
+    "NavigationNavbarLinkClicked",
+    "NavigationSidebarClicked",
+    "RedditPostViewed",
+    "ThanksPageViewed",
+    "UseCasesClicked",
+    "UseCasesPromptInserted",
+    "WhatsNewCardClicked",
+    "WhatsNewCardDismissed",
+    "WhatsNewCardShown",
+    "WhatsNewDocsClicked",
+    "WhatsNewModalOpened",
+    "WhatsNewSlideViewed",
+]
