@@ -67,6 +67,15 @@
       "command": "node scripts/ci/checks.mjs analytics-catalog"
     },
     {
+      "name": "analytics-check",
+      "ci_job": "analytics-check",
+      "scope": "^libs/shared/py/analytics/catalog/|^libs/shared/ts/src/analytics/generated/|^config/posthog/|^scripts/ci/analytics\\.py$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": ["python3"],
+      "command": "python3 scripts/ci/analytics.py check"
+    },
+    {
       "name": "doc-comments",
       "ci_job": "doc-comments",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",

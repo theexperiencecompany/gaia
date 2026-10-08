@@ -390,6 +390,10 @@ run = "node scripts/ci/checks.mjs api-schema --write"
 description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
 run = "node scripts/ci/checks.mjs analytics-catalog --write"
 
+[tasks."analytics:check"]
+description = "Check the live PostHog project against the event catalog and config/posthog/ (needs POSTHOG_PERSONAL_API_KEY; CI's analytics-check lane)"
+run = "python3 scripts/ci/analytics.py check"
+
 [tasks."test:python:hermetic"]
 description = "Run the hermetic API suite (no Docker, no network) — must finish within the fast-suite budget"
 run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"

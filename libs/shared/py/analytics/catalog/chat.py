@@ -10,6 +10,7 @@ class ChatMessageSubmitted(ServerEvent):
     """A chat turn passed every gate and was accepted, from any surface."""
 
     event: ClassVar[str] = "chat:message_submitted"
+    previous_names: ClassVar[tuple[str, ...]] = ("chat:message_sent",)
 
     source: Identifier
     has_files: bool

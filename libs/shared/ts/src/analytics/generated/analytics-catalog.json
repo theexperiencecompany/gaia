@@ -1881,7 +1881,7 @@
       "owner": "server",
       "domain": "chat",
       "description": "A chat turn passed every gate and was accepted, from any surface.",
-      "previous_names": [],
+      "previous_names": ["chat:message_sent"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -4087,7 +4087,7 @@
       "owner": "server",
       "domain": "notification",
       "description": "A user marked a notification read.",
-      "previous_names": [],
+      "previous_names": ["notification:dismissed"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7066,7 +7066,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow was created, by the user or generated for a todo.",
-      "previous_names": [],
+      "previous_names": ["workflows:created"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7173,7 +7173,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user deleted a workflow.",
-      "previous_names": [],
+      "previous_names": ["workflows:deleted"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7189,7 +7189,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow run was queued manually, or a background-triggered run completed.",
-      "previous_names": [],
+      "previous_names": ["workflows:executed"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7232,7 +7232,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user published a workflow to the community.",
-      "previous_names": [],
+      "previous_names": ["workflows:published"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7248,7 +7248,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user asked for a workflow's steps to be regenerated.",
-      "previous_names": [],
+      "previous_names": ["workflows:steps_regenerated"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
@@ -7274,7 +7274,7 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user unpublished a workflow.",
-      "previous_names": [],
+      "previous_names": ["workflows:unpublished"],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
