@@ -20,18 +20,26 @@ class DodoCheckoutMetadata(TypedDict, total=False):
     product_id: str
 
 
-class DodoWebhookCustomerRef(TypedDict, total=False):
-    customer_id: str
+class DodoWebhookCustomerRef(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    customer_id: str | None = None
 
 
-class DodoWebhookLogFields(TypedDict, total=False):
-    """The data fields a delivery is logged with before its body is validated."""
+class DodoWebhookLogFields(BaseModel):
+    """The data fields every delivery is logged with, whatever its type.
 
-    customer: DodoWebhookCustomerRef
-    customer_id: str
-    total_amount: int
-    currency: str
-    metadata: DodoCheckoutMetadata
+    Validated, not trusted: a body whose customer or metadata has the wrong
+    shape is a malformed delivery, rejected before any side effect.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    customer: DodoWebhookCustomerRef = Field(default_factory=DodoWebhookCustomerRef)
+    customer_id: str | None = None
+    total_amount: int | None = None
+    currency: str | None = None
+    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
 
 
 class DodoWebhookPayload(TypedDict, total=False):
@@ -40,7 +48,7 @@ class DodoWebhookPayload(TypedDict, total=False):
     business_id: str
     type: str
     timestamp: str
-    data: DodoWebhookLogFields
+    data: dict[str, object]
 
 
 class DodoWebhookEventType(str, Enum):
