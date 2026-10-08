@@ -7,17 +7,20 @@ from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import CurrencyCode, Identifier, UrlPath
 
 __all__ = [
+    "CheckoutFailureReason",
     "PaymentCheckoutStarted",
     "PaymentFailed",
     "PaymentSucceeded",
     "PaywallBlocked",
     "PaywallModalViewed",
+    "PaywallSource",
     "RateLimitHit",
     "SubscriptionActivated",
     "SubscriptionCancellationRequested",
     "SubscriptionCancelled",
     "SubscriptionExpired",
     "SubscriptionFailed",
+    "SubscriptionLapsed",
     "SubscriptionPageViewed",
     "SubscriptionPlanViewed",
     "SubscriptionRenewed",

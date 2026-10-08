@@ -9,6 +9,7 @@ __all__ = [
     "ProjectsCreated",
     "ProjectsDeleted",
     "ProjectsUpdated",
+    "SubscriptionFailureReason",
     "TodosCreated",
     "TodosDeleted",
     "TodosRunResultDelivered",
