@@ -412,6 +412,31 @@ class TestRegisterSubscription:
         assert h.set_subscriptions.await_count == 4
         assert [sub.id for sub in h.written_subscriptions] == [stored.id]
 
+    async def test_a_watch_list_that_keeps_changing_is_refused_after_three_lost_races(
+        self,
+    ) -> None:
+        competing = [
+            _subscription(action=SubscriptionAction.NOTIFY, composio_trigger_ids=[f"other-{n}"])
+            for n in range(3)
+        ]
+        with _Harness(_todo(), ["ti_9"]) as h:
+            h.set_subscriptions.return_value = None
+            h.get.side_effect = [
+                _todo(),
+                *(_todo(trigger_subscriptions=competing[: n + 1]) for n in range(len(competing))),
+            ]
+
+            with pytest.raises(SubscriptionError, match="changed while this one was being added"):
+                await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name=INSTANCE_TRIGGER,
+                    conditions=[],
+                    action=SubscriptionAction.EXECUTE,
+                )
+
+        assert h.set_subscriptions.await_count == 3
+
     @pytest.mark.regression
     async def test_duplicate_cleanup_failure_is_recorded_and_keeps_the_winning_watch(
         self,
