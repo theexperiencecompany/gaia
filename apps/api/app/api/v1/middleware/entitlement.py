@@ -47,19 +47,32 @@ UNMATCHED_ROUTE = "unmatched_route"
 
 
 @cache
-def _route_patterns(app: ASGIApp) -> tuple[tuple[re.Pattern[str], str], ...]:
-    """Compile every route's full path once per app, in the router's match order."""
+def _route_patterns(
+    app: ASGIApp,
+) -> tuple[tuple[re.Pattern[str], str, frozenset[str] | None], ...]:
+    """Compile every route's full path and methods once per app, in the router's match order."""
     routes = getattr(app, "routes", ())
-    return tuple((compile_path(ctx.path)[0], ctx.path) for ctx in iter_route_contexts(routes))
+    return tuple(
+        (compile_path(ctx.path)[0], ctx.path, frozenset(ctx.methods) if ctx.methods else None)
+        for ctx in iter_route_contexts(routes)
+    )
 
 
 def gated_route(request: Request) -> str:
-    """Name the gated surface by its route template, so no id or email in the raw path reaches analytics."""
+    """Name the gated surface by its route template, so no id or email in the raw path reaches analytics.
+
+    Same precedence as the router: the first route matching path and method, else the first matching path.
+    """
     path = request.url.path
-    for pattern, template in _route_patterns(request.app):
-        if pattern.match(path):
+    path_only: str | None = None
+    for pattern, template, methods in _route_patterns(request.app):
+        if not pattern.match(path):
+            continue
+        if methods is None or request.method in methods:
             return template
-    return UNMATCHED_ROUTE
+        if path_only is None:
+            path_only = template
+    return path_only or UNMATCHED_ROUTE
 
 
 class EntitlementMiddleware(BaseHTTPMiddleware):
