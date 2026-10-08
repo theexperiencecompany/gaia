@@ -24,7 +24,6 @@ from app.agents.middleware import accounting
 from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
     _latest_ai_message,
-    _serving_model,
 )
 from app.config.model_pricing import calculate_token_cost
 from app.config.rate_limits import (
@@ -1293,4 +1292,7 @@ _SERVING_LANE = ModelLane(
 def test_the_serving_model_is_the_fallback_only_when_one_answered(
     metadata: dict[str, object], lane: ModelLane | None, served: str
 ) -> None:
-    assert _serving_model(AIMessage(content="x", response_metadata=metadata), lane) == served
+    assert (
+        accounting._serving_model(AIMessage(content="x", response_metadata=metadata), lane)
+        == served
+    )
