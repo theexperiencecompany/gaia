@@ -1055,7 +1055,10 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         )
 
     async def test_an_unreadable_row_after_the_write_queues_the_paid_state_sync(
-        self, mock_webhook_subscription_repository, posthog_client, mock_deactivate_workflows
+        self,
+        mock_webhook_subscription_repository: MagicMock,
+        posthog_client: MagicMock,
+        mock_deactivate_workflows: AsyncMock,
     ) -> None:
         """A redelivery reads the row as unchanged, so only the worker can come back for it."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
@@ -1085,7 +1088,7 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         )
 
     async def test_an_unreadable_row_with_the_queue_down_names_whose_sync_was_lost(
-        self, mock_webhook_subscription_repository, posthog_client
+        self, mock_webhook_subscription_repository: MagicMock, posthog_client: MagicMock
     ) -> None:
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             side_effect=[_row(last_event_at=None), PyMongoError("down")]
