@@ -16,6 +16,7 @@ from typing import cast
 from uuid import uuid4
 
 from arq import Retry
+from arq.connections import ArqRedis
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor

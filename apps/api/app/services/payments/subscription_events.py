@@ -139,7 +139,7 @@ async def queue_inbox_desk_safely(user_id: str) -> None:
     try:
         await queue_inbox_desk_provision(user_id)
     except Exception as e:
-        # The daily reconcile provisions this user's desk; this line records the delay.
+        # Nothing retries an unqueued job: scripts/provision_inbox_desks.py opens the desk.
         log.error(
             f"{LogTag.PAYMENT} Inbox desk provisioning could not be queued",
             error=str(e),

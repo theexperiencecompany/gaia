@@ -609,10 +609,3 @@ class TodoRunContext(NamedTuple):
     parent_rules: str = ""
     sub_todos: str = ""
     learnings: str = ""
-
-
-class DeskReconcile(NamedTuple):
-    """How a reconcile sweep went: the paying Gmail users it visited, and how many failed."""
-
-    users: int
-    failures: int

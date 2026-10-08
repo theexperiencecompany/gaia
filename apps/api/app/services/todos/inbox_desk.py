@@ -21,12 +21,9 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
-from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.todos import todo_repository
-from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.entitlements import is_paid
 from app.models.todo_models import (
-    DeskReconcile,
     ExternalRef,
     ExternalRefSource,
     TodoDocument,
@@ -79,36 +76,6 @@ async def provision_inbox_desk(user_id: str) -> None:
     # The job id dedupes an occurrence already queued; a lost job is queued again.
     await tracked_todo_service.schedule_execution(desk.id, next_run)
     log.set_ns("inbox_desk", outcome="armed", todo_id=desk.id, next_run=next_run.isoformat())
-
-
-async def reconcile_inbox_desks() -> DeskReconcile:
-    """Provision the desk for every paying user who added Gmail; one failure does not stop the rest.
-
-    Catches a provisioning job that never reached the queue, and users whose plan and
-    Gmail predate the desk. Safe to repeat: provisioning is idempotent.
-    """
-    gmail_users = set(
-        await user_integration_repository.user_ids_with_integration(GMAIL_INTEGRATION_ID)
-    )
-    paying = [
-        user_id
-        for user_id in await subscription_repository.active_user_ids()
-        if user_id in gmail_users
-    ]
-    failures = 0
-    for user_id in paying:
-        try:
-            await provision_inbox_desk(user_id)
-        except Exception as e:
-            # The error is on the record, and the next daily sweep tries this user again.
-            log.error(
-                "inbox_desk.reconcile_failed",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            failures += 1
-    return DeskReconcile(users=len(paying), failures=failures)
 
 
 async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
