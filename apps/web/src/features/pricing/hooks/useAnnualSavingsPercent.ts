@@ -1,17 +1,29 @@
 "use client";
 
+import type { Plan } from "../api/pricingApi";
 import { MONTHS_PER_YEAR } from "../constants";
 import { getAnnualSavingsPercent, isMonthlyTwin } from "../utils/annualSavings";
 import { isProPlan } from "../utils/planPredicates";
+import { getOfferPrice } from "../utils/priceDisplay";
 import { usePricing } from "./usePricing";
+
+interface AnnualSavingsOptions {
+  /** Server-fetched plans, so the first render already has the figure. */
+  initialPlans?: Plan[];
+  /** An offer's percentage, taken off the yearly price before comparing. */
+  offerPercent?: number;
+}
 
 /**
  * What a yearly subscriber saves against twelve monthly payments, computed
  * from the live Pro rows. `null` until both rows are known — a savings badge
  * with no prices behind it is exactly how the wrong number shipped.
  */
-export function useAnnualSavingsPercent(): number | null {
-  const { plans } = usePricing();
+export function useAnnualSavingsPercent({
+  initialPlans,
+  offerPercent,
+}: AnnualSavingsOptions = {}): number | null {
+  const { plans } = usePricing(initialPlans);
 
   const yearly = plans.find(
     (plan) => isProPlan(plan) && plan.duration === "yearly",
@@ -21,9 +33,12 @@ export function useAnnualSavingsPercent(): number | null {
     : undefined;
   if (!monthly || !yearly) return null;
 
+  const yearlyPrice = offerPercent
+    ? getOfferPrice(yearly.amount, offerPercent)
+    : yearly.amount;
   const percent = getAnnualSavingsPercent(
     monthly.amount * MONTHS_PER_YEAR,
-    yearly.amount,
+    yearlyPrice,
   );
   return percent > 0 ? percent : null;
 }

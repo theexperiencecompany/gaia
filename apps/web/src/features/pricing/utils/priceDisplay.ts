@@ -1,5 +1,8 @@
-import { MONTHS_PER_YEAR } from "../constants";
-import { getAnnualSavingsPercent } from "./annualSavings";
+import { DAYS_PER_BILLING_MONTH, MONTHS_PER_YEAR } from "../constants";
+import {
+  getAnnualSavingsPercent,
+  monthsFreeFromSavings,
+} from "./annualSavings";
 import { toMajorUnits } from "./money";
 
 /** Every price figure a pricing card renders, derived from minor units. */
@@ -40,12 +43,16 @@ export function getPriceDisplay(
     yearlyTotalDollars,
     priceSubLine,
     showSavings: !!yearlyTotalDollars && savePercent > 0,
-    // ~16.7% off a year = pay for 10 months, get 12 → 2 months free.
-    monthsFree: Math.round((savePercent / 100) * MONTHS_PER_YEAR),
+    monthsFree: monthsFreeFromSavings(savePercent),
   };
 }
 
 /** What the tier costs once the offer's percentage comes off. */
 export function getOfferPrice(price: number, discountPercent: number): number {
   return Math.round(price * (1 - discountPercent / 100));
+}
+
+/** A monthly price spread over the days of a billing month, in minor units. */
+export function getDailyPrice(monthlyPrice: number): number {
+  return Math.round(monthlyPrice / DAYS_PER_BILLING_MONTH);
 }

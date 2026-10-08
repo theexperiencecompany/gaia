@@ -1,6 +1,9 @@
 /** Months billed up front on an annual plan. */
 export const MONTHS_PER_YEAR = 12;
 
+/** The month a "per day" price divides by: a $30 month reads as $1 a day. */
+export const DAYS_PER_BILLING_MONTH = 30;
+
 /**
  * localStorage key holding the plan id a logged-out user chose before being
  * sent through OAuth signup. Written on the pricing click, read by the resume

@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { ProDailyPrice } from "@/features/pricing/components/ProDailyPrice";
 import LargeHeader from "../shared/LargeHeader";
 
 export default function PricingSection() {
@@ -15,7 +16,11 @@ export default function PricingSection() {
     <section className="flex w-full flex-col items-center px-4 py-16 sm:px-6 sm:py-24">
       <LargeHeader
         chipText="Pricing"
-        headingText="$1 a day to never work again."
+        headingText={
+          <>
+            <ProDailyPrice /> a day to never work again.
+          </>
+        }
         subHeadingText="The cheapest hire you'll ever make."
         centered
       />

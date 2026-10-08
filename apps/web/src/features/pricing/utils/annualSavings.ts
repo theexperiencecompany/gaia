@@ -1,4 +1,5 @@
 import type { Plan } from "../api/pricingApi";
+import { MONTHS_PER_YEAR } from "../constants";
 
 /**
  * The annual discount, derived from the two prices that actually exist rather
@@ -12,6 +13,11 @@ export function getAnnualSavingsPercent(
 ): number {
   if (fullPriceCents <= 0 || discountedPriceCents <= 0) return 0;
   return Math.round((1 - discountedPriceCents / fullPriceCents) * 100);
+}
+
+/** A yearly saving as the whole months of the monthly rate it gives back. */
+export function monthsFreeFromSavings(savingsPercent: number): number {
+  return Math.round((savingsPercent / 100) * MONTHS_PER_YEAR);
 }
 
 /**
