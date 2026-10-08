@@ -4,7 +4,6 @@ Single service approach - simple and maintainable.
 """
 
 import json
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -20,7 +19,11 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
     VerifyPaymentRequest,
 )
-from app.models.webhook_models import DodoWebhookAckResponse, WebhookProcessingStatus
+from app.models.webhook_models import (
+    DodoWebhookAckResponse,
+    DodoWebhookPayload,
+    WebhookProcessingStatus,
+)
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
@@ -263,7 +266,7 @@ async def handle_dodo_webhook(
         # Raw provider payload: process_webhook validates it into DodoWebhookEvent
         # and answers with a processing result rather than raising, so the reply
         # below is driven by what GAIA managed to do with the event.
-        webhook_data: dict[str, Any] = json.loads(payload)
+        webhook_data: DodoWebhookPayload = json.loads(payload)
 
         log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
 

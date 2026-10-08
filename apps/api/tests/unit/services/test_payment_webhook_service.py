@@ -1081,10 +1081,6 @@ class TestGetUserIdFromMetadata:
         user_id = await webhook_service._get_user_id_from_metadata({})
         assert user_id is None
 
-    async def test_stringifies_non_string_user_id(self, webhook_service):
-        user_id = await webhook_service._get_user_id_from_metadata({"user_id": 12345})
-        assert user_id == "12345"
-
 
 # ============================================================================
 # PaymentWebhookService Initialization Tests
@@ -1188,12 +1184,13 @@ class TestWebhookAccountSync:
         mock_track_payment,
         mock_schedule_sync,
     ):
+        """Dodo metadata is string-to-string, so a number there is a malformed body, rejected whole."""
         payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": 12345}}
         event_data = _make_webhook_event("payment.succeeded", payload)
 
         result = await webhook_service.process_webhook(event_data, "wh_sync_003")
 
-        assert result.status == "processed"
+        assert result.status == "abandoned"
         mock_schedule_sync.assert_not_called()
 
 

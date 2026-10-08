@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 from app.constants.log_tags import LogTag
 from app.constants.payments import NO_USER_MESSAGE
 from app.decorators import with_doc
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.payment_models import PlanDuration, SubscriptionDetails
 from app.services.payments.payment_service import payment_service
 from app.templates.docstrings.subscription_tool_docs import (
@@ -68,7 +68,8 @@ def _format_details(details: SubscriptionDetails) -> str:
 @tool
 @with_doc(GET_SUBSCRIPTION_DETAILS)
 async def get_subscription_details(config: RunnableConfig) -> str:
-    user_id = agent_configurable(config).get("user_id")
+    configurable: AgentConfigurable = agent_configurable(config)
+    user_id = configurable.get("user_id")
     if not user_id:
         return NO_USER_MESSAGE
 
@@ -92,7 +93,8 @@ async def create_upgrade_link(
         PlanDuration, "Billing cycle for the subscription: monthly (default) or yearly"
     ] = PlanDuration.MONTHLY,
 ) -> str:
-    user_id = agent_configurable(config).get("user_id")
+    configurable: AgentConfigurable = agent_configurable(config)
+    user_id = configurable.get("user_id")
     if not user_id:
         return NO_USER_MESSAGE
 

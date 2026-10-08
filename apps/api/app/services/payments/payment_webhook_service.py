@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
 
 from pydantic import ValidationError
 from standardwebhooks.webhooks import Webhook
@@ -13,9 +12,13 @@ from app.constants.payments import WEBHOOK_ROW_WAIT_MAX
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.models.payment_models import ProcessedWebhookUpdate
 from app.models.webhook_models import (
+    DodoCheckoutMetadata,
     DodoPaymentData,
+    DodoWebhookCustomerRef,
     DodoWebhookEvent,
     DodoWebhookEventType,
+    DodoWebhookLogFields,
+    DodoWebhookPayload,
     DodoWebhookProcessingResult,
     WebhookProcessingStatus,
 )
@@ -137,7 +140,7 @@ class PaymentWebhookService:
             return False
 
     async def process_webhook(
-        self, webhook_data: dict[str, Any], webhook_id: str
+        self, webhook_data: DodoWebhookPayload, webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """Process a Dodo payment webhook exactly once.
 
@@ -146,7 +149,7 @@ class PaymentWebhookService:
         the side effects. A handler failure releases the claim so Dodo's
         retry is a clean run; only a processed or ignored delivery keeps it.
         """
-        event_type_raw = str(webhook_data.get("type", "unknown"))
+        event_type_raw = webhook_data.get("type", "unknown")
         if not await processed_webhook_repository.claim(webhook_id, event_type=event_type_raw):
             log.info(f"{LogTag.PAYMENT} Webhook already processed, skipping", webhook_id=webhook_id)
             return DodoWebhookProcessingResult(
@@ -155,28 +158,22 @@ class PaymentWebhookService:
                 message="Webhook already processed",
             )
         try:
-            # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data: dict[str, Any] = webhook_data.get("data", webhook_data)
-            customer_field = payload_data.get("customer")
-            customer_id = (
-                customer_field.get("customer_id")
-                if isinstance(customer_field, dict)
-                else payload_data.get("customer_id")
+            payload_data: DodoWebhookLogFields = webhook_data.get("data", DodoWebhookLogFields())
+            customer: DodoWebhookCustomerRef = payload_data.get(
+                "customer", DodoWebhookCustomerRef()
             )
             log.set(
                 payment={
                     "event_type": event_type_raw,
                     "status": "processing",
                     "webhook_id": webhook_id,
-                    "customer_id": customer_id,
-                    "amount_cents": payload_data.get("amount")
-                    or payload_data.get("amount_paid")
-                    or payload_data.get("total_amount", 0),
-                    "currency": payload_data.get("currency", "usd"),
+                    "customer_id": customer.get("customer_id", payload_data.get("customer_id")),
+                    "amount_cents": payload_data.get("total_amount"),
+                    "currency": payload_data.get("currency"),
                 }
             )
 
-            event = DodoWebhookEvent(**webhook_data)
+            event = DodoWebhookEvent.model_validate(webhook_data)
 
             handler = self._handler_for(event.type, webhook_id)
             if not handler:
@@ -221,9 +218,11 @@ class PaymentWebhookService:
             # Keep the workspace's account/subscription projection honest after
             # any billing state change.
             if result.status == WebhookProcessingStatus.PROCESSED:
-                metadata = payload_data.get("metadata")
-                webhook_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
-                if isinstance(webhook_user_id, str) and webhook_user_id:
+                metadata: DodoCheckoutMetadata = payload_data.get(
+                    "metadata", DodoCheckoutMetadata()
+                )
+                webhook_user_id = metadata.get("user_id")
+                if webhook_user_id:
                     schedule_account_sync(webhook_user_id)
 
             await processed_webhook_repository.record_outcome(webhook_id, _outcome_of(result))
@@ -275,10 +274,9 @@ class PaymentWebhookService:
             return None
         return self.handlers.get(known)
 
-    async def _get_user_id_from_metadata(self, metadata: dict[str, Any]) -> str | None:
+    async def _get_user_id_from_metadata(self, metadata: DodoCheckoutMetadata) -> str | None:
         """Get the stable application user ID from payment metadata."""
-        user_id = metadata.get("user_id")
-        return str(user_id) if user_id else None
+        return metadata.get("user_id") or None
 
     async def _capture_payment(
         self, event_type: AnalyticsEvents, payment_data: DodoPaymentData

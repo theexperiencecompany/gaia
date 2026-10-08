@@ -4,12 +4,43 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, with_config
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+
+@with_config(ConfigDict(extra="allow"))
+class DodoCheckoutMetadata(TypedDict, total=False):
+    """What GAIA stamps on a checkout (payment_service.create_subscription); other keys pass through."""
+
+    user_id: str
+    product_id: str
+
+
+class DodoWebhookCustomerRef(TypedDict, total=False):
+    customer_id: str
+
+
+class DodoWebhookLogFields(TypedDict, total=False):
+    """The data fields a delivery is logged with before its body is validated."""
+
+    customer: DodoWebhookCustomerRef
+    customer_id: str
+    total_amount: int
+    currency: str
+    metadata: DodoCheckoutMetadata
+
+
+class DodoWebhookPayload(TypedDict, total=False):
+    """A webhook body as decoded from JSON, before it is validated into DodoWebhookEvent."""
+
+    business_id: str
+    type: str
+    timestamp: str
+    data: DodoWebhookLogFields
 
 
 class DodoWebhookEventType(str, Enum):
@@ -89,7 +120,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
     error_code: str | None = None
     error_message: str | None = None
 
@@ -117,7 +148,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 
