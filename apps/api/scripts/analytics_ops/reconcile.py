@@ -51,6 +51,17 @@ WEBHOOK_EVENTS: dict[str, DodoWebhookEventType] = {
     SubscriptionRenewed.event: DodoWebhookEventType.SUBSCRIPTION_RENEWED,
     SubscriptionCancelled.event: DodoWebhookEventType.SUBSCRIPTION_CANCELLED,
 }
+# The ledger field naming the one thing each delivery type changes: deliveries
+# sharing it are one state change, which is what the PostHog event counts.
+STATE_CHANGE_KEYS: dict[DodoWebhookEventType, str] = {
+    DodoWebhookEventType.PAYMENT_SUCCEEDED: "payment_id",
+    DodoWebhookEventType.PAYMENT_FAILED: "payment_id",
+    # Activation and cancellation happen once per subscription; a repeat report changes nothing.
+    DodoWebhookEventType.SUBSCRIPTION_ACTIVE: "subscription_id",
+    DodoWebhookEventType.SUBSCRIPTION_CANCELLED: "subscription_id",
+    # Each renewal is a new period of the same subscription, so every delivery is a change.
+    DodoWebhookEventType.SUBSCRIPTION_RENEWED: "webhook_id",
+}
 COUNTED_EVENTS = (UserSignedUp.event, SupportFormSubmitted.event, *WEBHOOK_EVENTS)
 
 # Every events query is bounded by the same half-open UTC window, passed as {start} and {end}.
@@ -181,7 +192,17 @@ def human_messages_by_source(db: Database[Document], window: Window) -> dict[str
     }
 
 
-def _processed_webhooks(db: Database[Document], window: Window) -> dict[str, int]:
+def _state_changes(db: Database[Document], window: Window) -> dict[str, int]:
+    """Count each delivery type's distinct state changes, keyed per STATE_CHANGE_KEYS."""
+    change_key: Document = {
+        "$switch": {
+            "branches": [
+                {"case": {"$eq": ["$event_type", kind.value]}, "then": f"${field}"}
+                for kind, field in STATE_CHANGE_KEYS.items()
+            ],
+            "default": "$webhook_id",
+        }
+    }
     pipeline: list[Document] = [
         {
             "$match": {
@@ -189,7 +210,8 @@ def _processed_webhooks(db: Database[Document], window: Window) -> dict[str, int
                 "status": WebhookProcessingStatus.PROCESSED.value,
             }
         },
-        {"$group": {"_id": "$event_type", "count": {"$sum": 1}}},
+        {"$group": {"_id": {"type": "$event_type", "change": change_key}}},
+        {"$group": {"_id": "$_id.type", "count": {"$sum": 1}}},
     ]
     return {
         str(row["_id"]): int(str(row["count"])) for row in db.processed_webhooks.aggregate(pipeline)
@@ -208,7 +230,7 @@ def _ledger_cost(db: Database[Document], window: Window) -> float:
 def mongo_signals(db: Database[Document], window: Window) -> Signals:
     """Read every signal's ground truth from Mongo over window; subscribers are counted as of now."""
     in_window = {"created_at": window.mongo_range()}
-    webhooks = _processed_webhooks(db, window)
+    webhooks = _state_changes(db, window)
     return Signals(
         signups=db.users.count_documents(in_window),
         support_requests=db.support_requests.count_documents(in_window),
@@ -244,7 +266,7 @@ def compare(posthog: Signals, truth: Signals) -> list[Row]:
             event,
             posthog.billing[event],
             truth.billing[event],
-            f"processed_webhooks {WEBHOOK_EVENTS[event].value}",
+            f"processed_webhooks {WEBHOOK_EVENTS[event].value} by {STATE_CHANGE_KEYS[WEBHOOK_EVENTS[event]]}",
         )
         for event in WEBHOOK_EVENTS
     ]

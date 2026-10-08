@@ -73,24 +73,28 @@ def test_billing_counts_only_processed_deliveries_in_the_window(db: Database[Doc
         [
             {
                 "webhook_id": "1",
+                "payment_id": "pay_a",
                 "event_type": "payment.succeeded",
                 "status": "processed",
                 "processed_at": INSIDE,
             },
             {
                 "webhook_id": "2",
+                "payment_id": "pay_b",
                 "event_type": "payment.succeeded",
                 "status": "processed",
                 "processed_at": INSIDE,
             },
             {
                 "webhook_id": "3",
+                "payment_id": "pay_c",
                 "event_type": "payment.succeeded",
                 "status": "ignored",
                 "processed_at": INSIDE,
             },
             {
                 "webhook_id": "4",
+                "subscription_id": "sub_a",
                 "event_type": "subscription.active",
                 "status": "processed",
                 "processed_at": BEFORE,
@@ -132,3 +136,40 @@ def test_signups_support_subscriptions_and_cost_count_by_created_at(db: Database
     assert signals.llm_cost_usd == pytest.approx(0.75)
     # Active now, whenever it started, and a $0 discount-code subscription counts.
     assert signals.subscribers_now == 2
+
+
+def _delivery(webhook_id: str, event_type: str, **ids: str) -> Document:
+    return {
+        "webhook_id": webhook_id,
+        "event_type": event_type,
+        "status": "processed",
+        "processed_at": INSIDE,
+        **ids,
+    }
+
+
+def test_billing_counts_each_state_change_once_not_each_delivery(db: Database[Document]) -> None:
+    db.processed_webhooks.insert_many(
+        [
+            # A second activation report for the same subscription changes nothing.
+            _delivery("a1", "subscription.active", subscription_id="sub_1"),
+            _delivery("a2", "subscription.active", subscription_id="sub_1"),
+            # The user's own cancel already fired the event; Dodo's report is the same change.
+            _delivery("c1", "subscription.cancelled", subscription_id="sub_1"),
+            # Two deliveries naming one payment are one payment.
+            _delivery("p1", "payment.succeeded", payment_id="pay_1"),
+            _delivery("p2", "payment.succeeded", payment_id="pay_1"),
+            _delivery("p3", "payment.failed", payment_id="pay_2"),
+            # Every renewal is its own change, even of the same subscription.
+            _delivery("r1", "subscription.renewed", subscription_id="sub_1"),
+            _delivery("r2", "subscription.renewed", subscription_id="sub_1"),
+        ]
+    )
+
+    assert mongo_signals(db, WINDOW).billing == {
+        "payment:succeeded": 1,
+        "payment:failed": 1,
+        "subscription:activated": 1,
+        "subscription:renewed": 2,
+        "subscription:cancelled": 1,
+    }
