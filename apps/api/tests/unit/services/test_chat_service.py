@@ -54,10 +54,16 @@ from app.services.chat.stream import (
 )
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
     ChatTurnReacted,
+)
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
 )
 from shared.py.wide_events import log as _log
 from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
@@ -1350,6 +1356,42 @@ class TestRunChatStreamBackground:
             )
 
         mock_desc.assert_called_once()
+
+    async def test_the_auto_title_is_the_agents_work_not_the_users(self, test_user, basic_body):
+        """Greptile #1337: the title task inherited the turn's actor=user, so its rename read as a human edit."""
+        actors: list[Actor] = []
+
+        async def _record_actor(*_: object) -> str:
+            actors.append(current_analytics_context().attribution.actor)
+            return "Generated description"
+
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+        sm = _make_stream_manager_mock()
+        with (
+            analytics_context(users_turn),
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.persistence.create_conversation",
+                new=AsyncMock(return_value=_created_conversation("new_id", "New Chat")),
+            ),
+            patch("app.services.chat.stream.generate_and_update_description", new=_record_actor),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_desc", body=basic_body, user=test_user, conversation_id="new_id"
+            )
+            assert current_analytics_context() == users_turn
+
+        assert actors == [Actor.AGENT]
 
     async def test_no_description_task_for_existing_conversation(
         self, test_user, existing_conv_body
