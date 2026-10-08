@@ -15,7 +15,7 @@ import type {
   TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
-import { describeCron } from "../utils/cronUtils";
+import { workflowApi } from "../api/workflowApi";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -29,10 +29,14 @@ const scheduleTriggerConfigSchema = z.object({
     .string()
     .trim()
     .min(1, "Cron expression is required")
-    .superRefine((value, ctx) => {
-      const { isValid, error } = describeCron(value);
-      if (!isValid && error) {
-        ctx.addIssue({ code: "custom", message: error });
+    .superRefine(async (value, ctx) => {
+      // The server owns the recurring-schedule rule; asked once per submit.
+      const verdict = await workflowApi.validateCron(value);
+      if (!verdict.valid) {
+        ctx.addIssue({
+          code: "custom",
+          message: verdict.error ?? "Invalid schedule",
+        });
       }
     }),
   timezone: z

@@ -4,6 +4,7 @@ import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
+import { useCronValidation } from "../hooks/useCronValidation";
 import {
   buildCronExpression,
   type CronSchedule,
@@ -394,9 +395,11 @@ export const ScheduleBuilder = ({
     onChange(cron);
   };
 
-  // Live preview/validation of the custom cron expression
-  const cronPreview = useMemo(() => describeCron(customCron), [customCron]);
-  const showCronError = customCron.trim().length > 0 && !cronPreview.isValid;
+  // Plain-English preview locally; whether the schedule is acceptable is the server's verdict.
+  const isCustom = simpleSchedule.frequency === "custom";
+  const cronDescription = useMemo(() => describeCron(customCron), [customCron]);
+  const cronVerdict = useCronValidation(isCustom ? customCron : "");
+  const showCronError = cronVerdict?.valid === false;
 
   // Get 12-hour display values from 24-hour stored value
   const hour24 = parseInt(simpleSchedule.hour, 10) || 0;
@@ -536,8 +539,8 @@ export const ScheduleBuilder = ({
 
       {simpleSchedule.frequency === "custom" && (
         <CronPreview
-          description={cronPreview.description}
-          error={cronPreview.error}
+          description={cronDescription}
+          error={cronVerdict?.error ?? undefined}
           showError={showCronError}
         />
       )}
