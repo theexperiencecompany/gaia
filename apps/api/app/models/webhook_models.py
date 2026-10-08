@@ -4,9 +4,10 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, with_config
+from typing_extensions import TypedDict
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log

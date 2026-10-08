@@ -95,7 +95,7 @@ export function PricingCard({
           isCurrentPlan={planViewerState === "current"}
         />
       )}
-      <PricingCardPrice list={list} offer={offer} />
+      <PricingCardPrice list={list} offer={offer} currency={currency} />
       <PricingCardCta
         title={title}
         price={price}
