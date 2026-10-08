@@ -136,7 +136,7 @@ class TestListTodos:
             todo={
                 "operation": "list",
                 "search_mode": "semantic",
-                "query": {"length": len("launch"), "hash": user_text_shape("launch")["hash"]},
+                "query": user_text_shape("launch"),
                 "page": 2,
                 "per_page": 10,
                 "filters_applied": ["query", "project"],

@@ -58,6 +58,7 @@ from app.memory.retrieval import (
     recall_transcripts,
 )
 from app.models.memory_db_models import MemoryRecord
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import wide_task
 from tests.helpers import WideEventRecorder, captured_wide_event
 
@@ -1364,9 +1365,7 @@ class TestRecallLogsNoUserText:
                 )
 
         assert "divorce" not in json.dumps(recorder.events, default=str)
-        shape = recorder.event("chat_stream")["memory"]["query"]
-        assert shape["length"] == len(query)
-        assert shape["hash"].startswith("h_")
+        assert recorder.event("chat_stream")["memory"]["query"] == user_text_shape(query)
 
 
 class TestRecallQualityRegressions:

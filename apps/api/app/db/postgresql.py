@@ -151,6 +151,8 @@ async def init_postgresql_engine() -> AsyncEngine:
         pool_size=5,
         max_overflow=10,
         connect_args=connect_args,
+        # A DBAPIError's text otherwise carries the bound values: user queries, verbatim.
+        hide_parameters=True,
     )
 
     async with engine.begin() as conn:

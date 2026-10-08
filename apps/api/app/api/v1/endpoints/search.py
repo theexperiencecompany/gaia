@@ -26,7 +26,7 @@ from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
 from app.utils.log_identifiers import user_text_shape
 from app.utils.search import perform_search
-from shared.py.wide_events import log
+from shared.py.wide_events import SearchContext, log
 
 router = APIRouter()
 
@@ -47,11 +47,11 @@ async def search_messages_endpoint(
     """
     log.set(
         user={"id": user_id},
-        search={
-            "query": user_text_shape(query),
-            "mode": "keyword",
-            "scope": ["messages", "conversations", "notes"],
-        },
+        search=SearchContext(
+            query=user_text_shape(query),
+            mode="keyword",
+            scope=["messages", "conversations", "notes"],
+        ),
     )
     try:
         results = await search_messages(query, user_id)
@@ -95,11 +95,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
         EmailSearchResponse: The extracted email addresses, combined text, and search data.
     """
     log.set(
-        search={
-            "query": user_text_shape(query),
-            "mode": "web",
-            "scope": ["emails"],
-        },
+        search=SearchContext(query=user_text_shape(query), mode="web", scope=["emails"]),
     )
     search_data = await perform_search(
         query=f"Official contact e-mail address of {query}",
@@ -112,7 +108,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
     combined_text = " ".join(f"{item.title} {item.content}" for item in search_data.web)
 
     emails = list(set(extract_emails(combined_text)))
-    log.set(search={"result_count": len(emails)})
+    log.set(search=SearchContext(result_count=len(emails)))
 
     return EmailSearchResponse(
         emails=emails,

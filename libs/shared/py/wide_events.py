@@ -58,7 +58,7 @@ from collections.abc import AsyncIterator, Coroutine
 import contextlib
 import contextvars
 import time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 import uuid
 
 from loguru import logger as _loguru
@@ -131,7 +131,7 @@ class TextShape(TypedDict):
     """What a log may record about text a person wrote: its size and a join key, never the words."""
 
     length: int
-    hash: str
+    hash: NotRequired[str]
 
 
 class UserContext(TypedDict, total=False):
@@ -327,6 +327,7 @@ class SearchContext(TypedDict, total=False):
     query: TextShape
     mode: str
     result_count: int
+    duration_ms: int
     scope: list[str]  # which entity types were searched
 
 

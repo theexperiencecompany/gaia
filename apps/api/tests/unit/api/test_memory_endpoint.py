@@ -12,9 +12,11 @@ import pytest
 
 from app.api.v1.endpoints.memory import _require_user_id
 from app.constants.general import MAX_PAGE_NUMBER
-from app.models.memory_models import MemoryListResponse
+from app.models.memory_models import MemoryListResponse, MemorySearchResult
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
+from app.utils.log_identifiers import user_text_shape
+from shared.py.wide_events import MemoryContext, UserContext
 
 MEMORY_ENDPOINT = "app.api.v1.endpoints.memory"
 ANALYTICS_PATCH = "app.api.v1.endpoints.memory.capture_context_event"
@@ -69,6 +71,35 @@ class TestListMemories:
         assert body["page"] == 1
         list_memories.assert_awaited_once_with(
             "507f1f77bcf86cd799439011", page=1, page_size=20, category=None
+        )
+
+
+class TestSearchMemories:
+    """GET /api/v1/memory/search."""
+
+    async def test_search_logs_the_query_shape_and_never_its_words(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{MEMORY_ENDPOINT}.memory_engine.recall",
+                new_callable=AsyncMock,
+                return_value=MemorySearchResult(),
+            ) as recall,
+            patch(f"{MEMORY_ENDPOINT}.log") as log,
+        ):
+            resp = await client.get("/api/v1/memory/search?q=my%20divorce%20papers&limit=7")
+
+        assert resp.status_code == 200
+        recall.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011",
+            "my divorce papers",
+            limit=7,
+            include_graph_expansion=False,
+        )
+        log.set.assert_any_call(
+            user=UserContext(id="507f1f77bcf86cd799439011"),
+            memory=MemoryContext(operation="recall", query=user_text_shape("my divorce papers")),
         )
 
 

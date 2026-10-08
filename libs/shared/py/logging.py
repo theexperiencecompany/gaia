@@ -173,7 +173,13 @@ def hash_log_identifier(value: str | int, secret: str | None) -> str:
 
 
 def text_shape(text: str, secret: str | None) -> TextShape:
-    """Describe user-written text for a log field by its length and hash, never its words."""
+    """Describe user-written text for a log field by its length and keyed hash, never its words.
+
+    Without a secret only the length is kept: an unkeyed digest of a short phrase is
+    reversed by hashing guesses.
+    """
+    if not secret:
+        return {"length": len(text)}
     return {"length": len(text), "hash": hash_log_identifier(text, secret)}
 
 

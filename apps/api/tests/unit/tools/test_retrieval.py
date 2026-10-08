@@ -597,7 +597,7 @@ class TestRetrieveToolsDiscovery:
 
         assert log.get()["tool_retrieval"] == {
             "mode": "discovery",
-            "query": {"length": len("send email"), "hash": user_text_shape("send email")["hash"]},
+            "query": user_text_shape("send email"),
             "tool_space": "general",
             "user_id": "u1",
             "namespaces_searched": ["general"],

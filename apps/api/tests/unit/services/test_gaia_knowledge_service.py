@@ -24,6 +24,7 @@ from app.services.gaia_knowledge_service import (
     _Snapshot,
     gaia_knowledge_service,
 )
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import wide_task
 from tests.helpers import WideEventRecorder, captured_wide_event
 
@@ -337,9 +338,7 @@ class TestSearchLogsNoUserText:
                 await gaia_knowledge_service.search_knowledge(query)
 
         assert "divorce" not in json.dumps(recorder.events, default=str)
-        shape = recorder.event("chat_stream")["knowledge_query"]
-        assert shape["length"] == len(query)
-        assert shape["hash"].startswith("h_")
+        assert recorder.event("chat_stream")["knowledge_query"] == user_text_shape(query)
 
 
 class TestLoadSnapshot:
