@@ -366,6 +366,28 @@ class TestConnectedIntegrationsManifest:
             "- Gmail (gmail) [accounts: work@acme.com (primary), me@gmail.com (expired)]\n"
             "- GitHub (github)"
         )
+        single_accounts_by_default.assert_awaited_once_with("u1")
+
+    async def test_an_account_listing_failure_keeps_the_rows_and_is_logged(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.side_effect = RuntimeError("mongo down")
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named",
+                AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
+            ),
+            patch("app.agents.context.fetchers.log") as mock_log,
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert manifest == "HEADER:\n- Gmail (gmail)"
+        mock_log.warning.assert_called_once_with(
+            "Could not list integration accounts; manifest rows omit them",
+            user_id="u1",
+            error="mongo down",
+            error_type="RuntimeError",
+        )
 
     async def test_a_row_names_what_the_connection_is_for(
         self, no_tools_by_default: AsyncMock

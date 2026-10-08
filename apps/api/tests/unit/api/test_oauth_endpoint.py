@@ -574,6 +574,20 @@ class TestComposioCallback:
         assert response.headers["location"] == f"{FRONTEND}/settings?oauth_error=failed"
         completed_connection.assert_not_awaited()
 
+    async def test_the_callback_consumes_the_state_token_it_was_given(
+        self, composio_state: AsyncMock, completed_connection: AsyncMock, client: AsyncClient
+    ):
+        completed_connection.return_value = ConnectionCompleted(
+            user_id="uid1", integration_id="gmail", provider="google"
+        )
+
+        await client.get(
+            f"{OAUTH_BASE}/composio/callback?status=success&state=tok_abc&connectedAccountId=acc1",
+            follow_redirects=False,
+        )
+
+        composio_state.assert_awaited_once_with("tok_abc")
+
     @pytest.mark.usefixtures("composio_state")
     async def test_the_callback_id_is_handed_to_the_service_with_the_state_user(
         self, completed_connection: AsyncMock, route_log: MagicMock, client: AsyncClient

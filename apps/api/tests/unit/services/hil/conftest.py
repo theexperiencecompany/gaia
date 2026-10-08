@@ -20,6 +20,7 @@ from pydantic import BaseModel
 import pytest
 
 from app.agents.tools.execute.resolver import ResolvedTool
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILApprovalRecord, HILPreferences
 from app.services.hil.gate import decide_tool_call
 from app.services.hil.intent import IntentDecision
@@ -144,6 +145,8 @@ GATED_TOOL = "GMAIL_SEND_EMAIL"
 GATED_ARGS: dict[str, Any] = {"to": "b@x"}
 # build_summary of GATED_TOOL / GATED_ARGS once the registry names its integration.
 GATED_SUMMARY = "Gmail send email (Gmail); to: b@x"
+GATED_ACCOUNT = "work@acme.com"
+GATED_ACCOUNT_SUMMARY = "Gmail send email (Gmail, work@acme.com); to: b@x"
 GATE_MODULE = "app.services.hil.gate"
 
 
@@ -259,11 +262,15 @@ def gate_seams() -> Iterator[GateSeams]:
 
 
 def gated_request(
-    *, args: dict[str, Any] | None = None, messages: list[Any] | None = None, **configurable: Any
+    *,
+    name: str = GATED_TOOL,
+    args: dict[str, Any] | None = None,
+    messages: list[Any] | None = None,
+    **configurable: Any,
 ) -> ToolCallRequest:
     """Build a GATED_TOOL call from the default live run, with configurable overrides merged in."""
     return make_request(
-        name=GATED_TOOL,
+        name=name,
         args=dict(GATED_ARGS) if args is None else args,
         messages=messages,
         configurable={
@@ -274,6 +281,17 @@ def gated_request(
             **configurable,
         },
     )
+
+
+def account_gated_request(account: str = GATED_ACCOUNT) -> ToolCallRequest:
+    """Build the GATED_TOOL call as the execute proxy sends it, acting as a named account."""
+    proxy_args = {
+        "task_description": "send it",
+        "tool_name": GATED_TOOL,
+        "data": dict(GATED_ARGS),
+        "account": account,
+    }
+    return gated_request(name=EXECUTE_TOOL_NAME, args=proxy_args)
 
 
 def jev_reply_body(*verdicts: tuple[str, float]) -> dict[str, Any]:

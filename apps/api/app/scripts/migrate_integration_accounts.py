@@ -87,10 +87,6 @@ class _Totals:
     failures: list[str] = field(default_factory=list)
 
 
-def _parse_time(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
 async def _identity(user_id: str, integration: OAuthIntegration, account_id: str) -> dict[str, str]:
     try:
         return await fetch_account_identity(user_id, integration, account_id)
@@ -109,7 +105,7 @@ async def _plan(
     plan = _Plan()
     live = sorted(
         (a for a in composio_accounts if a.status == _LIVE and not a.is_disabled),
-        key=lambda a: _parse_time(a.created_at),
+        key=lambda a: datetime.fromisoformat(a.created_at),
     )
     by_identity: dict[str, list[tuple[Item, dict[str, str]]]] = {}
     for account in live:
@@ -125,7 +121,7 @@ async def _plan(
                 connected_account_id=chosen.id,
                 identity=identity,
                 label=account_label(integration, identity, {k.label for k in plan.keep}),
-                connected_at=_parse_time(chosen.created_at),
+                connected_at=datetime.fromisoformat(chosen.created_at),
             )
         )
         plan.revoke += [a.id for a, _ in group if a.id != chosen.id]
@@ -137,9 +133,10 @@ async def _plan(
             plan.keep.append(
                 IntegrationAccount(
                     connected_account_id=stored.id,
-                    label=account_label(integration, {}, set()),
+                    # Equivalent under mutation: account_label treats a None identity as {}.
+                    label=account_label(integration, {}, set()),  # pragma: no mutate
                     status="expired",
-                    connected_at=_parse_time(stored.created_at),
+                    connected_at=datetime.fromisoformat(stored.created_at),
                     expired_at=datetime.now(UTC),
                 )
             )

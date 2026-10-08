@@ -513,14 +513,16 @@ class TestHandleOAuthConnection:
     async def test_records_the_account_that_authorized(self, mock_record_account):
         config = make_integration_config(integration_id="notion", name="Notion")
 
-        await handle_oauth_connection(
-            user_id="user123",
-            integration_config=config,
-            background_tasks=MagicMock(),
-            connected_account_id="ca_new",
-        )
+        with patch("app.services.oauth.oauth_service.publish_connected") as publish:
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=MagicMock(),
+                connected_account_id="ca_new",
+            )
 
         mock_record_account.assert_awaited_once_with("user123", config, "ca_new")
+        publish.assert_awaited_once_with("user123", "notion")
 
     async def test_a_connect_over_the_account_limit_has_no_side_effects(self, mock_record_account):
         mock_record_account.return_value = AccountLimitReached(limit=5)

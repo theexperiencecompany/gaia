@@ -23,12 +23,12 @@ from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
 
 
-def _message_channel(data: dict[str, object]) -> str:
-    """Return the channel a message event arrived in; empty when the payload is not a message."""
+def _message_channel(data: dict[str, object]) -> str | None:
+    """Return the channel a message event arrived in; None when the payload names none."""
     try:
-        return SlackReceiveMessagePayload.model_validate(data).channel or ""
+        return SlackReceiveMessagePayload.model_validate(data).channel
     except ValidationError:
-        return ""
+        return None
 
 
 class SlackTriggerHandler(TriggerHandler):

@@ -12,10 +12,12 @@ the ordering, and the failure paths that never reach a service at all.
 """
 
 from dataclasses import replace
+from functools import partial
 from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from tests.factories import make_integration_account, make_integration_record
 from tests.helpers import captured_wide_event
 
 from app.agents.context.section_context import SectionContext
@@ -28,16 +30,14 @@ from app.agents.context.text import (
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.constants.log_tags import LogTag
-from app.models.integration_models import (
-    IntegrationAccount,
-    IntegrationAccountStatus,
-    UserIntegrationDocument,
-)
 
 #: A real, registered integration, so ``get_integration_by_id`` resolves and the
 #: provider-metadata and custom-instruction sections are genuinely reachable
 #: rather than short-circuiting on an unknown id.
 INTEGRATION_ID = "gmail"
+
+
+_record = partial(make_integration_record, user_id="user1", integration_id=INTEGRATION_ID)
 
 
 def section(section_id: str) -> Section:
@@ -367,7 +367,9 @@ class TestIntegrationsManifest:
 class TestProviderMetadata:
     async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
         """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
-        record = _record(_account("ca_1", identity={"email": "ada@example.com", "login": "ada"}))
+        record = _record(
+            make_integration_account("ca_1", identity={"email": "ada@example.com", "login": "ada"})
+        )
         with patch(
             "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
         ):
@@ -381,9 +383,9 @@ class TestProviderMetadata:
         self,
     ) -> None:
         record = _record(
-            _account("ca_1", label="work@acme.com"),
-            _account("ca_2", label="me@gmail.com", nickname="Personal"),
-            _account("ca_3", label="old@acme.com", status="expired"),
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
+            make_integration_account("ca_3", label="old@acme.com", status="expired"),
             primary="ca_2",
         )
         with patch(
@@ -410,7 +412,9 @@ class TestProviderMetadata:
         lookup.assert_awaited_once_with("user1", INTEGRATION_ID)
 
     async def test_an_unknown_user_is_never_looked_up(self) -> None:
-        lookup = AsyncMock(return_value=_record(_account("ca_1", identity={"email": "a@b.c"})))
+        lookup = AsyncMock(
+            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
         with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -421,7 +425,9 @@ class TestProviderMetadata:
 
     async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
         """A subagent id that resolves to no integration has no accounts to ask about."""
-        lookup = AsyncMock(return_value=_record(_account("ca_1", identity={"email": "a@b.c"})))
+        lookup = AsyncMock(
+            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
         with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
@@ -431,7 +437,7 @@ class TestProviderMetadata:
         lookup.assert_not_awaited()
 
     async def test_one_account_without_an_identity_yields_no_block(self) -> None:
-        record = _record(_account("ca_1"))
+        record = _record(make_integration_account("ca_1"))
         with patch(
             "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
         ):
@@ -459,33 +465,6 @@ class TestProviderMetadata:
         assert warning["user_id"] == "user1"
         assert warning["error"] == "mongo down"
         assert warning["error_type"] == "RuntimeError"
-
-
-def _account(
-    account_id: str,
-    *,
-    label: str = "acct",
-    nickname: str | None = None,
-    identity: dict[str, str] | None = None,
-    status: IntegrationAccountStatus = "connected",
-) -> IntegrationAccount:
-    return IntegrationAccount(
-        connected_account_id=account_id,
-        label=label,
-        nickname=nickname,
-        identity=identity or {},
-        status=status,
-    )
-
-
-def _record(*accounts: IntegrationAccount, primary: str = "ca_1") -> UserIntegrationDocument:
-    return UserIntegrationDocument(
-        user_id="user1",
-        integration_id=INTEGRATION_ID,
-        status="connected",
-        accounts=list(accounts),
-        primary_account_id=primary,
-    )
 
 
 @pytest.mark.unit

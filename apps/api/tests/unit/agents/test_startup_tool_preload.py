@@ -24,6 +24,7 @@ from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
 from app.agents.tools.core import retrieval
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.log_tags import LogTag
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from tests.helpers import captured_wide_event
 
 
@@ -415,8 +416,13 @@ class TestPrepareInjectsPreloadDocs:
 
 
 @contextmanager
-def _prepared_gmail_run(preload: AsyncMock) -> Iterator[dict[str, Any]]:
-    """Resolve gmail for u1 with a fixed static prompt; yield what build_initial_messages got."""
+def _prepared_run(
+    preload: AsyncMock,
+    *,
+    integration_id: str = "gmail",
+    account_record: AsyncMock | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Resolve integration_id for u1 with a fixed static prompt; yield what build_initial_messages got."""
     captured: dict[str, Any] = {}
 
     async def _capture(**kwargs: Any) -> list[SystemMessage]:
@@ -428,7 +434,9 @@ def _prepared_gmail_run(preload: AsyncMock) -> Iterator[dict[str, Any]]:
         patch.object(
             handoff_tools,
             "_resolve_subagent",
-            new=AsyncMock(return_value=(MagicMock(), "gmail_agent", "gmail", False)),
+            new=AsyncMock(
+                return_value=(MagicMock(), f"{integration_id}_agent", integration_id, False)
+            ),
         ),
         patch.object(handoff_tools, "build_agent_config", new=AsyncMock(return_value=config)),
         patch.object(
@@ -436,7 +444,11 @@ def _prepared_gmail_run(preload: AsyncMock) -> Iterator[dict[str, Any]]:
             "create_subagent_system_message",
             new=AsyncMock(return_value=SystemMessage(content="STATIC GMAIL PROMPT")),
         ),
-        patch.object(handoff_tools, "get_account_record", new=AsyncMock(return_value=None)),
+        patch.object(
+            handoff_tools,
+            "get_account_record",
+            new=account_record or AsyncMock(return_value=None),
+        ),
         patch.object(handoff_tools, "build_initial_messages", side_effect=_capture),
         patch.object(handoff_tools, "preloaded_startup_docs", new=preload),
     ):
@@ -449,7 +461,7 @@ class TestPrepareAppendsThePreloadBlock:
         self,
     ) -> None:
         preload = AsyncMock(return_value="## GMAIL_FETCH_MESSAGES")
-        with _prepared_gmail_run(preload) as captured:
+        with _prepared_run(preload) as captured:
             await prepare_subagent_execution("gmail", "List my inbox", {"user_id": "u1"})
 
         preload.assert_awaited_once_with("u1", "gmail")
@@ -459,7 +471,7 @@ class TestPrepareAppendsThePreloadBlock:
 
     async def test_unavailable_docs_leave_the_static_prompt_as_is_and_say_why(self) -> None:
         preload = AsyncMock(side_effect=RuntimeError("registry down"))
-        with _prepared_gmail_run(preload) as captured:
+        with _prepared_run(preload) as captured:
             async with captured_wide_event() as event:
                 ctx, _, error = await prepare_subagent_execution(
                     "gmail", "List my inbox", {"user_id": "u1"}
@@ -473,6 +485,56 @@ class TestPrepareAppendsThePreloadBlock:
             f"{LogTag.AGENT} Startup tool docs unavailable; continuing without them"
         )
         assert (warning["integration_id"], warning["error_type"]) == ("gmail", "RuntimeError")
+
+
+def _gmail_record_for(user_id: str, integration_id: str) -> UserIntegrationDocument | None:
+    """Return u1's gmail record (two accounts, the second primary); None for anyone else."""
+    if (user_id, integration_id) != ("u1", "gmail"):
+        return None
+    return UserIntegrationDocument(
+        user_id="u1",
+        integration_id="gmail",
+        status="connected",
+        accounts=[
+            IntegrationAccount(
+                connected_account_id="ca_work", label="work", identity={"username": "work-me"}
+            ),
+            IntegrationAccount(
+                connected_account_id="ca_home", label="home", identity={"username": "home-me"}
+            ),
+        ],
+        primary_account_id="ca_home",
+    )
+
+
+@pytest.mark.unit
+class TestPrepareNamesThePrimaryAccount:
+    async def test_the_service_username_is_the_primary_accounts(self) -> None:
+        lookup = AsyncMock(side_effect=_gmail_record_for)
+        with _prepared_run(AsyncMock(return_value=""), account_record=lookup):
+            ctx, _, _ = await prepare_subagent_execution(
+                "gmail", "List my inbox", {"user_id": "u1"}
+            )
+
+        assert ctx is not None
+        assert ctx.initial_state["integration_usernames"] == {"gmail": "home-me"}
+
+    @pytest.mark.parametrize("integration_id", ["deepwiki", "custom_tracker"])
+    async def test_an_integration_without_composio_accounts_never_reads_them(
+        self, integration_id: str
+    ) -> None:
+        lookup = AsyncMock(side_effect=_gmail_record_for)
+        with _prepared_run(
+            AsyncMock(return_value=""), integration_id=integration_id, account_record=lookup
+        ):
+            ctx, _, error = await prepare_subagent_execution(
+                integration_id, "Look it up", {"user_id": "u1"}
+            )
+
+        assert error is None
+        assert ctx is not None
+        assert ctx.initial_state["integration_usernames"] == {}
+        lookup.assert_not_awaited()
 
 
 @langchain_tool

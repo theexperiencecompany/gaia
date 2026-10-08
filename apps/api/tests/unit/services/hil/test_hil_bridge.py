@@ -499,6 +499,12 @@ class TestSummary:
     def test_the_integration_name_is_parenthesized_after_the_label(self) -> None:
         assert build_summary("send_email", {}, "Gmail") == "Send email (Gmail)"
 
+    def test_a_named_account_is_parenthesized_beside_the_integration(self) -> None:
+        assert (
+            build_summary("send_email", {}, "Gmail", "work@acme.com")
+            == "Send email (Gmail, work@acme.com)"
+        )
+
     def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
         assert build_summary("send_email", {}, None) == "Send email"
 

@@ -168,6 +168,11 @@ class TestCompleteComposioConnectionAccountLimit:
 
         assert outcome == ConnectionRejected(reason="account_limit")
         mock_capture.assert_not_called()
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.OAUTH} Connect rejected at the per-integration account limit",
+            limit=5,
+            integration_id="gmail",
+        )
 
 
 @pytest.mark.unit

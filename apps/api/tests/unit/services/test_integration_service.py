@@ -708,6 +708,23 @@ class TestUpdateUserIntegrationStatus:
         )
         mock_sched.assert_not_called()
 
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_a_write_that_lands_nothing_reports_failure_and_publishes_nothing(
+        self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
+    ) -> None:
+        mock_repo.set_status = AsyncMock(return_value=False)
+        mock_ws.broadcast_to_user = AsyncMock()
+
+        result = await update_user_integration_status.__wrapped__(
+            USER_ID, INTEGRATION_ID, "connected"
+        )
+
+        assert result is False
+        mock_sched.assert_not_called()
+        mock_ws.broadcast_to_user.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # user_integrations.py tests
@@ -2693,6 +2710,7 @@ class TestConnectComposioIntegration:
         # overwrite the first one's id.
         seams["attach"].assert_awaited_once_with("state-token", "ca_initiated")
         seams["status"].assert_awaited_once_with(USER_ID, "slack", "created")
+        seams["record"].assert_awaited_once_with(USER_ID, "slack")
 
     async def test_adding_an_account_leaves_a_working_integration_connected(
         self, seams: dict[str, MagicMock]
@@ -2715,6 +2733,10 @@ class TestConnectComposioIntegration:
 
         assert result.status == "error"
         assert result.error == ACCOUNT_LIMIT_ERROR
+        assert result.message == (
+            f"You can connect up to {MAX_ACCOUNTS_PER_INTEGRATION} Slack accounts. "
+            "Remove one to add another."
+        )
         seams["service"].connect_account.assert_not_awaited()
 
     async def test_an_expired_account_does_not_block_reconnecting_it(

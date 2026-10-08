@@ -12,6 +12,7 @@ Covers:
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 import sys
 from types import ModuleType
 from typing import Any
@@ -19,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOptionsQuery
 
 # Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
@@ -52,7 +54,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.triggers.base import TriggerHandler
+from app.services.triggers.base import TriggerHandler, primary_account_for_trigger
 from app.services.triggers.handlers.calendar import (
     CalendarTriggerHandler,
     calendar_trigger_handler,
@@ -517,6 +519,95 @@ class TestTriggerHandlerBase:
             )
         )
         assert result == []
+
+
+@pytest.mark.asyncio
+@patch("app.services.triggers.base.enqueue_worker_job", new=AsyncMock())
+@patch("app.services.triggers.base.RedisPoolManager.get_pool", new=AsyncMock())
+@patch("app.services.triggers.base.log")
+class TestEventTimingInstrumentation:
+    """The event-start and webhook-lag fields a calendar-style payload adds to the wide event."""
+
+    @staticmethod
+    def _dispatched_at(mock_log: MagicMock) -> datetime:
+        return datetime.fromisoformat(mock_log.set.call_args_list[0].kwargs["now_utc"])
+
+    async def test_a_snake_case_start_with_a_countdown_records_the_webhook_lag(
+        self, mock_log: MagicMock
+    ) -> None:
+        payload: dict[str, object] = {
+            "start_time": "2026-01-01T10:00:00",
+            "countdown_window_minutes": 15,
+        }
+
+        await _ConcreteTriggerHandler().process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
+
+        now = self._dispatched_at(mock_log)
+        start = datetime(2026, 1, 1, 10, tzinfo=UTC)
+        mock_log.set.assert_any_call(
+            event_start_time_utc="2026-01-01T10:00:00+00:00",
+            event_start_time_raw="2026-01-01T10:00:00",
+            seconds_until_event=int((start - now).total_seconds()),
+        )
+        mock_log.set.assert_any_call(
+            countdown_window_minutes=15,
+            webhook_lag_seconds=int(now.timestamp() - (start.timestamp() - 15 * 60)),
+        )
+
+    async def test_a_camel_case_start_is_read_and_converted_to_utc(
+        self, mock_log: MagicMock
+    ) -> None:
+        payload: dict[str, object] = {"startTime": "2026-03-01T09:30:00+05:30"}
+
+        await _ConcreteTriggerHandler().process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
+
+        now = self._dispatched_at(mock_log)
+        start = datetime(2026, 3, 1, 4, tzinfo=UTC)
+        mock_log.set.assert_any_call(
+            event_start_time_utc="2026-03-01T04:00:00+00:00",
+            event_start_time_raw="2026-03-01T09:30:00+05:30",
+            seconds_until_event=int((start - now).total_seconds()),
+        )
+        assert not any("webhook_lag_seconds" in c.kwargs for c in mock_log.set.call_args_list)
+
+
+@pytest.mark.asyncio
+class TestPrimaryAccountForTrigger:
+    """Workflow triggers register on the primary account of the integration owning the slug."""
+
+    async def test_a_slug_no_integration_owns_is_refused_by_name(self) -> None:
+        with pytest.raises(TriggerRegistrationError) as exc_info:
+            await primary_account_for_trigger(USER_ID, "NOBODY_OWNS_THIS")
+
+        assert str(exc_info.value) == "No integration owns trigger NOBODY_OWNS_THIS"
+        assert exc_info.value.trigger_name == "NOBODY_OWNS_THIS"
+
+    @patch("app.services.triggers.base.get_composio_service")
+    @patch(
+        "app.services.triggers.base.primary_connected_account_id",
+        new_callable=AsyncMock,
+        return_value="ca_github",
+    )
+    async def test_parallel_registration_creates_each_trigger_on_the_owners_primary(
+        self, mock_primary: AsyncMock, mock_get_composio: MagicMock
+    ) -> None:
+        create = mock_get_composio.return_value.composio.triggers.create
+        create.return_value = MagicMock(trigger_id="tid_commit")
+
+        result = await _ConcreteTriggerHandler()._register_triggers_parallel(
+            user_id=USER_ID,
+            trigger_name="github_commit_event",
+            configs=[{"owner": "acme", "repo": "api"}],
+            composio_slug="GITHUB_COMMIT_EVENT",
+        )
+
+        assert result == ["tid_commit"]
+        mock_primary.assert_awaited_once_with(USER_ID, "GITHUB")
+        create.assert_called_once_with(
+            connected_account_id="ca_github",
+            slug="GITHUB_COMMIT_EVENT",
+            trigger_config={"owner": "acme", "repo": "api"},
+        )
 
 
 # ===========================================================================
@@ -1138,6 +1229,43 @@ class TestSlackTriggerHandler:
         assert isinstance(slack_trigger_handler, SlackTriggerHandler)
 
 
+@pytest.mark.asyncio
+class TestSlackRegistersOnThePrimaryAccount:
+    """Slack triggers are created on the user's primary Slack account, not Composio's pick."""
+
+    @patch("app.services.triggers.handlers.slack.log")
+    @patch("app.services.triggers.handlers.slack.get_composio_service")
+    @patch(
+        "app.services.triggers.base.primary_connected_account_id",
+        new_callable=AsyncMock,
+        return_value="ca_slack",
+    )
+    async def test_channel_created_registers_on_the_slack_primary(
+        self, mock_primary: AsyncMock, mock_get_composio: MagicMock, mock_log: MagicMock
+    ) -> None:
+        create = mock_get_composio.return_value.composio.triggers.create
+        create.return_value = MagicMock(trigger_id="tid_channel")
+        config = _make_trigger_config(
+            "slack_channel_created", trigger_data=SlackChannelCreatedConfig()
+        )
+
+        result = await SlackTriggerHandler().register(
+            USER_ID, WORKFLOW_ID, "slack_channel_created", config
+        )
+
+        assert result == ["tid_channel"]
+        mock_primary.assert_awaited_once_with(USER_ID, "SLACK")
+        create.assert_called_once_with(
+            connected_account_id="ca_slack", slug="SLACK_CHANNEL_CREATED", trigger_config={}
+        )
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.TRIGGER} Registered for user",
+            composio_slug="SLACK_CHANNEL_CREATED",
+            user_id=USER_ID,
+            trigger_id="tid_channel",
+        )
+
+
 # ===========================================================================
 # GitHubTriggerHandler tests
 # ===========================================================================
@@ -1178,6 +1306,49 @@ class TestSlackChannelFilter:
             "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C999", "text": "hello"}
         )
         assert result == []
+
+    @pytest.mark.parametrize(
+        "data",
+        [{"text": "hello"}, {"channel": 42, "text": "hello"}],
+        ids=["no-channel", "malformed-channel"],
+    )
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_message_naming_no_channel_skips_channel_filtered_workflows(
+        self, mock_repo: MagicMock, data: dict[str, object]
+    ) -> None:
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        result = await SlackTriggerHandler().find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, data
+        )
+
+        assert result == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_skipped_workflow_does_not_stop_the_ones_after_it(
+        self, mock_repo: MagicMock
+    ) -> None:
+        elsewhere, here = (
+            _make_workflow(
+                workflow_id=f"wf_{channel}",
+                trigger_name="slack_new_message",
+                composio_trigger_ids=[TRIGGER_ID],
+                trigger_data=SlackNewMessageConfig(channel_ids=[channel]),
+            )
+            for channel in ("C001", "C002")
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[elsewhere, here])
+
+        result = await SlackTriggerHandler().find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C002", "text": "hello"}
+        )
+
+        assert result == [here]
 
 
 @pytest.mark.usefixtures("primary_account")

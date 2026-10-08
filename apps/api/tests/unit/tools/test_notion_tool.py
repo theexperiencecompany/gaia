@@ -60,12 +60,17 @@ AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 CREDS = CustomToolAuthCredentials(user_id="user_test_123")
 
 
+def _scoped_account_id(user_id: str, toolkit: str) -> str:
+    """Answer only for the caller's own user on this toolkit, so a lost identity changes the account."""
+    return "ca_scoped" if (user_id, toolkit) == (CREDS.user_id, "NOTION") else "ca_wrong_scope"
+
+
 @pytest.fixture(autouse=True)
 def scoped_account() -> Iterator[MagicMock]:
     """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
     with patch(
         "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
-        MagicMock(return_value="ca_scoped"),
+        MagicMock(side_effect=_scoped_account_id),
     ) as resolve:
         yield resolve
 

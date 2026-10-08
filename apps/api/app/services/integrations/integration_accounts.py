@@ -108,7 +108,6 @@ async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
         raise AppError(
             message=f"Unknown Composio toolkit: {toolkit}",
             why="No registered integration matches this toolkit slug",
-            status_code=500,
             meta={"toolkit": toolkit},
         )
     record = await get_account_record(user_id, integration.id)

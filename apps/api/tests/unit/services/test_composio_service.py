@@ -9,6 +9,7 @@ import pytest
 from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT
 from app.services.composio import composio_service
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # ComposioService tests
@@ -488,6 +489,12 @@ class TestCheckConnectionStatus:
             result = await svc.check_connection_status(["gmail"], "user1")
 
         assert result == {"gmail": True}
+        svc.composio.connected_accounts.list.assert_called_once_with(
+            user_ids=["user1"],
+            auth_config_ids=["auth_gmail"],
+            statuses=["ACTIVE"],
+            limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_for_disabled(self):
@@ -580,9 +587,12 @@ class TestDeleteAllConnectedAccounts:
             "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
             {"gmail": config},
         ):
-            deleted = await svc.delete_all_connected_accounts("user1", "gmail")
+            async with captured_wide_event() as event:
+                deleted = await svc.delete_all_connected_accounts("user1", "gmail")
 
         assert deleted == 3
+        assert event["composio_user_id"] == "user1"
+        assert event["composio_provider"] == "gmail"
         svc.composio.connected_accounts.list.assert_called_once_with(
             user_ids=["user1"], auth_config_ids=["auth_gmail"], limit=COMPOSIO_ACCOUNT_LIST_LIMIT
         )
@@ -618,9 +628,11 @@ class TestDeleteConnectedAccount:
         svc = _make_service()
         svc.composio.connected_accounts.delete = MagicMock(return_value=None)
 
-        await svc.delete_connected_account("ca_1")
+        async with captured_wide_event() as event:
+            await svc.delete_connected_account("ca_1")
 
         svc.composio.connected_accounts.delete.assert_called_once_with(nanoid="ca_1")
+        assert event["composio_connected_account_id"] == "ca_1"
 
     @pytest.mark.asyncio
     async def test_an_account_composio_no_longer_has_counts_as_revoked(self):
@@ -665,9 +677,15 @@ class TestHandleSubscribeTrigger:
         trigger.config = {}
 
         svc.composio.triggers.create = MagicMock(return_value={"id": "t1"})
+        inactive = MagicMock()
+        inactive.auto_activate = False
 
-        result = await svc.handle_subscribe_trigger("user1", "ca_1", [trigger])
+        async with captured_wide_event() as event:
+            result = await svc.handle_subscribe_trigger("user1", "ca_1", [trigger, inactive])
         assert result == [{"id": "t1"}]
+        assert event["composio_user_id"] == "user1"
+        assert event["composio_connected_account_id"] == "ca_1"
+        assert event["composio_trigger_count"] == 2
         # The account is named, so Composio cannot attach it to whichever account it picks.
         svc.composio.triggers.create.assert_called_once_with(
             connected_account_id="ca_1", slug="test-slug", trigger_config={}

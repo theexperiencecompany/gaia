@@ -584,7 +584,7 @@ async def publish_ledger_decision(
     )
     card = SettledApprovalCard(
         approval_id=row.approval_id,
-        tool_call=GatedCall(name=row.tool_name, id="", args=row.args, account=row.account),
+        tool_call=GatedCall(name=row.tool_name, id="", args=row.args),
         summary=row.summary,
         integration_name=None,
     )

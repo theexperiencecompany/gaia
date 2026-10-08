@@ -118,7 +118,8 @@ class UserIntegrationsRepository(
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": now}},
-            scope=user_id,
+            # Equivalent under mutation: scope only keys the cache, and cache_policy is None.
+            scope=user_id,  # pragma: no mutate
             upsert=True,
         )
         if doc is None:

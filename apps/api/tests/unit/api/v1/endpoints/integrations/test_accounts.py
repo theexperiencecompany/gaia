@@ -5,44 +5,47 @@ returns is what the service actually decided.
 """
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from functools import partial
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from httpx import AsyncClient
 import pytest
+from tests.factories import make_integration_account, make_integration_record
 
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.models.integration_models import (
     IntegrationAccount,
-    IntegrationAccountStatus,
     UserIntegrationDocument,
+    UserIntegrationStatus,
 )
 
 BASE = "/api/v1/integrations"
 USER_ID = "507f1f77bcf86cd799439011"
 LIFECYCLE = "app.services.integrations.integration_account_lifecycle"
+ROUTES = "app.api.v1.endpoints.integrations.accounts"
 
 
-def _account(account_id: str, status: IntegrationAccountStatus = "connected") -> IntegrationAccount:
-    return IntegrationAccount(
-        connected_account_id=account_id, label=f"{account_id}@acme.com", status=status
-    )
-
-
-def _record(*accounts: IntegrationAccount, primary: str = "ca_1") -> UserIntegrationDocument:
-    return UserIntegrationDocument(
-        user_id=USER_ID,
-        integration_id="gmail",
-        status="connected",
-        accounts=list(accounts),
-        primary_account_id=primary,
-    )
+_record = partial(make_integration_record, user_id=USER_ID, integration_id="gmail")
 
 
 @pytest.fixture
 def repo(fake_redis: object) -> Iterator[MagicMock]:
-    async def save(user_id: str, integration_id: str, **fields: object) -> UserIntegrationDocument:
-        fields.pop("expired_reason", None)
-        doc = UserIntegrationDocument(user_id=user_id, integration_id=integration_id, **fields)
+    async def save(
+        user_id: str,
+        integration_id: str,
+        *,
+        accounts: list[IntegrationAccount],
+        primary_account_id: str | None,
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
+    ) -> UserIntegrationDocument:
+        doc = UserIntegrationDocument(
+            user_id=user_id,
+            integration_id=integration_id,
+            accounts=accounts,
+            primary_account_id=primary_account_id,
+            status=status,
+        )
         repository.get_for_user.return_value = doc
         return doc
 
@@ -66,12 +69,20 @@ def composio() -> Iterator[MagicMock]:
         yield service
 
 
+@pytest.fixture
+def wide_log() -> Iterator[MagicMock]:
+    with patch(f"{ROUTES}.log") as log:
+        yield log
+
+
 class TestListAccounts:
     async def test_it_lists_every_account_with_the_primary_marked(
         self, client: AsyncClient, repo: MagicMock
     ) -> None:
         repo.get_for_user.return_value = _record(
-            _account("ca_1"), _account("ca_2", status="expired"), primary="ca_1"
+            make_integration_account("ca_1"),
+            make_integration_account("ca_2", status="expired"),
+            primary="ca_1",
         )
 
         resp = await client.get(f"{BASE}/gmail/accounts")
@@ -87,6 +98,20 @@ class TestListAccounts:
             ("ca_2", "ca_2@acme.com", "expired", False),
         ]
         repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
+
+    async def test_the_wide_event_names_the_listing_and_its_size(
+        self, client: AsyncClient, repo: MagicMock, wide_log: MagicMock
+    ) -> None:
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
+
+        await client.get(f"{BASE}/gmail/accounts")
+
+        assert wide_log.set.call_args_list == [
+            call(user={"id": USER_ID}, integration={"id": "gmail", "action": "list_accounts"}),
+            call(result_count=2, outcome="success"),
+        ]
 
     async def test_an_integration_without_accounts_lists_none(
         self, client: AsyncClient, repo: MagicMock
@@ -109,7 +134,9 @@ class TestUpdateAccount:
     async def test_making_an_account_primary_is_reflected_in_the_response(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"), _account("ca_2"))
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
 
         resp = await client.patch(f"{BASE}/gmail/accounts/ca_2", json={"isPrimary": True})
 
@@ -120,7 +147,7 @@ class TestUpdateAccount:
     async def test_a_nickname_renames_the_account_and_an_empty_one_clears_it(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"))
+        repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
         renamed = await client.patch(f"{BASE}/gmail/accounts/ca_1", json={"nickname": "Work"})
         cleared = await client.patch(f"{BASE}/gmail/accounts/ca_1", json={"nickname": ""})
@@ -129,10 +156,32 @@ class TestUpdateAccount:
         assert cleared.json()["accounts"][0]["displayName"] == "ca_1@acme.com"
         assert cleared.json()["accounts"][0]["nickname"] is None
 
+    async def test_the_wide_event_names_the_account_and_the_fields_changed(
+        self, client: AsyncClient, repo: MagicMock, composio: MagicMock, wide_log: MagicMock
+    ) -> None:
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
+
+        await client.patch(
+            f"{BASE}/gmail/accounts/ca_2", json={"nickname": "Work", "isPrimary": True}
+        )
+
+        assert wide_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID},
+                integration={"id": "gmail", "action": "update_account"},
+                account={"id": "ca_2", "fields": ["is_primary", "nickname"]},
+            ),
+            call(outcome="success"),
+        ]
+
     async def test_an_expired_account_cannot_become_primary(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"), _account("ca_2", "expired"))
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2", "expired")
+        )
 
         resp = await client.patch(f"{BASE}/gmail/accounts/ca_2", json={"isPrimary": True})
 
@@ -142,7 +191,7 @@ class TestUpdateAccount:
     async def test_an_unknown_account_is_404(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"))
+        repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
         resp = await client.patch(f"{BASE}/gmail/accounts/ca_nope", json={"isPrimary": True})
 
@@ -153,7 +202,9 @@ class TestRemoveAccount:
     async def test_removing_one_of_several_revokes_it_and_returns_the_rest(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"), _account("ca_2"))
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
 
         resp = await client.delete(f"{BASE}/gmail/accounts/ca_1")
 
@@ -162,10 +213,31 @@ class TestRemoveAccount:
         assert [(a["id"], a["isPrimary"]) for a in accounts] == [("ca_2", True)]
         composio.delete_connected_account.assert_awaited_once_with("ca_1")
 
+    async def test_removal_is_audited_and_the_wide_event_counts_what_remains(
+        self, client: AsyncClient, repo: MagicMock, composio: MagicMock, wide_log: MagicMock
+    ) -> None:
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
+
+        await client.delete(f"{BASE}/gmail/accounts/ca_1")
+
+        wide_log.audit.assert_called_once_with(
+            "integration account removed", actor=USER_ID, resource="gmail", account_id="ca_1"
+        )
+        assert wide_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID},
+                integration={"id": "gmail", "action": "remove_account"},
+                account={"id": "ca_1"},
+            ),
+            call(outcome="success", remaining=1),
+        ]
+
     async def test_removing_the_last_account_disconnects_the_integration(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
-        repo.get_for_user.return_value = _record(_account("ca_1"))
+        repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
         with patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect:
             resp = await client.delete(f"{BASE}/gmail/accounts/ca_1")
@@ -173,3 +245,13 @@ class TestRemoveAccount:
         assert resp.status_code == 200
         assert resp.json()["accounts"] == []
         disconnect.assert_awaited_once_with(USER_ID, "gmail")
+
+    async def test_removing_the_last_account_leaves_none_on_the_wide_event(
+        self, client: AsyncClient, repo: MagicMock, composio: MagicMock, wide_log: MagicMock
+    ) -> None:
+        repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
+
+        with patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()):
+            await client.delete(f"{BASE}/gmail/accounts/ca_1")
+
+        assert wide_log.set.call_args_list[-1] == call(outcome="success", remaining=0)

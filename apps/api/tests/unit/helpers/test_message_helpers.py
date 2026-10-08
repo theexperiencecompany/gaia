@@ -912,6 +912,27 @@ class TestTheTriggeringAccountReachesTheWorkflow:
         assert result.endswith(TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com"))
 
     @pytest.mark.asyncio
+    async def test_the_account_follows_the_playbook_fallback_without_replacing_it(self) -> None:
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "playbook_fallback": "\n\nThe playbook stopped at step 2.",
+                    "trigger_data": {"gaia_account": "me@gmail.com"},
+                },
+            )
+
+        assert result.endswith(
+            "\n\nThe playbook stopped at step 2."
+            + TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com")
+        )
+
+    @pytest.mark.asyncio
     async def test_a_batch_names_every_account_its_events_arrived_on_once(self) -> None:
         events = [
             {"gaia_account": "b@x.com"},
