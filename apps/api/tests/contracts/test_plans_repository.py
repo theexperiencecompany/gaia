@@ -122,5 +122,10 @@ class TestPlanTierBackfill:
     ) -> None:
         await raw_collection.insert_one(_pre_migration_row("Team", 9900, "monthly", "pdt_t"))
 
-        with pytest.raises(RuntimeError, match=r"no known tier: \['Team'\]"):
+        with pytest.raises(RuntimeError) as excinfo:
             await backfill_plan_tiers()
+
+        assert str(excinfo.value) == (
+            "Plan rows with no plan_type and no known tier: ['Team']. "
+            "Tag them with scripts/payment_setup.py --apply."
+        )
