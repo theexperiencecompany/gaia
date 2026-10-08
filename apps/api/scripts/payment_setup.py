@@ -83,10 +83,14 @@ def fetch_product_price(
     price = client.products.retrieve(product_id).price
     if not isinstance(price, RecurringPrice):
         raise ValueError(f"Dodo product {product_id} is not a subscription ({price.type})")
-    if price.payment_frequency_interval != DODO_INTERVAL[duration]:
+    if (
+        price.payment_frequency_interval != DODO_INTERVAL[duration]
+        or price.payment_frequency_count != 1
+    ):
         raise ValueError(
-            f"Dodo product {product_id} bills every {price.payment_frequency_interval}, "
-            f"not the {duration} plan's {DODO_INTERVAL[duration]}"
+            f"Dodo product {product_id} bills every "
+            f"{price.payment_frequency_count} {price.payment_frequency_interval}, "
+            f"not the {duration} plan's 1 {DODO_INTERVAL[duration]}"
         )
     return ProductPrice(product_id=product_id, amount=price.price, currency=price.currency)
 
@@ -354,6 +358,11 @@ async def setup_payment_plans(
 
         await deactivate_free_plan(collection, dry_run)
 
+        # Right after the writes, so no later check or report failing can leave
+        # the API serving a cached catalogue the database has moved past.
+        if not dry_run:
+            await invalidate_plan_cache()
+
         untagged = await count_untagged_plans(collection)
         if dry_run:
             print(f"   🏷️  {untagged} plan row(s) carry no plan_type before this run")
@@ -361,11 +370,6 @@ async def setup_payment_plans(
             raise RuntimeError(
                 f"{untagged} plan row(s) carry no plan_type; the API cannot read them"
             )
-
-        # Before the report below, so a failure while reading it back can never
-        # leave the API serving a cached catalogue the database has moved past.
-        if not dry_run:
-            await invalidate_plan_cache()
 
         print_summary(outcomes, dry_run)
         await print_active_plans(collection, dry_run)
