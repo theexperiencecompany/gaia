@@ -260,3 +260,18 @@ class AgentConfigurableView(BaseModel):
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
     """Return agent_configurable, parsed into AgentConfigurableView."""
     return AgentConfigurableView.model_validate(agent_configurable(config))
+
+
+class RunUserMissingError(ValueError):
+    """Raised when a run config names no user: build_agent_config always sets one, so it is a wiring bug."""
+
+
+def get_user_id(config: AgentRunConfig | None) -> str:
+    """Return the user a run acts for, from configurable then metadata; RunUserMissingError when neither names one."""
+    metadata = (config or {}).get("metadata")
+    user_id = read_agent_configurable(config).user_id or (
+        metadata.get("user_id") if isinstance(metadata, Mapping) else None
+    )
+    if not isinstance(user_id, str) or not user_id:
+        raise RunUserMissingError("user_id not found in RunnableConfig")
+    return user_id

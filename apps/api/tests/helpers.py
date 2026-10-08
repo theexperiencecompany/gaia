@@ -9,6 +9,8 @@ import re
 import socket
 from typing import Any, ClassVar
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
@@ -22,8 +24,20 @@ import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from shared.py.wide_events import log, log_context
+
+#: A well-formed user id with no users row behind it.
+UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
+
+
+async def users_get(user_id: str) -> UserDocument | None:
+    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
+    if not ObjectId.is_valid(user_id):
+        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
+    if user_id == UNKNOWN_USER_ID:
+        return None
+    return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:

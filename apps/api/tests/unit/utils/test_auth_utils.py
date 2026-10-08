@@ -4,13 +4,16 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bson import ObjectId
 import pytest
 from starlette.requests import Request
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import DEV_USER_HEADER
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.first_steps_models import FirstStepsState
 from app.models.user_models import OnboardingSubdocument, UserDocument
+from app.utils import auth_utils
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -18,6 +21,7 @@ from app.utils.auth_utils import (
     resolve_bot_user,
     resolve_dev_bypass_user,
 )
+from tests.helpers import UNKNOWN_USER_ID, users_get
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -857,7 +861,43 @@ class TestLoadUserContext:
         with patch(_PATCH_USER_REPO) as repo:
             repo.get = AsyncMock(return_value=None)
 
-            assert await load_user_context("missing") is None
+            assert await load_user_context(str(ObjectId())) is None
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("user_id", [SYSTEM_USER_ID, "", "user-1"])
+    async def test_an_id_that_is_not_an_object_id_is_no_user(self, user_id: str) -> None:
+        """Regression: "system" leaked bson's InvalidId, and a background run swallowed it."""
+        with patch(f"{_PATCH_USER_REPO}.get", new=users_get):
+            assert await load_user_context(user_id) is None
+
+
+@pytest.mark.asyncio
+class TestRequireOwner:
+    @pytest.mark.regression
+    async def test_the_template_owner_is_refused(self) -> None:
+        with (
+            patch(f"{_PATCH_USER_REPO}.get", new=users_get),
+            pytest.raises(auth_utils.OwnerNotFoundError) as refused,
+        ):
+            await auth_utils.require_owner(SYSTEM_USER_ID)
+
+        assert refused.value.meta == {"owner_id": SYSTEM_USER_ID}
+
+    async def test_an_object_id_with_no_user_row_is_refused(self) -> None:
+        with (
+            patch(f"{_PATCH_USER_REPO}.get", new=users_get),
+            pytest.raises(auth_utils.OwnerNotFoundError),
+        ):
+            await auth_utils.require_owner(UNKNOWN_USER_ID)
+
+    async def test_a_real_user_is_their_context(self) -> None:
+        doc, _values = _every_field_document()
+        with patch(_PATCH_USER_REPO) as repo:
+            repo.get = AsyncMock(return_value=doc)
+
+            owner = await auth_utils.require_owner(doc.id)
+
+        assert owner.user_id == doc.id
 
 
 @pytest.mark.asyncio

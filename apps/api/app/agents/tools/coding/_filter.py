@@ -26,13 +26,14 @@ import sys
 
 from langchain_core.runnables.config import RunnableConfig
 
-from app.agents.tools.coding._context import canonical_rel, get_session_id, get_user_id
+from app.agents.tools.coding._context import canonical_rel, get_session_id
 from app.constants.log_tags import LogTag
 from app.constants.offload import (
     FILTER_MAX_MEMORY_BYTES,
     FILTER_TIMEOUT_SECONDS,
     MAX_FILTER_OUTPUT_CHARS,
 )
+from app.models.agent_models import get_user_id
 from app.services.storage import resolve_user_file
 from shared.py.wide_events import log
 

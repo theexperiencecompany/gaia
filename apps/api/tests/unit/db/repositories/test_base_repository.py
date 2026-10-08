@@ -90,3 +90,20 @@ def test_an_operator_valued_id_targets_no_single_doc() -> None:
 
     assert repo._filter_doc_id({"_id": {"$in": ["a", "b"]}}) is None
     assert repo._filter_doc_id({"_id": {"$ne": "a"}}) is None
+
+
+@pytest.mark.parametrize(
+    ("doc_id", "valid"),
+    [("64abc123def4567890abcdef", True), ("system", False), ("", False)],
+)
+def test_an_object_id_identity_accepts_only_a_well_formed_object_id(
+    doc_id: str, valid: bool
+) -> None:
+    assert _concrete(uses_object_id=True)().is_valid_id(doc_id) is valid
+
+
+def test_a_string_identity_accepts_any_non_empty_id() -> None:
+    repo = _concrete()()
+
+    assert repo.is_valid_id("wf_dccaf3effd38") is True
+    assert repo.is_valid_id("") is False

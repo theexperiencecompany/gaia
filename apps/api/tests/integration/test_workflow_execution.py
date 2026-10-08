@@ -52,6 +52,7 @@ from app.services.workflow.service import (
 from app.services.workflow.validators import WorkflowValidator
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import get_trace_id, wide_task
+from tests.helpers import users_get
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -70,6 +71,13 @@ _EXEC_REPO = "app.services.workflow.execution_service.workflow_executions_reposi
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        yield
 
 
 def _make_trigger_config(trigger_type: str = "manual", **kwargs) -> TriggerConfig:

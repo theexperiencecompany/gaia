@@ -17,8 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
-from app.models.agent_models import read_agent_configurable
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
@@ -55,7 +54,6 @@ _NOTIFY_ON_RUN_DESC = (
     "this todo; a silent run can still reach them with send_notification when "
     "something genuinely needs them."
 )
-_ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
 async def _get_user_tz(user_id: str) -> str:
@@ -611,9 +609,7 @@ async def create_tracked_todo(
     notify_on_run: Whether each run's final message is delivered to the user's chat app.
                 On by default; turn it off for runs the user should not hear about.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
     # conversation_id lives in `configurable`, not `metadata` (matching
     # reminder_tool). None for a non-chat root (onboarding/REST).
     source_conversation_id = read_agent_configurable(config).conversation_id
@@ -673,9 +669,7 @@ async def search_todo_context(
     Use to find relevant context from existing tracked todos before
     creating a new one or to recall details from past work.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     matches = await search_canvas_context(
         query=query,
@@ -719,9 +713,7 @@ async def complete_tracked_todo(
     standing schedule. To stop one entirely, clear its recurrence (and
     scheduled_at) with update_tracked_todo first, then complete it.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if doc is None:
@@ -803,9 +795,7 @@ async def update_tracked_todo(
         references: IDs of related past tracked todos to link (appended to existing).
         notify_on_run: Turn this todo's run-result delivery on or off.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
@@ -880,9 +870,7 @@ async def list_tracked_todos(
     priority, and age. Use this when you need a complete picture of all
     tracked work, beyond what's in the ACTIVE TRACKED TODOS context block.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     docs = await todo_repository.list_active_tracked(user_id, limit=50)
     if not docs:
@@ -971,9 +959,7 @@ async def subscribe_todo_to_trigger(
     Without it the trigger registers against nothing and never fires;
     list_trigger_fields shows the scope each trigger needs.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     parsed_action = _parse_action(action)
     if parsed_action is None:
@@ -1033,9 +1019,7 @@ async def unsubscribe_todo_from_trigger(
     still open. Completing a todo tears its watches down on its own, so you do not
     need to call this first.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     removed = await unregister_subscription(todo_id, user_id, subscription_id)
     if not removed:

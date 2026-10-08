@@ -54,6 +54,7 @@ from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.memory.user_time import local_today
+from app.models.agent_models import get_user_id
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
@@ -66,11 +67,7 @@ from app.templates.docstrings.memory_tool_docs import (
     UPDATE_MEMORY,
     UPDATE_MEMORY_DOCUMENT,
 )
-from app.utils.chat_utils import get_user_id_from_config
 from shared.py.wide_events import MemoryContext, UserContext, log
-
-_ERR_NO_USER_ID = "Error: user_id not found in config"
-
 
 # The memory_data payload vocabulary from the module docstring, as a union
 # discriminated on action. Plain TypedDicts: built here and handed straight to
@@ -302,9 +299,7 @@ async def add_memory(
         "Optional folder to file under (e.g. 'work/gaia'); omit to auto-categorize",
     ] = None,
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         retained = await memory_engine.retain_single(
@@ -379,9 +374,7 @@ async def search_memory(
         "Optional folder to search within (e.g. 'relationships'); includes subfolders",
     ] = None,
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         result = await memory_engine.recall(
@@ -436,9 +429,7 @@ async def update_memory(
     memory_id: Annotated[str, "ID of the memory to correct (from search_memory)"],
     new_content: Annotated[str, "The corrected fact, as one self-contained assertion"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     # A bad id RAISES (MemoryNotFoundError) instead of returning an error string:
     # the string version read back to the model as success on a typo'd id. A
@@ -474,9 +465,7 @@ async def forget_memory(
     memory_id: Annotated[str, "ID of the memory to forget (from search_memory)"],
     reason: Annotated[str, "Short reason why this memory is being forgotten"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         forgotten = await memory_engine.forget_memory(user_id, memory_id, reason)
@@ -512,9 +501,7 @@ async def search_journal(
     config: RunnableConfig,
     query: Annotated[str, "What to look for in past activity"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         hits = await memory_engine.recall_episodes(user_id, query)
@@ -563,9 +550,7 @@ async def search_conversations(
     memory search does not surface, such as "that list you gave me", "the exact move
     you suggested", or "what did we say about X", and quote the matching passage.
     """
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         hits = await memory_engine.recall_transcripts(user_id, query)
@@ -603,9 +588,7 @@ async def get_journal(
     config: RunnableConfig,
     date: Annotated[str, "The day to read, as YYYY-MM-DD; omit for the user's local today"] = "",
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     if date:
         try:
@@ -684,9 +667,7 @@ async def read_memory_document(
     config: RunnableConfig,
     doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:
@@ -733,9 +714,7 @@ async def update_memory_document(
     doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:

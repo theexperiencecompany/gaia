@@ -58,6 +58,8 @@ class DeactivationReason(str, Enum):
     #: unlike INTEGRATION_EXPIRED (a live connection dying, via Composio
     #: webhook). Not predicted from declared steps at authoring time.
     INTEGRATION_NEVER_CONNECTED = "integration_never_connected"
+    #: The owner is no user (the template owner, or a deleted account): it never resumes.
+    OWNER_NOT_FOUND = "owner_not_found"
 
 
 class IntegrationRef(BaseModel):

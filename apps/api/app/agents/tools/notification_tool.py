@@ -7,6 +7,7 @@ from langgraph.config import get_stream_writer
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import get_user_id
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -27,7 +28,6 @@ from app.templates.docstrings.notification_tool_docs import (
     SEARCH_NOTIFICATIONS,
     SEND_NOTIFICATION,
 )
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
@@ -108,9 +108,7 @@ async def get_notifications(
     """Get user notifications with filtering options."""
     try:
         log.set(tool={"name": "get_notifications", "action": "get"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "notifications": []}
+        user_id = get_user_id(config)
 
         # Get notifications with all filters
         notifications = await notification_service.get_user_notifications(
@@ -151,9 +149,7 @@ async def search_notifications(
     """Search notifications by content."""
     try:
         log.set(tool={"name": "search_notifications", "action": "search"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "notifications": []}
+        user_id = get_user_id(config)
 
         if not query.strip():
             return {"error": "Search query cannot be empty", "notifications": []}
@@ -197,9 +193,7 @@ async def get_notification_count(
     """Get count of notifications."""
     try:
         log.set(tool={"name": "get_notification_count", "action": "count"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "count": 0}
+        user_id = get_user_id(config)
 
         total_count = await notification_service.get_user_notifications_count(
             user_id=user_id, status=status
@@ -222,9 +216,7 @@ async def mark_notifications_read(
     """Mark one or more notifications as read."""
     try:
         log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
+        user_id = get_user_id(config)
 
         if not notification_ids:
             return {"error": "No notification IDs provided", "success": False}
@@ -275,9 +267,7 @@ async def send_notification(
     """Send a notification to the user on their connected channels."""
     try:
         log.set(tool={"name": "send_notification", "action": "send"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
+        user_id = get_user_id(config)
 
         if not message.strip():
             return {"error": "Notification message cannot be empty", "success": False}
@@ -373,9 +363,7 @@ async def get_notification_preferences(
     """Get the user's notification channel preferences."""
     try:
         log.set(tool={"name": "get_notification_preferences", "action": "get"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "preferences": {}}
+        user_id = get_user_id(config)
 
         preferences = await fetch_channel_preferences(user_id)
 

@@ -26,6 +26,7 @@ import uuid
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import get_async_collection
 from app.models.workflow_models import (
     TriggerConfig,
@@ -1148,7 +1149,7 @@ async def seed_explore_workflows(
     dry_run: bool = False,
     force: bool = False,
     backup: bool = True,
-    user_id: str = "system",
+    user_id: str = SYSTEM_USER_ID,
     prune: bool = False,
 ) -> None:
     """Seed the workflows collection with explore workflows."""
@@ -1259,7 +1260,7 @@ def parse_arguments():
     parser.add_argument(
         "--user-id",
         type=str,
-        default="system",
+        default=SYSTEM_USER_ID,
         help="User ID for workflows (default: system)",
     )
 

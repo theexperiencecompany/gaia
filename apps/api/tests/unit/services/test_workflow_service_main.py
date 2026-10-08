@@ -7,6 +7,7 @@ from langchain_core.exceptions import OutputParserException
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     UNSET,
@@ -44,14 +45,16 @@ from app.services.workflow.service import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workflow.validators import WorkflowValidator
+from app.utils import auth_utils
 from app.utils.exceptions import TriggerRegistrationError
+from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
 # ---------------------------------------------------------------------------
 
 WORKFLOW_ID = "wf_test_abc12345"
-USER_ID = "user_test_456"
+USER_ID = "64abc123def4567890abcde4"
 EXECUTION_ID = "exec_test_789abc"
 
 
@@ -286,6 +289,24 @@ class TestEnsurePublicWorkflowSlug:
 
 class TestCreateWorkflow:
     """Tests for WorkflowService.create_workflow."""
+
+    @pytest.fixture(autouse=True)
+    def _owners_are_users(self):
+        """Answer the owner check the way the real users collection does."""
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            yield
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("owner", [SYSTEM_USER_ID, UNKNOWN_USER_ID])
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_an_owner_that_is_not_a_user_is_refused_before_the_write(
+        self, mock_create, owner
+    ):
+        """Regression: a workflow was saved for "system", the template owner, and then ran."""
+        with pytest.raises(auth_utils.OwnerNotFoundError):
+            await WorkflowService.create_workflow(_make_create_request(), owner)
+
+        mock_create.assert_not_awaited()
 
     @patch(
         "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",

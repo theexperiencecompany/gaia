@@ -17,7 +17,7 @@ from typing import Annotated, Any
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._context import canonical_rel, get_session_id, get_user_id
+from app.agents.tools.coding._context import canonical_rel, get_session_id
 from app.constants.log_tags import LogTag
 from app.constants.offload import (
     MAX_FILTER_OUTPUT_CHARS,
@@ -26,6 +26,7 @@ from app.constants.offload import (
     MAX_QUERY_RECORDS,
 )
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import get_user_id
 from app.services.storage import FsOps, fs_timer, resolve_user_file
 from app.templates.docstrings.coding_tools_docs import QUERY_JSON_TOOL
 from app.utils.concurrency import loop_bound_semaphore

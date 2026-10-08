@@ -44,6 +44,7 @@ from app.constants.memory import (
 )
 from app.memory.management import MemoryNotFoundError
 from app.memory.retrieval import EpisodeHit
+from app.models.agent_models import RunUserMissingError
 from app.models.memory_models import (
     MemoryDocument,
     MemoryEntry,
@@ -63,8 +64,8 @@ MODULE = "app.agents.tools.memory_tools"
 
 
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
-    """Return a minimal RunnableConfig-like dict with metadata.user_id."""
-    return {"metadata": {"user_id": user_id}}
+    """Return a minimal RunnableConfig-like dict naming the run user."""
+    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
 
 
 def _make_config_no_user() -> dict[str, Any]:
@@ -493,29 +494,26 @@ class TestAddMemory:
         assert payload["folder"] == "work/gaia"
         assert [memory["id"] for memory in payload["memories"]] == ["mem-1"]
 
-    async def test_no_user_id_returns_error(self) -> None:
-        result = await add_memory.coroutine(
-            config=_make_config_no_user(),
-            content="data",
-        )
+    async def test_no_user_id_is_refused(self) -> None:
+        with pytest.raises(RunUserMissingError):
+            await add_memory.coroutine(
+                config=_make_config_no_user(),
+                content="data",
+            )
 
-        assert "user_id not found in config" in result
-
-    async def test_no_config_returns_error(self) -> None:
-        """Falsy config triggers the early guard."""
-        # Empty dict {} is falsy; get_user_id_from_config returns "" → no user_id error
-        result = await add_memory.coroutine(
-            config={},
-            content="data",
-        )
-
-        assert "user_id not found in config" in result
+    async def test_no_config_is_refused(self) -> None:
+        with pytest.raises(RunUserMissingError):
+            await add_memory.coroutine(
+                config={},
+                content="data",
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_missing_user_id_never_touches_the_engine(self, mock_engine: MagicMock) -> None:
         mock_engine.retain_single = AsyncMock()
 
-        await add_memory.coroutine(config=_make_config_no_user(), content="data")
+        with pytest.raises(RunUserMissingError):
+            await add_memory.coroutine(config=_make_config_no_user(), content="data")
 
         mock_engine.retain_single.assert_not_awaited()
 
@@ -666,22 +664,19 @@ class TestSearchMemory:
 
         assert _payloads(stream)[0]["memories"] == []
 
-    async def test_no_user_id_returns_error(self) -> None:
-        result = await search_memory.coroutine(
-            config=_make_config_no_user(),
-            query="test",
-        )
+    async def test_no_user_id_is_refused(self) -> None:
+        with pytest.raises(RunUserMissingError):
+            await search_memory.coroutine(
+                config=_make_config_no_user(),
+                query="test",
+            )
 
-        assert "user_id not found in config" in result
-
-    async def test_no_config_returns_error(self) -> None:
-        # Empty dict {} is falsy; get_user_id_from_config returns "" → no user_id error
-        result = await search_memory.coroutine(
-            config={},
-            query="test",
-        )
-
-        assert "user_id not found in config" in result
+    async def test_no_config_is_refused(self) -> None:
+        with pytest.raises(RunUserMissingError):
+            await search_memory.coroutine(
+                config={},
+                query="test",
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -793,10 +788,10 @@ class TestUpdateMemory:
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await update_memory.coroutine(
-            config=_make_config_no_user(), memory_id="m", new_content="c"
-        )
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await update_memory.coroutine(
+                config=_make_config_no_user(), memory_id="m", new_content="c"
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -853,10 +848,8 @@ class TestForgetMemory:
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await forget_memory.coroutine(
-            config=_make_config_no_user(), memory_id="m", reason="r"
-        )
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await forget_memory.coroutine(config=_make_config_no_user(), memory_id="m", reason="r")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -942,8 +935,8 @@ class TestSearchJournal:
         assert _payloads(stream)[0]["episodes"] == []
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await search_journal.coroutine(config=_make_config_no_user(), query="q")
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await search_journal.coroutine(config=_make_config_no_user(), query="q")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -1015,8 +1008,8 @@ class TestSearchConversations:
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await search_conversations.coroutine(config=_make_config_no_user(), query="q")
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await search_conversations.coroutine(config=_make_config_no_user(), query="q")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -1184,8 +1177,8 @@ class TestGetJournal:
         )
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await get_journal.coroutine(config=_make_config_no_user(), date="2026-03-12")
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await get_journal.coroutine(config=_make_config_no_user(), date="2026-03-12")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -1276,10 +1269,8 @@ class TestReadMemoryDocument:
         mock_engine.get_document.assert_not_awaited()
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await read_memory_document.coroutine(
-            config=_make_config_no_user(), doc_type="user"
-        )
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await read_memory_document.coroutine(config=_make_config_no_user(), doc_type="user")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
@@ -1356,10 +1347,10 @@ class TestUpdateMemoryDocument:
         mock_engine.update_document.assert_not_awaited()
 
     async def test_missing_user_id_returns_error(self) -> None:
-        result = await update_memory_document.coroutine(
-            config=_make_config_no_user(), doc_type="user", content="c"
-        )
-        assert "user_id not found in config" in result
+        with pytest.raises(RunUserMissingError):
+            await update_memory_document.coroutine(
+                config=_make_config_no_user(), doc_type="user", content="c"
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:

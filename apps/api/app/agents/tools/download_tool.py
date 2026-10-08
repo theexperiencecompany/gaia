@@ -12,11 +12,12 @@ from urllib.parse import urlparse
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._context import get_session_id, get_user_id
+from app.agents.tools.coding._context import get_session_id
 from app.agents.workspace.paths import session_download_relpath
 from app.constants.download import DOWNLOAD_HTML_REJECTED, HTML_CONTENT_TYPES
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import get_user_id
 from app.services.storage import write_session_file
 from app.templates.docstrings.download_tool_docs import DOWNLOAD_TOOL
 from app.utils.url_download import (

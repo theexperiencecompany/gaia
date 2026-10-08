@@ -56,8 +56,9 @@ from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todo_canvas_storage import read_activity, read_canvas
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
-from app.utils.auth_utils import load_user_context
+from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
@@ -78,22 +79,26 @@ TRIGGER_TODO_FEATURE_KEY = "trigger_todo_executions"
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
-    """Fetch user record once and resolve their home timezone.
+    """Fetch the owner once and resolve their home timezone; OwnerNotFoundError when there is no owner.
 
-    Returns (user_data with user_id populated, Timezone). Uses the canonical
-    Timezone value object so a stored ±HH:MM offset doesn't crash ZoneInfo;
-    falls back to UTC if the user record or timezone is missing.
+    Timezone.parse keeps a stored ±HH:MM offset from crashing ZoneInfo and reads
+    an unset zone as UTC.
     """
-    try:
-        # The full context: narrowing to the fields read here would drop
-        # onboarding, which construct_langchain_messages needs.
-        user_data = await load_user_context(user_id)
-        if user_data is not None:
-            return user_data, Timezone.parse(user_data.timezone)
-        return AuthenticatedUser(user_id=user_id), Timezone.utc()
-    except Exception as e:
-        log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
-        return AuthenticatedUser(user_id=user_id), Timezone.utc()
+    # The full context: narrowing to the fields read here would drop
+    # onboarding, which construct_langchain_messages needs.
+    user_data = await require_owner(user_id)
+    return user_data, Timezone.parse(user_data.timezone)
+
+
+async def _retire_ownerless_todo(doc: TodoDocument) -> str:
+    """Archive a todo whose owner is not a user and clear its schedule, so it never fires again."""
+    log.error("tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id)
+    await todo_repository.update(doc.id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None))
+    archived = await tracked_todo_service.archive_tracked_todo(
+        doc.id, doc.user_id, reason="its owner is not a GAIA user"
+    )
+    log.set(todo_archived=archived)
+    return f"no_owner:{doc.id}"
 
 
 async def execute_tracked_todo(
@@ -189,10 +194,12 @@ async def _execute_todo_with_retry(
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
 
-    # Single user fetch per run (matches workflow_tasks.py:416-427): reused for
-    # execution and the next-run computation, so a tz change applies immediately
-    # without an extra DB round-trip.
-    user_data, user_tz = await _load_user_with_tz(user_id)
+    # Single user fetch per run: reused for execution and the next-run
+    # computation, so a tz change applies immediately without an extra DB round-trip.
+    try:
+        user_data, user_tz = await _load_user_with_tz(user_id)
+    except OwnerNotFoundError:
+        return await _retire_ownerless_todo(doc)
 
     # Cost wall before any LLM work, mirroring the workflow path. A trigger fire
     # is not a user action, so a chatty subscription must not be able to spend a
@@ -334,10 +341,6 @@ async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str |
             f"(now scheduled: {scheduled or 'nothing'})",
         )
         return f"stale:{todo_id}"
-
-    if not doc.user_id:
-        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
-        return f"error:{todo_id} (missing user_id)"
     return None
 
 
@@ -530,12 +533,13 @@ async def resume_tracked_todo(
         return f"not_found:{todo_id}"
     if doc.completed:
         return f"completed:{todo_id}"
+    try:
+        user_data, _ = await _load_user_with_tz(doc.user_id)
+    except OwnerNotFoundError:
+        return await _retire_ownerless_todo(doc)
     user_id = doc.user_id
-    if not user_id:
-        return f"error:{todo_id} (missing user_id)"
 
     try:
-        user_data, _ = await _load_user_with_tz(user_id)
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
         await record_activity(

@@ -10,8 +10,9 @@ tracked_todo_tools.py; the tests here pin the fix down.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from bson.errors import InvalidId
 from pydantic import ValidationError
 import pytest
 
@@ -41,8 +42,12 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.vfs import SYSTEM_USER_ID
+from app.models import agent_models
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.models.user_models import UserDocument
+from app.services.todos.todo_service import TodoService
+from app.utils import auth_utils
 from shared.py.wide_events import spawn_logged_task
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
@@ -353,13 +358,13 @@ class TestBuildListDetailParts:
 
 
 class TestUpdateTrackedTodoValidation:
-    async def test_missing_user_id_returns_error(self):
-        result = await update_tracked_todo.coroutine(config=_config(None), todo_id="t1")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await update_tracked_todo.coroutine(config=_config(None), todo_id="t1")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await update_tracked_todo.coroutine(config={}, todo_id="t1")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await update_tracked_todo.coroutine(config={}, todo_id="t1")
 
     async def test_no_fields_provided_returns_error(self):
         result = await update_tracked_todo.coroutine(config=_config(), todo_id="t1")
@@ -465,15 +470,13 @@ class TestUpdateTrackedTodoValidation:
 
 
 class TestCreateTrackedTodoValidation:
-    async def test_missing_user_id_returns_error(self):
-        result = await create_tracked_todo.coroutine(config=_config(None), title="t")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await create_tracked_todo.coroutine(config=_config(None), title="t")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        # config with no "metadata" at all: the {} default keeps .get("user_id")
-        # returning None -> clean error. A None default would crash on None.get().
-        result = await create_tracked_todo.coroutine(config={}, title="t")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await create_tracked_todo.coroutine(config={}, title="t")
 
     @pytest.mark.regression
     def test_priority_is_an_enum_in_the_schema(self):
@@ -486,6 +489,26 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.ainvoke(
                 {"title": "t", "priority": "urgent"}, config=_config()
             )
+
+    @pytest.mark.regression
+    async def test_the_template_owner_cannot_create_a_tracked_todo(self):
+        """Regression: a run as "system" saved a tracked todo the worker then ran every hour."""
+        repo = MagicMock()
+        repo.create = AsyncMock()
+        with (
+            patch("app.services.todos.todo_service.todo_repository", repo),
+            patch.object(TodoService, "_get_inbox_id", AsyncMock(return_value="inbox-1")),
+            patch(
+                "app.utils.auth_utils.user_repository.get",
+                AsyncMock(side_effect=InvalidId("'system' is not a valid ObjectId")),
+            ),
+            pytest.raises(auth_utils.OwnerNotFoundError),
+        ):
+            await create_tracked_todo.coroutine(
+                config=_config(SYSTEM_USER_ID), title="Hourly Review Queue Alert"
+            )
+
+        repo.create.assert_not_awaited()
 
     async def test_a_new_tracked_todo_delivers_its_run_results_by_default(self):
         """The agent usually omits this argument, so the default is what almost every todo gets."""
@@ -528,15 +551,15 @@ class TestCreateTrackedTodoValidation:
 
 
 class TestCompleteTrackedTodo:
-    async def test_missing_user_id_returns_error(self):
-        result = await complete_tracked_todo.coroutine(
-            config=_config(None), todo_id="t1", summary="done"
-        )
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await complete_tracked_todo.coroutine(
+                config=_config(None), todo_id="t1", summary="done"
+            )
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await complete_tracked_todo.coroutine(config={}, todo_id="t1", summary="done")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await complete_tracked_todo.coroutine(config={}, todo_id="t1", summary="done")
 
     async def test_service_failure_returns_error(self):
         with (
@@ -970,13 +993,13 @@ class TestFormatTrackedTodoFull:
 
 
 class TestSearchTodoContext:
-    async def test_missing_user_id_returns_error(self):
-        result = await search_todo_context.coroutine(config=_config(None), query="q")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await search_todo_context.coroutine(config=_config(None), query="q")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await search_todo_context.coroutine(config={}, query="q")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await search_todo_context.coroutine(config={}, query="q")
 
     async def test_matches_render_one_block_per_line_with_a_200_char_snippet(self):
         matches = [
@@ -1492,13 +1515,13 @@ class TestCreateTrackedTodoSuccess:
 
 
 class TestListTrackedTodos:
-    async def test_missing_user_id_returns_error(self):
-        result = await list_tracked_todos.coroutine(config=_config(None))
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await list_tracked_todos.coroutine(config=_config(None))
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await list_tracked_todos.coroutine(config={})
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await list_tracked_todos.coroutine(config={})
 
     async def test_no_active_todos_returns_friendly_message(self):
         with patch(

@@ -4515,7 +4515,8 @@
           "user_dormant",
           "integration_expired",
           "subscription_lapsed",
-          "integration_never_connected"
+          "integration_never_connected",
+          "owner_not_found"
         ],
         "title": "DeactivationReason",
         "type": "string"

@@ -5,10 +5,14 @@ mutation matrix maps a module to the tests that name it, and every other caller
 reaches these symbols through the re-export.
 """
 
+import pytest
+
 from app.models.agent_config import (
     CONFIGURABLE_KEY,
     AgentConfigurableView,
+    RunUserMissingError,
     agent_configurable,
+    get_user_id,
     read_agent_configurable,
 )
 
@@ -58,3 +62,32 @@ class TestReadAgentConfigurable:
         absent = read_agent_configurable({CONFIGURABLE_KEY: {}})
         assert "session_id" in carried.model_fields_set
         assert "session_id" not in absent.model_fields_set
+
+
+class TestGetUserId:
+    def test_returns_the_configurable_user_id(self) -> None:
+        assert get_user_id({CONFIGURABLE_KEY: {"user_id": "u1"}}) == "u1"
+
+    def test_configurable_wins_over_metadata(self) -> None:
+        config = {CONFIGURABLE_KEY: {"user_id": "u1"}, "metadata": {"user_id": "u2"}}
+        assert get_user_id(config) == "u1"
+
+    def test_falls_back_to_the_metadata_user_id(self) -> None:
+        assert get_user_id({"metadata": {"user_id": "u2"}}) == "u2"
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            None,
+            {},
+            {CONFIGURABLE_KEY: {}, "metadata": {}},
+            {CONFIGURABLE_KEY: {"user_id": ""}, "metadata": {"user_id": ""}},
+            {"metadata": {"user_id": 7}},
+        ],
+    )
+    def test_a_config_without_a_user_is_refused(self, config: dict | None) -> None:
+        with pytest.raises(RunUserMissingError):
+            get_user_id(config)
+
+    def test_the_refusal_is_a_value_error_the_coding_tools_already_catch(self) -> None:
+        assert issubclass(RunUserMissingError, ValueError)

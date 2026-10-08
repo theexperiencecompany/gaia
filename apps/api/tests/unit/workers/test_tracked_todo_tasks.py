@@ -40,6 +40,7 @@ from app.constants.todos import (
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
 )
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -65,6 +66,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
+from tests.helpers import UNKNOWN_USER_ID, users_get
 
 
 def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
@@ -73,6 +75,7 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 
 MODULE = "app.workers.tasks.tracked_todo_tasks"
+LOAD_USER = "app.utils.auth_utils.load_user_context"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 NEW_YORK = ZoneInfo("America/New_York")
 
@@ -480,11 +483,9 @@ class TestTriggeredExecutionGating:
         budget = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(f"{MODULE}.enforce_daily_cost_budget", budget),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(f"{MODULE}._execute_on_executor", via_agent),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             await _execute_todo_with_retry("todo-1", _pool(), origin)
         return budget, via_agent
@@ -527,9 +528,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             await _execute_todo_with_retry("todo-1", pool, origin)
 
@@ -556,9 +555,7 @@ class TestExecuteTodoWithRetryEarlyExits:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, via_agent
@@ -602,16 +599,6 @@ class TestExecuteTodoWithRetryEarlyExits:
         assert result == "skipped:todo-1 (marked failed)"
         via_agent.assert_not_awaited()
 
-    async def test_missing_user_id_is_an_error_not_an_execution(self):
-        with patch(f"{MODULE}.log") as log_mock:
-            result, repo, via_agent = await self._run(_doc(user_id=""))
-        assert result == "error:todo-1 (missing user_id)"
-        via_agent.assert_not_awaited()
-        repo.update.assert_not_awaited()
-        log_mock.error.assert_called_once_with(
-            "tracked_todo.execute_missing_user_id", todo_id="todo-1"
-        )
-
     async def test_a_todo_expiring_at_this_instant_is_expired(self):
         now = datetime(2026, 9, 26, 4, 30, tzinfo=UTC)
         with patch(f"{MODULE}.datetime", wraps=datetime) as clock:
@@ -619,6 +606,63 @@ class TestExecuteTodoWithRetryEarlyExits:
             result, _repo, via_agent = await self._run(_doc(expires_at=now, scheduled_at=now))
         assert result == "expired:todo-1"
         via_agent.assert_not_awaited()
+
+
+class TestATodoWhoseOwnerIsNotAUser:
+    """Regression: a todo owned by "system" ran every hour as a user fabricated from the bare id."""
+
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
+    async def _run(self, doc: TodoDocument):
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        executor = AsyncMock()
+        archive = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch("app.utils.auth_utils.user_repository.get", users_get),
+            patch(f"{MODULE}.run_todo_on_executor", executor),
+            patch(
+                "app.services.tracked_todo_service.TrackedTodoService.archive_tracked_todo",
+                archive,
+            ),
+            patch(f"{MODULE}.log") as log_mock,
+        ):
+            result = await _execute_todo_with_retry("todo-1", pool)
+        return result, repo, pool, executor, archive, log_mock
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("owner", [SYSTEM_USER_ID, "", UNKNOWN_USER_ID])
+    async def test_it_is_archived_and_never_run(self, owner: str, activity):
+        result, repo, pool, executor, archive, log_mock = await self._run(
+            _doc(user_id=owner, recurrence="every_1h")
+        )
+
+        assert result == "no_owner:todo-1"
+        executor.assert_not_awaited()
+        pool.enqueue_job.assert_not_awaited()
+        assert TodoActivityEvent.RUN_STARTED not in [c.args[2] for c in activity.await_args_list]
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id=owner, update=TodoUpdate(scheduled_at=None)
+        )
+        archive.assert_awaited_once()
+        assert archive.await_args.args[:2] == ("todo-1", owner)
+        assert [c.args[0] for c in log_mock.error.call_args_list] == [
+            "tracked_todo.owner_not_a_user"
+        ]
+
+    async def test_a_real_owner_still_runs(self):
+        owner = "64abc123def4567890abcdef"
+        result, _repo, _pool_, executor, archive, _log = await self._run(_doc(user_id=owner))
+
+        assert result == "success:todo-1"
+        executor.assert_awaited_once()
+        archive.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -641,7 +685,7 @@ class TestExecuteTodoWithRetrySuccess:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock()),
             patch(
-                f"{MODULE}.load_user_context",
+                LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=tz)),
             ),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
@@ -749,9 +793,7 @@ class TestExecuteTodoWithRetryFailure:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
         ):
@@ -852,9 +894,7 @@ class TestATrackedTodoAlwaysRunsTheAgent:
                 "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
                 queue,
             ),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             await _execute_todo_with_retry("todo-1", _pool())
 
@@ -1100,9 +1140,7 @@ class TestStaleScheduledFire:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", run),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             result = await _execute_todo_with_retry("todo-1", _pool(), origin)
         return result, run, repo

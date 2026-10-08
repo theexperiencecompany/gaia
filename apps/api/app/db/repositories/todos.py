@@ -84,10 +84,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
 
     # ------------------------------------------------------------------ reads
 
-    def is_valid_id(self, todo_id: str) -> bool:
-        """Whether todo_id is a well-formed Mongo identity for this collection."""
-        return ObjectId.is_valid(todo_id)
-
     async def get_by_id(self, todo_id: str) -> TodoDocument | None:
         """Fetch a todo by id with no user scoping, for the system executor which has only the id.
 
