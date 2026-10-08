@@ -633,7 +633,7 @@ def _fetch_and_shape(
         )
 
     messages = [project_message_view(view, request.fields) for view in full_views]
-    serialized = json.dumps({"messages": messages})
+    serialized = json.dumps({"messages": messages})  # pragma: no mutate — only its length is read
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
     over_message_limit = len(messages) > OFFLOAD_MIN_MESSAGES
     if not request.offload and not over_char_limit and not over_message_limit:
@@ -801,7 +801,7 @@ def _summarize_threads(
         for thread_id, views in threads
     ]
     projected_flat = [project_message_view(view, request.fields) for view in flat_views]
-    serialized = json.dumps({"threads": grouped})
+    serialized = json.dumps({"threads": grouped})  # pragma: no mutate — only its length is read
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
     over_message_limit = len(flat_views) > OFFLOAD_MIN_MESSAGES
     if not over_char_limit and not over_message_limit:

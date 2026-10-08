@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
+import time_machine
 
 from app.agents.tools import tracked_todo_fields, tracked_todo_tools
 from app.agents.tools.tracked_todo_fields import (
@@ -493,14 +494,12 @@ class TestUpdateTrackedTodoValidation:
         assert "invalid due_date format" in result
         mock_get.assert_not_awaited()
 
-    @pytest.mark.regression
     def test_priority_is_an_enum_in_the_schema(self):
         # A str-typed priority let the model guess synonyms ("normal", "urgent")
         # that only failed inside the tool; the schema now closes the set.
         schema = update_tracked_todo.tool_call_schema.model_json_schema()
         assert schema["$defs"]["Priority"]["enum"] == [p.value for p in Priority]
 
-    @pytest.mark.regression
     async def test_unknown_priority_is_refused_before_the_tool_runs(self):
         with pytest.raises(ValidationError):
             await update_tracked_todo.ainvoke(
@@ -542,12 +541,10 @@ class TestCreateTrackedTodoValidation:
         result = await create_tracked_todo.coroutine(config={}, title="t")
         assert "user_id not found" in result
 
-    @pytest.mark.regression
     def test_priority_is_an_enum_in_the_schema(self):
         schema = create_tracked_todo.tool_call_schema.model_json_schema()
         assert schema["$defs"]["Priority"]["enum"] == [p.value for p in Priority]
 
-    @pytest.mark.regression
     async def test_unknown_priority_is_refused_before_the_tool_runs(self):
         with pytest.raises(ValidationError):
             await create_tracked_todo.ainvoke(
@@ -621,6 +618,35 @@ class TestCreateTrackedTodoValidation:
             )
         lookup.assert_awaited_once_with("user-1")
         assert "Asia/Kolkata" in result
+
+    @time_machine.travel(datetime(2026, 10, 1, tzinfo=UTC), tick=False)
+    async def test_a_cron_first_fires_at_the_owners_local_time(self):
+        now = datetime.now(UTC)
+        response = TodoResponse(
+            id="t1", user_id="user-1", title="t", created_at=now, updated_at=now
+        )
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=response,
+            ) as create,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_tz",
+                new_callable=AsyncMock,
+                return_value="Asia/Kolkata",
+            ),
+        ):
+            await create_tracked_todo.coroutine(config=_config(), title="t", recurrence="0 9 * * *")
+
+        # 09:00 in Kolkata is 03:30 UTC; read in UTC it would be 09:00.
+        schedule = create.await_args.kwargs["schedule"]
+        assert schedule.scheduled_at == datetime(2026, 10, 1, 3, 30, tzinfo=UTC)
 
 
 class TestCompleteTrackedTodo:
@@ -940,6 +966,20 @@ class TestFormatCreateOutput:
             "\nDetails:\n  - kept watcher"
         )
 
+    def test_each_detail_gets_its_own_bullet(self) -> None:
+        now = datetime.now(UTC)
+        result = TodoResponse(
+            id="66f838cc8829054e5f10e407",
+            user_id="user-1",
+            title="Fix the thing",
+            created_at=now,
+            updated_at=now,
+        )
+
+        out = format_create_output(result, None, None, ["kept watcher", "due moved"])
+
+        assert out.endswith("\nDetails:\n  - kept watcher\n  - due moved")
+
 
 class TestFormatFirstFireNote:
     def test_with_valid_user_timezone(self):
@@ -1102,6 +1142,26 @@ class TestFormatTrackedTodoFull:
         )
         result = format_tracked_todo_full(doc, now)
         assert "Recurrence: daily" in result
+
+    def test_the_whole_block_reads_line_by_line_with_its_details_on_one_line(self):
+        now = datetime(2026, 10, 1, 9, tzinfo=UTC)
+        doc = TodoDocument(
+            id="66f838cc8829054e5f10e407",
+            user_id="u1",
+            title="Plan",
+            labels=[GAIA_TRACKED_LABEL],
+            due_date=now + timedelta(days=2),
+            recurrence="daily",
+            created_at=now - timedelta(days=3),
+            updated_at=now - timedelta(days=1),
+        )
+
+        assert format_tracked_todo_full(doc, now) == (
+            '- "Plan" (ID: 66f838cc8829054e5f10e407)\n'
+            "  Priority: none | Age: 3d | Last updated: 1d ago\n"
+            "  files: /workspace/gaia-tasks/plan-5f10e407/\n"
+            "  Due: 2d | Recurrence: daily"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1826,7 +1886,6 @@ class TestTrackedTodoReferences:
         )
         create.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_references_alone_are_an_update(self):
         """Regression: an update carrying only references was refused as "No fields to update"."""
         find = AsyncMock(return_value=self._owned(self.DESK))
@@ -1933,7 +1992,6 @@ class TestSubTodoTools:
     def _run_config(mode: str) -> dict:
         return {"metadata": {"user_id": "user-1"}, "configurable": {"execution_mode": mode}}
 
-    @pytest.mark.regression
     async def test_a_background_run_cannot_give_a_sub_todo_rules_nobody_said(self):
         """Regression: the desk opened a thread todo with "do not draft until Dhruv decides" as its rule."""
         with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:

@@ -386,7 +386,6 @@ async def test_a_desk_without_observations_md_is_seeded_once_before_its_run(
     assert todo_repository.replace_note_fields.await_count == 1
 
 
-@pytest.mark.regression
 @time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
 async def test_the_canvas_observations_move_into_observations_md_once(
     stored: dict[str, TodoDocument],

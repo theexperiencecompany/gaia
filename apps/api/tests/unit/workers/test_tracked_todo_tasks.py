@@ -37,8 +37,11 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
+    DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
+    DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_MAIL_WAKE_OPENING,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
@@ -53,6 +56,7 @@ from app.constants.todos import (
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_RETRY_ATTEMPTS,
+    OBSERVATIONS_PROMPT_MAX_CHARS,
     REFERENCED_TODOS_PROMPT_LIMIT,
     RETRY_BACKOFF,
     STANDING_RULES_MAX_CHARS,
@@ -99,6 +103,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     _execute_on_executor,
     _execute_todo_with_retry,
     _mark_todo_failed,
+    _schedule_retry,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -621,11 +626,6 @@ class TestDeliveryContractInThePrompt:
 
     def test_the_inbox_desks_briefing_is_its_only_report_form(self) -> None:
         """The default "what you checked" report comes last; the desk writes its briefing, not a run log."""
-        from app.agents.prompts.todo_prompts import (
-            DELIVERED_REPORT_FORM,
-            DELIVERED_RESULT_RULES,
-        )
-
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 
         prompt = _prompt(_doc(notify_on_run=True, external_ref=desk))
@@ -635,8 +635,6 @@ class TestDeliveryContractInThePrompt:
 
     def test_new_mail_wakes_the_desk_into_its_own_steps_not_an_event_check(self) -> None:
         """A mail-woken desk opens its own steps, never just the event check."""
-        from app.agents.prompts.todo_prompts import INBOX_DESK_MAIL_WAKE_OPENING
-
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
         origin = TriggerOrigin(
             subscription_id="sub-1",
@@ -690,11 +688,6 @@ class TestDeliveryContractInThePrompt:
         assert '"thread_id": "t-1"' in prompt
 
     def test_a_thread_todo_keeps_the_default_report_form(self) -> None:
-        from app.agents.prompts.todo_prompts import (
-            DELIVERED_REPORT_FORM,
-            DELIVERED_RESULT_RULES,
-        )
-
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
 
         prompt = _prompt(_doc(notify_on_run=True, external_ref=thread))
@@ -1197,14 +1190,9 @@ class TestExecuteTodoWithRetryFailure:
         assert args == ("execute_tracked_todo", "todo-1")
         assert kwargs.items() >= _scheduled(next_attempt).items()
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("attempt", [0, len(RETRY_BACKOFF) + 1, -1])
     async def test_a_retry_off_the_ladder_fails_loudly(self, attempt: int) -> None:
         """Refuse an attempt the ladder has no rung for."""
-        # Imported here, not at module scope: the helper does not exist on the
-        # base revision, and the regression lane must run this file there.
-        from app.workers.tasks.tracked_todo_tasks import _schedule_retry
-
         with pytest.raises(ValueError, match="no rung on the"):
             await _schedule_retry(_doc(), attempt, None, [])
 
@@ -1315,7 +1303,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             **fields,
         )
 
-    @pytest.mark.regression
     async def test_the_last_failed_attempt_moves_it_to_its_next_occurrence(self) -> None:
         doc = self._last_attempt()
 
@@ -1333,14 +1320,12 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert args == ("execute_tracked_todo", "todo-1")
         assert kwargs.items() >= _scheduled(next_run).items()
 
-    @pytest.mark.regression
     async def test_it_is_neither_labelled_failed_nor_unwatched(self) -> None:
         _result, seams = await self._run(self._last_attempt())
 
         seams.repo.add_labels.assert_not_awaited()
         seams.teardown.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_the_failure_is_on_the_timeline_and_told_once(self, activity) -> None:
         _result, seams = await self._run(self._last_attempt())
 
@@ -1358,7 +1343,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         )
         assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
 
-    @pytest.mark.regression
     async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self) -> None:
         pending = datetime.now(UTC) + timedelta(hours=5)
         origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
@@ -1370,7 +1354,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
         seams.repo.add_labels.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_delivered_run_arms_the_next_occurrence_in_the_users_own_timezone(self) -> None:
         """The next run is stamped in the user's zone, not the worker's UTC."""
         doc = _doc(recurrence="0 8 * * *")  # due now, so this is a real occurrence
@@ -1382,7 +1365,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert call.args[:2] == ("todo-1", "user-1")
         assert scheduled_at.astimezone(KOLKATA).hour == 8
 
-    @pytest.mark.regression
     async def test_a_watch_run_delivered_leaves_the_schedule_and_clears_the_count(self) -> None:
         """A watch firing is not the todo's schedule, so only the retry count is its to clear."""
         pending = datetime.now(UTC) + timedelta(hours=5)
@@ -1792,7 +1774,6 @@ class TestStandingRulesReachTheRun:
 class TestTheDeskRunReadsItsObservations:
     """A desk's run reads its observations.md, seeded by code before the prompt is built."""
 
-    @pytest.mark.regression
     async def test_an_older_desks_run_reads_the_observations_seeded_before_its_prompt(self) -> None:
         canvas = starting_canvas("Inbox desk", ["brief me by 9"])
         stored = {
@@ -1836,8 +1817,6 @@ class TestTheDeskRunReadsItsObservations:
         assert "### github\n- conclusion: ~140/day\n" in observations
 
     def test_observations_past_their_prompt_cap_bring_only_their_conclusions(self) -> None:
-        from app.constants.todos import OBSERVATIONS_PROMPT_MAX_CHARS
-
         evidence = "- daily counts: " + ", ".join(f"2026-09-{d:02}:140" for d in range(1, 15))
         entry = "### a@example.com\n- conclusion: alerts — low priority\n- confidence: high\n"
         observations = "# Observations\n\n## Senders\n" + (entry + evidence + "\n\n") * 40
@@ -2158,7 +2137,6 @@ class TestOneRunPerOccurrence:
         ):
             yield run
 
-    @pytest.mark.regression
     async def test_a_job_left_behind_by_a_reschedule_does_not_run(self, queue):
         armed = datetime.now(UTC)
         row = _TodoRow(_doc(scheduled_at=armed))
@@ -2174,7 +2152,6 @@ class TestOneRunPerOccurrence:
         assert result == "stale_occurrence:todo-1"
         run.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_moving_a_todo_earlier_never_lets_the_old_job_run_it(self, queue):
         """The earlier time's own fire was skipped under a trigger run; the old job must not stand in for it."""
         old = datetime.now(UTC)
@@ -2194,7 +2171,6 @@ class TestOneRunPerOccurrence:
         assert result == "stale_occurrence:todo-1"
         run.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_the_safety_net_adds_no_job_for_a_run_already_queued(self, queue):
         due = datetime.now(UTC) - timedelta(seconds=1)
         row = _TodoRow(_doc(scheduled_at=due))
@@ -2261,7 +2237,6 @@ class TestOneRunPerOccurrence:
         # One scheduled and one triggered run an hour; the stray job never ran.
         assert run.await_count == 6
 
-    @pytest.mark.regression
     async def test_a_retry_is_the_one_job_for_its_backoff_slot(self, queue):
         due = datetime.now(UTC) - timedelta(seconds=1)
         row = _TodoRow(_doc(scheduled_at=due))
@@ -2279,7 +2254,6 @@ class TestOneRunPerOccurrence:
         assert result == "success:todo-1"
         assert run.await_count == 2
 
-    @pytest.mark.regression
     async def test_a_delivered_run_is_not_rerun_when_its_next_occurrence_cannot_be_queued(
         self, queue, activity
     ):
@@ -2416,7 +2390,6 @@ class TestTriggerEventsCoalesce:
     def _prompts(run: AsyncMock) -> list[str]:
         return [call.args[0].task for call in run.await_args_list]
 
-    @pytest.mark.regression
     async def test_a_second_reply_inside_the_window_gets_a_follow_up_run(self, queue, fake_redis):
         row = _TodoRow(_watching())
 
@@ -2439,7 +2412,6 @@ class TestTriggerEventsCoalesce:
         assert self.budget.await_count == 2
         assert await _queued(queue) == []
 
-    @pytest.mark.regression
     async def test_a_reply_landing_mid_run_is_delivered_to_the_next_run(self, queue, fake_redis):
         row = _TodoRow(_watching())
         replied: list[int] = []
@@ -2520,7 +2492,6 @@ class TestTriggerEventsCoalesce:
         _, second_prompt = self._prompts(run)
         assert '"m-2"' in second_prompt
 
-    @pytest.mark.regression
     async def test_a_fire_that_keeps_finding_the_todo_mid_run_is_still_delivered(
         self, queue, fake_redis
     ):
@@ -2553,7 +2524,6 @@ class TestTriggerEventsCoalesce:
         assert '"m-2"' in self._prompts(run)[1]
         assert await _queued(queue) == []
 
-    @pytest.mark.regression
     async def test_a_burst_past_the_cap_keeps_the_newest_and_logs_the_drop(self, queue, fake_redis):
         row = _TodoRow(_watching())
         burst = MAX_TRIGGER_BATCH_EVENTS + 1
@@ -2582,7 +2552,6 @@ class TestTriggerEventsCoalesce:
         due_ms = (datetime.now(UTC) + timedelta(seconds=1)).timestamp() * 1000
         return [await _fire(queue, job) for job in await _queued(queue) if job.score <= due_ms]
 
-    @pytest.mark.regression
     async def test_a_reply_held_while_an_approval_resume_runs_is_delivered_after_it(
         self, queue, fake_redis
     ) -> None:
@@ -2605,7 +2574,6 @@ class TestTriggerEventsCoalesce:
         assert after_resume == ["success:todo-1"]
         assert '"m-1"' in self._prompts(run)[1]
 
-    @pytest.mark.regression
     async def test_a_first_reply_finding_a_scheduled_run_runs_right_after_it(
         self, queue, fake_redis
     ) -> None:
@@ -3139,7 +3107,6 @@ class TestResumeTrackedTodo:
         assert run.result == "completed:todo-1"
         run.agent.assert_not_called()
 
-    @pytest.mark.regression
     async def test_a_resume_with_nothing_to_resume_still_releases_the_lock(self) -> None:
         """It returned holding the lock, so every run of the todo was skipped for 30 minutes."""
         run = await self._resume(

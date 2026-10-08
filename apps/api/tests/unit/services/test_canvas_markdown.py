@@ -6,17 +6,16 @@ import pytest
 
 from app.constants import todos as todo_constants
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
+from app.services import canvas_markdown
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
     bounded_canvas,
     canvas_problems,
     normalize_canvas,
-    remove_section,
     section_body,
     split_legacy_canvas,
     with_missing_sections,
-    with_section_appended,
 )
 
 LEGACY = """# Fix the thing
@@ -52,7 +51,7 @@ class TestSectionBody:
 
     def test_a_canvas_that_is_not_there_yet_is_an_empty_one_not_a_missing_one(self) -> None:
         """A todo written before the canvas existed has an empty canvas, not no canvas."""
-        assert remove_section(None, "Activity Log") == ("", None)
+        assert canvas_markdown.remove_section(None, "Activity Log") == ("", None)
 
     def test_a_todo_without_a_canvas_has_no_section(self):
         assert section_body(None, "Current State") is None
@@ -313,7 +312,10 @@ class TestSplitLegacyCanvas:
         assert activity == "- a"
 
     def test_remove_section_is_a_noop_when_absent(self):
-        assert remove_section("# T\n\n## B\n2\n", "Missing") == ("# T\n\n## B\n2\n", None)
+        assert canvas_markdown.remove_section("# T\n\n## B\n2\n", "Missing") == (
+            "# T\n\n## B\n2\n",
+            None,
+        )
 
 
 @pytest.mark.parametrize("heading", ["Activity Log", "Timeline"])
@@ -521,19 +523,19 @@ class TestWithSectionAppended:
     def test_the_addition_closes_its_section_ahead_of_the_next(self) -> None:
         text = "# O\n\n## Senders\n<!-- c -->\n### a\n\n## People\n"
 
-        assert with_section_appended(text, "senders", "### b") == (
+        assert canvas_markdown.with_section_appended(text, "senders", "### b") == (
             "# O\n\n## Senders\n<!-- c -->\n### a\n\n### b\n\n## People\n"
         )
 
     def test_a_missing_section_is_added_at_the_end(self) -> None:
-        assert with_section_appended("# O\n\n## People\n\n", "Recurring", "### r") == (
-            "# O\n\n## People\n\n## Recurring\n### r\n"
-        )
+        assert canvas_markdown.with_section_appended(
+            "# O\n\n## People\n\n", "Recurring", "### r"
+        ) == ("# O\n\n## People\n\n## Recurring\n### r\n")
 
     @pytest.mark.parametrize("tail", ["kX   ", "note   ", "xX"])
     def test_only_trailing_newlines_go_before_an_added_heading(self, tail: str) -> None:
         """The last line's own characters are the user's: only the blank lines under it go."""
-        assert with_section_appended(f"# O\n{tail}\n\n", "Recurring", "### r") == (
+        assert canvas_markdown.with_section_appended(f"# O\n{tail}\n\n", "Recurring", "### r") == (
             f"# O\n{tail}\n\n## Recurring\n### r\n"
         )
 
@@ -541,7 +543,7 @@ class TestWithSectionAppended:
     def test_only_trailing_newlines_go_before_an_appended_line(self, tail: str) -> None:
         text = f"# O\n\n## Senders\n{tail}\n\n## People\n"
 
-        assert with_section_appended(text, "Senders", "### b") == (
+        assert canvas_markdown.with_section_appended(text, "Senders", "### b") == (
             f"# O\n\n## Senders\n{tail}\n\n### b\n\n## People\n"
         )
 

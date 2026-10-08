@@ -82,7 +82,6 @@ def _line(step: list[str], head: str) -> str:
     return next(line for line in step if line.startswith(f"{head}:"))
 
 
-@pytest.mark.regression
 def test_the_window_is_a_day_first_then_unix_seconds_never_a_clock_time() -> None:
     step = "\n".join(_step(FETCH_STEP))
 
@@ -92,7 +91,6 @@ def test_the_window_is_a_day_first_then_unix_seconds_never_a_clock_time() -> Non
     assert '"after:<that time>"' not in step
 
 
-@pytest.mark.regression
 def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -> None:
     step = "\n".join(_step(FETCH_STEP))
 
@@ -100,12 +98,10 @@ def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -
     assert "Standing rules may widen or narrow" in step
 
 
-@pytest.mark.regression
 def test_the_cursor_is_the_first_fetchs_own_stamp() -> None:
     assert agent_constants.TOOL_RESULT_FETCHED_AT_KEY in "\n".join(_step(CURSOR_STEP))
 
 
-@pytest.mark.regression
 def test_a_document_nobody_awaits_an_answer_on_is_fyi_not_to_reply() -> None:
     step = _step(CLASSIFY_STEP)
 
@@ -113,12 +109,10 @@ def test_a_document_nobody_awaits_an_answer_on_is_fyi_not_to_reply() -> None:
     assert "statements" in _line(step, "FYI")
 
 
-@pytest.mark.regression
 def test_the_run_leaves_activity_md_to_gaia() -> None:
     assert "GAIA records this run and your report in activity.md" in INBOX_DESK_RUN_GUIDANCE
 
 
-@pytest.mark.regression
 def test_the_thread_state_is_this_todos_label_never_a_gmail_label() -> None:
     guidance = GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
 
@@ -131,7 +125,6 @@ def _thread_guidance() -> str:
     return GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
 
 
-@pytest.mark.regression
 def test_the_fetched_thread_beats_the_canvas_on_whether_a_draft_still_exists() -> None:
     """Regression: a run reported a draft the user had deleted in Gmail, trusting its canvas."""
     guidance = _thread_guidance()
@@ -141,7 +134,6 @@ def test_the_fetched_thread_beats_the_canvas_on_whether_a_draft_still_exists() -
     assert "labels" in DEFAULT_SUMMARY_FIELDS
 
 
-@pytest.mark.regression
 def test_a_vanished_draft_is_sent_when_the_user_wrote_since_and_discarded_otherwise() -> None:
     guidance = _thread_guidance()
 
@@ -153,7 +145,6 @@ def test_a_vanished_draft_is_sent_when_the_user_wrote_since_and_discarded_otherw
     assert "the draft id with the date it was saved" in guidance
 
 
-@pytest.mark.regression
 def test_a_discarded_nudge_is_not_drafted_again_for_the_same_follow_up() -> None:
     guidance = _thread_guidance()
 
@@ -161,7 +152,6 @@ def test_a_discarded_nudge_is_not_drafted_again_for_the_same_follow_up() -> None
     assert "unless Current State says the user discarded the nudge for it" in guidance
 
 
-@pytest.mark.regression
 def test_the_briefing_is_section_headings_and_items_never_a_log_of_the_run() -> None:
     """Regression: a desk wrote "Inbox desk run completed. I checked 9 messages" instead of its sections."""
     heading = _step(BRIEFING_STEP)[0]
@@ -217,7 +207,6 @@ def test_a_proposed_event_is_one_line_the_user_can_accept_by_reply() -> None:
     assert "propose everything else" in "\n".join(_step(8))
 
 
-@pytest.mark.regression
 def test_a_meeting_request_is_answered_from_the_calendar_into_a_draft() -> None:
     """Regression: a live run left Arjun's 4pm ask undrafted as "availability unknown"."""
     rule = todo_prompts.REPLY_DRAFT_RULE
@@ -234,7 +223,6 @@ def test_the_desk_and_the_thread_draft_by_one_rule() -> None:
     assert todo_prompts.REPLY_DRAFT_RULE in thread
 
 
-@pytest.mark.regression
 def test_an_event_proposed_from_mail_is_listed_whatever_its_date() -> None:
     """Regression: a live briefing said "0 events today" and left out Arjun's Tuesday call."""
     assert "then every event you added or propose from mail, whatever its date" in (
@@ -242,7 +230,6 @@ def test_an_event_proposed_from_mail_is_listed_whatever_its_date() -> None:
     )
 
 
-@pytest.mark.regression
 def test_the_briefing_lists_only_what_this_run_or_a_sub_todo_holds() -> None:
     """Regression: a run listed Ravi under Needs you from observations.md, with no todo or mail."""
     assert (
@@ -251,7 +238,6 @@ def test_the_briefing_lists_only_what_this_run_or_a_sub_todo_holds() -> None:
     ) in _step(BRIEFING_STEP)[0]
 
 
-@pytest.mark.regression
 def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
     """Regression: a run added "do not track GitHub notifications" to Standing rules unasked."""
     assert (
@@ -260,7 +246,6 @@ def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
     ) in INBOX_DESK_RUN_GUIDANCE
 
 
-@pytest.mark.regression
 def test_a_thread_with_a_todo_is_left_to_it_and_the_desk_drafts_only_for_new_ones() -> None:
     """Regression: the desk drafted Arjun's reply again after his thread todo already had."""
     assert (
@@ -341,7 +326,6 @@ def test_the_seeded_observations_have_their_sections_and_one_block_format() -> N
     assert len(seed) < todo_constants.OBSERVATIONS_PROMPT_MAX_CHARS
 
 
-@pytest.mark.regression
 def test_observations_keep_their_evidence_and_revise_conclusions_only_on_it() -> None:
     """Regression: a one-line observation, updated in place, lost the counts behind its conclusion."""
     step = "\n".join(_step(OBSERVATIONS_STEP))
@@ -383,7 +367,6 @@ def test_observations_steer_the_triage_never_the_fetch() -> None:
     assert "is FYI only when its ask matches the known pattern" in classify
 
 
-@pytest.mark.regression
 def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     step = "\n".join(_step(SWEEP_STEP))
 
@@ -407,7 +390,6 @@ def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread()
     assert "GMAIL_FETCH_THREAD" not in step
 
 
-@pytest.mark.regression
 def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
     """Regression: grouping by the From header split one sender per display name, and the run mis-summed."""
     step = "\n".join(_step(SWEEP_STEP))

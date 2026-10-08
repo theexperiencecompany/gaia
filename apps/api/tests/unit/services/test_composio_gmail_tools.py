@@ -34,6 +34,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     MarkAsReadInput,
     MarkAsUnreadInput,
     StarEmailInput,
+    _count_inline_fit,
     _format_partial_result,
     _resolve_timeframe,
     _timeframe_clause,
@@ -1104,7 +1105,9 @@ class TestTheDesksSweep:
         assert refused.value.why == (
             "offload was requested outside a conversation, so there is no workspace for it."
         )
-        assert "without offload" in refused.value.fix
+        assert (
+            refused.value.fix == "Call it without offload, or from a run that has a conversation."
+        )
         assert refused.value.status_code == 400
 
 
@@ -1796,3 +1799,19 @@ class TestAPartialFetchStaysProjected:
         assert "offloaded_to" not in result
         assert result["messages"]
         assert set(result["messages"][0]) == {"id"}
+
+
+# 10 chars of JSON each, 12 with the separators around it.
+_TWO_TEN_CHAR_MESSAGES: list[dict[str, object]] = [{"a": "x"}, {"a": "y"}]
+
+
+class TestTheInlineBudgetCountsEachSeparator:
+    """Each message costs its JSON plus the two separator characters around it."""
+
+    def test_messages_that_exactly_fill_the_budget_all_fit(self) -> None:
+        with patch("app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS", 24):
+            assert _count_inline_fit(_TWO_TEN_CHAR_MESSAGES) == 2
+
+    def test_one_char_short_and_the_last_message_does_not_fit(self) -> None:
+        with patch("app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS", 23):
+            assert _count_inline_fit(_TWO_TEN_CHAR_MESSAGES) == 1

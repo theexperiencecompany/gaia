@@ -58,7 +58,6 @@ class TestRunBackfill:
         assert result.already_armed == 1
         service.composio.triggers.create.assert_not_called()
 
-    @pytest.mark.regression
     async def test_execute_arms_each_unarmed_user_on_their_active_account(self) -> None:
         """Regression: create(user_id=...) armed the SDK's newest account, expired or not."""
         service = _service(
@@ -74,7 +73,6 @@ class TestRunBackfill:
             "GMAIL_EMAIL_SENT_TRIGGER", connected_account_id="ca_u1", trigger_config={"interval": 1}
         )
 
-    @pytest.mark.regression
     async def test_a_user_with_two_active_accounts_is_armed_on_the_newest(self) -> None:
         service = _service(
             [

@@ -5,7 +5,6 @@ import pytest
 from app.agents.tools.tracked_todo_fields import build_clearable_datetime_update
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize("value", ["2026-09-30", "2026-09-30T17:00:00"])
 def test_a_date_without_an_offset_is_refused(value: str) -> None:
     """A naive wall time would be saved as UTC, off by the user's offset."""

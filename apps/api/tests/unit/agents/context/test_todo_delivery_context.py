@@ -54,10 +54,12 @@ async def _delivered_request() -> HumanMessage:
     repo = MagicMock(get_by_id=AsyncMock(return_value=DESK))
     with (
         patch.object(todo_run_delivery, "todo_repository", repo),
-        patch.object(todo_run_delivery, "record_activity", AsyncMock(return_value=True)),
+        patch.object(todo_run_delivery, "record_run_finished", AsyncMock(return_value=True)),
         patch.object(todo_run_delivery, "capture_event", MagicMock()),
         patch.object(comms_narrator.GraphManager, "get_graph", AsyncMock()),
-        patch.object(comms_narrator, "build_agent_config", AsyncMock(return_value={})),
+        patch.object(
+            comms_narrator, "build_agent_config", AsyncMock(return_value={"configurable": {}})
+        ),
         patch.object(comms_narrator, "execute_graph_silent", graph_run),
     ):
         await todo_run_delivery.deliver_todo_run_result(
@@ -92,13 +94,11 @@ class TestTheDesksDeliveryRuleBindsTheDecision:
         assert f"- {INBOX_DESK_DELIVERY_RULE}" in context
         assert BRIEFING in context
 
-    @pytest.mark.regression
     async def test_the_rules_are_binding_and_overrule_the_silence_default(self) -> None:
         context = await _comms_context()
 
         assert BINDING in context
 
-    @pytest.mark.regression
     async def test_the_rules_are_the_last_word_after_the_defaults(self) -> None:
         context = await _comms_context()
 
@@ -108,13 +108,11 @@ class TestTheDesksDeliveryRuleBindsTheDecision:
 class TestTheDesksBriefingKeepsItsSections:
     """Regression: comms retold a sectioned desk briefing as one prose paragraph under its "whole" rule."""
 
-    @pytest.mark.regression
     async def test_a_whole_report_passes_through_with_its_headings_and_items(self) -> None:
         context = await _comms_context()
 
         assert PASS_THROUGH in context
 
-    @pytest.mark.regression
     async def test_the_pass_through_comes_after_the_keep_it_short_default(self) -> None:
         context = await _comms_context()
 

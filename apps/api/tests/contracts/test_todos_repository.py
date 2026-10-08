@@ -16,14 +16,11 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.indexes import (
-    TODO_OPEN_EXTERNAL_REF_KEYS,
-    TODO_OPEN_EXTERNAL_REF_OPTIONS,
-)
-from app.db.repositories.todos import TodosRepository, _external_ref_filter
+from app.db.mongodb import indexes
+from app.db.repositories import todos as todos_repository_module
+from app.db.repositories.todos import TodosRepository
+from app.models import todo_models
 from app.models.todo_models import (
-    ExternalRef,
-    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -354,8 +351,12 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert [t.title for t in found] == ["both"]
 
     async def test_list_active_tracked_keeps_the_todo_owning_an_external_ref(self, repo, make_doc):
-        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
-        other = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-2")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="thread-1"
+        )
+        other = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="thread-2"
+        )
         tracked = [GAIA_TRACKED_LABEL]
         done = await repo.create(
             make_doc(user_id="u", title="done", labels=tracked, external_ref=thread)
@@ -375,8 +376,10 @@ class TestTodosRepository(UserScopedRepositoryContract):
     async def test_find_latest_by_external_ref_is_the_users_newest_open_or_completed(
         self, repo, make_doc, raw_collection
     ):
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="gmail")
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="gmail"
+        )
         now = datetime.now(UTC)
         # The oldest goes in first, so a read in insertion order would answer it.
         for title, owner, ref, age, completed in (
@@ -1100,12 +1103,14 @@ class TestOpenExternalRefIndex:
     @pytest.fixture(autouse=True)
     async def _shipped_index(self, raw_collection) -> None:
         await raw_collection.create_index(
-            TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+            indexes.TODO_OPEN_EXTERNAL_REF_KEYS, **indexes.TODO_OPEN_EXTERNAL_REF_OPTIONS
         )
 
     @staticmethod
-    def _thread(thread_id: str = "thread-1") -> ExternalRef:
-        return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=thread_id)
+    def _thread(thread_id: str = "thread-1") -> todo_models.ExternalRef:
+        return todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id=thread_id
+        )
 
     async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
         await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
@@ -1134,11 +1139,15 @@ class TestOpenExternalRefIndex:
 
     async def test_a_ref_lookup_is_served_by_the_partial_index(self, raw_collection):
         """An untyped equality is not provably inside the partial filter, so Mongo scanned every open todo."""
-        query = {"user_id": "u1", **_external_ref_filter(self._thread()), "completed": False}
+        query = {
+            "user_id": "u1",
+            **todos_repository_module._external_ref_filter(self._thread()),
+            "completed": False,
+        }
 
         plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
 
-        assert TODO_OPEN_EXTERNAL_REF_OPTIONS["name"] in str(plan)
+        assert indexes.TODO_OPEN_EXTERNAL_REF_OPTIONS["name"] in str(plan)
 
     async def test_find_open_by_external_ref_returns_only_the_open_owner_todo(self, repo, make_doc):
         done = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))

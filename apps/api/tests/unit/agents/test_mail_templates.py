@@ -714,6 +714,12 @@ class TestDraftTemplate:
         result = draft_template(draft_data)
         assert result["id"] == "d_empty"
 
+    def test_a_draft_missing_its_id_and_snippet_reads_them_as_empty(self):
+        result = draft_template({"message": {}})
+
+        assert result["id"] == ""
+        assert result["message"]["snippet"] == ""
+
 
 # ---------------------------------------------------------------------------
 # process_list_drafts_response

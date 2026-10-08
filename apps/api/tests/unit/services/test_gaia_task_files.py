@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, STANDING_RULES_MAX_CHARS
+from app.constants import todos as todo_constants
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import Priority, TodoDocument
 from app.services.gaia_task_files import (
     GaiaTaskFile,
@@ -266,15 +267,8 @@ class TestWriteFile:
             (VALID_CANVAS + "\n## Learnings\nagain\n", 'merge the 2 "## Learnings" sections'),
             (VALID_CANVAS + "\n## Activity Log (append)\n- ran\n", '"## Activity Log (append)"'),
             (VALID_CANVAS + "\n### 2026-09-26 research\n- found\n", "dated"),
-            (
-                VALID_CANVAS.replace(
-                    "## Standing rules\n",
-                    f"## Standing rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n",
-                ),
-                'shorten "## Standing rules"',
-            ),
         ],
-        ids=["repeated-section", "activity-section", "dated-entry", "rules-too-long"],
+        ids=["repeated-section", "activity-section", "dated-entry"],
     )
     async def test_a_canvas_carrying_a_log_or_a_repeat_is_refused(self, writers, body, problem):
         canvas, _activity, syslog = writers
@@ -282,6 +276,17 @@ class TestWriteFile:
         refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, body)
 
         assert refusal is not None and problem in refusal
+        canvas.assert_not_awaited()
+        syslog.assert_not_awaited()
+
+    async def test_a_canvas_with_standing_rules_past_their_cap_is_refused(self, writers):
+        canvas, _activity, syslog = writers
+        rules = "r" * (todo_constants.STANDING_RULES_MAX_CHARS + 1)
+        body = VALID_CANVAS.replace("## Standing rules\n", f"## Standing rules\n{rules}\n")
+
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, body)
+
+        assert refusal is not None and 'shorten "## Standing rules"' in refusal
         canvas.assert_not_awaited()
         syslog.assert_not_awaited()
 

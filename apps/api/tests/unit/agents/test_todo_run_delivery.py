@@ -18,9 +18,10 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
@@ -157,7 +158,11 @@ class TestABriefingThatOwnsItsForm:
     BRIEFING = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri · draft ready"
 
     def _desk(self) -> TodoDocument:
-        return _todo(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-1"))
+        return _todo(
+            external_ref=todo_models.ExternalRef(
+                source=todo_models.ExternalRefSource.INBOX_DESK, id="int-1"
+            )
+        )
 
     @pytest.mark.regression
     async def test_a_desk_briefing_reaches_the_app_as_the_desk_wrote_it(self) -> None:
@@ -186,7 +191,11 @@ class TestABriefingThatOwnsItsForm:
         assert seams.props()["outcome"] == "silenced"
 
     async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
-        thread = _todo(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t1"))
+        thread = _todo(
+            external_ref=todo_models.ExternalRef(
+                source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
+            )
+        )
         with _seams(todo=thread) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
