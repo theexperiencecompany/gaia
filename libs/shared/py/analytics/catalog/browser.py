@@ -3,7 +3,7 @@
 from typing import ClassVar
 
 from shared.py.analytics.catalog.base import ServerEvent
-from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.catalog.properties import Hostname, Identifier
 
 
 class BrowserTaskFinished(ServerEvent):
@@ -29,7 +29,7 @@ class BrowserEngineSwitched(ServerEvent):
     reason: Identifier
     engine: Identifier
     # The host alone, never what the user opened.
-    host: Identifier | None = None
+    host: Hostname | None = None
 
 
 class BrowserHandoffResolved(ServerEvent):

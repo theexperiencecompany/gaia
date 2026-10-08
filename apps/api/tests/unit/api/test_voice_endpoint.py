@@ -320,6 +320,14 @@ class TestStarVoice:
     """PUT /api/v1/voice/voices/{voice_id}/star."""
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
+    async def test_a_voice_id_that_is_not_an_id_is_refused_before_the_star(
+        self, mock_star: AsyncMock, client: AsyncClient
+    ):
+        resp = await client.put(f"{VOICE_BASE}/voice/voices/my voice/star", json={"starred": True})
+        assert resp.status_code == 422
+        mock_star.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_star_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = ["voice-1", "voice-2"]
         with (

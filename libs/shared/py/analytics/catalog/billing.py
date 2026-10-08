@@ -49,6 +49,11 @@ class PaymentSucceeded(ServerEvent):
     payment_id: Identifier
     currency: CurrencyCode
     amount: float | None = None
+    # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
+    amount_charged_pre_tax: float | None = None
+    currency_charged: CurrencyCode | None = None
+    # Pre-tax USD that reached GAIA, sent only when Dodo settles in USD (#1332).
+    amount_usd_pre_tax: float | None = None
 
 
 class PaymentFailed(ServerEvent):
@@ -59,6 +64,11 @@ class PaymentFailed(ServerEvent):
     payment_id: Identifier
     currency: CurrencyCode
     amount: float | None = None
+    # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
+    amount_charged_pre_tax: float | None = None
+    currency_charged: CurrencyCode | None = None
+    # Pre-tax USD that reached GAIA, sent only when Dodo settles in USD (#1332).
+    amount_usd_pre_tax: float | None = None
 
 
 class SubscriptionCancellationRequested(ServerEvent):
@@ -76,6 +86,9 @@ class SubscriptionActivated(ServerEvent):
     plan_name: Literal["Pro"]
     currency: CurrencyCode
     amount: float | None = None
+    # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
+    amount_charged_pre_tax: float | None = None
+    currency_charged: CurrencyCode | None = None
 
 
 class SubscriptionRenewed(ServerEvent):
@@ -85,6 +98,9 @@ class SubscriptionRenewed(ServerEvent):
 
     subscription_id: Identifier
     currency: CurrencyCode
+    # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
+    amount_charged_pre_tax: float | None = None
+    currency_charged: CurrencyCode | None = None
 
 
 class SubscriptionCancelled(ServerEvent):
@@ -172,6 +188,7 @@ class PricingPlanSelected(WebEvent):
     is_current_plan: bool
     has_active_subscription: bool
     is_free_plan: bool
+    plan_tier: Literal["free", "pro"]
     plan_id: Identifier | None = None
 
 

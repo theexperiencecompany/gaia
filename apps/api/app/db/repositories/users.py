@@ -478,7 +478,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_social_profiles(self, user_id: str, profiles: list[SocialProfile]) -> None:
+    async def set_social_profiles(self, user_id: str, profiles: Iterable[SocialProfile]) -> None:
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},

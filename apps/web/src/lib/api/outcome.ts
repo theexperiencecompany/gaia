@@ -88,9 +88,11 @@ export function reportFailure(
   if (globalThis.window !== undefined) {
     track("api:request_failed", {
       method,
-      // No PII to PostHog: the query string can carry search terms or tokens.
+      // No PII to PostHog: the query string can carry search terms or tokens, and
+      // the envelope's message can echo user input; the machine code cannot.
       url: url.split("?")[0],
       status: error.status,
+      error_code: error.code ?? undefined,
     });
   }
 

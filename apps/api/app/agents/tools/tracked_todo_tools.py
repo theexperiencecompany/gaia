@@ -44,6 +44,7 @@ from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import CanvasSearchMatch, search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
@@ -917,7 +918,8 @@ async def list_trigger_fields(
 async def subscribe_todo_to_trigger(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo that should watch for this event"],
-    trigger_name: Annotated[str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
+    # Identifier-typed: a slug analytics cannot carry fails the args schema before registering.
+    trigger_name: Annotated[Identifier, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
     action: Annotated[
         str,
         "What to do when it fires: 'execute' (run the todo with the event in its "

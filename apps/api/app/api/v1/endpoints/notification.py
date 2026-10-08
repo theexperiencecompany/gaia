@@ -110,9 +110,11 @@ async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
         return Response(status_code=400)
 
     log.set(user={"id": user_id}, operation="unsubscribe_email_one_click")
+    # Built before the write, so a token signed for a non-user id fails before it unsubscribes anyone.
+    user = UserId(user_id)
     await _disable_email_channel(user_id)
     log.set(outcome="success")
-    capture(UserId(user_id), NotificationUnsubscribed())
+    capture(user, NotificationUnsubscribed())
     return Response(status_code=200)
 
 

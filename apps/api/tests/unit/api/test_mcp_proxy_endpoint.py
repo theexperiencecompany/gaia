@@ -107,6 +107,19 @@ class TestProxyToolCall:
         assert resp.status_code == 500
         assert "Tool call failed" in resp.json()["message"]
 
+    async def test_a_tool_name_outside_the_mcp_charset_is_refused_before_the_call(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+        ) as mock_get:
+            resp = await client.post(
+                f"{API}/proxy/tool-call",
+                json={"server_url": "https://example.com/mcp", "tool_name": "send email"},
+            )
+        assert resp.status_code == 422
+        mock_get.assert_not_awaited()
+
     async def test_tool_call_validation_error(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/proxy/tool-call", json={})
         assert resp.status_code == 422

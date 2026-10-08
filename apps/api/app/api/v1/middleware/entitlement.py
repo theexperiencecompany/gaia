@@ -14,10 +14,15 @@ the world which paths exist.
 """
 
 from collections.abc import Awaitable, Callable
+from functools import cache
+import re
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.routing import iter_route_contexts
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import compile_path
+from starlette.types import ASGIApp
 
 from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
@@ -35,6 +40,26 @@ ENTITLEMENT_UNAVAILABLE_MESSAGE = "Could not verify your subscription. Please tr
 #: Long enough to outlast a Redis restart or a Mongo failover, short enough that
 #: a user who retries by hand beats it.
 ENTITLEMENT_RETRY_AFTER_SECONDS = 5
+
+
+#: The paywall feature for a path no route serves; the request 404s once it is let through.
+UNMATCHED_ROUTE = "unmatched_route"
+
+
+@cache
+def _route_patterns(app: ASGIApp) -> tuple[tuple[re.Pattern[str], str], ...]:
+    """Compile every route's full path once per app, in the router's match order."""
+    routes = getattr(app, "routes", ())
+    return tuple((compile_path(ctx.path)[0], ctx.path) for ctx in iter_route_contexts(routes))
+
+
+def gated_route(request: Request) -> str:
+    """Name the gated surface by its route template, so no id or email in the raw path reaches analytics."""
+    path = request.url.path
+    for pattern, template in _route_patterns(request.app):
+        if pattern.match(path):
+            return template
+    return UNMATCHED_ROUTE
 
 
 class EntitlementMiddleware(BaseHTTPMiddleware):
@@ -62,7 +87,7 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         try:
-            await require_active_subscription(user_id, feature=request.url.path)
+            await require_active_subscription(user_id, feature=gated_route(request))
         except SubscriptionRequiredException as exc:
             return self._payment_required(exc)
         except Exception as e:

@@ -133,3 +133,16 @@ class TodosViewChanged(WebEvent):
     """A user switched todo views in the sidebar; pure client navigation."""
 
     event: ClassVar[str] = "todos:view_changed"
+
+    # The kind of view opened, never its path: a label view's path carries the user's label name.
+    view_kind: Literal[
+        "inbox",
+        "today",
+        "upcoming",
+        "completed",
+        "priority_high",
+        "priority_medium",
+        "priority_low",
+        "label",
+        "project",
+    ]

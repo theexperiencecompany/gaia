@@ -11,6 +11,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.tools import StructuredTool
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
@@ -285,6 +286,14 @@ class TestExecuteToolCall:
         assert kwargs["tool_name"] == "GMAIL_SEND_EMAIL"
         assert kwargs["data"] == {"to": "a"}
         assert kwargs["config"]["configurable"]["user_id"] == USER_ID
+
+    async def test_a_tool_name_analytics_cannot_carry_fails_the_args_schema_before_dispatch(
+        self,
+    ) -> None:
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            with pytest.raises(ValidationError, match="tool_name"):
+                await _invoke(execute, tool_name="send an email")
+        dispatch.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("output", "rendered"),

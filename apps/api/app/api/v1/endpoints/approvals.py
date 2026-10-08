@@ -32,6 +32,7 @@ from app.services.hil.resolution import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals")
@@ -171,7 +172,7 @@ async def put_preferences(
 
 @router.put("/tools/{tool_name}")
 async def set_tool_approval(
-    tool_name: str,
+    tool_name: Identifier,
     payload: SetToolOverrideRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:

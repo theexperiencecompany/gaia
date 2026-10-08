@@ -1,5 +1,6 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import {
@@ -64,23 +65,29 @@ const PRIORITY_MENU_ITEMS = [
     label: "High Priority",
     icon: HighPriorityIcon,
     href: "/todos/priority/high",
+    view: "priority_high",
   },
   {
     label: "Medium Priority",
     icon: MediumPriorityIcon,
     href: "/todos/priority/medium",
+    view: "priority_medium",
   },
   {
     label: "Low Priority",
     icon: LowPriorityIcon,
     href: "/todos/priority/low",
+    view: "priority_low",
   },
-];
+] satisfies MenuItem[];
+
+type TodoView = EventProperties["todos:view_changed"]["view_kind"];
 
 type MenuItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   href: string;
+  view: TodoView;
   count?: number;
 };
 
@@ -88,7 +95,7 @@ type SidebarSectionProps = {
   title?: string;
   items: MenuItem[];
   activeItem: string;
-  onItemClick: (href: string) => void;
+  onItemClick: (item: MenuItem) => void;
   action?: React.ReactNode;
   emptyState?: {
     loading: boolean;
@@ -127,7 +134,7 @@ function SidebarSection({
             variant="light"
             radius="sm"
             size="sm"
-            onPress={() => onItemClick(item.href)}
+            onPress={() => onItemClick(item)}
           >
             {item.label}
           </Button>
@@ -185,9 +192,9 @@ export default function TodoSidebar() {
     };
   }, [loadProjects, loadCounts, loadLabels]);
 
-  const handleNavigation = (href: string) => {
-    track("todos:view_changed", {});
-    router.push(href);
+  const handleNavigation = (item: MenuItem) => {
+    track("todos:view_changed", { view_kind: item.view });
+    router.push(item.href);
   };
 
   const mainMenuItems: MenuItem[] = useMemo(
@@ -196,24 +203,28 @@ export default function TodoSidebar() {
         label: "Inbox",
         icon: InboxIcon,
         href: "/todos",
+        view: "inbox",
         count: counts.inbox,
       },
       {
         label: "Today",
         icon: Calendar01Icon,
         href: "/todos/today",
+        view: "today",
         count: counts.today,
       },
       {
         label: "Upcoming",
         icon: CalendarUpload02Icon,
         href: "/todos/upcoming",
+        view: "upcoming",
         count: counts.upcoming,
       },
       {
         label: "Completed",
         icon: InboxCheckIcon,
         href: "/todos/completed",
+        view: "completed",
         count: counts.completed,
       },
     ],
@@ -228,6 +239,7 @@ export default function TodoSidebar() {
             label: label.name,
             icon: LabelTagIcon,
             href: `/todos/label/${encodeURIComponent(label.name)}`,
+            view: "label",
             count: label.count,
           }))
         : [],
@@ -250,6 +262,7 @@ export default function TodoSidebar() {
         label: project.name,
         icon: ProjectColorIcon,
         href: `/todos/project/${project.id}`,
+        view: "project",
         count: project.todo_count,
       });
     }

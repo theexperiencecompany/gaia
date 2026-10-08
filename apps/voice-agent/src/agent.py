@@ -126,6 +126,7 @@ def _register_session_logging(
     identity: dict[str, Any],
     trace_id: str,
     analytics: PostHogAnalytics,
+    user: UserId,
 ) -> None:
     """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
 
@@ -243,18 +244,16 @@ def _register_session_logging(
         # answers "what happened in this session", PostHog answers "how much do
         # people use voice", so this carries only the usage shape. Outside the
         # log_context: a PostHog failure must not colour the event's outcome.
-        user_id = identity.get("user_id")
-        if user_id:
-            analytics.capture(
-                UserId(str(user_id)),
-                VoiceSessionEnded(
-                    user_turns=stats.user_turns,
-                    user_speaking_ms=round(stats.user_speaking_ms, 2),
-                    tts_characters=summary.tts_characters_count,
-                    stt_audio_duration_s=round(summary.stt_audio_duration, 2),
-                    tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
-                ),
-            )
+        analytics.capture(
+            user,
+            VoiceSessionEnded(
+                user_turns=stats.user_turns,
+                user_speaking_ms=round(stats.user_speaking_ms, 2),
+                tts_characters=summary.tts_characters_count,
+                stt_audio_duration_s=round(summary.stt_audio_duration, 2),
+                tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
+            ),
+        )
         # One job per process, and LiveKit exits it through multiprocessing,
         # which skips atexit: without this the queued batch is dropped.
         await asyncio.to_thread(analytics.shutdown)
@@ -383,10 +382,12 @@ async def entrypoint(ctx: JobContext) -> None:
     # reconstructs the full session timeline in Loki. The session event
     # callbacks fire outside this task's context, so identity is passed
     # explicitly into each log call rather than bound.
-    user_id = user_id_from_room(ctx.room.name)
+    # Resolved before any session work: a room /token did not mint is refused here,
+    # so the session-end capture can never fail on its identity.
+    user = user_id_from_room(ctx.room.name)
     identity: dict[str, Any] = {
         "room": ctx.room.name,
-        "user_id": user_id,
+        "user_id": user.value,
         "job_id": getattr(ctx.job, "id", None),
     }
     # LiveKit invokes entrypoint with no logging middleware, so a boundary is
@@ -410,10 +411,8 @@ async def entrypoint(ctx: JobContext) -> None:
         session_trace_id = get_trace_id()
         # Attributed to the stable GAIA user id recovered from the room name —
         # the same id the API and web capture against, so a voice session lands
-        # on the user's real profile. A room not minted by /token has no user to
-        # attribute to, so it is left uncaptured rather than sent anonymously.
-        if user_id:
-            analytics.capture(UserId(user_id), VoiceSessionStarted(room=ctx.room.name))
+        # on the user's real profile.
+        analytics.capture(user, VoiceSessionStarted(room=ctx.room.name))
 
         room_start = time.monotonic()
 
@@ -422,7 +421,7 @@ async def entrypoint(ctx: JobContext) -> None:
             room=ctx.room,
             request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
         )
-        custom_llm.user_id = user_id
+        custom_llm.user_id = user.value
 
         tts = elevenlabs.TTS(
             api_key=settings.ELEVENLABS_API_KEY,
@@ -445,7 +444,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # once the comms turn has ended.
         custom_llm.session = session
 
-        _register_session_logging(ctx, session, identity, session_trace_id, analytics)
+        _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
         # Tracks the currently-applied TTS voice so repeated metadata events
         # (join + metadata_changed) don't re-apply the same voice.

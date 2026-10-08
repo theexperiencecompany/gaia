@@ -196,3 +196,14 @@ class TestSelfPairEndpoint:
         # Rejected before the row was inserted; no analytics on a failed pair.
         assert session.added == []
         mock_capture.assert_not_called()
+
+    @pytest.mark.parametrize("field", ["platform", "client"])
+    async def test_a_value_analytics_cannot_carry_is_refused_before_the_pair(
+        self, client: AsyncClient, field: str
+    ) -> None:
+        session = _FakeSession(active_count=0)
+        with patch(_DB_SESSION, _fake_session_factory(session)):
+            resp = await client.post(f"{BASE}/self-pair", json={**_BODY, field: "Mac OS"})
+
+        assert resp.status_code == 422
+        assert session.added == []

@@ -19,7 +19,7 @@ import pytest
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.models.onboarding_models import OnboardingResetCounts, SocialProfile
+from app.models.onboarding_models import ConfirmedSocialProfile, OnboardingResetCounts
 from app.models.payment_models import PlanType
 from app.models.user_models import (
     OTHER_NEED_MAX_LENGTH,
@@ -1129,5 +1129,20 @@ class TestOnboardingActsOnTheCaller:
 
         assert response.status_code == 200
         save.assert_awaited_once_with(
-            FAKE_USER_ID, [SocialProfile(platform="github", url="https://github.com/me")]
+            FAKE_USER_ID, [ConfirmedSocialProfile(platform="github", url="https://github.com/me")]
         )
+
+    async def test_a_platform_that_is_not_a_slug_is_refused_before_the_save(
+        self, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.onboarding.save_confirmed_profiles",
+            new_callable=AsyncMock,
+        ) as save:
+            response = await client.post(
+                f"{BASE_URL}/social-profiles",
+                json={"profiles": [{"platform": "my blog", "url": "https://me.blog"}]},
+            )
+
+        assert response.status_code == 422
+        save.assert_not_awaited()

@@ -398,6 +398,19 @@
             "pattern": "^/[^\\s@?#]*$",
             "title": "Url",
             "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Code"
           }
         },
         "required": ["method", "status", "url"],
@@ -945,7 +958,7 @@
           "host": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[^\\s@/]{1,253}$",
                 "type": "string"
               },
               {
@@ -3621,6 +3634,31 @@
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Integration",
             "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Code"
           }
         },
         "required": ["integration"],
@@ -4458,6 +4496,43 @@
             ],
             "default": null,
             "title": "Amount"
+          },
+          "amount_charged_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Charged Pre Tax"
+          },
+          "currency_charged": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Charged"
+          },
+          "amount_usd_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Usd Pre Tax"
           }
         },
         "required": ["payment_id", "currency"],
@@ -4498,6 +4573,43 @@
             ],
             "default": null,
             "title": "Amount"
+          },
+          "amount_charged_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Charged Pre Tax"
+          },
+          "currency_charged": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Charged"
+          },
+          "amount_usd_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Usd Pre Tax"
           }
         },
         "required": ["payment_id", "currency"],
@@ -4661,6 +4773,11 @@
             "title": "Is Free Plan",
             "type": "boolean"
           },
+          "plan_tier": {
+            "enum": ["free", "pro"],
+            "title": "Plan Tier",
+            "type": "string"
+          },
           "plan_id": {
             "anyOf": [
               {
@@ -4680,7 +4797,8 @@
           "is_monthly",
           "is_current_plan",
           "has_active_subscription",
-          "is_free_plan"
+          "is_free_plan",
+          "plan_tier"
         ],
         "title": "PricingPlanSelected",
         "type": "object"
@@ -4890,7 +5008,7 @@
         "description": "The worker executed a reminder.",
         "properties": {
           "reminder_id": {
-            "pattern": "^[0-9a-f]{24}$",
+            "pattern": "^[0-9a-fA-F]{24}$",
             "title": "Reminder Id",
             "type": "string"
           },
@@ -5491,6 +5609,31 @@
             ],
             "default": null,
             "title": "Amount"
+          },
+          "amount_charged_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Charged Pre Tax"
+          },
+          "currency_charged": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Charged"
           }
         },
         "required": ["subscription_id", "plan_name", "currency"],
@@ -5694,6 +5837,31 @@
             "pattern": "^[A-Za-z]{3}$",
             "title": "Currency",
             "type": "string"
+          },
+          "amount_charged_pre_tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Amount Charged Pre Tax"
+          },
+          "currency_charged": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Charged"
           }
         },
         "required": ["subscription_id", "currency"],
@@ -5822,7 +5990,7 @@
           "todo_id": {
             "anyOf": [
               {
-                "pattern": "^[0-9a-f]{24}$",
+                "pattern": "^[0-9a-fA-F]{24}$",
                 "type": "string"
               },
               {
@@ -6000,7 +6168,7 @@
           "todo_id": {
             "anyOf": [
               {
-                "pattern": "^[0-9a-f]{24}$",
+                "pattern": "^[0-9a-fA-F]{24}$",
                 "type": "string"
               },
               {
@@ -6140,7 +6308,7 @@
           "todo_id": {
             "anyOf": [
               {
-                "pattern": "^[0-9a-f]{24}$",
+                "pattern": "^[0-9a-fA-F]{24}$",
                 "type": "string"
               },
               {
@@ -6255,7 +6423,24 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user switched todo views in the sidebar; pure client navigation.",
-        "properties": {},
+        "properties": {
+          "view_kind": {
+            "enum": [
+              "inbox",
+              "today",
+              "upcoming",
+              "completed",
+              "priority_high",
+              "priority_medium",
+              "priority_low",
+              "label",
+              "project"
+            ],
+            "title": "View Kind",
+            "type": "string"
+          }
+        },
+        "required": ["view_kind"],
         "title": "TodosViewChanged",
         "type": "object"
       }

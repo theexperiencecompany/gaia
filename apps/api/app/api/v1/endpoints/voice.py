@@ -33,6 +33,7 @@ from app.services.voice_service import (
     set_voice_star,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 from shared.py.wide_events import log
 
@@ -146,7 +147,7 @@ async def select_voice(
 
 @router.put("/voice/voices/{voice_id}/star")
 async def star_voice(
-    voice_id: str,
+    voice_id: Identifier,
     payload: StarVoiceRequest,
     user: CurrentUser,
 ) -> StarredVoicesResponse:

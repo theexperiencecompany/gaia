@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
@@ -54,6 +55,10 @@ class TestSandboxExecuteRoute:
                 await sandbox_execute(_payload(), authorization="")
         assert err.value.status_code == 401
         dispatch.assert_not_awaited()
+
+    def test_a_tool_name_analytics_cannot_carry_is_refused_at_the_request(self) -> None:
+        with pytest.raises(ValidationError):
+            SandboxExecuteRequest(tool_name="send an email")
 
     async def test_tampered_token_is_401(self) -> None:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)

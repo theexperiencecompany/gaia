@@ -284,6 +284,7 @@ export interface EventProperties {
     "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     "status": number;
     "url": string;
+    "error_code"?: string;
   };
   "approval:decided": {
     "decision"?: "approve" | "deny";
@@ -653,6 +654,8 @@ export interface EventProperties {
   };
   "integration:error": {
     "integration": string;
+    "status"?: number;
+    "error_code"?: string;
   };
   "integration:instructions_updated": Record<string, never>;
   "mcp:connection_tested": {
@@ -747,11 +750,17 @@ export interface EventProperties {
     "payment_id": string;
     "currency": string;
     "amount"?: number;
+    "amount_charged_pre_tax"?: number;
+    "currency_charged"?: string;
+    "amount_usd_pre_tax"?: number;
   };
   "payment:succeeded": {
     "payment_id": string;
     "currency": string;
     "amount"?: number;
+    "amount_charged_pre_tax"?: number;
+    "currency_charged"?: string;
+    "amount_usd_pre_tax"?: number;
   };
   "paywall:blocked": {
     "feature": string | string;
@@ -771,6 +780,7 @@ export interface EventProperties {
     "is_current_plan": boolean;
     "has_active_subscription": boolean;
     "is_free_plan": boolean;
+    "plan_tier": "free" | "pro";
     "plan_id"?: string;
   };
   "profile:link_copied": {
@@ -859,6 +869,8 @@ export interface EventProperties {
     "plan_name": "Pro";
     "currency": string;
     "amount"?: number;
+    "amount_charged_pre_tax"?: number;
+    "currency_charged"?: string;
   };
   "subscription:cancellation_requested": Record<string, never>;
   "subscription:cancelled": {
@@ -885,6 +897,8 @@ export interface EventProperties {
   "subscription:renewed": {
     "subscription_id": string;
     "currency": string;
+    "amount_charged_pre_tax"?: number;
+    "currency_charged"?: string;
   };
   "support:form_submitted": {
     "request_type": string;
@@ -949,7 +963,9 @@ export interface EventProperties {
     "bulk_count"?: number;
     "is_subtask"?: boolean;
   };
-  "todos:view_changed": Record<string, never>;
+  "todos:view_changed": {
+    "view_kind": "inbox" | "today" | "upcoming" | "completed" | "priority_high" | "priority_medium" | "priority_low" | "label" | "project";
+  };
   "tool:execute_failed": {
     "tool_name": string;
     "reason": string;

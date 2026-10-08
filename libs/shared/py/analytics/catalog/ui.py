@@ -54,6 +54,8 @@ class ApiRequestFailed(WebEvent):
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
     status: int
     url: UrlPath
+    # The API envelope's machine code (NOT_AUTHENTICATED, subscription_required); absent on a transport failure.
+    error_code: Identifier | None = None
 
 
 class ApiChunkRecovered(WebEvent):

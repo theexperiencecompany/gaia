@@ -19,6 +19,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import require_active_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
+    ConfirmedSocialProfile,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
     PersistedTriageSummary,
@@ -585,7 +586,7 @@ async def regenerate_writing_style_example(
 
 
 class SocialProfilesConfirmRequest(BaseModel):
-    profiles: list[SocialProfile]
+    profiles: list[ConfirmedSocialProfile]
 
 
 @router.post(

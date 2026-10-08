@@ -24,6 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
 from posthog import Posthog
 import pytest
+from starlette.types import Receive, Scope, Send
 
 # Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
 # short; master/local keep "default" (200). suppress differing_executors
@@ -622,7 +623,14 @@ async def gated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
             request.state.user = FAKE_USER
             return await call_next(request)
 
-    gated = _AuthedState(app=EntitlementMiddleware(app=test_app))
+    stack = _AuthedState(app=EntitlementMiddleware(app=test_app))
+
+    async def gated(scope: Scope, receive: Receive, send: Send) -> None:
+        # Starlette.__call__ stamps the app on the scope before its middleware
+        # stack runs; the gate reads the route table through request.app.
+        scope["app"] = test_app
+        await stack(scope, receive, send)
+
     transport = ASGITransport(app=gated, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport,

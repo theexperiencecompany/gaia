@@ -7091,6 +7091,16 @@ export interface components {
          */
         ConditionOperator: "equals" | "not_equals" | "contains" | "not_contains" | "starts_with" | "ends_with" | "greater_than" | "greater_or_equal" | "less_than" | "less_or_equal";
         /**
+         * ConfirmedSocialProfile
+         * @description A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.
+         */
+        ConfirmedSocialProfile: {
+            /** Platform */
+            platform: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * ConnectIntegrationRequest
          * @description Request to connect an integration.
          */
@@ -12882,7 +12892,7 @@ export interface components {
         /** SocialProfilesConfirmRequest */
         SocialProfilesConfirmRequest: {
             /** Profiles */
-            profiles: components["schemas"]["SocialProfile"][];
+            profiles: components["schemas"]["ConfirmedSocialProfile"][];
         };
         /**
          * StarConversationResponse
@@ -15449,6 +15459,7 @@ export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
+export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];

@@ -18,7 +18,7 @@ class IdKind:
 
 
 #: A Mongo ObjectId in its 24-hex string form.
-ObjectIdStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{24}$"), IdKind("object_id")]
+ObjectIdStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-fA-F]{24}$"), IdKind("object_id")]
 
 #: A machine identifier: a uuid, a slug, a tool name, a flag key. No whitespace, no "@".
 Identifier = Annotated[
@@ -30,10 +30,13 @@ Identifier = Annotated[
 #: A URL path with no query string, e.g. "/api/v1/chat-stream". No whitespace, "@", "?" or "#".
 UrlPath = Annotated[str, StringConstraints(pattern=r"^/[^\s@?#]*$"), IdKind("url_path")]
 
+#: A hostname as urlsplit returns it, internationalised names included. One token: no whitespace, "@" or "/".
+Hostname = Annotated[str, StringConstraints(pattern=r"^[^\s@/]{1,253}$"), IdKind("hostname")]
+
 #: An ISO 4217 currency code as the payment provider reports it ("USD", "inr").
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$"), IdKind("currency_code")]
 
 #: A single emoji: short and non-ASCII only, so no word can pass as one.
 Emoji = Annotated[str, StringConstraints(pattern=r"^[^\x00-\x7F]{1,16}$"), IdKind("emoji")]
 
-__all__ = ["CurrencyCode", "Emoji", "IdKind", "Identifier", "ObjectIdStr", "UrlPath"]
+__all__ = ["CurrencyCode", "Emoji", "Hostname", "IdKind", "Identifier", "ObjectIdStr", "UrlPath"]

@@ -75,6 +75,9 @@ class IntegrationError(WebEvent):
     event: ClassVar[str] = "integration:error"
 
     integration: Identifier
+    # The failed request's HTTP status (0 for a transport failure) and the API's machine code; never its message.
+    status: int | None = None
+    error_code: Identifier | None = None
 
 
 class McpConnectionTested(ServerEvent):

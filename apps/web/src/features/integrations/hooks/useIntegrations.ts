@@ -1,3 +1,5 @@
+import type { EventProperties } from "@gaia/shared/analytics/events";
+import { ApiError } from "@shared/api";
 import { reconcileIntegrationStatus } from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -13,6 +15,15 @@ import type {
   IntegrationStatus,
 } from "../types";
 import { byConnectionStateThenName, toIntegration } from "../utils/catalog";
+
+/** The failure's status and machine code for integration:error; never its message, which can echo user input. */
+function integrationFailure(
+  integration: string,
+  error: unknown,
+): EventProperties["integration:error"] {
+  if (!(error instanceof ApiError)) return { integration };
+  return { integration, status: error.status, error_code: error.code };
+}
 
 export interface UseIntegrationsReturn {
   // Data
@@ -159,7 +170,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
           { id: toastId },
         );
-        track("integration:error", { integration: integrationId });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },
@@ -180,7 +191,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
-        track("integration:error", { integration: integrationId });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },

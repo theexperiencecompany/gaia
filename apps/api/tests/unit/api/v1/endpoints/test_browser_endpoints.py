@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 import pytest
 from tests.helpers import captured_wide_event
 
@@ -243,6 +244,10 @@ class TestImportBrowserSessions:
             "client": (client_host, 12345) if client_host else None,
         }
         return Request(scope)
+
+    def test_a_browser_name_analytics_cannot_carry_is_refused_before_the_import(self):
+        with pytest.raises(ValidationError):
+            self._payload(source_browser="Microsoft Edge")
 
     async def test_valid_token_imports_and_reports_hosts(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "consume_import_token", self._consume("tok"))

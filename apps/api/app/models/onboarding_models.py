@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.models.user_models import OnboardingPhase
 from app.models.workflow_models import WorkflowStep
+from shared.py.analytics.catalog.properties import Identifier
 
 # The four holo-card houses. The frontend types the same closed set.
 House = Literal["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -50,6 +51,12 @@ class SocialProfile(BaseModel):
 
     platform: str
     url: str
+
+
+class ConfirmedSocialProfile(SocialProfile):
+    """A profile the user confirmed; its platform is a slug so onboarding analytics can carry it."""
+
+    platform: Identifier
 
 
 class EmailSummary(BaseModel):

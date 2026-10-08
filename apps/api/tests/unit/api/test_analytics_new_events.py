@@ -920,6 +920,18 @@ class TestNotificationNewEvents:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), NotificationUnsubscribed())
 
+    async def test_a_token_for_a_non_user_id_unsubscribes_nobody(self, client: AsyncClient) -> None:
+        with (
+            patch(f"{NOTIF}.verify_unsubscribe_token", return_value="system"),
+            patch(
+                f"{NOTIF}.user_repository.set_channel_preferences",
+                new_callable=AsyncMock,
+            ) as mock_set,
+        ):
+            resp = await client.post("/api/v1/notifications/unsubscribe?token=tok")
+        assert resp.status_code == 500
+        mock_set.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Approvals + platform connect-init + MCP test
