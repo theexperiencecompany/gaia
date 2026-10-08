@@ -344,7 +344,9 @@ class TestHealthCheckExpired:
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
             patch(
                 f"{MODULE}._call_health_check_agent",
-                AsyncMock(side_effect=ValueError("No human message or selected tool")),
+                AsyncMock(
+                    side_effect=ValueError("No human message, selected tool or uploaded file")
+                ),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
             pytest.raises(ValueError, match="No human message"),
@@ -422,7 +424,9 @@ class TestHealthCheckDormant:
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
             patch(
                 f"{MODULE}._call_health_check_agent",
-                AsyncMock(side_effect=ValueError("No human message or selected tool")),
+                AsyncMock(
+                    side_effect=ValueError("No human message, selected tool or uploaded file")
+                ),
             ),
             pytest.raises(ValueError, match="No human message"),
         ):
@@ -914,7 +918,9 @@ class TestHealthCheckAgentCall:
     async def test_an_agent_failure_is_raised_not_turned_into_a_verdict(self) -> None:
         # A fabricated NEEDS_ATTENTION hid a health check that never ran for months,
         # and on the expired tier it became the body of the user's notification.
-        agent = AsyncMock(side_effect=ValueError("No human message or selected tool"))
+        agent = AsyncMock(
+            side_effect=ValueError("No human message, selected tool or uploaded file")
+        )
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.load_user_context", AsyncMock(return_value=None)),

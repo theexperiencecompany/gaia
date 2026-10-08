@@ -380,6 +380,37 @@ class TestUserContentExtraction:
                     query="   ",
                 )
 
+    @pytest.mark.asyncio
+    async def test_a_files_only_turn_becomes_a_message_listing_the_files(self) -> None:
+        """A user may send files with no text; the turn is the files, not an error."""
+        files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
+        p = _patches()
+        with p["create_system"], p["build_dynamic"]:
+            result = await construct_langchain_messages(
+                query="",
+                attachments=MessageAttachments(
+                    files_data=files, currently_uploaded_file_ids=["f1"]
+                ),
+            )
+
+        human = result[2]
+        assert isinstance(human, HumanMessage)
+        assert "[Uploaded files]" in human.content
+        assert "report.pdf" in human.content
+
+    @pytest.mark.asyncio
+    async def test_files_the_turn_did_not_upload_do_not_stand_in_for_a_message(self) -> None:
+        files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
+        p = _patches()
+        with p["create_system"], p["build_dynamic"]:
+            with pytest.raises(ValueError, match="No human message"):
+                await construct_langchain_messages(
+                    query="",
+                    attachments=MessageAttachments(
+                        files_data=files, currently_uploaded_file_ids=[]
+                    ),
+                )
+
 
 class TestReplyContext:
     @pytest.mark.asyncio
@@ -559,7 +590,9 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
         """Silently sending an empty turn to the model would burn a call and return nothing useful."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            with pytest.raises(ValueError, match="No human message or selected tool"):
+            with pytest.raises(
+                ValueError, match="No human message, selected tool or uploaded file"
+            ):
                 await construct_langchain_messages(
                     query="",
                     scope=MessageScope(user_id="uid-1"),
