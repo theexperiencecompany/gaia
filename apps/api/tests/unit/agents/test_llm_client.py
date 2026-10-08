@@ -3186,6 +3186,31 @@ class TestWithUsageHandler:
 
 
 @pytest.mark.unit
+class TestIsOpenAIWire:
+    """_is_openai_wire decides whether prompt_cache_key may be bound; only OpenAI's own API takes it."""
+
+    def test_default_base_is_openai(self) -> None:
+        assert client_module._is_openai_wire(ChatOpenAI(model="m", api_key=SecretStr("k")))
+
+    def test_an_explicit_openai_base_is_openai(self) -> None:
+        node = ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="https://api.openai.com/v1")
+        assert client_module._is_openai_wire(node) is True
+
+    def test_another_openai_compatible_base_is_not_openai(self) -> None:
+        node = ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="http://127.0.0.1:8787/v1")
+        assert client_module._is_openai_wire(node) is False
+
+    def test_a_proxy_path_naming_openai_is_not_openai(self) -> None:
+        node = ChatOpenAI(
+            model="m", api_key=SecretStr("k"), base_url="https://proxy.example/api.openai.com/v1"
+        )
+        assert client_module._is_openai_wire(node) is False
+
+    def test_a_non_openai_client_is_not_openai(self) -> None:
+        assert client_module._is_openai_wire(ChatOpenRouter(model="m", api_key="k")) is False
+
+
+@pytest.mark.unit
 class TestIsOpenrouterWire:
     """_is_openrouter_wire decides whether the sticky session_id may be bound.
 
@@ -3212,6 +3237,12 @@ class TestIsOpenrouterWire:
         # OpenRouter — kills the getattr-name and base-is-None-only mutants.
         node = ChatOpenRouter(
             model="m", api_key="k", openrouter_api_base="https://api.openai.com/v1"
+        )
+        assert client_module._is_openrouter_wire(node) is False
+
+    def test_a_proxy_path_naming_openrouter_is_not_openrouter(self) -> None:
+        node = ChatOpenRouter(
+            model="m", api_key="k", openrouter_api_base="https://proxy.example/openrouter.ai/v1"
         )
         assert client_module._is_openrouter_wire(node) is False
 

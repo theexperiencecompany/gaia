@@ -5,6 +5,7 @@ from functools import cache
 import math
 import time
 from typing import Any, TypedDict, TypeVar, cast
+from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -722,6 +723,11 @@ def _wire_client(runnable: Runnable) -> object:
     return None
 
 
+def _is_default_or_host(base: object, host: str) -> bool:
+    """Whether a client's base URL is unset (the SDK default) or points at exactly host."""
+    return base is None or urlparse(str(base)).hostname == host
+
+
 def _is_openrouter_wire(runnable: Runnable) -> bool:
     """Whether runnable calls OpenRouter's own service, the only one that understands session_id."""
     client = _wire_client(runnable)
@@ -729,7 +735,7 @@ def _is_openrouter_wire(runnable: Runnable) -> bool:
         return False
     # A ChatOpenRouter aimed at another OpenAI-compatible endpoint (the sim stub) rejects it.
     base = client.openrouter_api_base
-    return base is None or "openrouter.ai" in str(base)
+    return _is_default_or_host(base, "openrouter.ai")
 
 
 def _is_openai_wire(runnable: Runnable) -> bool:
@@ -738,7 +744,7 @@ def _is_openai_wire(runnable: Runnable) -> bool:
     if not isinstance(client, ChatOpenAI):
         return False
     base = client.openai_api_base
-    return base is None or "api.openai.com" in str(base)
+    return _is_default_or_host(base, "api.openai.com")
 
 
 def _resolve_fallback(
