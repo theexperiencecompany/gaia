@@ -46,6 +46,7 @@ from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -113,7 +114,7 @@ async def list_todos(
         todo={
             "operation": "list",
             "search_mode": params.mode.value,
-            "query": params.q,
+            **({"query": user_text_shape(params.q)} if params.q else {}),
             "page": params.page,
             "per_page": params.per_page,
             "filters_applied": params.filters_applied,

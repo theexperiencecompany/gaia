@@ -11,6 +11,7 @@ from langgraph.store.base import SearchItem
 import pytest
 
 from app.agents.tools.core import retrieval
+from app.utils.log_identifiers import user_text_shape
 from tests.helpers import captured_wide_event
 
 
@@ -596,7 +597,7 @@ class TestRetrieveToolsDiscovery:
 
         assert log.get()["tool_retrieval"] == {
             "mode": "discovery",
-            "query": "send email",
+            "query": {"length": len("send email"), "hash": user_text_shape("send email")["hash"]},
             "tool_space": "general",
             "user_id": "u1",
             "namespaces_searched": ["general"],

@@ -66,6 +66,7 @@ from app.templates.docstrings.todo_tool_docs import (
     UPDATE_TODO,
 )
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 # A TodoResponse / ProjectResponse / TodoStats serialized with
@@ -426,7 +427,7 @@ async def search_todos(
 ) -> TodoListResult:
     try:
         log.set(tool={"name": "search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=query)
+        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=user_text_shape(query))
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -471,7 +472,7 @@ async def semantic_search_todos(
 ) -> SemanticSearchResult:
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=query)
+        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=user_text_shape(query))
         user_id = get_user_id_from_config(config)
 
         if not user_id:

@@ -9,6 +9,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.notes import note_repository
 from app.models.search_models import MessageSearchResult, NoteSearchResult, SearchResultsResponse
 from app.utils.general_utils import get_context_window
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 
@@ -21,8 +22,7 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
     """
     log.set(
         search={
-            "query": query,
-            "query_length": len(query),
+            "query": user_text_shape(query),
             "search_type": "keyword",
             "sources": ["messages", "conversations", "notes"],
         },
@@ -61,8 +61,7 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
         duration_ms = int((time.monotonic() - search_start) * 1000)
         log.set(
             search={
-                "query": query,
-                "query_length": len(query),
+                "query": user_text_shape(query),
                 "search_type": "keyword",
                 "sources": ["messages", "conversations", "notes"],
                 "result_count": result_count,

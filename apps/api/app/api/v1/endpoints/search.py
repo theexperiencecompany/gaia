@@ -24,6 +24,7 @@ from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
 from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search import perform_search
 from shared.py.wide_events import log
 
@@ -47,7 +48,7 @@ async def search_messages_endpoint(
     log.set(
         user={"id": user_id},
         search={
-            "query": query,
+            "query": user_text_shape(query),
             "mode": "keyword",
             "scope": ["messages", "conversations", "notes"],
         },
@@ -95,7 +96,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
     """
     log.set(
         search={
-            "query": query,
+            "query": user_text_shape(query),
             "mode": "web",
             "scope": ["emails"],
         },

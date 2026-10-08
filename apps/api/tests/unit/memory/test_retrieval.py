@@ -7,6 +7,7 @@ is mocked; the fusion, filtering, scoring and assembly logic under test is real.
 import asyncio
 from datetime import UTC, date as date_type, datetime, timedelta
 from fnmatch import fnmatch
+import json
 import math
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -57,7 +58,8 @@ from app.memory.retrieval import (
     recall_transcripts,
 )
 from app.models.memory_db_models import MemoryRecord
-from tests.helpers import captured_wide_event
+from shared.py.wide_events import wide_task
+from tests.helpers import WideEventRecorder, captured_wide_event
 
 USER = "507f1f77bcf86cd799439011"
 
@@ -1070,13 +1072,13 @@ class _RecallHarness:
         )
 
 
-async def _run_recall(harness: _RecallHarness, patches, **kwargs):
+async def _run_recall(harness: _RecallHarness, patches, *, query: str = "the query", **kwargs):
     from contextlib import ExitStack
 
     with ExitStack() as stack:
         for patcher in patches:
             stack.enter_context(patcher)
-        return await recall.__wrapped__(USER, "the query", **kwargs)
+        return await recall.__wrapped__(USER, query, **kwargs)
 
 
 class TestRecallCaching:
@@ -1343,6 +1345,28 @@ class TestRecall:
         )
         result = await _run_recall(harness, patches, include_graph_expansion=False)
         assert [memory.content for memory in result.memories] == [row.content]
+
+
+class TestRecallLogsNoUserText:
+    async def test_the_chat_turn_event_records_the_query_shape_and_never_its_words(self) -> None:
+        """Recall runs inside the chat turn's boundary, so its query is the user's own message."""
+        query = "my therapist said the divorce papers arrive friday"
+        row = make_row("a fact")
+        harness = _RecallHarness()
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            async with wide_task("chat_stream"):
+                await _run_recall(
+                    harness,
+                    harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row]),
+                    query=query,
+                    include_graph_expansion=False,
+                )
+
+        assert "divorce" not in json.dumps(recorder.events, default=str)
+        shape = recorder.event("chat_stream")["memory"]["query"]
+        assert shape["length"] == len(query)
+        assert shape["hash"].startswith("h_")
 
 
 class TestRecallQualityRegressions:

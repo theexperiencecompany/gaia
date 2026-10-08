@@ -28,6 +28,7 @@ from app.models.todo_models import (
 )
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import TrackedTodoWorkflowError
+from app.utils.log_identifiers import user_text_shape
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
@@ -135,7 +136,7 @@ class TestListTodos:
             todo={
                 "operation": "list",
                 "search_mode": "semantic",
-                "query": "launch",
+                "query": {"length": len("launch"), "hash": user_text_shape("launch")["hash"]},
                 "page": 2,
                 "per_page": 10,
                 "filters_applied": ["query", "project"],

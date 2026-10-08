@@ -67,6 +67,7 @@ from app.templates.docstrings.memory_tool_docs import (
     UPDATE_MEMORY_DOCUMENT,
 )
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _ERR_NO_USER_ID = "Error: user_id not found in config"
@@ -402,7 +403,7 @@ async def search_memory(
         memory=MemoryContext(
             operation="recall",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(result.memories),
         ),
     )
@@ -534,7 +535,7 @@ async def search_journal(
         memory=MemoryContext(
             operation="recall_episodes",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(episodes),
         ),
     )
@@ -584,7 +585,7 @@ async def search_conversations(
         memory=MemoryContext(
             operation="recall_transcripts",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(hits),
         ),
     )
