@@ -16,10 +16,18 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
+from langgraph.runtime import Runtime
 import pytest
 
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 
 NODE = "app.override.langgraph_bigtool.dynamic_tool_node"
 
@@ -231,3 +239,71 @@ class TestRealMiddlewarePath:
         message = await _run(_real_node(breaks), "ghost", {"query": "q"})
         assert message.content == "Tool 'ghost' not found"
         assert message.tool_call_id == "call_1"
+
+
+_STAMPED = worker_context(Trigger.SCHEDULE).acting_as(Actor.AGENT)
+
+
+@tool
+def reports_its_analytics_context(query: str) -> str:
+    """Name the analytics context the tool call runs in."""
+    return f"{query}:{current_analytics_context().model_dump_json()}"
+
+
+def _config_stamped() -> dict[str, Any]:
+    return {"configurable": {"analytics_context": _STAMPED.model_dump(mode="json")}}
+
+
+class TestToolCallsActAsTheRunsAgent:
+    """Every tool call runs as the agent in its run tree's context, never the request's user."""
+
+    @pytest.mark.parametrize(
+        "middleware_executor", [None, MiddlewareExecutor([_Passthrough()])], ids=["plain", "chain"]
+    )
+    async def test_a_tool_call_runs_in_the_stamped_context(
+        self, middleware_executor: MiddlewareExecutor | None
+    ) -> None:
+        node = DynamicToolNode(
+            {"reports_its_analytics_context": reports_its_analytics_context},
+            middleware_executor=middleware_executor,
+        )
+        users_request = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+
+        with analytics_context(users_request):
+            result = await node._afunc(
+                _one_call("reports_its_analytics_context", {"query": "q"}),
+                _config_stamped(),
+                Runtime(),
+            )
+
+        (message,) = result["messages"]
+        assert message.content == f"q:{_STAMPED.model_dump_json()}"
+        # The binding is scoped to the call: the request's context is untouched after it.
+        with analytics_context(users_request):
+            assert current_analytics_context() == users_request
+
+    def test_a_sync_tool_call_runs_in_the_stamped_context(self) -> None:
+        node = DynamicToolNode({"reports_its_analytics_context": reports_its_analytics_context})
+
+        result = node._func(
+            _one_call("reports_its_analytics_context", {"query": "q"}),
+            _config_stamped(),
+            Runtime(),
+        )
+
+        (message,) = result["messages"]
+        assert message.content == f"q:{_STAMPED.model_dump_json()}"
+
+    async def test_an_executor_with_no_tool_hooks_leaves_the_call_to_the_parent_path(self) -> None:
+        node, executor = _make_node()
+        executor.has_wrap_tool_call.return_value = False
+
+        result = await node._afunc(_input_with_echo_call(), _config_stamped(), Runtime())
+
+        executor.wrap_tool_invocation.assert_not_awaited()
+        (message,) = result["messages"]
+        assert message.content == "hi"

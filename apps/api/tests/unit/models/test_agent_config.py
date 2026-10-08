@@ -11,7 +11,10 @@ from app.models.agent_config import (
     agent_configurable,
     read_agent_configurable,
     read_run_metadata,
+    run_analytics_context,
 )
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 
 class TestAgentConfigurable:
@@ -71,3 +74,25 @@ class TestReadRunMetadata:
     def test_the_stamped_owner_is_read_and_langchains_own_keys_are_ignored(self) -> None:
         metadata = {"user_id": "u1", "ls_provider": "openai"}
         assert read_run_metadata({"metadata": metadata}).user_id == "u1"
+
+
+class TestRunAnalyticsContext:
+    """An agent run acts in the context stamped at its root, or else the bound one, as the agent."""
+
+    def test_the_stamped_context_wins_over_the_bound_one(self) -> None:
+        stamped = worker_context(Trigger.SCHEDULE)
+        with analytics_context(worker_context(Trigger.SYSTEM)):
+            assert (
+                run_analytics_context({"analytics_context": stamped.model_dump(mode="json")})
+                == stamped
+            )
+
+    def test_an_unstamped_run_is_the_bound_context_acting_as_the_agent(self) -> None:
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            ),
+            posthog_session_id="sess-1",
+        )
+        with analytics_context(users_turn):
+            assert run_analytics_context({}) == users_turn.acting_as(Actor.AGENT)

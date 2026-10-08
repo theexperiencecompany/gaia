@@ -470,6 +470,7 @@ class TestComposioCallback:
         )
         assert response.status_code == 307
         assert "oauth_success=true" in response.headers["location"]
+        mock_state.assert_awaited_once_with("tok")
         # Explicit user id, not the request context: Composio redirects the
         # browser here with no WorkOS session, so a context capture would land
         # the connection on an anonymous profile.

@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.middleware.entitlement import (
     ENTITLEMENT_UNAVAILABLE_MESSAGE,
+    UNMATCHED_ROUTE,
     EntitlementMiddleware,
 )
 from app.api.v1.middleware.entitlement_allowlist import (
@@ -379,6 +380,24 @@ async def test_the_gate_names_the_route_the_router_dispatches_to(
 
     assert len(concrete) > 100
     assert not mislabelled
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "feature"),
+    [
+        ("DELETE", "/api/v1/paid", "/api/v1/paid"),
+        ("GET", "/api/v1/no-such-route", UNMATCHED_ROUTE),
+    ],
+)
+async def test_a_request_no_route_fully_matches_is_named_by_its_path_or_as_unmatched(
+    method: str, path: str, feature: str
+) -> None:
+    """A wrong method still names the route its path matches; a path no route serves names none."""
+    gate = AsyncMock(side_effect=SubscriptionRequiredException())
+    with patch("app.api.v1.middleware.entitlement.require_active_subscription", gate):
+        await _get(_minimal_app(FAKE_USER), path, method=method)
+
+    gate.assert_awaited_once_with(FAKE_USER.user_id, feature=feature)
 
 
 async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause() -> None:

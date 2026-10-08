@@ -5,6 +5,15 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import VoiceEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "VoiceModeStarted",
+    "VoiceModeStopped",
+    "VoiceSessionEnded",
+    "VoiceSessionStarted",
+    "VoiceTranscriptionReceived",
+    "WakeWordDetected",
+]
+
 
 class VoiceSessionStarted(VoiceEvent):
     """The voice worker joined a room minted for a known GAIA user."""

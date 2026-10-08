@@ -5,6 +5,20 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import BotEvent, ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "BotAudioTranscribed",
+    "BotAuthInitiated",
+    "BotChatCompleted",
+    "BotChatStarted",
+    "BotCommandExecuted",
+    "BotError",
+    "BotFileDelivered",
+    "BotFileUploaded",
+    "BotMessageReceived",
+    "BotReactionDelivered",
+    "BotSessionReset",
+]
+
 
 class BotMessageReceived(BotEvent):
     """A bot received a slash command or a chat message from a platform user."""

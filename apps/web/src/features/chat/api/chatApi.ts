@@ -22,7 +22,12 @@ import type { DesktopToolResult } from "@shared/desktop-tools";
 import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { apiBaseUrl, clientHeaders } from "@/lib/api/client";
-import { api, binaryField, formDataSerializer } from "@/lib/api/typed";
+import {
+  api,
+  binaryField,
+  formDataSerializer,
+  type RequestOrigin,
+} from "@/lib/api/typed";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
@@ -132,18 +137,27 @@ export type SyncedConversation = ConversationSyncRow;
 
 export const chatApi = {
   // Fetch conversations with pagination
-  fetchConversations: (page = 1, limit = 20) =>
+  fetchConversations: (
+    page = 1,
+    limit = 20,
+    { background }: RequestOrigin = {},
+  ) =>
     api.get("/api/v1/conversations", {
       query: { page, limit },
       errorMessage: "Failed to fetch conversations",
+      background,
     }),
 
   // Batch sync conversations - only fetch stale conversations
-  batchSyncConversations: (conversations: ConversationSyncItem[]) =>
+  batchSyncConversations: (
+    conversations: ConversationSyncItem[],
+    { background }: RequestOrigin = {},
+  ) =>
     api.post("/api/v1/conversations/batch-sync", {
       body: { conversations },
       errorMessage: "Failed to sync conversations",
       silent: true,
+      background,
     }),
 
   // File upload
@@ -475,9 +489,11 @@ export const chatApi = {
    * backend, where the awaiting agent tool picks it up via Redis.
    */
   postDesktopToolResult: async (result: DesktopToolResult): Promise<void> => {
+    // The agent asked for this tool run; the user did nothing.
     await api.post("/api/v1/desktop/tool-result", {
       body: result,
       silent: true,
+      background: true,
     });
   },
 

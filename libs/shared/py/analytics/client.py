@@ -21,7 +21,7 @@ from shared.py.analytics.identity import AnalyticsId, PlatformIdentity, UserId
 from shared.py.wide_events import log
 
 DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
-# Ingestion otherwise moves timestamp by (its clock - sent_at), so a resend would land at another time.
+#: Ingestion otherwise moves timestamp by (its clock - sent_at), so a resend lands at another time.
 IGNORE_SENT_AT = "$ignore_sent_at"
 
 

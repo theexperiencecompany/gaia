@@ -5,6 +5,14 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "DesktopPopupDismissed",
+    "DesktopPopupOpened",
+    "DeviceApproved",
+    "DeviceRevoked",
+    "DeviceSelfPaired",
+]
+
 
 class DeviceSelfPaired(ServerEvent):
     """An authenticated host paired itself as a device."""

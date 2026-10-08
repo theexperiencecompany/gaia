@@ -17,6 +17,12 @@ export interface ApiOptions {
   successMessage?: string;
   errorMessage?: string;
   silent?: boolean;
+  /**
+   * No user action caused this request (a poll, a background sync, a reply to
+   * the agent). The server then attributes it as system work, so an idle tab
+   * never counts its user as active.
+   */
+  background?: boolean;
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -116,6 +122,12 @@ function trackRequestFailure(
   const last = lastRequestFailureAt.get(key);
   if (last !== undefined && now - last < REQUEST_FAILED_DEDUPE_WINDOW_MS) {
     return;
+  }
+  // Forget the keys whose window has passed, so a long-lived tab holds only live windows.
+  for (const [seenKey, seenAt] of lastRequestFailureAt) {
+    if (now - seenAt >= REQUEST_FAILED_DEDUPE_WINDOW_MS) {
+      lastRequestFailureAt.delete(seenKey);
+    }
   }
   lastRequestFailureAt.set(key, now);
   track("api:request_failed", {

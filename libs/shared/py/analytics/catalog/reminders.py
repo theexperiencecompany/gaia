@@ -5,6 +5,15 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
+__all__ = [
+    "ReminderCompleted",
+    "ReminderCreated",
+    "ReminderDeleted",
+    "ReminderPaused",
+    "ReminderResumed",
+    "ReminderUpdated",
+]
+
 
 class ReminderCreated(ServerEvent):
     """A user created a reminder."""

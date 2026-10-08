@@ -5,10 +5,12 @@ excluded paths, agent-only paths, session refresh cookie setting,
 and the _authenticate_session helper.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,8 +24,12 @@ from app.api.v1.middleware.auth import (
     WorkOSAuthMiddleware,
     get_current_user,
 )
-from app.api.v1.middleware.client_type import CLIENT_TYPE_HEADER
-from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.api.v1.middleware.client_type import (
+    BACKGROUND_REQUEST_ORIGIN,
+    CLIENT_TYPE_HEADER,
+    REQUEST_ORIGIN_HEADER,
+)
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.core.request_context import get_authenticated_user
@@ -828,6 +834,20 @@ class TestRequestAttribution:
 
     @staticmethod
     def _client(state: dict[str, object]) -> TestClient:
+        return TestClient(TestRequestAttribution._app(state))
+
+    @staticmethod
+    async def _post_in_loop(state: dict[str, object], headers: dict[str, str]) -> None:
+        """Post on the test's own loop, so the user:active gate reaches the per-test fake Redis."""
+        transport = ASGITransport(app=TestRequestAttribution._app(state))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/api/v1/chat-stream", headers=headers)
+        await asyncio.gather(
+            *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+        )
+
+    @staticmethod
+    def _app(state: dict[str, object]) -> FastAPI:
         app = FastAPI()
 
         class _Authenticate(BaseHTTPMiddleware):
@@ -845,7 +865,7 @@ class TestRequestAttribution:
             capture(UserId(GAIA_USER_ID), NotesCreated())
             return {"ok": True}
 
-        return TestClient(app)
+        return app
 
     @staticmethod
     def _attribution(events: list[dict]) -> tuple[object, object, object]:
@@ -879,6 +899,26 @@ class TestRequestAttribution:
 
         assert self._attribution(posthog_events) == ("user", "interactive", "voice")
 
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_an_automatic_client_request_is_not_the_users_action(self, posthog_events):
+        """An idle tab's poll must never mark its user active for the day."""
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        await self._post_in_loop(
+            {"user": user},
+            {REQUEST_ORIGIN_HEADER: BACKGROUND_REQUEST_ORIGIN, CLIENT_TYPE_HEADER: "desktop"},
+        )
+
+        assert self._attribution(posthog_events) == ("agent", "system", "desktop")
+        assert [e for e in posthog_events if e["event"] == "user:active"] == []
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_users_own_request_still_marks_them_active(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        await self._post_in_loop({"user": user}, {})
+
+        [mark] = [e for e in posthog_events if e["event"] == "user:active"]
+        assert mark["distinct_id"] == GAIA_USER_ID
+
     def test_a_webhook_is_the_workers_not_the_users(self, posthog_events):
         self._client({}).post("/api/v1/payments/webhooks/dodo")
 
@@ -886,12 +926,15 @@ class TestRequestAttribution:
 
     def test_a_malformed_session_header_joins_no_session(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
-        self._client({"user": user}).post(
-            "/api/v1/chat-stream", headers={POSTHOG_SESSION_HEADER: "not a session"}
-        )
+        with patch("app.api.v1.middleware.auth.log") as mock_log:
+            self._client({"user": user}).post(
+                "/api/v1/chat-stream", headers={POSTHOG_SESSION_HEADER: "not a session"}
+            )
 
         [event] = _route_events(posthog_events)
         assert "$session_id" not in event["properties"]
+        # The rejection is logged by shape only: the header's value never reaches the log.
+        mock_log.warning.assert_called_once_with("posthog_session_header_rejected", length=13)
 
 
 class TestDevBypassWithoutAMongoUser:
