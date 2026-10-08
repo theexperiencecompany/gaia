@@ -49,7 +49,7 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.utils.auth_utils import OwnerNotFoundError
+from app.utils import auth_utils
 from app.workers.tasks.tracked_todo_tasks import (
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
@@ -1686,7 +1686,7 @@ class TestResumeTrackedTodo:
     async def test_an_ownerless_todo_is_retired_and_releases_the_lock(self) -> None:
         doc = _doc(user_id=SYSTEM_USER_ID)
         run = self._build(doc=doc)
-        run.load_user.side_effect = OwnerNotFoundError(SYSTEM_USER_ID)
+        run.load_user.side_effect = auth_utils.OwnerNotFoundError(SYSTEM_USER_ID)
         run.repo.update = AsyncMock()
         archive = AsyncMock(return_value=True)
         with (
