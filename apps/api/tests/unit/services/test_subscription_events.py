@@ -17,7 +17,11 @@ from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
+from app.constants.payments import (
+    PAID_PERSON_SYNC_TASK,
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+    SubscriptionWorkflowSync,
+)
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
 from app.services.payments.payment_service import DodoPaymentService
@@ -675,7 +679,8 @@ class TestAFailedWorkflowSyncIsOwedToTheWorker:
 
         assert mock_log.error.call_count == 2
         mock_log.error.assert_called_with(
-            f"{LogTag.PAYMENT} Workflow subscription sync could not be queued",
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
             error="redis down",
             error_type="ConnectionError",
             user_id=FAKE_USER_ID,
@@ -1049,24 +1054,34 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
             user_id=FAKE_USER_ID,
         )
 
-    async def test_an_unreadable_row_after_the_write_still_lapses_the_workflows(
+    async def test_an_unreadable_row_after_the_write_queues_the_paid_state_sync(
         self, mock_webhook_subscription_repository, posthog_client, mock_deactivate_workflows
     ) -> None:
+        """A redelivery reads the row as unchanged, so only the worker can come back for it."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             side_effect=[_row(last_event_at=None), PyMongoError("down")]
         )
+        pool = object()
 
-        with patch(f"{EVENTS_MODULE}.log") as log:
+        with (
+            patch(
+                f"{EVENTS_MODULE}.RedisPoolManager.get_pool",
+                new_callable=AsyncMock,
+                return_value=pool,
+            ),
+            patch(f"{EVENTS_MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
             result = await _apply(SubscriptionEventKind.FAILED)
 
         assert result.outcome is SubscriptionEventOutcome.APPLIED
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         posthog_client.set.assert_not_called()
-        log.error.assert_called_once_with(
-            f"{LogTag.PAYMENT} Paid person properties not synced: the row could not be read",
-            subscription_id="sub_xyz789",
-            user_id=FAKE_USER_ID,
-            error_type="PyMongoError",
+        enqueue.assert_awaited_once_with(
+            pool,
+            PAID_PERSON_SYNC_TASK,
+            FAKE_USER_ID,
+            "sub_xyz789",
+            _job_id=f"{PAID_PERSON_SYNC_TASK}:{FAKE_USER_ID}:sub_xyz789",
         )
 
     async def test_a_plan_change_leaves_the_paid_status_alone(

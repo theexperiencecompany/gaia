@@ -24,7 +24,11 @@ from functools import partial
 from pymongo.errors import PyMongoError
 
 from app.constants.log_tags import LogTag
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
+from app.constants.payments import (
+    PAID_PERSON_SYNC_TASK,
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+    SubscriptionWorkflowSync,
+)
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
@@ -107,30 +111,37 @@ class SubscriptionEventResult:
     user_id: str | None
 
 
-async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
-    """Hand an unfinished workflow move to the worker, which owns the retries.
+async def _queue_retry(task: str, *args: str, **context: str) -> None:
+    """Hand a post-write step that did not finish to the worker, which owns the retries.
 
-    Dodo's own retry cannot recover this: the row above already carries the
-    reported status, so a redelivery reduces to UNCHANGED and never reaches
-    the workflows again. The job id is per user and direction, so a second
-    billing event for the same move collapses onto the one already queued.
+    Dodo's own retry cannot recover it: the row already carries the reported
+    status, so a redelivery reduces to UNCHANGED and never reaches the step
+    again. The job id is the task and its arguments, so a second billing event
+    owing the same step collapses onto the one already queued.
     """
-    job_id = f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{user_id}:{sync.value}"
     try:
         pool = await RedisPoolManager.get_pool()
-        await enqueue_worker_job(
-            pool, SUBSCRIPTION_WORKFLOW_SYNC_TASK, user_id, sync.value, _job_id=job_id
-        )
+        await enqueue_worker_job(pool, task, *args, _job_id=":".join((task, *args)))
     except Exception as e:
         # Nothing is left to fall back on, so this line is the only trace the
-        # stranded workflows leave.
+        # unfinished step leaves.
         log.error(
-            f"{LogTag.PAYMENT} Workflow subscription sync could not be queued",
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=task,
             error=str(e),
             error_type=type(e).__name__,
-            user_id=user_id,
-            workflow_sync=sync.value,
+            **context,
         )
+
+
+async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
+    await _queue_retry(
+        SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+        user_id,
+        sync.value,
+        user_id=user_id,
+        workflow_sync=sync.value,
+    )
 
 
 async def reactivate_workflows_safely(user_id: str) -> None:
@@ -361,28 +372,13 @@ def paid_person_properties(
     }
 
 
-async def _sync_paid_person_properties(
-    user_id: str, dodo_subscription_id: str, changes: SubscriptionUpdate
-) -> None:
-    """Re-set the person's paid state from the row as it stands now, when the write moved it.
+async def sync_paid_person_properties(user_id: str, dodo_subscription_id: str) -> None:
+    """Set the person's paid state from the subscription row as it stands now.
 
-    Read after the write rather than taken from this event's snapshot: a newer
-    delivery may have landed meanwhile, and its state is the one to keep. The
-    billing write already committed, so a failed read is logged, never raised:
-    a redelivery would read the row as unchanged and redo nothing.
+    Raises PyMongoError when the row cannot be read, for the caller to retry; a
+    row that is gone is logged, since no retry brings it back.
     """
-    if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
-        return
-    try:
-        current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
-    except PyMongoError as e:
-        log.error(
-            f"{LogTag.PAYMENT} Paid person properties not synced: the row could not be read",
-            subscription_id=dodo_subscription_id,
-            user_id=user_id,
-            error_type=type(e).__name__,
-        )
-        return
+    current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
     if current is None:
         log.error(
             f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
@@ -397,6 +393,29 @@ async def _sync_paid_person_properties(
             cancel_at_period_end=bool(current.cancel_at_next_billing_date),
         ),
     )
+
+
+async def _sync_paid_person_properties(
+    user_id: str, dodo_subscription_id: str, changes: SubscriptionUpdate
+) -> None:
+    """Re-set the person's paid state when the write moved it, from the row as it stands now.
+
+    Read after the write rather than taken from this event's snapshot: a newer
+    delivery may have landed meanwhile, and its state is the one to keep. The
+    billing write already committed, so a failed read becomes worker retries.
+    """
+    if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
+        return
+    try:
+        await sync_paid_person_properties(user_id, dodo_subscription_id)
+    except PyMongoError:
+        await _queue_retry(
+            PAID_PERSON_SYNC_TASK,
+            user_id,
+            dodo_subscription_id,
+            user_id=user_id,
+            subscription_id=dodo_subscription_id,
+        )
 
 
 async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:

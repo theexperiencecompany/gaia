@@ -7,7 +7,7 @@ import stackprinter
 
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.todos import TODO_RUN_FINISH_MAX_TRIES, TODO_RUN_FINISH_TASK
 
 # Needs the same monkey-patches as the API process (main.py) — without this,
@@ -44,6 +44,7 @@ from app.workers.tasks import (
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -118,6 +119,10 @@ _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
     name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
 )
+_sync_paid_person_properties = func(
+    arq_task(sync_paid_person_properties_task),
+    name=PAID_PERSON_SYNC_TASK,
+)
 
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
@@ -151,6 +156,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
+    _sync_paid_person_properties,
 ]
 WorkerSettings.functions = TASK_FUNCTIONS
 
