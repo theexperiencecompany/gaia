@@ -5,6 +5,32 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "BlogArticleViewed",
+    "CtaGetStartedClicked",
+    "FounderLetterCodeCopied",
+    "FounderLetterDiscountCtaClicked",
+    "FounderLetterDismissed",
+    "FounderLetterMeetingClicked",
+    "FounderLetterOpened",
+    "FounderLetterShown",
+    "NavigationCtaClicked",
+    "NavigationGithubClicked",
+    "NavigationNavbarDropdownOpened",
+    "NavigationNavbarLinkClicked",
+    "NavigationSidebarClicked",
+    "RedditPostViewed",
+    "ThanksPageViewed",
+    "UseCasesClicked",
+    "UseCasesPromptInserted",
+    "WhatsNewCardClicked",
+    "WhatsNewCardDismissed",
+    "WhatsNewCardShown",
+    "WhatsNewDocsClicked",
+    "WhatsNewModalOpened",
+    "WhatsNewSlideViewed",
+]
+
 
 class NavigationSidebarClicked(WebEvent):
     """The user clicked one of the app sidebar's top navigation buttons."""

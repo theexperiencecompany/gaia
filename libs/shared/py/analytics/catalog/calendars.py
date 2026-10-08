@@ -5,6 +5,13 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "CalendarEventCreated",
+    "CalendarEventDeleted",
+    "CalendarEventUpdated",
+    "CalendarPreferencesUpdated",
+]
+
 
 class CalendarEventCreated(ServerEvent):
     """A user created one calendar event, or a batch of them."""

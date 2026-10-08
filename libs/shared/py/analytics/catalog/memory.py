@@ -5,6 +5,17 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "MemoryCleared",
+    "MemoryCreated",
+    "MemoryDocumentUpdated",
+    "MemoryItemDeleted",
+    "MemoryUpdated",
+    "NotesCreated",
+    "NotesDeleted",
+    "NotesUpdated",
+]
+
 
 class MemoryCreated(ServerEvent):
     """A user added a memory."""
