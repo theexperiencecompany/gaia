@@ -14,7 +14,8 @@ import pytest
 
 from app.api.v1.endpoints.mcp import mcp_oauth_callback
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
 
@@ -57,7 +58,7 @@ def _callback_seams(
         patch(f"{_CALLBACK}.invalidate_user_integration_caches", new_callable=AsyncMock) as inv,
         patch(f"{_MODULE}.get_api_base_url", return_value="http://api"),
         patch(f"{_MODULE}.get_frontend_url", return_value="http://frontend"),
-        patch(f"{_CALLBACK}.capture_context_event") as capture,
+        patch(f"{_CALLBACK}.capture") as capture,
     ):
         yield {"invalidate": inv, "capture": capture}
 
@@ -91,8 +92,8 @@ class TestMCPOAuthCallback:
         mcp_client.token_store.clear_excluded_scopes.assert_awaited_once_with("github")
         seams["invalidate"].assert_awaited_once_with(USER_ID)
         seams["capture"].assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "github", "connection_method": "oauth"},
+            UserId(USER_ID),
+            IntegrationConnected(integration_id="github", connection_method="oauth"),
         )
 
     async def test_success_honours_the_redirect_path_carried_in_state(
@@ -390,7 +391,7 @@ class TestMCPConnectionTest:
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
-            patch(f"{_MODULE}.capture_context_event"),
+            patch(f"{_MODULE}.capture"),
         ):
             resp = await client.post(f"{MCP_BASE}/test/github")
 

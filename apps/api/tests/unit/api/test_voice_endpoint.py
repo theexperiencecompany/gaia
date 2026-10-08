@@ -17,8 +17,9 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.models.payment_models import PlanType
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
-from app.services.analytics_service import AnalyticsEvents
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 
 VOICE_BASE = "/api/v1"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -263,7 +264,7 @@ class TestSelectVoice:
     async def test_select_voice_success(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = "voice-1"
         with (
-            patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.voice.capture") as mock_capture,
             patch("app.api.v1.endpoints.voice.schedule_account_sync") as mock_schedule_sync,
             patch("app.api.v1.endpoints.voice.log") as mock_log,
         ):
@@ -278,8 +279,8 @@ class TestSelectVoice:
         )
         mock_schedule_sync.assert_called_once_with(USER_ID)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice", "voice_id": "voice-1"},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice", voice_id="voice-1"),
         )
 
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
@@ -322,7 +323,7 @@ class TestStarVoice:
     async def test_star_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = ["voice-1", "voice-2"]
         with (
-            patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.voice.capture") as mock_capture,
             patch("app.api.v1.endpoints.voice.log") as mock_log,
         ):
             resp = await client.put(
@@ -335,14 +336,14 @@ class TestStarVoice:
         assert resp.json() == {"starred_voice_ids": ["voice-1", "voice-2"]}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", True)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": True},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice_star", voice_id="voice-1", is_starred=True),
         )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_unstar_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = []
-        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+        with patch("app.api.v1.endpoints.voice.capture") as mock_capture:
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": False}
             )
@@ -350,8 +351,8 @@ class TestStarVoice:
         assert resp.json() == {"starred_voice_ids": []}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", False)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": False},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice_star", voice_id="voice-1", is_starred=False),
         )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)

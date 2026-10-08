@@ -24,6 +24,7 @@ from app.services.triggers.subscription_service import (
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
+from shared.py.analytics import UserId
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -342,7 +343,7 @@ class TestStoreUserInfo:
         await store_user_info("Bob", "bob@test.com", None)
 
         mock_track_signup.assert_called_once_with(
-            user_id=created.id,
+            user_id=UserId(created.id),
             email="bob@test.com",
             name="Bob",
             signup_method="workos",

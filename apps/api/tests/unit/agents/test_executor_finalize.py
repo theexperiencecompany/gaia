@@ -68,6 +68,7 @@ from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 TASK = "run the standup summary"
 CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
 
@@ -82,7 +83,7 @@ def _run(
     return ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
-        user=AuthenticatedUser(user_id="u1"),
+        user=AuthenticatedUser(user_id=USER_ID),
         kind=kind,
         task_id="task-1",
         user_message_id=None,
@@ -385,7 +386,7 @@ class TestRecordPause:
             er, "set_resume_item", new_callable=AsyncMock, side_effect=RuntimeError("redis down")
         ):
             recorded = await er._record_pause(
-                run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2")
+                run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2")
             )  # must not raise
 
         assert recorded is False
@@ -394,7 +395,7 @@ class TestRecordPause:
         run = _run(RunKind.LIVE)
 
         with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2"))
+            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2"))
 
         assert recorded is True
         assert set_item.await_count == 2  # every approval id in the batch gets stamped
@@ -823,7 +824,7 @@ class TestTheCardNoteOnlyGoesWhereCardsRender:
 class TestExecutorRunSource:
     def test_the_source_category_comes_from_the_configurable(self) -> None:
         run = ExecutorRun.from_configurable(
-            {"user_id": "u1", "source_category": "bot"},
+            {"user_id": USER_ID, "source_category": "bot"},
             identity=RunIdentity(
                 stream_id="s1",
                 conversation_id="conv-1",
@@ -838,7 +839,7 @@ class TestExecutorRunSource:
 
     def test_a_configurable_with_no_source_is_background_work(self) -> None:
         run = ExecutorRun.from_configurable(
-            {"user_id": "u1"},
+            {"user_id": USER_ID},
             identity=RunIdentity(
                 stream_id="s1",
                 conversation_id="conv-1",
@@ -1090,7 +1091,7 @@ class TestRecordPauseIdentityRewrite:
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
 
         with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1",))
+            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1",))
 
         assert recorded is True
         item = set_item.await_args.args[1]
@@ -1150,7 +1151,7 @@ class TestARunHandsFinalizeWhatItProduced:
             deliver = enter(patch.object(er, "_deliver_terminal_outcome", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
             enter(patch.object(er.StreamManager, "is_cancelled", AsyncMock(return_value=False)))
-            enter(patch.object(er, "capture_event", MagicMock()))
+            enter(patch.object(er, "capture", MagicMock()))
             enter(patch.object(bridge, "flush_held_approval_cards", AsyncMock()))
             enter(patch.object(eq, "StreamManager", AsyncMock()))
             enter(patch.object(eq, "websocket_manager", AsyncMock()))
@@ -1163,7 +1164,7 @@ class TestARunHandsFinalizeWhatItProduced:
         for entry_id in inbox_ids:
             await inbox.append(entry_id, f"handed over {entry_id}")
         await er.run_executor_background(
-            run=_run(RunKind.LIVE), task=TASK, configurable={"user_id": "u1"}
+            run=_run(RunKind.LIVE), task=TASK, configurable={"user_id": USER_ID}
         )
 
     @staticmethod

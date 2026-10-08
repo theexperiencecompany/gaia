@@ -7,6 +7,7 @@ import pytest
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
+from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -312,7 +313,7 @@ class TestChatStreamEndpoint:
         call_kwargs = mock_start_stream.call_args.kwargs
         assert "stream_id" in call_kwargs
         assert call_kwargs["conversation_id"] == "conv-test-123"
-        assert call_kwargs["user_id"] == "integration-test-user-1"
+        assert call_kwargs["user_id"] == FAKE_USER.user_id
 
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",

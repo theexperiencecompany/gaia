@@ -20,7 +20,7 @@ import {
   useCurrentUserIsFresh,
 } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { resetOnboarding } from "../api/onboardingApi";
@@ -93,7 +93,7 @@ export function useOnboarding(): UseOnboardingReturn {
     if (state.isRestarting) return;
 
     // Captured before the reset, so the event says where the user gave up.
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_RESTARTED, { from_stage: stage });
+    track("onboarding:restarted", { from_stage: stage });
     clearPersisted(userId);
     clearIntroSeen(userId);
     usePaceStore.getState().reset();

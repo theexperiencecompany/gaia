@@ -14,7 +14,8 @@ from unittest.mock import MagicMock
 from livekit.agents import AgentSession, JobContext
 from src.agent import _register_session_logging
 
-from shared.py.analytics import PostHogAnalytics, VoiceAnalyticsEvents
+from shared.py.analytics import PostHogAnalytics, UserId
+from shared.py.analytics.catalog.voice import VoiceSessionEnded
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -43,5 +44,7 @@ def test_session_end_is_captured_then_the_client_is_shut_down() -> None:
     _run_session_end(analytics)
 
     analytics.capture.assert_called_once()
-    assert analytics.capture.call_args.args[:2] == (USER_ID, VoiceAnalyticsEvents.SESSION_ENDED)
+    distinct_id, event = analytics.capture.call_args.args
+    assert distinct_id == UserId(USER_ID)
+    assert isinstance(event, VoiceSessionEnded)
     assert [call[0] for call in analytics.method_calls] == ["capture", "shutdown"]

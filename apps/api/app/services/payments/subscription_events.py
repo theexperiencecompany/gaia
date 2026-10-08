@@ -31,16 +31,19 @@ from app.models.payment_models import (
     SubscriptionUpdate,
 )
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import (
-    AnalyticsEvents,
-    SubscriptionPlan,
-    track_subscription_event,
-)
+from app.services.analytics_service import track_subscription_event
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    SubscriptionActivated,
+    SubscriptionCancelled,
+    SubscriptionExpired,
+    SubscriptionRenewed,
+)
 from shared.py.wide_events import log
 
 CENTS_PER_UNIT = 100
@@ -283,16 +286,6 @@ def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
     return last_event_at is not None and event.occurred_at < last_event_at
 
 
-def _plan_of(data: DodoSubscriptionData) -> SubscriptionPlan:
-    return SubscriptionPlan(
-        name="Pro",
-        amount=data.recurring_pre_tax_amount / CENTS_PER_UNIT
-        if data.recurring_pre_tax_amount
-        else None,
-        currency=data.currency,
-    )
-
-
 def _capture_transition(
     event: SubscriptionEvent, user_id: str, changes: Mapping[str, object]
 ) -> None:
@@ -308,36 +301,36 @@ def _capture_transition(
             changes.get("status") == SubscriptionStatus.ACTIVE.value
         ):
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-                subscription_id=data.subscription_id,
-                plan=_plan_of(data),
+                UserId(user_id),
+                SubscriptionActivated(
+                    subscription_id=data.subscription_id,
+                    plan_name="Pro",
+                    amount=data.recurring_pre_tax_amount / CENTS_PER_UNIT
+                    if data.recurring_pre_tax_amount
+                    else None,
+                    currency=data.currency,
+                ),
             )
         case SubscriptionEventKind.RENEWED:
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
-                subscription_id=data.subscription_id,
-                plan=SubscriptionPlan(currency=data.currency),
+                UserId(user_id),
+                SubscriptionRenewed(subscription_id=data.subscription_id, currency=data.currency),
             )
         case SubscriptionEventKind.CANCELLED if (
             changes.get("cancel_at_next_billing_date") is True
             or changes.get("status") == SubscriptionStatus.CANCELLED.value
         ):
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
-                subscription_id=data.subscription_id,
-                properties={
-                    "product_id": data.product_id,
-                    "billing_interval": data.payment_frequency_interval,
-                },
+                UserId(user_id),
+                SubscriptionCancelled(
+                    subscription_id=data.subscription_id,
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
+                ),
             )
         case SubscriptionEventKind.EXPIRED if "status" in changes:
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
-                subscription_id=data.subscription_id,
+                UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
             )
 
 

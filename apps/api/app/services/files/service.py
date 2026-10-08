@@ -22,7 +22,7 @@ from app.decorators.caching import CacheInvalidator
 from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import FileDeletedResponse
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
     delete_from_index,
@@ -38,6 +38,8 @@ from app.services.files.summaries import (
 )
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatFileUploaded
 from shared.py.wide_events import FileContext, log
 
 # Client-editable file metadata fields. Anything else in the incoming payload is
@@ -210,14 +212,13 @@ class FileService:
             )
             log.info("[files] upload complete file_id", file_id=upload.file_id)
 
-            capture_event(
-                user_id,
-                AnalyticsEvents.FILE_UPLOADED,
-                {
-                    "size_bytes": upload.size_bytes,
-                    "resource_type": upload.resource_type,
-                    "content_type": upload.content_type,
-                },
+            capture(
+                UserId(user_id),
+                ChatFileUploaded(
+                    size_bytes=upload.size_bytes,
+                    resource_type=upload.resource_type,
+                    content_type=upload.content_type,
+                ),
             )
 
             return metadata

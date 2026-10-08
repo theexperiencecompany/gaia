@@ -33,7 +33,13 @@
  * @module
  */
 
-import { Analytics, type AnalyticsContext, BOT_EVENTS } from "../../analytics";
+import {
+  Analytics,
+  type AnalyticsContext,
+  type AnalyticsId,
+  parseUserId,
+  platformIdentity,
+} from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type {
@@ -126,7 +132,7 @@ export abstract class BaseBotAdapter {
    * HTTP round trip per capture would put the analytics path in the latency
    * budget of every message.
    */
-  private readonly distinctIdCache = new Map<string, string>();
+  private readonly distinctIdCache = new Map<string, AnalyticsId>();
 
   /** Shared structured logger for adapter lifecycle and command execution. */
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
@@ -404,7 +410,7 @@ export abstract class BaseBotAdapter {
       // its rate is the signal for raising a limit or chunking the output.
       this.analytics.capture(
         await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.FILE_DELIVERED,
+        "bot:file_delivered",
         {
           success: false,
           reason: "too_large",
@@ -463,7 +469,7 @@ export abstract class BaseBotAdapter {
     }
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.REACTION_DELIVERED,
+      "bot:reaction_delivered",
       reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
     );
   }
@@ -505,7 +511,7 @@ export abstract class BaseBotAdapter {
         // intentionally not shipped to PostHog. Profiles are auto-created from
         // the first capture using the distinctId.
 
-        this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+        this.analytics.capture(distinctId, "bot:message_received", {
           interaction_type: "command",
           command: name,
           has_args: Object.keys(args).length > 0,
@@ -514,7 +520,7 @@ export abstract class BaseBotAdapter {
 
         if (name === "auth") {
           wideLog.audit("auth_link_requested", { user_hash: userHash });
-          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {});
+          this.analytics.capture(distinctId, "bot:auth_initiated", {});
         }
 
         const command = this.commands.get(name);
@@ -540,7 +546,7 @@ export abstract class BaseBotAdapter {
             args,
             rawText,
           });
-          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+          this.analytics.capture(distinctId, "bot:command_executed", {
             command: name,
             duration_ms: Date.now() - startMs,
             success: true,
@@ -554,13 +560,13 @@ export abstract class BaseBotAdapter {
           });
           // Capture only the error class name. Raw messages can contain file
           // paths, request IDs, or upstream-echoed tokens — never ship them.
-          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+          this.analytics.capture(distinctId, "bot:command_executed", {
             command: name,
             duration_ms: durationMs,
             success: false,
             error_type: errorType,
           });
-          this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+          this.analytics.capture(distinctId, "bot:error", {
             context: `command:${name}`,
             error_type: errorType,
           });
@@ -614,11 +620,13 @@ export abstract class BaseBotAdapter {
    * later folds an unlinked user's history in. A failed lookup degrades to the platform id
    * (recoverable) rather than dropping the event.
    */
-  protected async resolveDistinctId(platformUserId: string): Promise<string> {
+  protected async resolveDistinctId(
+    platformUserId: string,
+  ): Promise<AnalyticsId> {
     const cached = this.distinctIdCache.get(platformUserId);
     if (cached) return cached;
 
-    const platformDistinctId = `${this.platform}:${platformUserId}`;
+    const platformDistinctId = platformIdentity(this.platform, platformUserId);
     let status: AuthStatus;
     try {
       status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
@@ -636,9 +644,10 @@ export abstract class BaseBotAdapter {
     // First resolution for this user in this process: stitch whatever they did
     // before linking onto the GAIA profile. Cached below, so it fires once per
     // process rather than per message.
-    this.analytics.alias(platformDistinctId, status.user_id);
-    this.distinctIdCache.set(platformUserId, status.user_id);
-    return status.user_id;
+    const userId = parseUserId(status.user_id);
+    this.analytics.alias(platformDistinctId, userId);
+    this.distinctIdCache.set(platformUserId, userId);
+    return userId;
   }
 
   /**
@@ -745,7 +754,7 @@ export abstract class BaseBotAdapter {
         );
         this.analytics.capture(
           await this.resolveDistinctId(userId),
-          BOT_EVENTS.FILE_UPLOADED,
+          "bot:file_uploaded",
           {
             media_kind: media.kind,
             is_voice_note: Boolean(media.isVoiceNote),

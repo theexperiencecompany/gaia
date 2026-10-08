@@ -14,24 +14,22 @@
  *
  * The two SDKs are not interchangeable. Do not import this in the web app.
  *
- * ## Distinct ID strategy
+ * ## Identity and event names
  *
- * - Bots: `"<platform>:<platformUserId>"` (e.g. `"discord:123456789"`)
- *
- * These will not merge with web/backend events automatically. If cross-surface
- * stitching is needed in future, use PostHog's `alias` API.
- *
- * ## Event naming
- *
- * All events follow the project-wide `domain:action` convention used in
- * `apps/web/src/lib/analytics.ts` (e.g. `bot:message_received`). Event
- * name constants live in `./events/`.
+ * Every capture names an {@link AnalyticsId}: the linked GAIA `UserId`, or a
+ * `PlatformIdentity` (`"<platform>:<platformUserId>"`) until the account is
+ * linked, when {@link Analytics.alias} folds that history into the user.
+ * Event names and their properties are generated from the Python catalog
+ * (`libs/shared/py/analytics/catalog`); only bot-owned events compile here.
  */
 
 import { PostHog } from "posthog-node";
+import type { BotEventName, EventProperties } from "./generated";
+import type { AnalyticsId, PlatformIdentity, UserId } from "./types";
 
-export type { BotEventName } from "./events/bots";
-export { BOT_EVENTS } from "./events/bots";
+export type { BotEventName, EventProperties } from "./generated";
+export { parseUserId, platformIdentity } from "./identity";
+export type { AnalyticsId, PlatformIdentity, UserId } from "./types";
 
 /** PostHog US cloud — the region GAIA ingests into unless POSTHOG_HOST says otherwise. */
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
@@ -47,7 +45,7 @@ const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 export interface AnalyticsContext {
   client: Analytics;
   /** The GAIA user id when the account is linked, else `"<platform>:<platformUserId>"`. */
-  distinctId: string;
+  distinctId: AnalyticsId;
 }
 
 export class Analytics {
@@ -73,14 +71,11 @@ export class Analytics {
     });
   }
 
-  /**
-   * Captures a named event for the given distinct_id.
-   * All extra properties are merged with the event payload.
-   */
-  capture(
-    distinctId: string,
-    event: string,
-    properties?: Record<string, unknown>,
+  /** Captures a bot-owned catalog event for the given identity. */
+  capture<E extends BotEventName>(
+    distinctId: AnalyticsId,
+    event: E,
+    properties: EventProperties[E],
   ): void {
     if (!this.client) return;
     this.client.capture({ distinctId, event, properties });
@@ -95,7 +90,7 @@ export class Analytics {
    * ghost person behind — without it, cross-surface funnels (bot -> web) never
    * join up.
    */
-  alias(previousId: string, distinctId: string): void {
+  alias(previousId: PlatformIdentity, distinctId: UserId): void {
     if (!this.client) return;
     // Argument order matches the `$create_alias` wire convention, which is inverted from how it
     // reads: OLD id goes in `distinctId`, NEW one in `alias`. Verified against posthog-python's

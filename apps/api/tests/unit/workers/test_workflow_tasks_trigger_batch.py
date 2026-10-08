@@ -17,7 +17,7 @@ MODULE = "app.workers.tasks.workflow_tasks"
 
 def _workflow() -> MagicMock:
     wf = MagicMock()
-    wf.user_id = "user-1"
+    wf.user_id = "6812f0b3c9a14e2b7d5a91cc"
     wf.steps = []
     wf.repeat = None
     wf.activated = True
@@ -58,7 +58,7 @@ async def _run_task(
         ) as run_chat,
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         workflow = _workflow()
         scheduler.get_task = AsyncMock(return_value=workflow)
@@ -172,7 +172,7 @@ class TestRefillOnEveryExit:
                 patch(
                     f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock
                 ),
-                patch(f"{MODULE}.capture_event"),
+                patch(f"{MODULE}.capture"),
                 patch(f"{MODULE}.log") as log_mock,
             ):
                 scheduler.get_task = AsyncMock(return_value=_workflow())

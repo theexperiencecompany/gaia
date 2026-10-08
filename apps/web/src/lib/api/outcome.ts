@@ -8,7 +8,7 @@
 
 import { ApiError, REQUEST_ID_HEADER } from "@shared/api";
 import axios from "axios";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 export interface ApiOptions {
@@ -86,16 +86,11 @@ export function reportFailure(
 
   // Track failed requests in PostHog (client-only; analytics.ts is "use client").
   if (globalThis.window !== undefined) {
-    trackEvent(ANALYTICS_EVENTS.API_REQUEST_FAILED, {
+    track("api:request_failed", {
       method,
-      // No PII to PostHog: the query string can carry search terms or tokens, and
-      // the envelope's message can echo user input — the machine code cannot.
+      // No PII to PostHog: the query string can carry search terms or tokens.
       url: url.split("?")[0],
       status: error.status,
-      error_message:
-        error.status === TRANSPORT_FAILURE_STATUS
-          ? error.message
-          : (error.code ?? `HTTP ${error.status}`),
     });
   }
 

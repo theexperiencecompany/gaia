@@ -53,7 +53,7 @@ from app.utils.errors import AppError
 # Helpers
 # ---------------------------------------------------------------------------
 
-USER_ID = "user_txn_test_001"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 FAKE_USER = AuthenticatedUser(user_id=USER_ID)
 
 

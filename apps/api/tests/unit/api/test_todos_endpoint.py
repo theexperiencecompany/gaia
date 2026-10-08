@@ -26,19 +26,21 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdateRequest,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import TrackedTodoWorkflowError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosToggled
+from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
-ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -172,7 +174,7 @@ class TestTodoAnalytics:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "bulk_complete", "bulk_count": 2},
         )
-        mock_capture.assert_called_once_with(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": 2})
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosToggled(bulk_count=2))
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -215,8 +217,8 @@ class TestTodoAnalytics:
             todo={"operation": "toggle_subtask", "id": "todo-1"},
         )
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.TODO_TOGGLED,
-            {"is_subtask": True, "completed": True},
+            UserId(FAKE_USER.user_id),
+            TodosToggled(is_subtask=True, completed=True),
         )
 
 

@@ -32,7 +32,6 @@ from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
     extract_tool_data,
@@ -54,6 +53,12 @@ from app.services.chat.stream import (
     stream_manager as _stream_manager,
 )
 from app.utils.stream_publishers import ExtractedToolData
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatTurnReacted,
+)
 from shared.py.wide_events import log as _log
 from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
 
@@ -95,9 +100,12 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
 # ---------------------------------------------------------------------------
 
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
+
 @pytest.fixture
 def test_user() -> AuthenticatedUser:
-    return AuthenticatedUser(user_id="user_abc", email="tester@example.com")
+    return AuthenticatedUser(user_id=USER_ID, email="tester@example.com")
 
 
 @pytest.fixture
@@ -697,7 +705,7 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_complete",
@@ -708,17 +716,17 @@ class TestRunChatStreamBackground:
 
         mock_capture.assert_called_once()
         call_args = mock_capture.call_args
-        assert call_args.args[0] == "user_abc"
-        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_COMPLETED
-        props = call_args.args[2]
+        assert call_args.args[0] == UserId(USER_ID)
+        assert isinstance(call_args.args[1], ChatMessageCompleted)
+        props = call_args.args[1]
         # DONE-only turn: E2E present, TTFT absent, nothing delegated.
-        assert props["conversation_id"] == "conv_existing_123"
-        assert props["voice_mode"] is False
-        assert props["is_new_conversation"] is False
-        assert props["delegated"] is False
-        assert props["queued"] is False
-        assert props["e2e_ack_ms"] <= props["e2e_full_ms"]
-        assert "ttft_ms" not in props
+        assert props.conversation_id == "conv_existing_123"
+        assert props.voice_mode is False
+        assert props.is_new_conversation is False
+        assert props.delegated is False
+        assert props.queued is False
+        assert props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.ttft_ms is None
 
     async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
         """Every other test leaves source None, so the branch that attaches it never ran with a value."""
@@ -731,7 +739,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_source",
@@ -741,12 +749,12 @@ class TestRunChatStreamBackground:
                 source="desktop",
             )
 
-        assert mock_capture.call_args.args[2]["conversation_id"] == "conv_existing_123"
-        assert mock_capture.call_args.args[2]["voice_mode"] is False
-        assert mock_capture.call_args.args[2]["is_new_conversation"] is False
-        assert mock_capture.call_args.args[2]["source"] == "desktop"
-        assert mock_capture.call_args.args[2]["delegated"] is False
-        assert mock_capture.call_args.args[2]["queued"] is False
+        assert mock_capture.call_args.args[1].conversation_id == "conv_existing_123"
+        assert mock_capture.call_args.args[1].voice_mode is False
+        assert mock_capture.call_args.args[1].is_new_conversation is False
+        assert mock_capture.call_args.args[1].source == "desktop"
+        assert mock_capture.call_args.args[1].delegated is False
+        assert mock_capture.call_args.args[1].queued is False
 
     async def test_an_empty_source_is_omitted_rather_than_sent_blank(
         self, test_user, existing_conv_body
@@ -761,7 +769,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_blank_source",
@@ -771,7 +779,7 @@ class TestRunChatStreamBackground:
                 source="",
             )
 
-        assert "source" not in mock_capture.call_args.args[2]
+        assert mock_capture.call_args.args[1].source is None
 
     async def test_captures_message_cancelled_when_stream_cancelled(
         self, test_user, existing_conv_body
@@ -788,7 +796,7 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_cancel",
@@ -799,9 +807,9 @@ class TestRunChatStreamBackground:
 
         mock_capture.assert_called_once()
         call_args = mock_capture.call_args
-        assert call_args.args[0] == "user_abc"
-        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_CANCELLED
-        assert call_args.args[2]["conversation_id"] == "conv_existing_123"
+        assert call_args.args[0] == UserId(USER_ID)
+        assert isinstance(call_args.args[1], ChatMessageCancelled)
+        assert call_args.args[1].conversation_id == "conv_existing_123"
 
     async def test_complete_stream_called_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
@@ -899,7 +907,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_cancel_in_wait",
@@ -910,7 +918,7 @@ class TestRunChatStreamBackground:
             )
 
         assert REGISTRY.get_sample_value("chat_turn_total", labels) == before + 1
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+        assert isinstance(mock_capture.call_args.args[1], ChatMessageCancelled)
         # Every cancel check reads THIS stream's flag — a check on None reads nothing.
         assert {call.args[0] for call in sm.is_cancelled.await_args_list} == {
             "stream_cancel_in_wait"
@@ -938,7 +946,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_error_observed",
@@ -1389,7 +1397,7 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_latency_props",
@@ -1399,12 +1407,12 @@ class TestRunChatStreamBackground:
             )
 
         mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[0] == "user_abc"
-        props = mock_capture.call_args.args[2]
-        assert props["ttft_ms"] <= props["e2e_ack_ms"] <= props["e2e_full_ms"]
-        assert props["ttft_ms"] >= 0.0
-        assert props["delegated"] is False
-        assert props["queued"] is False
+        assert mock_capture.call_args.args[0] == UserId(USER_ID)
+        props = mock_capture.call_args.args[1]
+        assert props.ttft_ms <= props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.ttft_ms >= 0.0
+        assert props.delegated is False
+        assert props.queued is False
 
     async def test_terminal_event_without_text_has_no_ttft(self, test_user, existing_conv_body):
         """A turn with no response text still reports E2E, but no TTFT."""
@@ -1420,7 +1428,7 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_latency_no_ttft",
@@ -1429,10 +1437,10 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        props = mock_capture.call_args.args[2]
-        assert "ttft_ms" not in props
-        assert props["e2e_ack_ms"] <= props["e2e_full_ms"]
-        assert props["delegated"] is False
+        props = mock_capture.call_args.args[1]
+        assert props.ttft_ms is None
+        assert props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.delegated is False
 
     async def test_voice_mode_turn_labels_the_histograms_voice_true(
         self, test_user, existing_conv_body
@@ -1455,7 +1463,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event"),
+            patch("app.services.chat.stream.capture"),
         ):
             await run_chat_stream_background(
                 stream_id="stream_voice_success",
@@ -1486,7 +1494,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event"),
+            patch("app.services.chat.stream.capture"),
             patch("app.services.chat.stream.get_session", side_effect=_session_for),
         ):
             await run_chat_stream_background(
@@ -1523,7 +1531,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event"),
+            patch("app.services.chat.stream.capture"),
             patch("app.services.chat.stream.get_session", side_effect=_session_for),
         ):
             await run_chat_stream_background(
@@ -1552,7 +1560,7 @@ class TestRunChatStreamBackground:
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_empty_response",
@@ -1561,7 +1569,7 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
                 source="web",
             )
-        assert "ttft_ms" not in mock_capture.call_args.args[2]
+        assert mock_capture.call_args.args[1].ttft_ms is None
 
     async def test_pending_approval_turn_stamps_ack_and_ttft(self, test_user, existing_conv_body):
         """An approval reply is still a turn: it stamps the ack clock and TTFT exactly once."""
@@ -1608,7 +1616,7 @@ class TestRunChatStreamBackground:
             await run_chat_stream_background(
                 stream_id=stream_id,
                 body=self.dispatch_body(),
-                user=AuthenticatedUser(user_id="user_1", email="a@b.com"),
+                user=AuthenticatedUser(user_id=USER_ID, email="a@b.com"),
                 conversation_id="conv_existing_123",
             )
 
@@ -1951,10 +1959,10 @@ class TestRunChatStreamBackground:
                     return_value=(graph, {}, {"agent_name": "comms_agent", "configurable": {}})
                 ),
             ),
-            patch("app.agents.core.agent.capture_event"),
+            patch("app.agents.core.agent.capture"),
             patch("app.services.chat.stream.save_conversation_async", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as capture,
+            patch("app.services.chat.stream.capture") as capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_turn",
@@ -1991,7 +1999,7 @@ class TestRunChatStreamBackground:
         assert saved["complete_message"] == "😎"
         assert saved["kind"] is MessageKind.EMOJI_ACK
         assert saved["reacts_to_message_id"] == "umsg_1"
-        capture.assert_any_call("user_abc", AnalyticsEvents.CHAT_TURN_REACTED, {"emoji": "😎"})
+        capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
 
     async def test_a_plain_reply_is_neither_folded_nor_counted_as_a_reaction(
         self, test_user: AuthenticatedUser
@@ -2000,7 +2008,7 @@ class TestRunChatStreamBackground:
 
         assert not [frame for _, frame in frames if "emoji_ack" in frame]
         assert save.await_args.kwargs["kind"] is MessageKind.TEXT
-        assert AnalyticsEvents.CHAT_TURN_REACTED not in [c.args[1] for c in capture.call_args_list]
+        assert ChatTurnReacted not in [type(c.args[1]) for c in capture.call_args_list]
 
     @pytest.mark.regression
     async def test_a_reaction_streamed_in_pieces_never_reaches_any_client_as_text(

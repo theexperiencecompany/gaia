@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { ShineBorder } from "@/components/ui/shine-border";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import type { CheckoutSource } from "../api/pricingApi";
 import { usePricingCardPrice } from "../hooks/usePricingCardPrice";
@@ -58,8 +58,7 @@ export function PricingCard({
   });
 
   useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PLAN_VIEWED, {
-      plan_title: title,
+    track("subscription:plan_viewed", {
       plan_id: planId,
       price,
       is_monthly: durationIsMonth,
@@ -67,7 +66,7 @@ export function PricingCard({
       // payment stage; without this the two funnels are one number.
       source: checkoutSource,
     });
-  }, [title, planId, price, durationIsMonth, checkoutSource]);
+  }, [planId, price, durationIsMonth, checkoutSource]);
 
   return (
     <div
@@ -93,7 +92,6 @@ export function PricingCard({
       )}
       <PricingCardPrice list={list} offer={offer} />
       <PricingCardCta
-        title={title}
         price={price}
         durationIsMonth={durationIsMonth}
         planId={planId}

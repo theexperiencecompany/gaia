@@ -15,9 +15,13 @@ import pytest
 from app.agents.tools.core.mutations import define_mutation_tool, user_id_from_config
 from app.constants.log_tags import LogTag
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import AccountSettingChanged
 
 MODULE = "app.agents.tools.core.mutations"
-CONFIG = {"metadata": {"user_id": "user-1"}}
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+CONFIG = {"metadata": {"user_id": USER_ID}}
+EVENT = AccountSettingChanged(area="notifications")
 
 
 class ProbeArgs(BaseModel):
@@ -56,8 +60,8 @@ async def test_apply_receives_config_user_id_and_schema_kwargs() -> None:
 
     result = await make_probe(apply).ainvoke({"value": 3}, config=CONFIG)
 
-    assert result == "applied:3:user-1"
-    assert seen == {"user_id": "user-1", "value": 3}
+    assert result == f"applied:3:{USER_ID}"
+    assert seen == {"user_id": USER_ID, "value": 3}
 
 
 async def test_missing_user_fails_without_calling_apply() -> None:
@@ -133,18 +137,18 @@ async def test_event_captures_only_after_success_on_the_run_owner(posthog_events
     async def failing(user_id: str, *, value: int) -> str:
         raise RuntimeError("no")
 
-    await make_probe(failing, event="account:test_event").ainvoke({"value": 1}, config=CONFIG)
+    await make_probe(failing, event=EVENT).ainvoke({"value": 1}, config=CONFIG)
     assert posthog_events == []
 
     async def succeeding(user_id: str, *, value: int) -> str:
         return "ok"
 
-    await make_probe(succeeding, event="account:test_event").ainvoke({"value": 1}, config=CONFIG)
+    await make_probe(succeeding, event=EVENT).ainvoke({"value": 1}, config=CONFIG)
 
     [event] = posthog_events
-    assert event["event"] == "account:test_event"
-    assert event["distinct_id"] == "user-1"
-    assert event["properties"]["area"] == "test_area"
+    assert event["event"] == "account:setting_changed"
+    assert event["distinct_id"] == USER_ID
+    assert event["properties"]["area"] == "notifications"
 
 
 async def test_resync_schedules_after_success_only() -> None:
@@ -179,7 +183,7 @@ async def test_resync_schedules_after_success_only() -> None:
         resync=track,
     )
     await probe.ainvoke({"value": 1}, config=CONFIG)
-    assert resync.calls == ["user-1"]
+    assert resync.calls == [USER_ID]
 
 
 class TestUserIdExtraction:
@@ -252,7 +256,7 @@ async def test_unknown_schema_keys_are_dropped_before_apply_sees_them() -> None:
 
 
 async def test_event_and_resync_fire_together_exactly_once_on_success() -> None:
-    with patch(f"{MODULE}.capture_event") as capture:
+    with patch(f"{MODULE}.capture") as capture:
         resync_calls: list[str] = []
 
         async def apply(user_id: str, *, value: int) -> str:
@@ -264,10 +268,10 @@ async def test_event_and_resync_fire_together_exactly_once_on_success() -> None:
             description="p",
             args_model=ProbeArgs,
             apply=apply,
-            event="test:event",
+            event=EVENT,
             resync=resync_calls.append,
         )
         await probe.ainvoke({"value": 1}, config=CONFIG)
 
-    capture.assert_called_once_with("user-1", "test:event", {"area": "combo_area"})
-    assert resync_calls == ["user-1"]
+    capture.assert_called_once_with(UserId(USER_ID), EVENT)
+    assert resync_calls == [USER_ID]

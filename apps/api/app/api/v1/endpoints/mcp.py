@@ -20,7 +20,7 @@ from app.helpers.mcp_helpers import (
 from app.models.mcp_config import McpProbeResult
 from app.models.user_models import AuthenticatedUser
 from app.schemas.mcp import MCPConnectionTestResponse
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
@@ -31,6 +31,8 @@ from app.services.mcp.oauth_callback import (
     resolve_provider_error,
     sanitized_error_code,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import McpConnectionTested
 from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
@@ -77,7 +79,7 @@ async def test_mcp_connection(
     if probe_error:
         log.set(outcome="failed")
         log.set_ns("mcp", success=False)
-        capture_context_event(AnalyticsEvents.MCP_CONNECTION_TESTED, {"status": "failed"})
+        capture(UserId(user_id), McpConnectionTested(status="failed"))
         return MCPConnectionTestResponse(status="failed", error=probe_error)
 
     if not probe_result.get("requires_auth"):
@@ -93,9 +95,9 @@ async def test_mcp_connection(
                 success=True,
                 tools_count=len(tools) if tools else 0,
             )
-            capture_context_event(
-                AnalyticsEvents.MCP_CONNECTION_TESTED,
-                {"status": "connected", "tools_count": len(tools) if tools else 0},
+            capture(
+                UserId(user_id),
+                McpConnectionTested(status="connected", tools_count=len(tools) if tools else 0),
             )
             return MCPConnectionTestResponse(
                 status="connected", tools_count=len(tools) if tools else 0
@@ -108,7 +110,7 @@ async def test_mcp_connection(
                 success=False,
                 error_type=type(e).__name__,
             )
-            capture_context_event(AnalyticsEvents.MCP_CONNECTION_TESTED, {"status": "failed"})
+            capture(UserId(user_id), McpConnectionTested(status="failed"))
             return MCPConnectionTestResponse(status="failed", error=str(e))
 
     # OAuth required - update MongoDB with discovered auth requirements
@@ -124,7 +126,7 @@ async def test_mcp_connection(
             redirect_path="/integrations",
         )
         log.set(outcome="requires_oauth")
-        capture_context_event(AnalyticsEvents.MCP_CONNECTION_TESTED, {"status": "requires_oauth"})
+        capture(UserId(user_id), McpConnectionTested(status="requires_oauth"))
         return MCPConnectionTestResponse(status="requires_oauth", oauth_url=auth_url)
     except Exception as e:
         log.error(

@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 from app.models.integration_models import UserIntegration
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected, IntegrationDisconnected
+from tests.conftest import FAKE_USER
 
 # __init__.py: prefix="/integrations", user.py router mounted at /users/me/integrations
 BASE = "/api/v1/integrations/users/me/integrations"
@@ -34,15 +36,15 @@ class TestAddIntegrationToWorkspace:
                 new_callable=AsyncMock,
                 return_value=_user_integration("connected"),
             ),
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
         ):
             resp = await client.post(BASE, json={"integration_id": "integ-001"})
 
         assert resp.status_code == 200
         assert resp.json()["connectionStatus"] == "connected"
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "integ-001", "source": "workspace"},
+            UserId(FAKE_USER.user_id),
+            IntegrationConnected(integration_id="integ-001", source="workspace"),
         )
 
     async def test_add_pending_does_not_capture(self, client: AsyncClient) -> None:
@@ -52,7 +54,7 @@ class TestAddIntegrationToWorkspace:
                 new_callable=AsyncMock,
                 return_value=_user_integration("created"),
             ),
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
         ):
             resp = await client.post(BASE, json={"integration_id": "integ-001"})
 
@@ -67,7 +69,7 @@ class TestAddIntegrationToWorkspace:
                 new_callable=AsyncMock,
                 side_effect=ValueError("Integration 'nope' not found"),
             ),
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
         ):
             resp = await client.post(BASE, json={"integration_id": "nope"})
 
@@ -86,7 +88,7 @@ class TestRemoveIntegrationFromWorkspace:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
             patch(f"{_USER}.log") as mock_log,
         ):
             mock_repo.is_connected = AsyncMock(return_value=True)
@@ -102,8 +104,7 @@ class TestRemoveIntegrationFromWorkspace:
             integration={"id": "integ-001"},
         )
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED,
-            {"integration_id": "integ-001"},
+            UserId(FAKE_USER.user_id), IntegrationDisconnected(integration_id="integ-001")
         )
 
     async def test_remove_never_connected_does_not_capture(self, client: AsyncClient) -> None:
@@ -114,7 +115,7 @@ class TestRemoveIntegrationFromWorkspace:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
         ):
             mock_repo.is_connected = AsyncMock(return_value=False)
             resp = await client.delete(f"{BASE}/integ-001")
@@ -132,7 +133,7 @@ class TestRemoveIntegrationFromWorkspace:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
             patch(f"{_USER}.log") as mock_log,
         ):
             mock_repo.is_connected = AsyncMock(side_effect=RuntimeError("mongo down"))
@@ -156,7 +157,7 @@ class TestRemoveIntegrationFromWorkspace:
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.capture") as mock_capture,
         ):
             mock_repo.is_connected = AsyncMock(return_value=True)
             resp = await client.delete(f"{BASE}/missing")

@@ -12,7 +12,7 @@ import {
   LETTER_OPENED_KEY,
   SALUTATION_FALLBACK,
 } from "@/features/chat/components/interface/founder-letter/content";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
@@ -49,7 +49,7 @@ export function useFounderLetter(hidden: boolean) {
     // The denominator for every other event in this funnel: without it, an
     // open rate has no base to divide by.
     if (!isDismissed) {
-      trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_SHOWN, {
+      track("founder_letter:shown", {
         discount_code: DISCOUNT_CODE,
       });
     }
@@ -60,7 +60,7 @@ export function useFounderLetter(hidden: boolean) {
     window.localStorage.setItem(LETTER_OPENED_KEY, "1");
     setHasOpened(true);
     setIsLetterOpen(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_OPENED, {
+    track("founder_letter:opened", {
       first_open: firstOpen,
       discount_code: DISCOUNT_CODE,
       discount_percent: DISCOUNT_PERCENT,
@@ -71,7 +71,7 @@ export function useFounderLetter(hidden: boolean) {
   const dismissLetter = useCallback(() => {
     window.localStorage.setItem(LETTER_DISMISSED_KEY, "1");
     setDismissed(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISMISSED, {
+    track("founder_letter:dismissed", {
       discount_code: DISCOUNT_CODE,
     });
   }, []);
@@ -102,7 +102,7 @@ export function useFounderLetter(hidden: boolean) {
       textarea.remove();
     }
     setCopied(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_CODE_COPIED, {
+    track("founder_letter:code_copied", {
       discount_code: DISCOUNT_CODE,
     });
     toast.success(`Code ${DISCOUNT_CODE} copied, it's yours`);
@@ -110,7 +110,7 @@ export function useFounderLetter(hidden: boolean) {
   }, []);
 
   const claimOffer = useCallback(() => {
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED, {
+    track("founder_letter:discount_cta_clicked", {
       discount_code: DISCOUNT_CODE,
       discount_percent: DISCOUNT_PERCENT,
     });

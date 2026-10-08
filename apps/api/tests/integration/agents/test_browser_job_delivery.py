@@ -181,14 +181,14 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jr, "is_enabled", AsyncMock(return_value=False))
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowser)
     monkeypatch.setattr(jr, "record_browser_task", AsyncMock())
-    monkeypatch.setattr(jr, "capture_event", MagicMock())
+    monkeypatch.setattr(jr, "capture", MagicMock())
 
 
 def _request(**overrides: Any) -> BrowserJobRequest:
     return BrowserJobRequest(
         job_id=JOB_ID,
         tool_call_id="call-7",
-        user_id="user-7",
+        user_id="6812f0b3c9a14e2b7d5a91c7",
         conversation_id="conv-7",
         task="book a table for two at 7pm",
         in_background=False,

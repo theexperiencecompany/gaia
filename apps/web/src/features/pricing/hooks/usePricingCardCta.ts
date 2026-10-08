@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { CheckoutSource } from "../api/pricingApi";
 import { writePendingCheckout } from "../lib/pendingCheckout";
@@ -17,7 +17,6 @@ interface PricingCardCtaInput {
   /** Where this checkout is started from; rides to the server for funnel
    * attribution and decides where Dodo sends the browser afterwards. */
   checkoutSource?: CheckoutSource;
-  title: string;
   price: number;
   durationIsMonth: boolean;
   planId: string | undefined;
@@ -36,7 +35,6 @@ interface PricingCardCta {
 
 /** Everything the pricing card's call to action needs to decide and do. */
 export function usePricingCardCta({
-  title,
   price,
   durationIsMonth,
   planId,
@@ -57,8 +55,7 @@ export function usePricingCardCta({
   const router = useRouter();
 
   const onGetStarted = async () => {
-    trackEvent(ANALYTICS_EVENTS.PRICING_PLAN_SELECTED, {
-      plan_title: title,
+    track("pricing:plan_selected", {
       plan_id: planId,
       price,
       is_monthly: durationIsMonth,

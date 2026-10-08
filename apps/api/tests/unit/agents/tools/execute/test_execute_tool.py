@@ -24,7 +24,8 @@ from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.constants.execute import EXECUTE_TOOL_NAME
 
 MODULE = "app.agents.tools.execute.execute_tool"
-CONFIG = {"configurable": {"user_id": "u1"}}
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+CONFIG = {"configurable": {"user_id": USER_ID}}
 
 
 def _ok() -> ToolExecutionResult:
@@ -45,7 +46,7 @@ class TestDispatchTicketNames:
         return {
             "configurable": {
                 "thread_id": "executor_conv-1",
-                "user_id": "u1",
+                "user_id": USER_ID,
                 "conversation_id": "conv-1",
             }
         }
@@ -67,7 +68,7 @@ class TestDispatchTicketNames:
             ) as redeem,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="approve",
                 data={"id": "ap_1"},
                 config=self._config(),
@@ -75,7 +76,7 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         redeem.assert_awaited_once_with(
-            "ap_1", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
         )
         assert result.ok is True
         assert "Executed 'ap_1'" in str(result.output)
@@ -92,7 +93,7 @@ class TestDispatchTicketNames:
             ) as revoke,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="revoke",
                 data={"id": "ap_1"},
                 config=self._config(),
@@ -100,7 +101,7 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         revoke.assert_awaited_once_with(
-            "ap_1", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
         )
         assert result.ok is True
         assert "Revoked" in str(result.output)
@@ -110,7 +111,7 @@ class TestDispatchTicketNames:
         from app.agents.tools.execute.dispatch import dispatch_tool
 
         result = await dispatch_tool(
-            user_id="u1",
+            user_id=USER_ID,
             tool_name="approve",
             data={},
             config=self._config(),
@@ -123,8 +124,8 @@ class TestDispatchTicketNames:
         """Fail closed: even if a provider catalog one day contains 'approve', resolution refuses it — tickets dispatch before resolution, always."""
         from app.agents.tools.execute.resolver import resolve_tool
 
-        assert await resolve_tool("u1", "approve") is None
-        assert await resolve_tool("u1", "revoke") is None
+        assert await resolve_tool(USER_ID, "approve") is None
+        assert await resolve_tool(USER_ID, "revoke") is None
 
     async def test_tickets_refused_on_integration_only_surface(self) -> None:
         """Sandbox scripts carry no conversation identity, so every ticket check would miss — refuse loudly instead."""
@@ -135,7 +136,7 @@ class TestDispatchTicketNames:
             patch.object(dispatch_module, "resolve_tool", new=AsyncMock()),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="approve",
                 data={"id": "ap_1"},
                 config=self._config(),
@@ -164,7 +165,7 @@ class TestDispatchTicketNames:
         ):
             with patch.object(dispatch_module, "resolve_tool", new=AsyncMock()):
                 result = await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name="approve",
                     data={"id": "ap_1"},
                     config=self._config(),
@@ -254,7 +255,7 @@ class TestTicketIdentity:
     ) -> None:
         with patch("app.services.hil.ledger_decide.revoke_ticket", new=AsyncMock()) as revoke:
             result = await dispatch_tool(
-                user_id="u1", tool_name="revoke", data={"id": ticket_id}, config=CONFIG
+                user_id=USER_ID, tool_name="revoke", data={"id": ticket_id}, config=CONFIG
             )
         revoke.assert_not_awaited()
         assert result.output == 'Name the ticket: revoke needs data {"id": "<approval_id>"}.'
@@ -262,7 +263,7 @@ class TestTicketIdentity:
     async def test_a_ticket_name_with_no_handler_fails_loud(self) -> None:
         with pytest.raises(ValueError, match="Unknown ticket operation 'redeem'."):
             await _dispatch_ticket(
-                user_id="u1", tool_name="redeem", data={"id": "ap_1"}, config=CONFIG
+                user_id=USER_ID, tool_name="redeem", data={"id": "ap_1"}, config=CONFIG
             )
 
 
@@ -280,10 +281,10 @@ class TestExecuteToolCall:
                 config=CONFIG,
             )
         kwargs = dispatch.await_args.kwargs
-        assert kwargs["user_id"] == "u1"
+        assert kwargs["user_id"] == USER_ID
         assert kwargs["tool_name"] == "GMAIL_SEND_EMAIL"
         assert kwargs["data"] == {"to": "a"}
-        assert kwargs["config"]["configurable"]["user_id"] == "u1"
+        assert kwargs["config"]["configurable"]["user_id"] == USER_ID
 
     @pytest.mark.parametrize(
         ("output", "rendered"),

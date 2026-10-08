@@ -5,6 +5,7 @@
  * that window, so they have to survive it.
  */
 
+import { parseUserId } from "@gaia/shared/analytics/identity";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { posthogMock, capture, identify, setPersonProperties } = vi.hoisted(
@@ -29,12 +30,9 @@ const { posthogMock, capture, identify, setPersonProperties } = vi.hoisted(
 
 vi.mock("posthog-js", () => ({ default: posthogMock }));
 
-import {
-  ANALYTICS_EVENTS,
-  flushPendingAnalytics,
-  identifyUser,
-  trackEvent,
-} from "@/lib/analytics";
+import { flushPendingAnalytics, identifyUser, track } from "@/lib/analytics";
+
+const USER_ID = "6812f0b3c9a14e2b7d5a91cc";
 
 beforeEach(() => {
   posthogMock.__loaded = false;
@@ -46,8 +44,8 @@ beforeEach(() => {
 
 describe("analytics buffering before posthog.init", () => {
   it("replays identify and events in order once posthog is ready", () => {
-    identifyUser("user_1", { email: "a@b.co" });
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, { has_saved_state: false });
+    identifyUser(parseUserId(USER_ID), { email: "a@b.co" });
+    track("onboarding:started", { has_saved_state: false });
     expect(identify).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
 
@@ -55,7 +53,7 @@ describe("analytics buffering before posthog.init", () => {
     flushPendingAnalytics();
 
     expect(identify).toHaveBeenCalledWith(
-      "user_1",
+      USER_ID,
       expect.objectContaining({ email: "a@b.co" }),
     );
     expect(capture).toHaveBeenCalledWith(
@@ -69,7 +67,7 @@ describe("analytics buffering before posthog.init", () => {
   });
 
   it("keeps the event's own time, not the flush time", () => {
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED);
+    track("onboarding:started", { has_saved_state: false });
     const queuedAt = new Date().toISOString();
 
     posthogMock.__loaded = true;
@@ -84,7 +82,7 @@ describe("analytics buffering before posthog.init", () => {
 
   it("sends straight through once initialised, and replays nothing twice", () => {
     posthogMock.__loaded = true;
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED);
+    track("onboarding:started", { has_saved_state: false });
     flushPendingAnalytics();
 
     expect(capture).toHaveBeenCalledTimes(1);

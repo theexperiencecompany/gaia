@@ -49,12 +49,14 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedCall
 from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilCardShown
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -206,15 +208,14 @@ async def publish_ledger_request(
     # Server-owned funnel event: exactly once per registration, held or
     # streamed — the card exists either way. Explicit user_id: bridge paths
     # carry no request context to attribute from.
-    capture_event(
-        approval.user_id,
-        AnalyticsEvents.HIL_CARD_SHOWN,
-        {
-            "approval_id": approval.approval_id,
-            "tool_name": approval.tool_call.name,
-            "ledger_version": 0,
-            "background": not live,
-        },
+    capture(
+        UserId(approval.user_id),
+        HilCardShown(
+            approval_id=approval.approval_id,
+            tool_name=approval.tool_call.name,
+            ledger_version=0,
+            background=not live,
+        ),
     )
     session = get_session(stream_id)
     held = live and session is not None and session.kind is RunKind.LIVE

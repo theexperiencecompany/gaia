@@ -25,13 +25,15 @@ from app.schemas.voice_schemas import (
     VoiceTokenResponse,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.voice_service import (
     get_user_voice,
     list_voices,
     set_user_voice,
     set_voice_star,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -138,10 +140,7 @@ async def select_voice(
     schedule_account_sync(user.user_id)
     # May differ from the requested id when a library voice was added to the account.
     log.set(selected_voice_id=selected)
-    capture_context_event(
-        AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-        {"setting": "voice", "voice_id": selected},
-    )
+    capture(UserId(user.user_id), SettingsPreferencesChanged(setting="voice", voice_id=selected))
     return VoiceSelectionResponse(selected_voice_id=selected)
 
 
@@ -159,8 +158,10 @@ async def star_voice(
         starred=payload.starred,
     )
     starred_ids = await set_voice_star(user.user_id, voice_id, payload.starred)
-    capture_context_event(
-        AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-        {"setting": "voice_star", "voice_id": voice_id, "is_starred": payload.starred},
+    capture(
+        UserId(user.user_id),
+        SettingsPreferencesChanged(
+            setting="voice_star", voice_id=voice_id, is_starred=payload.starred
+        ),
     )
     return StarredVoicesResponse(starred_voice_ids=starred_ids)

@@ -48,8 +48,10 @@ from app.models.agent_models import (
     agent_configurable,
 )
 from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.latency_metrics import observe_tool_call
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
 from shared.py.wide_events import log
 
 # The handler chains built below. LangChain's hooks accept a wider return union
@@ -358,13 +360,9 @@ class MiddlewareExecutor:
             # name — emitting here too would double-count every proxied run
             # (root CLAUDE.md: one action, one event, one emitter).
             if tool_user_id and tool_name != EXECUTE_TOOL_NAME:
-                capture_event(
-                    tool_user_id,
-                    AnalyticsEvents.TOOL_USED,
-                    # via segments the bound path from the execute path so the
-                    # migration's before/after cuts stay computable in PostHog.
-                    {"tool_name": tool_name, "via": "bound"},
-                )
+                # via segments the bound path from the execute path so the
+                # migration's before/after cuts stay computable in PostHog.
+                capture(UserId(tool_user_id), ToolUsed(tool_name=tool_name, via="bound"))
             return tool_result
 
         # Wrap with middleware (reverse order so first middleware is outermost)

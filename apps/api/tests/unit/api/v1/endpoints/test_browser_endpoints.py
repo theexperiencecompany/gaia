@@ -15,9 +15,12 @@ from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserImportTokenMinted, BrowserLoginsImported
 
 pytestmark = pytest.mark.unit
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 # ---------------------------------------------------------------------------
@@ -59,20 +62,20 @@ class TestListBrowserTasksEndpoint:
     async def test_returns_tasks(self, monkeypatch):
         tasks = [_make_task("t1"), _make_task("t2")]
         monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=tasks))
-        result = await browser_ep.list_browser_tasks_endpoint("u1", limit=20)
+        result = await browser_ep.list_browser_tasks_endpoint(USER_ID, limit=20)
         assert len(result) == 2
         assert result[0].id == "t1"
 
     async def test_empty(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=[]))
-        result = await browser_ep.list_browser_tasks_endpoint("u1")
+        result = await browser_ep.list_browser_tasks_endpoint(USER_ID)
         assert result == []
 
     async def test_custom_limit(self, monkeypatch):
         mock_list = AsyncMock(return_value=[])
         monkeypatch.setattr(browser_ep, "list_browser_tasks", mock_list)
-        await browser_ep.list_browser_tasks_endpoint("u1", limit=5)
-        mock_list.assert_awaited_once_with("u1", limit=5)
+        await browser_ep.list_browser_tasks_endpoint(USER_ID, limit=5)
+        mock_list.assert_awaited_once_with(USER_ID, limit=5)
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +87,9 @@ class TestDeleteBrowserTaskEndpoint:
     async def test_deletes(self, monkeypatch):
         mock_del = AsyncMock(return_value=True)
         monkeypatch.setattr(browser_ep, "delete_browser_task", mock_del)
-        result = await browser_ep.delete_browser_task_endpoint("t1", "u1")
+        result = await browser_ep.delete_browser_task_endpoint("t1", USER_ID)
         assert result is None
-        mock_del.assert_awaited_once_with("u1", "t1")
+        mock_del.assert_awaited_once_with(USER_ID, "t1")
 
     async def test_calls_with_correct_ids(self, monkeypatch):
         mock_del = AsyncMock()
@@ -104,13 +107,13 @@ class TestListBrowserLoginsEndpoint:
     async def test_returns_logins(self, monkeypatch):
         logins = [_make_login("example.com"), _make_login("google.com")]
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=logins))
-        result = await browser_ep.list_browser_logins_endpoint("u1")
+        result = await browser_ep.list_browser_logins_endpoint(USER_ID)
         assert len(result) == 2
         assert result[0].domain == "example.com"
 
     async def test_empty(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=[]))
-        result = await browser_ep.list_browser_logins_endpoint("u1")
+        result = await browser_ep.list_browser_logins_endpoint(USER_ID)
         assert result == []
 
     async def test_delegates_to_service(self, monkeypatch):
@@ -129,15 +132,15 @@ class TestForgetBrowserLoginEndpoint:
     async def test_forgets_domain(self, monkeypatch):
         mock_forget = AsyncMock(return_value=1)
         monkeypatch.setattr(browser_ep, "forget_saved_login", mock_forget)
-        result = await browser_ep.forget_browser_login_endpoint("example.com", "u1")
+        result = await browser_ep.forget_browser_login_endpoint("example.com", USER_ID)
         assert result is None
-        mock_forget.assert_awaited_once_with("u1", "example.com")
+        mock_forget.assert_awaited_once_with(USER_ID, "example.com")
 
     async def test_different_domain(self, monkeypatch):
         mock_forget = AsyncMock(return_value=1)
         monkeypatch.setattr(browser_ep, "forget_saved_login", mock_forget)
-        await browser_ep.forget_browser_login_endpoint("google.com", "u1")
-        mock_forget.assert_awaited_once_with("u1", "google.com")
+        await browser_ep.forget_browser_login_endpoint("google.com", USER_ID)
+        mock_forget.assert_awaited_once_with(USER_ID, "google.com")
 
 
 # ---------------------------------------------------------------------------
@@ -149,9 +152,9 @@ class TestClearBrowserLoginsEndpoint:
     async def test_clears_all(self, monkeypatch):
         mock_forget = AsyncMock(return_value=3)
         monkeypatch.setattr(browser_ep, "forget_saved_login", mock_forget)
-        result = await browser_ep.clear_browser_logins_endpoint("u1")
+        result = await browser_ep.clear_browser_logins_endpoint(USER_ID)
         assert result is None
-        mock_forget.assert_awaited_once_with("u1", None)
+        mock_forget.assert_awaited_once_with(USER_ID, None)
 
     async def test_calls_with_none_domain(self, monkeypatch):
         mock_forget = AsyncMock(return_value=0)
@@ -184,36 +187,35 @@ class TestMintBrowserImportToken:
     async def test_owner_gets_a_token(self, monkeypatch):
         mint = AsyncMock(return_value="tok-123")
         monkeypatch.setattr(browser_ep, "mint_import_token", mint)
-        resp = await browser_ep.mint_browser_import_token("u1")
+        resp = await browser_ep.mint_browser_import_token(USER_ID)
         assert resp.token == "tok-123"
         assert resp.expires_in_seconds > 0
         # The code authorises overwriting this user's logins — it must be minted
         # against the caller's real id, not a placeholder.
-        assert mint.await_args.args[0] == "u1"
+        assert mint.await_args.args[0] == USER_ID
 
     async def test_wide_event_names_the_actor_and_operation(self, monkeypatch):
         """Support reads these fields to answer "who minted an import code, and when" — an unattributed event cannot answer it."""
         monkeypatch.setattr(browser_ep, "mint_import_token", AsyncMock(return_value="tok-123"))
 
         async with captured_wide_event() as event:
-            await browser_ep.mint_browser_import_token("u1")
+            await browser_ep.mint_browser_import_token(USER_ID)
 
-        assert event["user"]["id"] == "u1"
+        assert event["user"]["id"] == USER_ID
         assert event["browser"]["operation"] == "mint_import_token"
 
-    async def test_captures_analytics_via_request_context(self, monkeypatch):
+    async def test_captures_analytics_attributed_to_the_session_user(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "mint_import_token", AsyncMock(return_value="tok-123"))
         captured = MagicMock()
-        monkeypatch.setattr(browser_ep, "capture_context_event", captured)
+        monkeypatch.setattr(browser_ep, "capture", captured)
 
-        await browser_ep.mint_browser_import_token("u1")
+        await browser_ep.mint_browser_import_token(USER_ID)
 
-        # Session-authenticated route: identity comes from the request context,
-        # so the event carries no distinct_id of its own.
-        event, props = captured.call_args.args
-        assert event == AnalyticsEvents.BROWSER_IMPORT_TOKEN_MINTED
+        distinct_id, event = captured.call_args.args
+        assert distinct_id == UserId(USER_ID)
+        assert event == BrowserImportTokenMinted()
         # No PII on the event — minting carries no properties at all.
-        assert props == {}
+        assert event.to_properties() == {}
 
 
 class TestImportBrowserSessions:
@@ -227,7 +229,7 @@ class TestImportBrowserSessions:
             source_browser=source_browser,
         )
 
-    def _consume(self, valid_token="tok", user_id="u1"):
+    def _consume(self, valid_token="tok", user_id=USER_ID):
         """Resolve only the code it was handed, the way the real single-use store does — a blanket stub would accept any token."""
         return AsyncMock(side_effect=lambda tok: user_id if tok == valid_token else None)
 
@@ -257,7 +259,7 @@ class TestImportBrowserSessions:
         assert resp.imported[0].domain == "github.com"
         # The route must hand the service a real user id from the consumed token,
         # the browser it came from, and the first-hop client IP.
-        assert imp.await_args.args[0] == "u1"
+        assert imp.await_args.args[0] == USER_ID
         assert imp.await_args.kwargs["source_browser"] == "Arc"
         assert imp.await_args.kwargs["source_ip"] == "203.0.113.7"
 
@@ -291,7 +293,7 @@ class TestImportBrowserSessions:
 
     async def test_wide_event_attributes_the_import_to_the_token_owner(self, monkeypatch):
         """No session cookie on this route — without the token owner on the event, an import of someone's whole login state is untraceable."""
-        monkeypatch.setattr(browser_ep, "consume_import_token", self._consume("tok", "u1"))
+        monkeypatch.setattr(browser_ep, "consume_import_token", self._consume("tok", USER_ID))
         monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", True)
         monkeypatch.setattr(
             browser_ep, "import_browser_profile", AsyncMock(return_value=[("github.com", 1)])
@@ -300,10 +302,10 @@ class TestImportBrowserSessions:
         async with captured_wide_event() as event:
             await browser_ep.import_browser_sessions(self._payload(), self._request())
 
-        assert event["user"]["id"] == "u1"
+        assert event["user"]["id"] == USER_ID
 
     async def test_client_ip_falls_back_to_peer(self, monkeypatch):
-        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=USER_ID))
         monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", True)
         imp = AsyncMock(return_value=[("github.com", 1)])
         monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
@@ -313,7 +315,7 @@ class TestImportBrowserSessions:
         assert imp.await_args.kwargs["source_ip"] == "198.51.100.9"
 
     async def test_captures_analytics_attributed_to_token_owner(self, monkeypatch):
-        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=USER_ID))
         monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", True)
         monkeypatch.setattr(
             browser_ep,
@@ -321,7 +323,7 @@ class TestImportBrowserSessions:
             AsyncMock(return_value=[("github.com", 1), ("news.ycombinator.com", 2)]),
         )
         captured = MagicMock()
-        monkeypatch.setattr(browser_ep, "capture_event", captured)
+        monkeypatch.setattr(browser_ep, "capture", captured)
 
         await browser_ep.import_browser_sessions(
             self._payload(source_browser="Arc"), self._request()
@@ -329,16 +331,15 @@ class TestImportBrowserSessions:
 
         # No session cookie here: the id must come from the consumed token, or the
         # event lands on an anonymous profile and never joins the user's funnel.
-        distinct_id, event, props = captured.call_args.args
-        assert distinct_id == "u1"
-        assert event == AnalyticsEvents.BROWSER_LOGINS_IMPORTED
-        assert props == {"host_count": 2, "cookie_count": 1, "source_browser": "Arc"}
+        distinct_id, event = captured.call_args.args
+        assert distinct_id == UserId(USER_ID)
+        assert event == BrowserLoginsImported(host_count=2, cookie_count=1, source_browser="Arc")
 
     async def test_no_analytics_when_token_rejected(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=None))
         monkeypatch.setattr(browser_ep, "import_browser_profile", AsyncMock())
         captured = MagicMock()
-        monkeypatch.setattr(browser_ep, "capture_event", captured)
+        monkeypatch.setattr(browser_ep, "capture", captured)
         with pytest.raises(HTTPException):
             await browser_ep.import_browser_sessions(self._payload("expired"), self._request())
         captured.assert_not_called()
@@ -354,7 +355,7 @@ class TestImportBrowserSessions:
         imp.assert_not_awaited()  # never touch storage on a bad code
 
     async def test_persistence_disabled_409(self, monkeypatch):
-        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=USER_ID))
         monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", False)
         imp = AsyncMock()
         monkeypatch.setattr(browser_ep, "import_browser_profile", imp)

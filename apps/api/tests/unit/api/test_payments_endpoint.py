@@ -23,7 +23,12 @@ from app.models.payment_models import (
     ProCheckout,
     SubscriptionDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    PaymentCheckoutStarted,
+    SubscriptionCancellationRequested,
+)
+from tests.conftest import FAKE_USER
 from tests.unit.services.conftest import SUBSCRIPTION_DATA_PAYLOAD, _make_webhook_event
 
 PLANS_URL = "/api/v1/payments/plans"
@@ -164,7 +169,7 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ) as mock_create:
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 await client.post(
                     SUBSCRIPTIONS_URL,
                     json={"product_id": "prod_abc"},
@@ -174,8 +179,8 @@ class TestCreateSubscription:
         # A bundle deployed before `source` existed still checks out; the event
         # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": 1, "source": None, "surface": "redirect"},
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(quantity=1, source=None, surface="redirect"),
         )
 
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
@@ -191,7 +196,7 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ):
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 response = await client.post(
                     SUBSCRIPTIONS_URL,
                     json={"product_id": "prod_abc", "source": "payment_retry"},
@@ -199,8 +204,8 @@ class TestCreateSubscription:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": 1, "source": "payment_retry", "surface": "redirect"},
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(quantity=1, source="payment_retry", surface="redirect"),
         )
 
     async def test_create_subscription_rejects_an_unknown_source(self, client: AsyncClient):
@@ -310,19 +315,17 @@ class TestCreateCheckoutSession:
                 ),
             ),
         ):
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 await client.post(
                     CHECKOUT_SESSION_URL,
                     json={"billing_cycle": "monthly", "source": "paywall_modal"},
                 )
 
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {
-                "billing_cycle": PlanDuration.MONTHLY,
-                "source": "paywall_modal",
-                "surface": "overlay",
-            },
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(
+                billing_cycle=PlanDuration.MONTHLY, source="paywall_modal", surface="overlay"
+            ),
         )
 
     async def test_rejects_a_checkout_with_no_source(self, client: AsyncClient):
@@ -460,13 +463,15 @@ class TestCancelSubscription:
                 new_callable=AsyncMock,
                 return_value=mock_status,
             ) as mock_cancel,
-            patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.payments.capture") as mock_capture,
             patch("app.api.v1.endpoints.payments.log") as mock_log,
         ):
             response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id), SubscriptionCancellationRequested()
+        )
         mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
         mock_log.set.assert_any_call(payment={"subscription_id": "sub_xyz789", "status": "active"})
 

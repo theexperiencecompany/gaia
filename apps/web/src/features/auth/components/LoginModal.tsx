@@ -9,7 +9,7 @@ import {
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 // Routes where login modal should NOT be dismissable (main app routes that require auth)
 const NON_DISMISSABLE_ROUTE_PREFIXES = [
@@ -65,7 +65,7 @@ export default function LoginModal() {
             color="#00bbff"
             className="text-md w-full text-primary-foreground!"
             onClick={() => {
-              trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+              track("navigation:cta_clicked", {
                 location: "login_modal",
                 destination: "workos_oauth",
               });

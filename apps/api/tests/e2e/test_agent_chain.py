@@ -52,7 +52,9 @@ from tests.e2e._harness.transcript import UNKNOWN, Transcript
 
 pytestmark = pytest.mark.e2e
 
-USER = AuthenticatedUser(user_id="u-chain", email="chain@test.local", name="Test User")
+USER = AuthenticatedUser(
+    user_id="6812f0b3c9a14e2b7d5a91cc", email="chain@test.local", name="Test User"
+)
 
 #: A builtin subagent (managed_by="internal": no OAuth/Composio needed) built by
 #: the real SubAgentFactory. Auto-binds fetch_webpages, a real tool whose body

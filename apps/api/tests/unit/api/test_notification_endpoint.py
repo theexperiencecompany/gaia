@@ -24,18 +24,19 @@ from app.models.notification.notification_models import (
     NotificationView,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
 
 NOTIF_BASE = "/api/v1/notifications"
-ANALYTICS_PATCH = "app.api.v1.endpoints.notification.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.notification.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -328,12 +329,12 @@ class TestNotificationAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
-            {
-                "changed_channel_count": 2,
-                "channels_enabled": ["discord"],
-                "channels_disabled": ["telegram"],
-            },
+            UserId(FAKE_USER_ID),
+            SettingsNotificationsToggled(
+                changed_channel_count=2,
+                channels_enabled=["discord"],
+                channels_disabled=["telegram"],
+            ),
         )
 
 

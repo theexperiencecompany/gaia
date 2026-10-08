@@ -188,8 +188,8 @@ def mock_processed_webhook_repository():
 
 
 @pytest.fixture
-def mock_track_payment():
-    with patch("app.services.payments.payment_webhook_service.track_payment_event") as mock_fn:
+def mock_payment_capture():
+    with patch("app.services.payments.payment_webhook_service.capture") as mock_fn:
         yield mock_fn
 
 

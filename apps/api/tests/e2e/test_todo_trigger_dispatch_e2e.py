@@ -95,7 +95,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1", "sender": "a@acme.com"}
                 )
@@ -118,7 +118,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-999"}
                 )
@@ -138,7 +138,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(SLACK, "ti-42", None, {"channel": "C1"})
 
         assert fired == 1
@@ -156,7 +156,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"sender": "ap@northwind.com"}
                 )
@@ -173,7 +173,7 @@ class TestTriggerDispatchAgainstRealInfra:
         payload = {"thread_id": "t-1"}
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 first = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
                 second = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
 
@@ -192,7 +192,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -212,7 +212,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -240,7 +240,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1"}
                 )

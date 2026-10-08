@@ -23,7 +23,6 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.triggers.subscription_service import (
     SubscriptionError,
     build_trigger_config,
@@ -33,11 +32,16 @@ from app.services.triggers.subscription_service import (
 )
 from app.services.triggers.subscription_validation import validate_conditions
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    TodosSubscriptionFailed,
+    TodosSubscriptionRegistered,
+)
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
-USER_ID = "user-1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 TODO_ID = "todo-1"
 ACCOUNT_TRIGGER = "gmail_new_message"
 INSTANCE_TRIGGER = "slack_new_message"
@@ -97,9 +101,7 @@ class _Harness:
             register_triggers=self.register,
             unregister_triggers=self.unregister,
         )
-        self._analytics = patch(
-            "app.services.triggers.subscription_service.capture_event", self.capture
-        )
+        self._analytics = patch("app.services.triggers.subscription_service.capture", self.capture)
         self._repo.start()
         self._svc.start()
         self._analytics.start()
@@ -189,9 +191,8 @@ class TestRegisterSubscription:
             "subscription would never fire. Check the trigger configuration."
         )
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": INSTANCE_TRIGGER, "reason": "no_trigger_instance"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="no_trigger_instance"),
         )
 
     async def test_conditions_are_stored_repaired(self) -> None:
@@ -261,16 +262,15 @@ class TestRegisterSubscription:
             )
 
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
-            {
-                "trigger_name": ACCOUNT_TRIGGER,
-                "action": "notify",
-                "resolution": "account",
-                "condition_count": 1,
-                "repaired": True,
-                "cooldown_seconds": 1234,
-            },
+            UserId(USER_ID),
+            TodosSubscriptionRegistered(
+                trigger_name=ACCOUNT_TRIGGER,
+                action="notify",
+                resolution="account",
+                condition_count=1,
+                repaired=True,
+                cooldown_seconds=1234,
+            ),
         )
 
     async def test_register_calls_composio_with_the_todos_identity(self) -> None:
@@ -332,9 +332,8 @@ class TestRegisterSubscription:
             # Registering upstream state we then refuse to store would orphan it.
             h.register.assert_not_awaited()
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": ACCOUNT_TRIGGER, "reason": "invalid_conditions"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name=ACCOUNT_TRIGGER, reason="invalid_conditions"),
         )
 
     async def test_multiple_condition_errors_are_joined_with_spaces(self) -> None:
@@ -372,9 +371,8 @@ class TestRegisterSubscription:
         # The todo was resolved for THIS user, or a leak reads another user's doc.
         h.get.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": ACCOUNT_TRIGGER, "reason": "todo_not_found"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name=ACCOUNT_TRIGGER, reason="todo_not_found"),
         )
 
     async def test_unknown_trigger_rejects(self) -> None:
@@ -388,9 +386,8 @@ class TestRegisterSubscription:
                     action=SubscriptionAction.EXECUTE,
                 )
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": "not_a_trigger", "reason": "unknown_trigger"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name="not_a_trigger", reason="unknown_trigger"),
         )
 
     async def test_registration_failure_surfaces_as_subscription_error(self) -> None:
@@ -406,9 +403,8 @@ class TestRegisterSubscription:
                 )
             h.update.assert_not_awaited()
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": INSTANCE_TRIGGER, "reason": "registration_failed"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="registration_failed"),
         )
 
 
@@ -683,9 +679,10 @@ class TestCalendarReminders:
                 )
             h.register.assert_not_awaited()
         h.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": "calendar_event_starting_soon", "reason": "invalid_config"},
+            UserId(USER_ID),
+            TodosSubscriptionFailed(
+                trigger_name="calendar_event_starting_soon", reason="invalid_config"
+            ),
         )
 
 

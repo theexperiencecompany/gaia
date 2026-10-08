@@ -33,7 +33,7 @@ pytestmark = pytest.mark.e2e
 COMPLETION = "app.services.platform_link_completion"
 DELIVERY = "app.services.outbound_delivery"
 
-USER_ID = "user-1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 PLATFORM_USER_ID = "tg-123"
 
 
@@ -73,7 +73,7 @@ class TestOneTapLinkDeliversFirstContact:
             ),
             patch(f"{COMPLETION}.notify_account_linked", new=AsyncMock()) as notify,
             patch(f"{COMPLETION}.schedule_account_sync") as sync,
-            patch(f"{COMPLETION}.capture_event") as capture,
+            patch(f"{COMPLETION}.capture") as capture,
         ):
             completion = await complete_platform_link(
                 USER_ID, "telegram", PLATFORM_USER_ID, first_contact=["Welcome!"]
@@ -99,7 +99,7 @@ class TestOneTapLinkDeliversFirstContact:
             ),
             patch(f"{COMPLETION}.publish_outbound_message", new=publish),
             patch(f"{COMPLETION}.schedule_account_sync"),
-            patch(f"{COMPLETION}.capture_event"),
+            patch(f"{COMPLETION}.capture"),
         ):
             completion = await complete_platform_link(
                 USER_ID, "telegram", PLATFORM_USER_ID, first_contact=["Welcome!"]
@@ -126,7 +126,7 @@ class TestFreshLinkWithoutFirstContactSendsGreeting:
                 new=AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as greeting_publish,
             patch(f"{COMPLETION}.schedule_account_sync"),
-            patch(f"{COMPLETION}.capture_event"),
+            patch(f"{COMPLETION}.capture"),
         ):
             completion = await complete_platform_link(USER_ID, "telegram", PLATFORM_USER_ID)
 
@@ -141,7 +141,7 @@ class TestFreshLinkWithoutFirstContactSendsGreeting:
             ),
             patch(f"{COMPLETION}.notify_account_linked", new=AsyncMock()) as notify,
             patch(f"{COMPLETION}.schedule_account_sync"),
-            patch(f"{COMPLETION}.capture_event") as capture,
+            patch(f"{COMPLETION}.capture") as capture,
         ):
             completion = await complete_platform_link(USER_ID, "telegram", PLATFORM_USER_ID)
 
@@ -159,7 +159,7 @@ class TestRefusedLinkSpendsNothing:
             ),
             patch(f"{COMPLETION}.publish_outbound_message", new=AsyncMock()) as publish,
             patch(f"{COMPLETION}.notify_account_linked", new=AsyncMock()) as notify,
-            patch(f"{COMPLETION}.capture_event") as capture,
+            patch(f"{COMPLETION}.capture") as capture,
         ):
             with pytest.raises(AppError) as exc_info:
                 await complete_platform_link(USER_ID, "telegram", PLATFORM_USER_ID)

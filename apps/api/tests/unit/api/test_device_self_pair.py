@@ -16,8 +16,9 @@ from app.constants.device_bridge import MAX_ACTIVE_DEVICES_PER_USER
 from app.models.device import DeviceStatus
 from app.models.user_models import AuthenticatedUser
 from app.schemas.device.requests import SelfPairRequest
-from app.services.analytics_service import AnalyticsEvents
 from app.services.device.device_auth import hash_refresh_token
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.devices import DeviceSelfPaired
 from shared.py.wide_events import log as wide_log
 from tests.helpers import captured_wide_event
 
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.unit
 
 BASE = "/api/v1/device"
 _DB_SESSION = "app.services.device.device_service.get_db_session"
-_CAPTURE = "app.api.v1.endpoints.device.capture_event"
+_CAPTURE = "app.api.v1.endpoints.device.capture"
 _SELF_PAIR = "app.api.v1.endpoints.device.self_pair_device"
 
 _BODY = {
@@ -100,9 +101,8 @@ class TestSelfPairEndpoint:
 
         # Attributed to the resolved user id — not an anonymous context profile.
         mock_capture.assert_called_once_with(
-            fake_user.user_id,
-            AnalyticsEvents.DEVICE_SELF_PAIRED,
-            {"client": "desktop", "platform": "macos"},
+            UserId(fake_user.user_id),
+            DeviceSelfPaired(client="desktop", platform="macos"),
         )
 
         credential_audits = [
@@ -143,9 +143,8 @@ class TestSelfPairEndpoint:
 
         # Attributed to the resolved user id, with the request's client/platform.
         mock_capture.assert_called_once_with(
-            fake_user.user_id,
-            AnalyticsEvents.DEVICE_SELF_PAIRED,
-            {"client": "desktop", "platform": "macos"},
+            UserId(fake_user.user_id),
+            DeviceSelfPaired(client="desktop", platform="macos"),
         )
 
         credential_audits = [

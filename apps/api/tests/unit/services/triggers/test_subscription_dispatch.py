@@ -31,12 +31,14 @@ from app.models.trigger_subscription_models import (
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosTriggerFired
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 _MOD = "app.services.triggers.subscription_dispatch"
-USER_ID = "user-1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 TODO_ID = "todo-1"
 GMAIL = "gmail_new_message"
 SLACK = "slack_new_message"
@@ -75,7 +77,7 @@ def deps():
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
-        patch(f"{_MOD}.capture_event") as capture,
+        patch(f"{_MOD}.capture") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
     ):
         repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
@@ -540,8 +542,8 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         deps.capture.assert_called_once()
-        assert deps.capture.call_args.args[0] == USER_ID
-        assert deps.capture.call_args.args[1] == "todos:trigger_fired"
+        assert deps.capture.call_args.args[0] == UserId(USER_ID)
+        assert isinstance(deps.capture.call_args.args[1], TodosTriggerFired)
 
     async def test_the_event_carries_shape_not_content(self, deps) -> None:
         # Counts and enums only: no subject lines, no addresses, no payload.
@@ -551,13 +553,12 @@ class TestAnalytics:
             GMAIL, None, USER_ID, {"subject": "Invoice 4021", "sender": "a@b.c"}
         )
 
-        props = deps.capture.call_args.args[2]
-        assert props == {
-            "trigger_name": GMAIL,
-            "action": "execute",
-            "resolution": "account",
-            "condition_count": 0,
-        }
+        assert deps.capture.call_args.args[1] == TodosTriggerFired(
+            trigger_name=GMAIL,
+            action="execute",
+            resolution="account",
+            condition_count=0,
+        )
 
     async def test_a_suppressed_fire_is_not_counted(self, deps) -> None:
         # Counting arrivals rather than actions would make every funnel read high.

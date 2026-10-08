@@ -6,10 +6,12 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoResponse, TodoUpdate
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.canvas_vector_utils import delete_canvas_embedding
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosDeleted, TodosToggled
 from shared.py.wide_events import log
 
 
@@ -56,11 +58,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
             todo_count=modified + len(tracked),
             user_id=user_id,
         )
-        capture_event(
-            user_id,
-            AnalyticsEvents.TODO_TOGGLED,
-            {"count": modified + len(tracked)},
-        )
+        capture(UserId(user_id), TodosToggled(count=modified + len(tracked)))
         return [TodoResponse.from_document(todo) for todo in updated]
 
     except HTTPException:
@@ -163,7 +161,7 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
             )
 
         log.info(f"{LogTag.TODO} Bulk deleted todos for user", deleted=deleted, user_id=user_id)
-        capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"count": deleted})
+        capture(UserId(user_id), TodosDeleted(count=deleted))
 
     except HTTPException:
         raise

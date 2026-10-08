@@ -62,9 +62,11 @@ from app.models.agent_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.chat.state import aggregate_usage_metadata
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.wide_events import log
 
 
@@ -333,10 +335,9 @@ async def call_agent(
         if not user_id:
             return stream
 
-        capture_event(
-            user_id,
-            AnalyticsEvents.AGENT_RUN_STARTED,
-            {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+        capture(
+            UserId(user_id),
+            AgentRunStarted(agent="comms", mode="interactive", conversation_id=conversation_id),
         )
 
         async def _tracked_stream() -> AsyncGenerator[str, None]:
@@ -345,16 +346,18 @@ async def call_agent(
                 async for chunk in stream:
                     yield chunk
             except Exception:
-                capture_event(
-                    user_id,
-                    AnalyticsEvents.AGENT_RUN_FAILED,
-                    {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+                capture(
+                    UserId(user_id),
+                    AgentRunFailed(
+                        agent="comms", mode="interactive", conversation_id=conversation_id
+                    ),
                 )
                 raise
-            capture_event(
-                user_id,
-                AnalyticsEvents.AGENT_RUN_COMPLETED,
-                {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+            capture(
+                UserId(user_id),
+                AgentRunCompleted(
+                    agent="comms", mode="interactive", conversation_id=conversation_id
+                ),
             )
 
         return _tracked_stream()
@@ -366,10 +369,9 @@ async def call_agent(
             error=str(exc),
         )
         if user_id:
-            capture_event(
-                user_id,
-                AnalyticsEvents.AGENT_RUN_FAILED,
-                {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+            capture(
+                UserId(user_id),
+                AgentRunFailed(agent="comms", mode="interactive", conversation_id=conversation_id),
             )
         error_message = f"Error when calling agent: {exc!s}"
 
@@ -420,10 +422,9 @@ async def call_agent_silent(
         register_executor_capture(stream_id)
 
         if user_id:
-            capture_event(
-                user_id,
-                AnalyticsEvents.AGENT_RUN_STARTED,
-                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            capture(
+                UserId(user_id),
+                AgentRunStarted(agent="comms", mode="background", conversation_id=conversation_id),
             )
 
         complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
@@ -446,10 +447,11 @@ async def call_agent_silent(
             )
 
         if user_id:
-            capture_event(
-                user_id,
-                AnalyticsEvents.AGENT_RUN_COMPLETED,
-                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            capture(
+                UserId(user_id),
+                AgentRunCompleted(
+                    agent="comms", mode="background", conversation_id=conversation_id
+                ),
             )
 
         return SilentRunResult(
@@ -464,10 +466,9 @@ async def call_agent_silent(
             error=str(exc),
         )
         if user_id:
-            capture_event(
-                user_id,
-                AnalyticsEvents.AGENT_RUN_FAILED,
-                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            capture(
+                UserId(user_id),
+                AgentRunFailed(agent="comms", mode="background", conversation_id=conversation_id),
             )
         raise
     finally:

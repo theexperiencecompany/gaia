@@ -22,7 +22,10 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
@@ -232,7 +235,7 @@ class TestSendStep:
 class TestProcessUser:
     def _user(self, **overrides) -> UserDocument:
         fields = dict(
-            id="u-1",
+            id=USER_ID,
             email="u@example.com",
             created_at="2026-05-30T12:00:00Z",
             notification_channel_prefs={},
@@ -266,14 +269,16 @@ class TestProcessUser:
             patch(
                 "app.services.nurture.service._record_step", new_callable=AsyncMock
             ) as mock_record,
-            patch("app.services.nurture.service.capture_event") as mock_capture,
+            patch("app.services.nurture.service.capture") as mock_capture,
         ):
             result = await _process_user(user, NOW)
 
         assert result is True
         mock_send.assert_awaited_once()
         mock_record.assert_awaited_once()
-        mock_capture.assert_called_once()
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID), NurtureEmailSent(step="first_win", day_offset=1)
+        )
 
 
 class TestRunNurtureSequence:

@@ -42,6 +42,7 @@ from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -73,7 +74,7 @@ async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -
     # Track signup with the stable Mongo user id as the PostHog distinct id.
     try:
         track_signup(
-            user_id=user_id,
+            user_id=UserId(user_id),
             email=email,
             name=signup_name,
             signup_method=LOGIN_METHOD_WORKOS,
@@ -141,7 +142,7 @@ async def store_user_info(
             )
             try:
                 track_login(
-                    user_id=existing_user.id,
+                    user_id=UserId(existing_user.id),
                     email=email,
                     name=stored_name,
                     login_method=LOGIN_METHOD_WORKOS,

@@ -19,13 +19,14 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingStatusResponse,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.photon.photon_client import PhotonUser
 from app.services.platform_link_service import (
     IMESSAGE_REGISTRATION_FEATURE_KEY,
     PlatformAccountTakenError,
 )
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected, IntegrationDisconnected
 from tests.conftest import FAKE_USER
 
 BASE = "/api/v1/platform-links"
@@ -292,7 +293,7 @@ class TestLinkPlatform:
                 new_callable=AsyncMock,
                 return_value=link_result,
             ) as mock_link_account,
-            patch("app.services.platform_link_completion.capture_event") as mock_capture,
+            patch("app.services.platform_link_completion.capture") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
@@ -351,7 +352,7 @@ class TestLinkPlatform:
                 "app.services.platform_link_completion.notify_account_linked",
                 new_callable=AsyncMock,
             ) as mock_notify,
-            patch("app.services.platform_link_completion.capture_event") as mock_capture,
+            patch("app.services.platform_link_completion.capture") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
@@ -361,9 +362,7 @@ class TestLinkPlatform:
         # linked it — argument order here decides who gets messaged where.
         mock_notify.assert_awaited_once_with("discord", FAKE_USER_ID)
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID,
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "discord", "is_new_link": True},
+            UserId(FAKE_USER_ID), IntegrationConnected(integration_id="discord", is_new_link=True)
         )
 
     @pytest.mark.asyncio
@@ -563,7 +562,7 @@ class TestDisconnectPlatform:
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
             patch("app.services.platform_link_service.redis_cache") as mock_cache,
-            patch("app.services.platform_link_service.capture_event") as mock_capture,
+            patch("app.services.platform_link_service.capture") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -572,7 +571,7 @@ class TestDisconnectPlatform:
         assert resp.json()["status"] == "disconnected"
         mock_redis.delete.assert_called_once_with("bot_user:discord:DISC999")
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
+            UserId(FAKE_USER_ID), IntegrationDisconnected(integration_id="discord")
         )
 
     @pytest.mark.asyncio

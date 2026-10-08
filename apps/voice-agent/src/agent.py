@@ -28,7 +28,8 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from shared.py.analytics import PostHogAnalytics, VoiceAnalyticsEvents
+from shared.py.analytics import PostHogAnalytics, UserId
+from shared.py.analytics.catalog.voice import VoiceSessionEnded, VoiceSessionStarted
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
@@ -245,16 +246,14 @@ def _register_session_logging(
         user_id = identity.get("user_id")
         if user_id:
             analytics.capture(
-                str(user_id),
-                VoiceAnalyticsEvents.SESSION_ENDED,
-                {
-                    "shutdown_reason": reason,
-                    "user_turns": stats.user_turns,
-                    "user_speaking_ms": round(stats.user_speaking_ms, 2),
-                    "tts_characters": summary.tts_characters_count,
-                    "stt_audio_duration_s": round(summary.stt_audio_duration, 2),
-                    "tokens_used": summary.llm_prompt_tokens + summary.llm_completion_tokens,
-                },
+                UserId(str(user_id)),
+                VoiceSessionEnded(
+                    user_turns=stats.user_turns,
+                    user_speaking_ms=round(stats.user_speaking_ms, 2),
+                    tts_characters=summary.tts_characters_count,
+                    stt_audio_duration_s=round(summary.stt_audio_duration, 2),
+                    tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
+                ),
             )
         # One job per process, and LiveKit exits it through multiprocessing,
         # which skips atexit: without this the queued batch is dropped.
@@ -414,11 +413,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # on the user's real profile. A room not minted by /token has no user to
         # attribute to, so it is left uncaptured rather than sent anonymously.
         if user_id:
-            analytics.capture(
-                user_id,
-                VoiceAnalyticsEvents.SESSION_STARTED,
-                {"room": ctx.room.name},
-            )
+            analytics.capture(UserId(user_id), VoiceSessionStarted(room=ctx.room.name))
 
         room_start = time.monotonic()
 

@@ -1,6 +1,6 @@
 """Unit tests for app/services/llm_usage_analytics.py.
 
-The PostHog client is mocked, never capture_event itself: a wrong distinct_id
+The PostHog client is mocked, never capture itself: a wrong distinct_id
 is the failure mode that matters, and mocking the helper would hide it.
 """
 
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.constants.llm import DEFAULT_MODEL_NAME
-from app.services.analytics_service import AIFeature, AnalyticsEvents
+from app.services.analytics_service import AIFeature
 from app.services.llm_metering import TokenUsage
 from app.services.llm_usage_analytics import (
     _MEMORY_LABEL_PREFIX,
@@ -21,6 +21,10 @@ from app.services.llm_usage_analytics import (
     graph_call_properties,
     llm_feature,
 )
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OTHER_USER_ID = "6812f0b3c9a14e2b7d5a9142"
 
 
 @pytest.fixture
@@ -178,7 +182,7 @@ def test_no_member_claims_a_label_nothing_passes() -> None:
 # --- capture_auxiliary_llm_call ----------------------------------------------- #
 
 
-def _capture(user_id: str | None = "user-1", **overrides: Any) -> None:
+def _capture(user_id: str | None = USER_ID, **overrides: Any) -> None:
     kwargs: dict[str, Any] = {
         "user_id": user_id,
         "label": "memory:extract",
@@ -192,10 +196,10 @@ def _capture(user_id: str | None = "user-1", **overrides: Any) -> None:
 
 
 def test_the_event_is_attributed_to_the_gaia_user_id(posthog: Any) -> None:
-    _capture(user_id="mongo-user-42")
+    _capture(user_id=OTHER_USER_ID)
     call = _captured(posthog)
-    assert call["distinct_id"] == "mongo-user-42"
-    assert call["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+    assert call["distinct_id"] == OTHER_USER_ID
+    assert call["event"] == AiLlmCallCompleted.event
 
 
 def test_the_event_carries_the_tokens_cost_and_attribution(posthog: Any) -> None:

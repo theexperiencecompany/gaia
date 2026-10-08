@@ -20,8 +20,10 @@ from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import read_agent_configurable, read_run_metadata
-from app.services.analytics_service import capture_event
+from app.services.analytics_service import capture
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.wide_events import log
 
 
@@ -39,15 +41,15 @@ def define_mutation_tool(
     args_model: type[BaseModel],
     apply: Callable[..., Awaitable[str]],
     resync: Callable[[str], None] | None = None,
-    event: str | None = None,
+    event: ServerEvent | None = None,
 ) -> BaseTool:
     """Build a state-changing tool around ``apply``.
 
     ``apply(user_id, **args)`` runs the real mutation through the owning
     service/repository and returns the agent-facing confirmation text; raise
     ``AppError`` (or anything else) to fail the call loud. ``event`` is captured
-    with ``{"area": area}`` only on success. ``resync`` schedules the owning
-    area's projection refresh, fire-and-forget.
+    only on success. ``resync`` schedules the owning area's projection refresh,
+    fire-and-forget.
     """
 
     @tool(name, description=description, args_schema=args_model)
@@ -74,7 +76,7 @@ def define_mutation_tool(
             return f"Error: {name} did not complete ({type(e).__name__})."
 
         if event is not None:
-            capture_event(user_id, event, {"area": area})
+            capture(UserId(user_id), event)
         if resync is not None:
             resync(user_id)
         return result

@@ -31,7 +31,7 @@ MODULE = "app.workers.tasks.workflow_tasks"
 PAUSE_MODULE = "app.services.workflow.integration_pause"
 
 
-def _workflow(user_id: str = "user-1") -> MagicMock:
+def _workflow(user_id: str = "6812f0b3c9a14e2b7d5a91cc") -> MagicMock:
     wf = MagicMock()
     wf.id = "wf-1"
     wf.user_id = user_id
@@ -70,7 +70,7 @@ async def _run_task(
         ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.claim_task_for_execution = AsyncMock(return_value=True)
@@ -209,7 +209,7 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
     async def test_it_reaches_this_user_as_an_integration_warning(self) -> None:
         request = await self._sent(GMAIL_AND_NOTION)
 
-        assert request.user_id == "user-1"
+        assert request.user_id == "6812f0b3c9a14e2b7d5a91cc"
         assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
         assert request.type == NotificationType.WARNING
         assert request.metadata == {
@@ -253,7 +253,7 @@ class TestTheLimitNoticeIsClaimedPerWorkflow:
         ):
             await _notify_workflow_failed(
                 RateLimitExceededException(feature="trigger_workflow_executions"),
-                _workflow(user_id="user-9"),
+                _workflow(user_id="6812f0b3c9a14e2b7d5a91c9"),
             )
 
-        claim.assert_awaited_once_with("user-9", "wf-1")
+        claim.assert_awaited_once_with("6812f0b3c9a14e2b7d5a91c9", "wf-1")

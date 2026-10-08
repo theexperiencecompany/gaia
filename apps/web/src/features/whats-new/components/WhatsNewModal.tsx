@@ -11,7 +11,7 @@ import {
 import { Spinner } from "@heroui/spinner";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useWhatsNewModal, useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
 import { WhatsNewRecentReleases } from "./WhatsNewRecentReleases";
@@ -54,7 +54,7 @@ export function WhatsNewModal() {
     lastTrackedRef.current = selectedIndex;
     const release = releases[selectedIndex];
     if (release) {
-      trackEvent(ANALYTICS_EVENTS.WHATS_NEW_SLIDE_VIEWED, {
+      track("whats_new:slide_viewed", {
         releaseId: release.id,
         index: selectedIndex,
       });
@@ -67,7 +67,7 @@ export function WhatsNewModal() {
     if (!latest) return;
     hasMarkedSeenRef.current = true;
     markAllSeen(latest.id, latest.date);
-    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_MODAL_OPENED, { source: "modal" });
+    track("whats_new:modal_opened", { source: "modal" });
   }, [isModalOpen, latest, markAllSeen]);
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function WhatsNewModal() {
                   endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
                   onPress={() =>
                     release &&
-                    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_DOCS_CLICKED, {
+                    track("whats_new:docs_clicked", {
                       releaseId: release.id,
                     })
                   }

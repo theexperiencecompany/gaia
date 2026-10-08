@@ -16,11 +16,7 @@ vi.mock("@/i18n/navigation", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
-    PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useLogout", () => ({
@@ -76,7 +72,7 @@ vi.mock("@/features/pricing/components/PricingCards", () => ({
 }));
 
 import { UpgradeModal } from "@/features/pricing/components/UpgradeModal";
-import { trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 describe("UpgradeModal", () => {
@@ -294,7 +290,7 @@ describe("UpgradeModal", () => {
       screen.getByRole("button", { name: /subscribe to gaia pro/i }),
     );
 
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "subscription:checkout_started",
       expect.anything(),
     );
@@ -312,7 +308,7 @@ describe("UpgradeModal", () => {
     rerender(<UpgradeModal />);
 
     const impressions = vi
-      .mocked(trackEvent)
+      .mocked(track)
       .mock.calls.filter(([event]) => event === "paywall:modal_viewed");
 
     expect(impressions).toHaveLength(1);
@@ -331,7 +327,7 @@ describe("UpgradeModal", () => {
       .openModal(undefined, { source: "workflow_activation" });
     render(<UpgradeModal />);
 
-    expect(trackEvent).toHaveBeenCalledWith(
+    expect(track).toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.objectContaining({ source: "workflow_activation" }),
     );
@@ -340,7 +336,7 @@ describe("UpgradeModal", () => {
   it("captures no impression while the paywall is closed", () => {
     render(<UpgradeModal />);
 
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.anything(),
     );
@@ -358,7 +354,7 @@ describe("UpgradeModal", () => {
     const { container } = render(<UpgradeModal />);
 
     expect(container.firstChild).toBeNull();
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.anything(),
     );

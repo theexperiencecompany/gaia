@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import Depends, FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
+from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.testclient import TestClient
 
@@ -30,7 +31,6 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware import configure_middleware
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.analytics_service import capture_context_event
 from app.services.bot_token_service import (
     BOT_SESSION_TOKEN_EXPIRY_MINUTES,
     create_bot_session_token,
@@ -932,22 +932,23 @@ class TestBotRefusalWideEvent:
 
 @pytest.mark.integration
 class TestBotRequestAnalyticsAttribution:
-    """A bot request's context-attributed events land on the linked GAIA user.
+    """A bot request's PostHog context identity is the linked GAIA user.
 
     Built with the production middleware stack, because the bug was the order:
     the PostHog context ran before bot auth had resolved anyone.
     """
 
-    def test_context_capture_on_a_bot_route_is_the_linked_user(
+    def test_posthog_context_on_a_bot_route_is_the_linked_user(
         self, mock_platform_lookup: AsyncMock, mock_redis_cache: dict, posthog_events: list
     ) -> None:
         mock_platform_lookup.return_value = TEST_USER_DOC
         app = FastAPI()
         configure_middleware(app)
+        seen: dict[str, str | None] = {}
 
         @app.post("/api/v1/bot/probe")
         async def probe() -> dict[str, bool]:
-            capture_context_event("bot:probe")
+            seen["distinct_id"] = get_context_distinct_id()
             return {"ok": True}
 
         response = TestClient(app).post(
@@ -960,5 +961,4 @@ class TestBotRequestAnalyticsAttribution:
         )
 
         assert response.status_code == 200
-        [event] = posthog_events
-        assert event["distinct_id"] == TEST_USER_ID
+        assert seen["distinct_id"] == TEST_USER_ID

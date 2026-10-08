@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents
 from app.services.mcp.oauth_callback import (
     KNOWN_OAUTH_ERRORS,
     ProviderError,
@@ -20,6 +19,8 @@ from app.services.mcp.oauth_callback import (
     resolve_provider_error,
     sanitized_error_code,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -216,7 +217,7 @@ class TestCompleteOauth:
 
         with (
             patch(f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
-            patch(f"{MODULE}.capture_context_event"),
+            patch(f"{MODULE}.capture"),
         ):
             await self._complete(client)
 
@@ -235,14 +236,14 @@ class TestCompleteOauth:
             patch(
                 f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock
             ) as invalidate,
-            patch(f"{MODULE}.capture_context_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             await self._complete(client)
 
         invalidate.assert_awaited_once_with(USER_ID)
         capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": INTEGRATION_ID, "connection_method": "oauth"},
+            UserId(USER_ID),
+            IntegrationConnected(integration_id=INTEGRATION_ID, connection_method="oauth"),
         )
 
     async def test_clear_excluded_scopes_failure_does_not_fail_the_connect(self):
@@ -253,15 +254,15 @@ class TestCompleteOauth:
             patch(
                 f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock
             ) as invalidate,
-            patch(f"{MODULE}.capture_context_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             async with captured_wide_event() as event:
                 await self._complete(client)
 
         invalidate.assert_awaited_once_with(USER_ID)
         capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": INTEGRATION_ID, "connection_method": "oauth"},
+            UserId(USER_ID),
+            IntegrationConnected(integration_id=INTEGRATION_ID, connection_method="oauth"),
         )
         assert event["warnings"] == [
             {
@@ -279,7 +280,7 @@ class TestCompleteOauth:
             patch(
                 f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock
             ) as invalidate,
-            patch(f"{MODULE}.capture_context_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
             pytest.raises(ValueError, match="Invalid state token"),
         ):
             await self._complete(client)

@@ -1,5 +1,6 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import {
@@ -15,17 +16,23 @@ import React from "react";
 import { ChevronLeft } from "@/components/shared/icons";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
-import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
 
-const buttonData = [
+type SidebarNavigation = EventProperties["navigation:sidebar_clicked"];
+
+interface SidebarButton {
+  route: SidebarNavigation["destination"];
+  icon: React.JSX.Element;
+  label: SidebarNavigation["label"];
+}
+
+const buttonData: SidebarButton[] = [
   {
     route: "/dashboard",
     icon: <Home11Icon />,
@@ -58,19 +65,11 @@ export default function SidebarTopButtons() {
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const { plans } = usePricing();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  const { notifications } = useNotifications({
-    status: NotificationStatus.DELIVERED,
-    limit: 50,
-  });
 
   const monthlyPlan = plans.find(
     (p) => p.name === "Pro" && p.duration === "monthly",
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
-
-  const unreadCount = notifications.filter(
-    (n) => n.status !== NotificationStatus.READ,
-  ).length;
 
   // In settings, the app nav is noise — a single "Back to chats" is all you need.
   if (pathname.startsWith("/settings")) {
@@ -146,7 +145,7 @@ export default function SidebarTopButtons() {
                   as={Link}
                   href={route}
                   onPress={() => {
-                    trackEvent(ANALYTICS_EVENTS.NAVIGATION_SIDEBAR_CLICKED, {
+                    track("navigation:sidebar_clicked", {
                       destination: route,
                       label,
                     });
@@ -167,13 +166,6 @@ export default function SidebarTopButtons() {
                   </div>
                 </Button>
               </Tooltip>
-              {route === "/notifications" && unreadCount > 0 && (
-                <div className="absolute top-0 right-2 flex h-full items-center justify-center">
-                  <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
-                    {unreadCount > 99 ? "9+" : unreadCount}
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}

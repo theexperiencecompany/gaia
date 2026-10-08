@@ -9,8 +9,10 @@ calls deliberately get no second event, which would double-count cost.
 
 from app.config.model_pricing import has_rate_card
 from app.models.chat_models import SourceCategory
-from app.services.analytics_service import AIFeature, AnalyticsEvents, capture_event
+from app.services.analytics_service import AIFeature, capture
 from app.services.llm_metering import TokenUsage
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 
 #: The two graph tiers; any other ``agent_name`` is a per-integration subagent.
@@ -75,23 +77,22 @@ def capture_auxiliary_llm_call(
     if feature is AIFeature.UNATTRIBUTED:
         log.error("llm_call_unmapped_label", label=label, model=model_name)
 
-    capture_event(
-        user_id,
-        AnalyticsEvents.AI_LLM_CALL_COMPLETED,
-        {
-            "feature": str(feature),
-            "surface": SourceCategory.BG.value,
-            "label": label,
-            "model": model_name,
-            "input_tokens": usage["input_tokens"],
-            "output_tokens": usage["output_tokens"],
-            "cached_tokens": usage["cached_tokens"],
-            "reasoning_tokens": usage["reasoning_tokens"],
-            "total_tokens": usage["input_tokens"] + usage["output_tokens"],
-            "cost_usd": cost_usd,
-            "charged": False,
+    capture(
+        UserId(user_id),
+        AiLlmCallCompleted(
+            feature=str(feature),
+            surface=SourceCategory.BG.value,
+            label=label,
+            model=model_name,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            cached_tokens=usage["cached_tokens"],
+            reasoning_tokens=usage["reasoning_tokens"],
+            total_tokens=usage["input_tokens"] + usage["output_tokens"],
+            cost_usd=cost_usd,
+            charged=False,
             # Unpriced models fall back to DEFAULT_PRICING rather than raising,
             # so the figure is plausible and wrong.
-            "cost_estimated": not has_rate_card(model_name),
-        },
+            cost_estimated=not has_rate_card(model_name),
+        ),
     )

@@ -20,7 +20,7 @@ from app.models.webhook_models import (
     WebhookProcessingStatus,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, track_payment_event
+from app.services.analytics_service import capture
 from app.services.payments.subscription_events import (
     CENTS_PER_UNIT,
     SubscriptionEvent,
@@ -28,6 +28,8 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
 
 WebhookHandler = Callable[[DodoWebhookEvent], Awaitable[DodoWebhookProcessingResult]]
@@ -275,39 +277,36 @@ class PaymentWebhookService:
             return None
         return self.handlers.get(known)
 
-    async def _get_user_id_from_metadata(self, metadata: dict[str, Any]) -> str | None:
-        """Get the stable application user ID from payment metadata."""
-        user_id = metadata.get("user_id")
-        return str(user_id) if user_id else None
-
     async def _capture_payment(
-        self, event_type: AnalyticsEvents, payment_data: DodoPaymentData
+        self, event_type: type[PaymentSucceeded | PaymentFailed], payment_data: DodoPaymentData
     ) -> None:
         """Capture a payment against the GAIA user who made it.
 
-        A webhook has no authenticated request to inherit context from, so the
-        id comes off the payment's own metadata. Without one the event is not
-        sent at all — sending it anonymous would split the person's funnel —
-        and the gap is logged, since an uncaptured payment is invisible in PostHog.
+        A webhook has no authenticated request, so the id comes off the payment's
+        own metadata. Without a valid one the event is not sent (an anonymous
+        payment would split the person's funnel) and the gap is logged.
         """
-        user_id = await self._get_user_id_from_metadata(payment_data.metadata)
-        if not user_id:
+        raw_user_id = payment_data.metadata.get("user_id")
+        try:
+            user_id = UserId(str(raw_user_id))
+        except ValueError:
             log.warning(
-                f"{LogTag.PAYMENT} Payment carries no GAIA user id; analytics not captured",
+                f"{LogTag.PAYMENT} Payment carries no valid GAIA user id; analytics not captured",
                 failure_reason="unattributable_payment",
-                analytics_event=event_type.value,
+                analytics_event=event_type.event,
                 payment_id=payment_data.payment_id,
             )
             return
 
-        track_payment_event(
-            user_id=user_id,
-            event_type=event_type,
-            payment_id=payment_data.payment_id,
-            amount=payment_data.total_amount / CENTS_PER_UNIT
-            if payment_data.total_amount
-            else None,
-            currency=payment_data.currency,
+        capture(
+            user_id,
+            event_type(
+                payment_id=payment_data.payment_id,
+                amount=payment_data.total_amount / CENTS_PER_UNIT
+                if payment_data.total_amount
+                else None,
+                currency=payment_data.currency,
+            ),
         )
 
     # Payment event handlers
@@ -321,7 +320,7 @@ class PaymentWebhookService:
 
         log.info(f"{LogTag.PAYMENT} Payment succeeded", payment_id=payment_data.payment_id)
 
-        await self._capture_payment(AnalyticsEvents.PAYMENT_SUCCEEDED, payment_data)
+        await self._capture_payment(PaymentSucceeded, payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,
@@ -338,7 +337,7 @@ class PaymentWebhookService:
 
         log.warning(f"{LogTag.PAYMENT} Payment failed", payment_id=payment_data.payment_id)
 
-        await self._capture_payment(AnalyticsEvents.PAYMENT_FAILED, payment_data)
+        await self._capture_payment(PaymentFailed, payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,

@@ -25,13 +25,15 @@ from app.constants.nurture import (
 )
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from app.utils.timezone import as_utc, is_within_local_daytime
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 from shared.py.wide_events import log
 
 
@@ -145,11 +147,7 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
 
     await _send_step(user, step)
     await _record_step(user.id, step.key, now, status="sent")
-    capture_event(
-        user.id,
-        AnalyticsEvents.NURTURE_EMAIL_SENT,
-        {"step": step.key, "day_offset": step.day_offset},
-    )
+    capture(UserId(user.id), NurtureEmailSent(step=step.key, day_offset=step.day_offset))
     log.set(user={"id": user.id}, nurture={"step": step.key})
     log.info(f"{LogTag.MAIL} Nurture email sent", step_key=step.key)
     return True

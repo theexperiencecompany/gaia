@@ -10,7 +10,7 @@ import { wallpapers } from "@/config/wallpapers";
 import ComparisonGrid from "@/features/landing/components/sections/ComparisonGrid";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
@@ -27,7 +27,7 @@ export default function PricingPage({
   const [isYearly, setIsYearly] = useState(false);
 
   useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PAGE_VIEWED, {
+    track("subscription:page_viewed", {
       source: "landing_pricing",
     });
   }, []);

@@ -73,7 +73,7 @@ from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
@@ -87,6 +87,8 @@ from app.services.latency_metrics import (
 )
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
@@ -150,7 +152,7 @@ async def run_executor_background(
         executor_user_id = run.user.user_id
         run_props = _run_props(run)
         if executor_user_id:
-            capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
+            capture(UserId(executor_user_id), run_props)
 
         alive = await keep_alive(
             run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
@@ -202,16 +204,14 @@ async def run_executor_background(
                 await release_resume_dispatch(run.conversation_id)
 
 
-def _run_props(run: ExecutorRun) -> dict[str, str]:
-    """Build the lifecycle props shared by the start and terminal events."""
-    props: dict[str, str] = {
-        "agent": "executor",
-        "mode": "background",
-        "conversation_id": run.conversation_id,
-    }
-    if run.task_id:
-        props["task_id"] = run.task_id
-    return props
+def _run_props(run: ExecutorRun) -> AgentRunStarted:
+    """Build the start event; its props are the ones the terminal event carries too."""
+    return AgentRunStarted(
+        agent="executor",
+        mode="background",
+        conversation_id=run.conversation_id,
+        task_id=run.task_id or None,
+    )
 
 
 def _timing_fields(
@@ -261,7 +261,7 @@ def _active_status(result_type: str, cancelled: bool) -> str:
 def _capture_executor_terminal(
     run: ExecutorRun,
     *,
-    run_props: dict[str, str],
+    run_props: AgentRunStarted,
     queued: bool,
     timing_fields: dict[str, float],
     result_type: str,
@@ -270,15 +270,10 @@ def _capture_executor_terminal(
     user_id = run.user.user_id
     if not user_id or result_type not in ("final", "error"):
         return
-    event = (
-        AnalyticsEvents.AGENT_RUN_COMPLETED
-        if result_type == "final"
-        else AnalyticsEvents.AGENT_RUN_FAILED
-    )
-    capture_event(
-        user_id,
-        event,
-        {**run_props, "queued": queued, **timing_fields},
+    event_type = AgentRunCompleted if result_type == "final" else AgentRunFailed
+    capture(
+        UserId(user_id),
+        event_type.model_validate({**run_props.model_dump(), "queued": queued, **timing_fields}),
         dedupe_key=run.task_id or run.stream_id,
     )
 

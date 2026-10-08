@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 import json
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
@@ -44,7 +44,7 @@ from app.models.integration_models import UserIntegrationDocument
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -83,6 +83,10 @@ from app.services.platform_link_service import (
 )
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
+from shared.py.analytics.catalog.chat import ChatMessageRefused
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
@@ -153,13 +157,11 @@ def _paywall_notice(checkout_url: str) -> str:
     return notice
 
 
-def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
+def _capture_bot_turn_refused(
+    user_id: str, platform: str, reason: Literal["plan_required", "subscription_required"]
+) -> None:
     """A bot turn stopped at a gate, with why — the counterpart to submitted."""
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_REFUSED,
-        {"platform": platform, "reason": reason},
-    )
+    capture(UserId(user_id), ChatMessageRefused(platform=platform, reason=reason))
 
 
 def _bot_request_refused(
@@ -723,11 +725,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     )
     # Explicit id: bot routes are auth-excluded, so the request context has
     # nobody to attribute to (see apps/api/CLAUDE.md, Analytics).
-    capture_event(
-        user_id,
-        AnalyticsEvents.BOT_SESSION_RESET,
-        {"platform": body.platform},
-    )
+    capture(UserId(user_id), BotSessionReset(platform=body.platform))
     log.set(outcome="success")
     return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
 
@@ -902,11 +900,7 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
 
     # Same event the web-side platform unlink emits — one user action, one name,
     # regardless of which surface triggered it.
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_DISCONNECTED,
-        {"integration_id": platform},
-    )
+    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 
@@ -945,7 +939,7 @@ async def transcribe_bot_audio(
 
     # Imperative gate, not @require_subscription(): the bot API key is checked in the body, so a decorator would 402 an unverified caller (unlinked callers 401 earlier at get_current_user).
     # tiered_rate_limit already charged one transcription by this point — harmless, since a blocked user can't spend it. Outcome value matches _bot_stream_entitlement_gate for one query across both bot surfaces.
-    # No CHAT_MESSAGE_REFUSED here since a transcribe isn't a chat turn.
+    # No ChatMessageRefused here since a transcribe isn't a chat turn.
     try:
         await require_active_subscription(user.user_id, feature="bot_transcribe")
     except SubscriptionRequiredException:
@@ -990,10 +984,9 @@ async def transcribe_bot_audio(
 
     # After the transcription succeeds: an event on entry would count failures
     # as successes. Length, not content — the transcript is user speech.
-    capture_event(
-        user.user_id,
-        AnalyticsEvents.BOT_AUDIO_TRANSCRIBED,
-        {"audio_bytes": len(audio_bytes), "transcript_length": len(text)},
+    capture(
+        UserId(user.user_id),
+        BotAudioTranscribed(audio_bytes=len(audio_bytes), transcript_length=len(text)),
     )
     log.set(outcome="transcribed")  # pragma: no mutate
     return TranscribeAudioResponse(text=text)

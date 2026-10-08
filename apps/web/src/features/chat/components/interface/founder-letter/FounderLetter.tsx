@@ -6,7 +6,7 @@ import type { CSSProperties } from "react";
 
 import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
 import { useFirstSteps } from "@/features/first-steps";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import {
   BODY_FONT,
   INK,
@@ -338,9 +338,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 href={MEETING_URL}
                 target="_blank"
                 rel="noreferrer"
-                onClick={() =>
-                  trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_MEETING_CLICKED)
-                }
+                onClick={() => track("founder_letter:meeting_clicked", {})}
                 className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
               >
                 {MEETING_CTA}

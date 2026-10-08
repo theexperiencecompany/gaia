@@ -30,10 +30,12 @@ from app.models.agent_config import read_run_metadata
 from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import RateLimitHit
 from shared.py.wide_events import log
 
 # The LangChain-injected parameter every @with_rate_limiting tool must declare:
@@ -173,10 +175,9 @@ def _limit_hit_exception(
         # FREE hits are already captured by the limit-upsell seam
         # (schedule_limit_upsell fires on every exceed for free users); paid
         # plans have no such side effect, so their hits are captured here.
-        capture_event(
-            user_id,
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": actual_feature_key, "plan": plan_label(user_plan)},
+        capture(
+            UserId(user_id),
+            RateLimitHit(feature=actual_feature_key, plan=plan_label(user_plan)),
         )
     detail: RateLimitDetail = {}
     # HTTPException.detail is typed `str` by Starlette, but
@@ -374,11 +375,7 @@ async def enforce_tiered_limit(
         # FREE hits are captured by the limit-upsell seam; capture the
         # paid-plan hits here so every wall produces one event.
         if user_plan != PlanType.FREE:
-            capture_event(
-                user_id,
-                AnalyticsEvents.RATE_LIMIT_HIT,
-                {"feature": feature_key, "plan": user_plan.value},
-            )
+            capture(UserId(user_id), RateLimitHit(feature=feature_key, plan=user_plan.value))
         raise
 
 

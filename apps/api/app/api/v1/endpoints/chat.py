@@ -30,12 +30,14 @@ from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 # ``stream_manager.get_progress`` returns the Redis JSON blob; routes validate it
@@ -202,22 +204,22 @@ async def chat_stream_endpoint(
     # The ONE event for a chat message: fires for every surface, no ad blocker
     # can drop it, and lands only once rate limit + cost budget pass. A
     # duplicate client-side `chat:message_sent` emitter has been removed.
-    capture_context_event(
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "is_new_conversation": body.conversation_id is None,
-            "message_count": len(body.messages) if body.messages else 0,
-            "has_files": bool(body.fileIds or body.fileData),
-            "file_count": len(body.fileIds or []) + len(body.fileData or []),
-            "has_selected_tool": bool(body.selectedTool),
-            "tool_name": body.selectedTool,
-            "tool_category": body.toolCategory,
-            "has_selected_workflow": bool(body.selectedWorkflow),
-            "workflow_id": body.selectedWorkflow.id if body.selectedWorkflow else None,
-            "has_selected_calendar_event": bool(body.selectedCalendarEvent),
-            "is_reply": bool(body.replyToMessage),
-            "source": _resolve_source(request),
-        },
+    capture(
+        UserId(user_id),
+        ChatMessageSubmitted(
+            is_new_conversation=body.conversation_id is None,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            has_selected_tool=bool(body.selectedTool),
+            tool_name=body.selectedTool,
+            tool_category=body.toolCategory,
+            has_selected_workflow=bool(body.selectedWorkflow),
+            workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+            has_selected_calendar_event=bool(body.selectedCalendarEvent),
+            is_reply=bool(body.replyToMessage),
+            source=_resolve_source(request),
+        ),
     )
 
     spawn_background_task(

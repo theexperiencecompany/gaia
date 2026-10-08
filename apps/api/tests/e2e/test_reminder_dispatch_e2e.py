@@ -128,7 +128,7 @@ class TestStaticReminderFiresEndToEnd:
                     new_callable=AsyncMock,
                 )
             )
-            stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             result = await _make_scheduler().process_task_execution(reminder.id)
 
         assert result.success is True
@@ -153,7 +153,7 @@ class TestStaticReminderFiresEndToEnd:
                     new_callable=AsyncMock,
                 )
             )
-            stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             scheduler = _make_scheduler()
             first = await scheduler.process_task_execution(reminder.id)
             second = await scheduler.process_task_execution(reminder.id)
@@ -181,7 +181,7 @@ class TestLapsedSubscriptionSkipsButRearms:
                     new_callable=AsyncMock,
                 )
             )
-            capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             result = await _make_scheduler().process_task_execution(reminder.id)
 
         assert result.success is True

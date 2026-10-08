@@ -50,9 +50,10 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
-from app.services.analytics_service import AnalyticsEvents
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from tests.helpers import WideEventRecorder, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
@@ -131,7 +132,7 @@ def _seams(
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", seams.repo),
         patch.object(todo_activity, "append_activity", seams.activity),
-        patch.object(trd, "capture_event", seams.capture),
+        patch.object(trd, "capture", seams.capture),
         patch.object(trd, "enqueue_worker_job", seams.enqueue),
         patch.object(
             trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock(return_value=seams.pool))
@@ -272,15 +273,16 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         entry = _activity(seams)
         assert entry.startswith("result sent on telegram (summary='Checked staging.")
-        user_id, event, props = seams.capture.call_args.args
-        assert (user_id, event) == (USER.user_id, AnalyticsEvents.TODO_RUN_RESULT_DELIVERED)
-        assert props == {
-            "outcome": "delivered",
-            "delivered": True,
-            "platform": "telegram",
-            "trigger_type": TriggerType.SCHEDULED_TODO.value,
-            "recurring": False,
-        }
+        assert seams.capture.call_args.args == (
+            UserId(USER.user_id),
+            TodosRunResultDelivered(
+                outcome="delivered",
+                delivered=True,
+                platform="telegram",
+                trigger_type=TriggerType.SCHEDULED_TODO.value,
+                recurring=False,
+            ),
+        )
 
 
 class TestNothingIsSentWhenNothingShouldBe:
@@ -291,14 +293,14 @@ class TestNothingIsSentWhenNothingShouldBe:
 
         seams.send.assert_not_awaited()
         assert _activity(seams).startswith("kept quiet: no-op wake, nothing changed (summary=")
-        assert seams.capture.call_args.args[2]["outcome"] == "silenced"
+        assert seams.capture.call_args.args[1].outcome == "silenced"
 
     async def test_a_reaction_is_not_a_message_for_a_run_nobody_triggered(self) -> None:
         with _seams(todo=_todo(), narrated="<EMOJI>👍</EMOJI>") as seams:
             await run_todo_on_executor(_request())
 
         seams.send.assert_not_awaited()
-        assert seams.capture.call_args.args[2]["outcome"] == "invalid_directive"
+        assert seams.capture.call_args.args[1].outcome == "invalid_directive"
         assert "result not sent: the write-up was a reaction" in _activity(seams)
 
     async def test_delivery_turned_off_during_the_run_is_honoured(self) -> None:
@@ -311,7 +313,7 @@ class TestNothingIsSentWhenNothingShouldBe:
         assert _activity(seams).startswith(
             "result not sent: delivery is off for this todo (summary="
         )
-        assert seams.capture.call_args.args[2]["outcome"] == "notify_off"
+        assert seams.capture.call_args.args[1].outcome == "notify_off"
 
     async def test_an_executor_error_raises_for_the_retry_ladder_and_sends_nothing(self) -> None:
         with (

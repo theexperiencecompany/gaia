@@ -12,10 +12,12 @@ from app.models.usage_models import (
     UsageHistoryEntry,
 )
 from app.schemas.usage import UsageActivityResponse, UsageSummary
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.usage_activity import get_activity
 from app.services.usage_service import UsageService
 from app.services.usage_summary import build_usage_summary
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import UsageQueried
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/usage")
@@ -33,10 +35,7 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
 
         log.set(period="realtime", result_count=len(summary.features))
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.USAGE_QUERIED,
-            {"plan_type": summary.plan_type},
-        )
+        capture(UserId(user_id), UsageQueried(plan_type=summary.plan_type))
         return summary
     except Exception as e:
         log.error(

@@ -76,7 +76,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowUpdate,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
@@ -126,6 +126,9 @@ from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.wide_events import WorkflowContext, log
 
 # How far a fire may drift from its scheduled time before it is worth a warning.
@@ -228,14 +231,13 @@ async def process_workflow_generation_task(
                     )
                 )
 
-                capture_event(
-                    user_id,
-                    AnalyticsEvents.WORKFLOW_CREATED,
-                    {
-                        "workflow_id": workflow.id,
-                        "steps_count": len(workflow.steps),
-                        "is_todo_workflow": True,
-                    },
+                capture(
+                    UserId(user_id),
+                    WorkflowCreated(
+                        workflow_id=workflow.id,
+                        steps_count=len(workflow.steps),
+                        is_todo_workflow=True,
+                    ),
                 )
 
                 try:
@@ -1302,10 +1304,9 @@ async def _run_and_record_success(
     # (workflows.py); background-origin runs only flow through this task, so
     # completion is captured here — trigger_type folds unstamped integration fires in.
     if trigger_type != TriggerType.MANUAL.value:
-        capture_event(
-            workflow.user_id,
-            AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow_id, "trigger_type": trigger_type},
+        capture(
+            UserId(workflow.user_id),
+            WorkflowExecuted(workflow_id=workflow_id, trigger_type=trigger_type),
         )
 
     # Arm the next occurrence (scheduled recurring workflows only). A re-arm
@@ -1462,11 +1463,7 @@ async def _skip_unpaid_fire(
     # Same event every HTTP/bot paywall block fires; skips rather than
     # raising via require_active_subscription, so the funnel can see it.
     # Explicit id: a worker has no request context for an implicit one.
-    capture_event(
-        workflow.user_id,
-        AnalyticsEvents.PAYWALL_BLOCKED,
-        {"feature": PAYWALL_FEATURE_WORKFLOW},
-    )
+    capture(UserId(workflow.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_WORKFLOW))
     await _rearm_quietly(scheduler, workflow, trigger_type, workflow_id)
     return f"Workflow {workflow_id} skipped — subscription required"
 

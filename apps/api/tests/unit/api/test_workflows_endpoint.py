@@ -20,10 +20,16 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import (
+    WorkflowActivated,
+    WorkflowCreated,
+    WorkflowExecuted,
+    WorkflowPublished,
 )
 from shared.py.wide_events import WorkflowContext, log
 from tests.conftest import FAKE_USER
@@ -220,7 +226,7 @@ class TestCreateWorkflow:
                 new_callable=AsyncMock,
                 return_value=mock_wf,
             ),
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
             patch("app.api.v1.endpoints.workflows.log") as mock_log,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
@@ -229,14 +235,10 @@ class TestCreateWorkflow:
         data = response.json()
         assert data["message"] == "Workflow created successfully"
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.WORKFLOW_CREATED,
-            {
-                "trigger_type": "manual",
-                "steps_count": 1,
-                "generated_immediately": False,
-            },
+            UserId(FAKE_USER.user_id),
+            WorkflowCreated(trigger_type="manual", steps_count=1, generated_immediately=False),
         )
-        assert type(mock_capture.call_args.args[1]["trigger_type"]) is str
+        assert type(mock_capture.call_args.args[1].trigger_type) is str
         mock_log.set.assert_any_call(
             workflow=WorkflowContext(
                 id="wf_abc123",
@@ -264,18 +266,14 @@ class TestCreateWorkflow:
                 new_callable=AsyncMock,
                 return_value=mock_wf,
             ),
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.WORKFLOW_CREATED,
-            {
-                "trigger_type": "manual",
-                "steps_count": 0,
-                "generated_immediately": False,
-            },
+            UserId(FAKE_USER.user_id),
+            WorkflowCreated(trigger_type="manual", steps_count=0, generated_immediately=False),
         )
 
     async def test_create_workflow_captures_trigger_type(self, client: AsyncClient):
@@ -292,7 +290,7 @@ class TestCreateWorkflow:
                 new_callable=AsyncMock,
                 return_value=mock_wf,
             ),
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
         ):
             response = await client.post(
                 BASE_URL,
@@ -301,14 +299,10 @@ class TestCreateWorkflow:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.WORKFLOW_CREATED,
-            {
-                "trigger_type": "schedule",
-                "steps_count": 1,
-                "generated_immediately": False,
-            },
+            UserId(FAKE_USER.user_id),
+            WorkflowCreated(trigger_type="schedule", steps_count=1, generated_immediately=False),
         )
-        assert type(mock_capture.call_args.args[1]["trigger_type"]) is str
+        assert type(mock_capture.call_args.args[1].trigger_type) is str
 
     async def test_create_workflow_missing_title_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -438,7 +432,7 @@ class TestExecuteWorkflow:
                 return_value=mock_result,
             ),
             patch("app.api.v1.endpoints.workflows.log") as mock_log,
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
@@ -447,7 +441,7 @@ class TestExecuteWorkflow:
             workflow=WorkflowContext(execution_id="exec_123"),
             outcome="success",
         )
-        mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_EXECUTED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), WorkflowExecuted())
         assert any(
             "execution_id" in c.kwargs["workflow"]
             and type(c.kwargs["workflow"]["execution_id"]) is str
@@ -634,13 +628,13 @@ class TestActivateWorkflow:
                 new_callable=AsyncMock,
                 return_value=mock_wf,
             ),
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
             patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/activate")
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_ACTIVATED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), WorkflowActivated())
         assert response.json()["message"] == "Workflow activated successfully"
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
@@ -928,7 +922,7 @@ class TestPublishWorkflow:
                 new_callable=AsyncMock,
                 return_value="my-public-workflow-abc123",
             ),
-            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.workflows.capture") as mock_capture,
             patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/publish")
@@ -937,7 +931,7 @@ class TestPublishWorkflow:
         # Ownership check: the lookup is scoped to the path id AND the caller.
         mock_get_for_user.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
-        mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_PUBLISHED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), WorkflowPublished())
         data = response.json()
         assert data["message"] == "Workflow published successfully"
         assert data["slug"] == "my-public-workflow-abc123"

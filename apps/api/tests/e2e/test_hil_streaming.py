@@ -73,7 +73,7 @@ from tests.e2e.test_agent_chain import StreamingScriptedModel, call, streaming_m
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
 USER = AuthenticatedUser(
-    user_id="u-hil-stream",
+    user_id="6812f0b3c9a14e2b7d5a91cc",
     email="hil-stream@test.local",
     name="Test User",
 )

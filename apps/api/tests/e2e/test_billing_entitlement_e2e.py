@@ -124,7 +124,7 @@ class TestLapsedUserSeesThePaywallContract:
                 new_callable=AsyncMock,
                 return_value=_free_status(),
             ),
-            patch(f"{ENT}.capture_event") as capture,
+            patch(f"{ENT}.capture") as capture,
         ):
             response = await gated_client.get("/api/v1/todos")
 

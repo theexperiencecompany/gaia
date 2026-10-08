@@ -21,7 +21,6 @@ from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -31,6 +30,7 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import AppError, create_error
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 
 
 def _user(**fields) -> UserDocument:
@@ -959,7 +959,7 @@ class TestDisconnectPlatformAccount:
         # The agent tool reaches this from an ARQ executor run with no request
         # context, so the owner must be named explicitly.
         [event] = posthog_events
-        assert event["event"] == AnalyticsEvents.INTEGRATION_DISCONNECTED
+        assert event["event"] == IntegrationDisconnected.event
         assert event["distinct_id"] == sample_user_id
         assert event["properties"]["integration_id"] == "discord"
 

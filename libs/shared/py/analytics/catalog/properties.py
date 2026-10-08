@@ -1,0 +1,39 @@
+"""The property kinds an analytics event may carry: counts, enums, ids, durations, booleans.
+
+A str field is legal only as one of the id kinds below, each a pattern that
+rejects whitespace, so message text, names and emails cannot be sent as a property.
+"""
+
+from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import StringConstraints
+
+
+@dataclass(frozen=True, slots=True)
+class IdKind:
+    """Marks a constrained str as a sanctioned id kind; any other str field fails the catalog."""
+
+    name: str
+
+
+#: A Mongo ObjectId in its 24-hex string form.
+ObjectIdStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{24}$"), IdKind("object_id")]
+
+#: A machine identifier: a uuid, a slug, a tool name, a flag key. No whitespace, no "@".
+Identifier = Annotated[
+    str,
+    StringConstraints(pattern=r"^[A-Za-z0-9_.:/#+\-]{1,256}$"),
+    IdKind("identifier"),
+]
+
+#: A URL path with no query string, e.g. "/api/v1/chat-stream". No whitespace, "@", "?" or "#".
+UrlPath = Annotated[str, StringConstraints(pattern=r"^/[^\s@?#]*$"), IdKind("url_path")]
+
+#: An ISO 4217 currency code as the payment provider reports it ("USD", "inr").
+CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$"), IdKind("currency_code")]
+
+#: A single emoji: short and non-ASCII only, so no word can pass as one.
+Emoji = Annotated[str, StringConstraints(pattern=r"^[^\x00-\x7F]{1,16}$"), IdKind("emoji")]
+
+__all__ = ["CurrencyCode", "Emoji", "IdKind", "Identifier", "ObjectIdStr", "UrlPath"]

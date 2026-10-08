@@ -6,9 +6,10 @@ import pytest
 
 from app.models.first_steps_models import FirstStepKey, FirstStepsResponse, FirstStepsState
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.first_steps_service import get_first_steps, set_first_steps_collapsed
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import FirstStepsCollapsed
 
 MODULE = "app.services.first_steps_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -26,7 +27,7 @@ def repos():
         patch(f"{MODULE}.conversation_repository") as conversations,
         patch(f"{MODULE}.get_all_integrations_status", new_callable=AsyncMock) as integrations,
         patch(f"{MODULE}.workflow_repository") as workflows,
-        patch(f"{MODULE}.capture_context_event") as capture,
+        patch(f"{MODULE}.capture") as capture,
     ):
         users.get = AsyncMock(return_value=_user())
         users.set_first_steps_collapsed = AsyncMock(return_value=True)
@@ -161,8 +162,8 @@ class TestSetFirstStepsCollapsed:
         await set_first_steps_collapsed(USER_ID, True)
 
         repos["capture"].assert_called_once_with(
-            AnalyticsEvents.FIRST_STEPS_COLLAPSED,
-            {"collapsed": True, "steps_done": 2, "steps_total": len(FirstStepKey)},
+            UserId(USER_ID),
+            FirstStepsCollapsed(collapsed=True, steps_done=2, steps_total=len(FirstStepKey)),
         )
 
     async def test_missing_user_is_a_404_and_emits_nothing(self, repos) -> None:
