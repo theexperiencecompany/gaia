@@ -271,6 +271,7 @@ class TestAgentRunLifecycle:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
+        assert [c.args[0] for c in capture.call_args_list] == ["u1", "u1"]
         assert self._events(capture) == [
             (AnalyticsEvents.AGENT_RUN_STARTED, {"agent": "comms"}, None),
             (
