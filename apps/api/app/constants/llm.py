@@ -147,6 +147,10 @@ PROVIDER_NAME_METADATA_KEY = "provider_name"
 # The response_metadata flag on the reply the budget wall writes in place of a
 # model call; the accounting middleware meters nothing for a reply carrying it.
 BUDGET_STOP_METADATA_KEY = "budget_stop"
+# The response_metadata keys marking a reply a fallback provider served, and the
+# model it served: read by the SSE downgrade notice and priced by accounting.
+FELL_BACK_METADATA_KEY = "gaia_fell_back"
+FALLBACK_MODEL_METADATA_KEY = "gaia_fallback_model"
 
 # How often DeltaChannel writes a full snapshot (every Nth update); between
 # snapshots only deltas persist, so storage grows ~O(N) instead of O(N²). Lower =

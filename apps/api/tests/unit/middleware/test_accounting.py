@@ -24,6 +24,7 @@ from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
     _latest_ai_message,
 )
+from app.config.model_pricing import calculate_token_cost
 from app.config.rate_limits import (
     PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
@@ -830,6 +831,41 @@ async def test_a_turn_the_budget_wall_stopped_writes_no_ledger_row() -> None:
     ledger.assert_not_awaited()
     assert "model" not in log.get()
     assert mw._start_ts == {}
+
+
+@pytest.mark.regression
+async def test_a_fallback_reply_is_priced_as_the_model_that_served_it() -> None:
+    """A Gemini fallback on a DeepSeek lane was priced at DeepSeek's card, the model that had just failed."""
+    served = "gemini-3.1-flash-lite"
+    reply = _ai(
+        input_tokens=10_000,
+        output_tokens=2_000,
+        response_metadata={"gaia_fell_back": True, "gaia_fallback_model": served},
+    )
+    lane_config = {
+        "configurable": {
+            **_LEDGER_CONFIG["configurable"],
+            "lane": {**_LANE, "provider": "openrouter", "model": "deepseek/deepseek-v4-flash-0731"},
+        }
+    }
+    mw = LLMAccountingMiddleware(agent_name="executor_agent")
+    with (
+        patch.object(accounting, "current_run_config", lambda: lane_config),
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
+        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        await mw.aafter_model(_state(reply), None)
+        await asyncio.gather(
+            *(t for t in asyncio.all_tasks() if t.get_name().startswith("llm_calls_ledger"))
+        )
+
+    row = ledger.await_args.args[0]
+    expected = calculate_token_cost(
+        model_name=served, input_tokens=10_000, output_tokens=2_000, cached_tokens=0
+    )["total_cost"]
+    assert (row.model_requested, row.cost_source) == (served, "table")
+    assert row.cost_usd == pytest.approx(expected)
 
 
 async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tree() -> None:

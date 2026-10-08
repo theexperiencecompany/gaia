@@ -2258,18 +2258,34 @@ class TestStampFallback:
     def test_a_fallback_message_is_marked_with_the_model_that_produced_it(self) -> None:
         message = AIMessage(content="hi")
 
-        stamped = _stamp_fallback(message)
+        stamped = _stamp_fallback(message, "gemini-x")
 
         assert stamped is message
         assert message.response_metadata["gaia_fell_back"] is True
-        assert message.response_metadata["gaia_fallback_model"] == DEFAULT_MODEL_NAME
+        assert message.response_metadata["gaia_fallback_model"] == "gemini-x"
+
+    @pytest.mark.regression
+    async def test_a_graph_fallback_reply_names_the_fallback_lanes_model(self) -> None:
+        """The stamp said DEFAULT_MODEL_NAME whoever served, so accounting could not price the real one."""
+
+        def _boom(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            raise ConnectionError("primary down")
+
+        result = await ainvoke_llm(
+            RunnableLambda(_boom),
+            "hi",
+            fallback=RunnableLambda(lambda _input: AIMessage(content="from-fallback")),
+            options=LLMInvokeOptions(max_attempts=1, fallback_model="gemini-x"),
+        )
+
+        assert result.response_metadata["gaia_fallback_model"] == "gemini-x"
 
     def test_existing_response_metadata_is_kept(self) -> None:
         # The provider's own metadata rides along; stamping must add to it, not
         # replace it, or the model/usage the provider reported is lost.
         message = AIMessage(content="hi", response_metadata={"finish_reason": "stop"})
 
-        _stamp_fallback(message)
+        _stamp_fallback(message, "gemini-x")
 
         assert message.response_metadata["finish_reason"] == "stop"
         assert message.response_metadata["gaia_fell_back"] is True
@@ -2279,7 +2295,7 @@ class TestStampFallback:
         # model with no response_metadata at all.
         result = object()
 
-        assert _stamp_fallback(result) is result
+        assert _stamp_fallback(result, "gemini-x") is result
 
 
 # ---------------------------------------------------------------------------

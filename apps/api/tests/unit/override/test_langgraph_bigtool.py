@@ -1464,6 +1464,8 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         assert rebound["configurable"]["user_id"] == "u1"
         # The dead lane's pins are cleared, not merged forward.
         assert "provider_pin" not in rebound["configurable"]
+        # Named so the reply is priced as the model that served it, not the one that failed.
+        assert options.fallback_model == "gemini-x"
 
     @pytest.mark.asyncio
     async def test_the_async_node_runs_the_fallback_under_the_fallback_lane(self) -> None:
