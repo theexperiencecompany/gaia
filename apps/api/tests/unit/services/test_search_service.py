@@ -104,14 +104,17 @@ class TestSearchMessagesLogsNoUserText:
         mock_note_repo.search_by_plaintext.return_value = _note_hits()
 
         async with captured_wide_event() as event:
-            await search_messages("my divorce papers", FAKE_USER_ID)
+            with patch.object(search_service, "time") as clock:
+                clock.monotonic.side_effect = [10.0, 10.25]
+                await search_messages("my divorce papers", FAKE_USER_ID)
 
-        search = event["search"]
-        assert sorted(search) == ["duration_ms", "mode", "query", "result_count", "scope"]
-        assert search["query"] == user_text_shape("my divorce papers")
-        assert search["mode"] == "keyword"
-        assert search["scope"] == ["messages", "conversations", "notes"]
-        assert search["result_count"] == 5
+        assert event["search"] == {
+            "query": user_text_shape("my divorce papers"),
+            "mode": "keyword",
+            "scope": ["messages", "conversations", "notes"],
+            "result_count": 5,
+            "duration_ms": 250,
+        }
 
     async def test_a_failed_search_still_records_only_the_query_shape(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window

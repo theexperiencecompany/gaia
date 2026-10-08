@@ -151,16 +151,23 @@ class TestSearchLogsNoUserText:
     async def test_email_search_logs_the_query_shape(
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
-        mock_perform.return_value = WebSearchResult(web=[], query="my divorce papers")
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/contact",
+                    title="Contact",
+                    content="a@example.com b@example.com a@example.com",
+                )
+            ],
+            query="my divorce papers",
+        )
         with patch("app.api.v1.endpoints.search.log") as log:
             await client.get(f"{SEARCH_BASE}/search/email", params={"query": "my divorce papers"})
 
-        search = log.set.call_args_list[0].kwargs["search"]
-        assert search == {
-            "query": user_text_shape("my divorce papers"),
-            "mode": "web",
-            "scope": ["emails"],
-        }
+        assert [c.kwargs["search"] for c in log.set.call_args_list] == [
+            {"query": user_text_shape("my divorce papers"), "mode": "web", "scope": ["emails"]},
+            {"result_count": 2},
+        ]
 
 
 class TestSearchEmail:
