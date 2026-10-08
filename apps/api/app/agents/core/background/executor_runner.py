@@ -149,14 +149,15 @@ async def run_executor_background(
         ttft_ms: float | None = None
         active_ms: float | None = None
 
-        alive = await keep_alive(
-            run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
-        )
-        try:
-            # One lifecycle per run segment; a resumed run re-enters here.
-            with agent_run_lifecycle(
-                run.user.user_id, _run_props(run), dedupe_key=run.task_id or run.stream_id
-            ) as lifecycle:
+        # One lifecycle per run segment; a resumed run re-enters here. Opened before
+        # keep_alive so a lost liveness write is a failed run, not an untracked one.
+        with agent_run_lifecycle(
+            run.user.user_id, _run_props(run), dedupe_key=run.task_id or run.stream_id
+        ) as lifecycle:
+            alive = await keep_alive(
+                run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
+            )
+            try:
                 with span() as elapsed_active:
                     result = await _execute_executor(task, configurable, run, resume)
                 active_ms = round(elapsed_active() * 1000.0, 2)
@@ -194,14 +195,14 @@ async def run_executor_background(
                 lifecycle.paused = result_type == EXECUTOR_PAUSED
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
-        finally:
-            alive.cancel()
-            await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
-            if resume is not None:
-                # This run held the conversation's resume slot (claimed at dispatch).
-                # Freeing it AFTER finalize means the next decision can dispatch only
-                # once this run's pause/completion bookkeeping is fully written.
-                await release_resume_dispatch(run.conversation_id)
+            finally:
+                alive.cancel()
+                await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
+                if resume is not None:
+                    # This run held the conversation's resume slot (claimed at dispatch).
+                    # Freeing it AFTER finalize means the next decision can dispatch only
+                    # once this run's pause/completion bookkeeping is fully written.
+                    await release_resume_dispatch(run.conversation_id)
 
 
 def _run_props(run: ExecutorRun) -> dict[str, str]:

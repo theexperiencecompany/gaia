@@ -5,6 +5,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
@@ -23,6 +24,7 @@ from app.constants.agents import (
     PLAYBOOK_REPLAYED_CALLS_KEY,
     WORKFLOW_LOCK_CONTEXT_KEY,
 )
+from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -471,6 +473,41 @@ class TestCallAgent:
             assert passed_config["configurable"]["bot_message_id"] == "bot-msg-7"
 
     @pytest.mark.asyncio
+    async def test_user_message_id_added_to_config(self):
+        """The executor links its notifications back to the user's message by this id."""
+
+        async def _fake_stream(*args, **kwargs):
+            yield "data: [DONE]\n\n"
+
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ),
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ) as mock_exec,
+        ):
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                    ids=StreamMessageIds(user_message_id="user-msg-3"),
+                )
+            )
+
+        passed_config = mock_exec.call_args[0][2]
+        assert passed_config["configurable"]["user_message_id"] == "user-msg-3"
+
+    @pytest.mark.asyncio
     async def test_no_bot_message_id_when_not_provided(self):
         async def _fake_stream(*args, **kwargs):
             yield "data: [DONE]\n\n"
@@ -531,11 +568,10 @@ class TestCallAgent:
                 )
             )
 
-        assert len(chunks) == 2
-        parsed = json.loads(chunks[0].replace("data: ", "").strip())
-        assert "error" in parsed
-        assert "boom" in parsed["error"]
-        assert "DONE" in chunks[1]
+        assert chunks == [
+            f"data: {json.dumps({'error': 'Error when calling agent: boom'})}\n\n",
+            "data: [DONE]\n\n",
+        ]
 
     @pytest.mark.asyncio
     async def test_error_generator_format(self):
@@ -765,6 +801,47 @@ class TestCallAgentSilent:
         assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
 
     @pytest.mark.asyncio
+    async def test_the_detached_executors_tool_data_is_folded_onto_the_message(self):
+        config = _fresh_config()
+        comms_entry = {"tool": "comms"}
+        executor_entry = {"tool": "executor"}
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", [comms_entry]),
+            ) as execute,
+            patch("app.agents.core.agent.register_executor_capture") as register,
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock) as wait,
+            patch(
+                "app.agents.core.agent.drain_executor_tool_data", return_value=[executor_entry]
+            ) as drain,
+        ):
+            result = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        stream_id = config["configurable"]["stream_id"]
+        assert UUID(stream_id).version == 4
+        register.assert_called_once_with(stream_id)
+        execute.assert_awaited_once_with(FAKE_GRAPH, FAKE_STATE, config)
+        wait.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
+        drain.assert_called_once_with(stream_id)
+        assert result == SilentRunResult(message="Hello!", tool_data=[comms_entry, executor_entry])
+
+    @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
         """A swallowed failure returned as a normal result reads as success to every caller — which is how workflows reported success through the Gemini 429s."""
         patches = _common_patches()
@@ -816,7 +893,7 @@ class TestCallAgentSilent:
     @pytest.mark.asyncio
     async def test_usage_metadata_logging(self):
         """When usage_metadata_callback has data, it should be logged."""
-        callback = MagicMock()
+        callback = UsageMetadataCallbackHandler()
         callback.usage_metadata = {
             "model_a": {"input_tokens": 100, "output_tokens": 50},
             "model_b": {"input_tokens": 200, "output_tokens": 75},
@@ -1560,7 +1637,7 @@ class TestTheOptionsEachEntryPointDerives:
             user,
             options=None,
         ):
-            seen.append(options)
+            seen.append((conversation_id, options))
             return FAKE_GRAPH, FAKE_STATE, config
 
         return _fake_core
@@ -1579,7 +1656,9 @@ class TestTheOptionsEachEntryPointDerives:
                 "app.agents.core.agent._core_agent_logic",
                 new=self._recording_core(seen, _fresh_config()),
             ),
-            patch("app.agents.core.agent.trace_id_for_message", return_value="trace-9"),
+            patch(
+                "app.agents.core.agent.trace_id_for_message", return_value="trace-9"
+            ) as trace_id_for,
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
                 return_value=_fake_stream(),
@@ -1595,13 +1674,17 @@ class TestTheOptionsEachEntryPointDerives:
                 )
             )
 
+        trace_id_for.assert_called_once_with("bot-7")
         assert seen == [
-            AgentRunOptions(
-                usage_metadata_callback=callback,
-                trigger_context=None,
-                source="whatsapp",
-                langfuse_trace_id="trace-9",
-                langfuse_tags=["comms_agent", settings.ENV],
+            (
+                "conv-1",
+                AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    trigger_context=None,
+                    source="whatsapp",
+                    langfuse_trace_id="trace-9",
+                    langfuse_tags=["comms_agent", settings.ENV],
+                ),
             )
         ]
 
@@ -1637,11 +1720,14 @@ class TestTheOptionsEachEntryPointDerives:
         # The silent path deliberately does NOT forward the langfuse fields —
         # it seeds no trace of its own.
         assert seen == [
-            AgentRunOptions(
-                usage_metadata_callback=callback,
-                trigger_context=trigger,
-                source="cron",
-                langfuse_trace_id=None,
-                langfuse_tags=None,
+            (
+                "conv-1",
+                AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    trigger_context=trigger,
+                    source="cron",
+                    langfuse_trace_id=None,
+                    langfuse_tags=None,
+                ),
             )
         ]

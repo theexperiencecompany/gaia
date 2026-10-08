@@ -13,6 +13,7 @@ from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -885,6 +886,9 @@ class TestHealthCheckAgentCall:
 
         # A non-empty verdict is returned stripped, not blanked.
         assert result == "Still on track"
+        # No stored profile falls back to the todo's own user, on a fresh conversation.
+        assert captured["user"] == AuthenticatedUser(user_id="user-3", name="User")
+        assert UUID(str(captured["conversation_id"])).version == 4
 
         options = captured["options"]
         assert isinstance(options, AgentRunOptions)

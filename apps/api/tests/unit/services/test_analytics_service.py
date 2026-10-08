@@ -246,24 +246,28 @@ class TestAgentRunLifecycle:
         with (
             patch("app.services.analytics_service.capture_event") as capture,
             pytest.raises(KeyError),
-            agent_run_lifecycle("u1", {"agent": "comms"}),
+            agent_run_lifecycle("u1", {"agent": "comms"}, dedupe_key="task-1"),
         ):
             raise KeyError("boom")
 
         assert self._events(capture) == [
             (AnalyticsEvents.AGENT_RUN_STARTED, {"agent": "comms"}, None),
-            (AnalyticsEvents.AGENT_RUN_FAILED, {"agent": "comms", "reason": "KeyError"}, None),
+            (
+                AnalyticsEvents.AGENT_RUN_FAILED,
+                {"agent": "comms", "reason": "KeyError"},
+                "task-1",
+            ),
         ]
 
     def test_a_failure_the_body_handled_is_failed_with_its_reason(self) -> None:
         with patch("app.services.analytics_service.capture_event") as capture:
-            with agent_run_lifecycle("u1", {"agent": "executor"}) as run:
+            with agent_run_lifecycle("u1", {"agent": "executor"}, dedupe_key="task-1") as run:
                 run.failure_reason = "approval_lost"
 
         assert self._events(capture)[1] == (
             AnalyticsEvents.AGENT_RUN_FAILED,
             {"agent": "executor", "reason": "approval_lost"},
-            None,
+            "task-1",
         )
 
     def test_a_paused_run_has_no_terminal_event(self) -> None:

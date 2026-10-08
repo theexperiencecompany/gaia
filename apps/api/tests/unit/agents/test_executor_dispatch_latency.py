@@ -243,6 +243,20 @@ class TestExecutorRunLatency:
         failed = [c for c in mock_capture.call_args_list if c.args[1] == "agent:run_failed"]
         assert len(failed) == 1
 
+    async def test_a_pause_records_the_runs_resume_context_on_its_approvals(self) -> None:
+        run = _run("exec-pause-args", t_dispatch_perf=time.perf_counter())
+        recorder = AsyncMock(return_value=True)
+
+        await self._background(
+            run,
+            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1", "appr-2")),
+            record_pause=recorder,
+        )
+
+        recorder.assert_awaited_once_with(
+            run, "do the thing", {"conversation_source": "web"}, ("appr-1", "appr-2")
+        )
+
     async def test_recorded_pause_labels_the_active_span_paused(self) -> None:
         """A pause that records cleanly stays paused on the active span."""
         run = _run("exec-pause-ok", t_dispatch_perf=time.perf_counter())

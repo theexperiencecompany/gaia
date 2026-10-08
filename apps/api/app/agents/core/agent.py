@@ -401,7 +401,7 @@ async def call_agent_silent(
             if executor_tool_data:
                 tool_data = [*tool_data, *executor_tool_data]
 
-            if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
+            if usage_metadata_callback:
                 totals = aggregate_usage_metadata(usage_metadata_callback.usage_metadata or {})
                 total_input, total_output = totals.input_tokens, totals.output_tokens
                 log.set(
