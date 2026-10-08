@@ -6,7 +6,7 @@ from shared.py.wide_events import log
 
 SEED_PLANS_COMMAND = (
     "uv run --group backend python scripts/payment_setup.py "
-    "--monthly-product-id <dodo_id> --yearly-product-id <dodo_id>"
+    "--monthly-product-id <dodo_id> --yearly-product-id <dodo_id> --apply"
 )
 
 

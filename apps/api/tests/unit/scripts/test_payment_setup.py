@@ -12,16 +12,47 @@ in the PR: reverting either behavior turns these red.
 """
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from dodopayments.types.price import OneTimePrice, RecurringPrice
 import pytest
 from scripts.payment_setup import (
+    ProductPrice,
     build_plan_catalogue,
     catalogue_fields,
     deactivate_free_plan,
+    fetch_product_price,
     invalidate_plan_cache,
     reconcile_plan,
 )
+
+from app.models.payment_models import PlanDuration, PlanTier
+
+MONTHLY = ProductPrice(product_id="monthly-id", amount=3000, currency="USD")
+YEARLY = ProductPrice(product_id="yearly-id", amount=30000, currency="USD")
+
+
+def _dodo_with(price: RecurringPrice | OneTimePrice) -> MagicMock:
+    client = MagicMock()
+    client.products.retrieve.return_value = SimpleNamespace(price=price)
+    return client
+
+
+def _recurring(interval: str, amount: int = 57284, currency: str = "ZAR") -> RecurringPrice:
+    return RecurringPrice.model_validate(
+        {
+            "currency": currency,
+            "discount": 0,
+            "payment_frequency_count": 1,
+            "payment_frequency_interval": interval,
+            "price": amount,
+            "purchasing_power_parity": False,
+            "subscription_period_count": 10,
+            "subscription_period_interval": "Year",
+            "type": "recurring_price",
+        }
+    )
 
 
 def _stored_document(plan, **overrides):
@@ -38,7 +69,7 @@ def _stored_document(plan, **overrides):
 
 async def test_reconcile_leaves_an_already_matching_plan_untouched() -> None:
     """A plan whose content matches is not rewritten just to move updated_at."""
-    plan = build_plan_catalogue("monthly-id", "yearly-id")[1]
+    plan = build_plan_catalogue(MONTHLY, YEARLY)[1]
     collection = AsyncMock()
     collection.find_one.return_value = _stored_document(plan)
 
@@ -50,7 +81,7 @@ async def test_reconcile_leaves_an_already_matching_plan_untouched() -> None:
 
 async def test_dry_run_and_write_agree_on_whether_a_plan_changes() -> None:
     """Whatever the dry run reports for a plan, the real run must do."""
-    plan = build_plan_catalogue("monthly-id", "yearly-id")[1]
+    plan = build_plan_catalogue(MONTHLY, YEARLY)[1]
     collection = AsyncMock()
     collection.find_one.return_value = _stored_document(plan)
 
@@ -62,7 +93,7 @@ async def test_dry_run_and_write_agree_on_whether_a_plan_changes() -> None:
 
 async def test_reconcile_updates_a_plan_whose_price_drifted() -> None:
     """A differing catalogue field is written, with a fresh updated_at."""
-    plan = build_plan_catalogue("monthly-id", "yearly-id")[1]
+    plan = build_plan_catalogue(MONTHLY, YEARLY)[1]
     collection = AsyncMock()
     collection.find_one.return_value = _stored_document(plan, amount=plan.amount + 500)
     before = datetime.now(UTC) - timedelta(seconds=1)
@@ -77,7 +108,7 @@ async def test_reconcile_updates_a_plan_whose_price_drifted() -> None:
 
 async def test_reconcile_creates_a_missing_plan() -> None:
     """A plan with no stored counterpart is inserted."""
-    plan = build_plan_catalogue("monthly-id", "yearly-id")[0]
+    plan = build_plan_catalogue(MONTHLY, YEARLY)[0]
     collection = AsyncMock()
     collection.find_one.return_value = None
 
@@ -89,7 +120,7 @@ async def test_reconcile_creates_a_missing_plan() -> None:
 
 async def test_dry_run_writes_nothing_for_a_missing_plan() -> None:
     """The preview of a create touches neither insert nor update."""
-    plan = build_plan_catalogue("monthly-id", "yearly-id")[0]
+    plan = build_plan_catalogue(MONTHLY, YEARLY)[0]
     collection = AsyncMock()
     collection.find_one.return_value = None
 
@@ -102,7 +133,7 @@ async def test_dry_run_writes_nothing_for_a_missing_plan() -> None:
 
 def test_catalogue_has_no_free_plan() -> None:
     """GAIA is paid-only — the seed script must not build a $0 Free row."""
-    catalogue = build_plan_catalogue("monthly-id", "yearly-id")
+    catalogue = build_plan_catalogue(MONTHLY, YEARLY)
     assert all(plan.amount > 0 or plan.name != "Free" for plan in catalogue)
     assert not any(plan.name == "Free" for plan in catalogue)
 
@@ -117,6 +148,7 @@ async def test_deactivate_free_plan_marks_an_existing_active_free_row_inactive()
     assert changed is True
     written = collection.update_one.await_args.args[1]["$set"]
     assert written["is_active"] is False
+    assert written["plan_type"] == "free"
     assert collection.update_one.await_args.args[0] == {"_id": "free-id"}
 
 
@@ -162,3 +194,57 @@ async def test_invalidate_plan_cache_propagates_a_redis_failure() -> None:
         cache.client = client
         with pytest.raises(ConnectionError):
             await invalidate_plan_cache()
+
+
+def test_catalogue_prices_pro_from_the_dodo_products() -> None:
+    """The Pro rows carry what Dodo charges, never a hand-typed copy."""
+    monthly = ProductPrice(product_id="m", amount=57284, currency="ZAR")
+    yearly = ProductPrice(product_id="y", amount=572840, currency="ZAR")
+
+    catalogue = build_plan_catalogue(monthly, yearly)
+
+    assert [(p.dodo_product_id, p.amount, p.currency, p.plan_type) for p in catalogue] == [
+        ("m", 57284, "ZAR", PlanTier.PRO),
+        ("y", 572840, "ZAR", PlanTier.PRO),
+        ("", 0, "USD", PlanTier.ENTERPRISE),
+    ]
+
+
+def test_fetch_product_price_reads_the_recurring_price() -> None:
+    client = _dodo_with(_recurring("Month"))
+
+    price = fetch_product_price(client, "pdt_1", PlanDuration.MONTHLY)
+
+    assert price == ProductPrice(product_id="pdt_1", amount=57284, currency="ZAR")
+    client.products.retrieve.assert_called_once_with("pdt_1")
+
+
+def test_fetch_product_price_refuses_a_product_billed_on_another_cycle() -> None:
+    """A yearly id passed as the monthly one would price the monthly row at a year's charge."""
+    with pytest.raises(ValueError, match="bills every Year"):
+        fetch_product_price(_dodo_with(_recurring("Year")), "pdt_1", PlanDuration.MONTHLY)
+
+
+def test_fetch_product_price_refuses_a_one_time_product() -> None:
+    one_time = OneTimePrice.model_validate(
+        {
+            "currency": "USD",
+            "discount": 0,
+            "price": 3000,
+            "purchasing_power_parity": False,
+            "type": "one_time_price",
+        }
+    )
+    with pytest.raises(ValueError, match="not a subscription"):
+        fetch_product_price(_dodo_with(one_time), "pdt_1", PlanDuration.MONTHLY)
+
+
+async def test_deactivate_free_plan_tags_an_already_inactive_untagged_row() -> None:
+    """The API reads inactive rows too, so a retired Free row still needs its tier."""
+    collection = AsyncMock()
+    collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": False}
+
+    changed = await deactivate_free_plan(collection, dry_run=False)
+
+    assert changed is True
+    assert collection.update_one.await_args.args[1]["$set"]["plan_type"] == "free"

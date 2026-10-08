@@ -32,6 +32,7 @@ const FREE_PLAN: Plan = {
   id: "plan_free",
   dodo_product_id: "dodo_free",
   name: "Free",
+  plan_type: "free",
   amount: 0,
   description: null,
   max_users: null,
@@ -47,6 +48,7 @@ const PRO_PLAN: Plan = {
   id: "plan_pro",
   dodo_product_id: "dodo_pro_monthly",
   name: "Pro",
+  plan_type: "pro",
   amount: 2000,
   description: null,
   max_users: null,
@@ -62,6 +64,7 @@ const ENTERPRISE_PLAN: Plan = {
   id: "plan_enterprise",
   dodo_product_id: "",
   name: "Enterprise",
+  plan_type: "enterprise",
   amount: 0,
   description: null,
   max_users: null,
@@ -149,29 +152,12 @@ describe("PricingCards paid-only rendering", () => {
 });
 
 describe("isProPlan", () => {
-  it("matches a plan named exactly Pro, case-insensitively", () => {
-    expect(isProPlan({ ...PRO_PLAN, name: "Pro" })).toBe(true);
-    expect(isProPlan({ ...PRO_PLAN, name: "pro" })).toBe(true);
-    expect(isProPlan({ ...PRO_PLAN, name: " PRO " })).toBe(true);
-  });
-
-  it("does not match an unrelated plan whose name merely contains 'pro'", () => {
-    // The old `.name.toLowerCase().includes("pro")` check would have
-    // wrongly matched both of these as the Pro tier.
-    expect(isProPlan({ ...PRO_PLAN, name: "Proactive", amount: 0 })).toBe(
+  it("is the row's tier tag, not its display name", () => {
+    expect(isProPlan(PRO_PLAN)).toBe(true);
+    expect(isProPlan({ ...PRO_PLAN, name: "Growth" })).toBe(true);
+    expect(isProPlan({ ...ENTERPRISE_PLAN, name: "Pro", amount: 9900 })).toBe(
       false,
     );
-    expect(isProPlan({ ...FREE_PLAN, name: "Property Manager" })).toBe(false);
-  });
-
-  it("falls back to any priced, non-Enterprise plan when the name isn't 'Pro'", () => {
-    expect(isProPlan({ ...PRO_PLAN, name: "Growth", amount: 4900 })).toBe(true);
-  });
-
-  it("never matches a $0 plan or an Enterprise-named plan via the fallback", () => {
-    expect(isProPlan(FREE_PLAN)).toBe(false);
-    expect(isProPlan({ ...PRO_PLAN, name: "Enterprise", amount: 9900 })).toBe(
-      false,
-    );
+    expect(isProPlan({ ...FREE_PLAN, name: "Pro" })).toBe(false);
   });
 });

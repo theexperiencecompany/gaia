@@ -40,6 +40,7 @@ def _make_plan(**overrides) -> dict:
         "id": "plan_123",
         "dodo_product_id": "prod_abc",
         "name": "Pro Monthly",
+        "plan_type": "pro",
         "description": "Pro plan billed monthly",
         "amount": 999,
         "currency": "USD",
