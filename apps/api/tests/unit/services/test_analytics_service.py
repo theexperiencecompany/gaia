@@ -238,6 +238,21 @@ class TestCaptureDedupe:
         assert UUID(first["uuid"]).version == 5
         assert datetime.fromisoformat(first["timestamp"]) == OCCURRED_AT
 
+    @pytest.mark.regression
+    def test_a_deduped_event_is_stored_at_its_own_time_not_shifted_by_sent_at(self, posthog_events):
+        """PostHog shifts timestamp by its clock minus sent_at (+3.6s on gaia-test) unless told not to."""
+        capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))
+
+        [sent] = posthog_events
+        assert sent["properties"]["$ignore_sent_at"] is True
+
+    def test_a_live_event_keeps_posthogs_clock_skew_correction(self, posthog_events):
+        """Without a Dedupe the SDK's own now() is the time, and sent_at corrects a skewed host clock."""
+        capture(USER_1, MemoryCleared(deleted_count=1))
+
+        [sent] = posthog_events
+        assert "$ignore_sent_at" not in sent["properties"]
+
     def test_the_uuid_changes_with_event_user_and_key(self, mock_posthog):
         """A uuid that ignores any of its three inputs silently deduplicates events that are not repeats."""
         capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))

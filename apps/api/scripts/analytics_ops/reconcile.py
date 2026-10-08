@@ -7,7 +7,7 @@ ledger. PostHog is read unfiltered, so both sides include test accounts.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -112,14 +112,52 @@ class Window:
         return {"$gte": self.start, "$lt": self.end}
 
 
-def _posthog_event_counts(posthog: PostHogReader, window: Window) -> dict[str, int]:
-    rows = posthog.hogql(
-        EVENT_COUNTS_HOGQL, {**window.hogql_values(), "events": list(COUNTED_EVENTS)}
+@dataclass(frozen=True)
+class Signals:
+    """One side's count of every signal the dashboards report, over one window."""
+
+    signups: int
+    support_requests: int
+    subscriptions_started: int
+    # Per PostHog billing event name; the Mongo side counts the Dodo deliveries that cause each.
+    billing: Mapping[str, int]
+    messages_by_source: Mapping[str, int]
+    llm_cost_usd: float
+    subscribers_now: int
+
+
+def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
+    """Read every signal from PostHog, unfiltered, over window."""
+    span = window.hogql_values()
+    counts = {
+        str(event): int(str(count))
+        for event, count in posthog.hogql(
+            EVENT_COUNTS_HOGQL, {**span, "events": list(COUNTED_EVENTS)}
+        )
+    }
+    messages = {
+        str(source): int(str(count))
+        for source, count in posthog.hogql(
+            MESSAGES_HOGQL, {**span, "event": ChatMessageSubmitted.event}
+        )
+    }
+    ((one_shot, generations),) = posthog.hogql(
+        LLM_COST_HOGQL,
+        {**span, "llm_event": AiLlmCallCompleted.event, "generation_event": LLM_GENERATION_EVENT},
     )
-    return {str(event): int(str(count)) for event, count in rows}
+    ((subscribed,),) = posthog.hogql(SUBSCRIBED_PERSONS_HOGQL)
+    return Signals(
+        signups=counts.get(UserSignedUp.event, 0),
+        support_requests=counts.get(SupportFormSubmitted.event, 0),
+        subscriptions_started=counts.get(SubscriptionActivated.event, 0),
+        billing={event: counts.get(event, 0) for event in WEBHOOK_EVENTS},
+        messages_by_source=messages,
+        llm_cost_usd=float(str(one_shot or 0)) + float(str(generations or 0)),
+        subscribers_now=int(str(subscribed)),
+    )
 
 
-def _human_messages_by_source(db: Database[Document], window: Window) -> dict[str, int]:
+def human_messages_by_source(db: Database[Document], window: Window) -> dict[str, int]:
     """Count user-typed messages per conversation source, by each message's own date."""
     pipeline: list[Document] = [
         {"$match": {"messages.type": "user"}},
@@ -165,88 +203,75 @@ def _ledger_cost(db: Database[Document], window: Window) -> float:
     return float(str(totals[0]["cost"])) if totals else 0.0
 
 
-def message_rows(posthog: PostHogReader, db: Database[Document], window: Window) -> list[Row]:
-    """Return one row per message source: chat:message_submitted against the human messages in Mongo."""
-    posthog_counts = {
-        str(source): int(str(count))
-        for source, count in posthog.hogql(
-            MESSAGES_HOGQL, {**window.hogql_values(), "event": ChatMessageSubmitted.event}
-        )
-    }
-    truth = _human_messages_by_source(db, window)
-    return [
-        Row(
-            f"messages, {source}",
-            posthog_counts.get(source, 0),
-            truth.get(source, 0),
-            "conversations.messages type=user",
-        )
-        for source in sorted(posthog_counts.keys() | truth.keys())
-    ]
-
-
-def count_rows(posthog: PostHogReader, db: Database[Document], window: Window) -> list[Row]:
-    """Return signups, support requests and every billing transition against their Mongo truth."""
-    counts = _posthog_event_counts(posthog, window)
+def mongo_signals(db: Database[Document], window: Window) -> Signals:
+    """Read every signal's ground truth from Mongo over window; subscribers are counted as of now."""
+    in_window = {"created_at": window.mongo_range()}
     webhooks = _processed_webhooks(db, window)
-    rows = [
-        Row(
-            "signups",
-            counts.get(UserSignedUp.event, 0),
-            db.users.count_documents({"created_at": window.mongo_range()}),
-            "users.created_at",
+    return Signals(
+        signups=db.users.count_documents(in_window),
+        support_requests=db.support_requests.count_documents(in_window),
+        subscriptions_started=db.subscriptions.count_documents(in_window),
+        billing={event: webhooks.get(kind.value, 0) for event, kind in WEBHOOK_EVENTS.items()},
+        messages_by_source=human_messages_by_source(db, window),
+        llm_cost_usd=_ledger_cost(db, window),
+        subscribers_now=len(
+            db.subscriptions.distinct("user_id", {"status": SubscriptionStatus.ACTIVE.value})
         ),
+    )
+
+
+def compare(posthog: Signals, truth: Signals) -> list[Row]:
+    """Pair each PostHog signal with its truth; a $0 discount-code subscription counts as a subscriber."""
+    rows = [
+        Row("signups", posthog.signups, truth.signups, "users.created_at"),
         Row(
             "support requests",
-            counts.get(SupportFormSubmitted.event, 0),
-            db.support_requests.count_documents({"created_at": window.mongo_range()}),
+            posthog.support_requests,
+            truth.support_requests,
             "support_requests.created_at",
         ),
         Row(
             f"{SubscriptionActivated.event} (rows)",
-            counts.get(SubscriptionActivated.event, 0),
-            db.subscriptions.count_documents({"created_at": window.mongo_range()}),
+            posthog.subscriptions_started,
+            truth.subscriptions_started,
             "subscriptions.created_at",
         ),
     ]
     rows += [
         Row(
             event,
-            counts.get(event, 0),
-            webhooks.get(webhook.value, 0),
-            f"processed_webhooks {webhook.value}",
+            posthog.billing[event],
+            truth.billing[event],
+            f"processed_webhooks {WEBHOOK_EVENTS[event].value}",
         )
-        for event, webhook in WEBHOOK_EVENTS.items()
+        for event in WEBHOOK_EVENTS
+    ]
+    sources = sorted(posthog.messages_by_source.keys() | truth.messages_by_source.keys())
+    rows += [
+        Row(
+            f"messages, {source}",
+            posthog.messages_by_source.get(source, 0),
+            truth.messages_by_source.get(source, 0),
+            "conversations.messages type=user",
+        )
+        for source in sources
+    ]
+    rows += [
+        Row(
+            "LLM cost (USD)",
+            posthog.llm_cost_usd,
+            truth.llm_cost_usd,
+            "llm_calls.cost_usd",
+            COST_TOLERANCE,
+        ),
+        Row(
+            "active subscribers (now)",
+            posthog.subscribers_now,
+            truth.subscribers_now,
+            "subscriptions status=active",
+        ),
     ]
     return rows
-
-
-def cost_row(posthog: PostHogReader, db: Database[Document], window: Window) -> Row:
-    """Return PostHog LLM spend (one-shot events plus graph generations) against the llm_calls ledger."""
-    ((one_shot, generations),) = posthog.hogql(
-        LLM_COST_HOGQL,
-        {
-            **window.hogql_values(),
-            "llm_event": AiLlmCallCompleted.event,
-            "generation_event": LLM_GENERATION_EVENT,
-        },
-    )
-    spend = float(str(one_shot or 0)) + float(str(generations or 0))
-    return Row(
-        "LLM cost (USD)", spend, _ledger_cost(db, window), "llm_calls.cost_usd", COST_TOLERANCE
-    )
-
-
-def subscriber_row(posthog: PostHogReader, db: Database[Document]) -> Row:
-    """Return persons marked subscribed now against users with an active subscription now.
-
-    A $0 discount-code subscription is active, so it counts as a subscriber.
-    """
-    ((subscribed,),) = posthog.hogql(SUBSCRIBED_PERSONS_HOGQL)
-    active = db.subscriptions.distinct("user_id", {"status": SubscriptionStatus.ACTIVE.value})
-    return Row(
-        "active subscribers (now)", int(str(subscribed)), len(active), "subscriptions status=active"
-    )
 
 
 def render(rows: Iterable[Row]) -> str:
@@ -271,10 +296,4 @@ def render(rows: Iterable[Row]) -> str:
 
 def reconcile(posthog: PostHogReader, db: Database[Document], window: Window) -> list[Row]:
     """Build every row of the reconciliation table."""
-    builders: list[Callable[[], list[Row]]] = [
-        lambda: count_rows(posthog, db, window),
-        lambda: message_rows(posthog, db, window),
-        lambda: [cost_row(posthog, db, window)],
-        lambda: [subscriber_row(posthog, db)],
-    ]
-    return [row for build in builders for row in build()]
+    return compare(posthog_signals(posthog, window), mongo_signals(db, window))

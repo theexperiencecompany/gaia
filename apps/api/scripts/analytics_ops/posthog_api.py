@@ -104,11 +104,11 @@ def reader(target: Target, scopes: Sequence[str] = QUERY_SCOPES) -> PostHogReade
 class Sender:
     """An SDK client that remembers every failed upload, so a run cannot end looking clean."""
 
-    client: Posthog = field(init=False)
+    client: Posthog
     failures: list[Exception] = field(default_factory=list)
 
     @classmethod
-    def open(cls, target: Target, read: PostHogReader, *, historical: bool = False) -> Sender:
+    def open(cls, target: Target, read: PostHogReader) -> Sender:
         """Build a sender for target's token, refusing a token that is not the read project's own.
 
         Reads and writes must hit one project, or a dry run plans against one
@@ -122,14 +122,11 @@ class Sender:
                 f"{target.token_env} is not the token of the project in "
                 f"{target.project_json.name}; refusing to write where the plan was not read"
             )
-        sender = cls()
-        sender.client = Posthog(
-            token,
-            host=target.host,
-            historical_migration=historical,
-            on_error=lambda error, _batch: sender.failures.append(error),
+        failures: list[Exception] = []
+        client = Posthog(
+            token, host=target.host, on_error=lambda error, _batch: failures.append(error)
         )
-        return sender
+        return cls(client, failures)
 
     def close(self) -> None:
         """Flush and stop the client; exit 1 if any batch failed to upload."""

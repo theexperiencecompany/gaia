@@ -8,8 +8,9 @@ are marked backfilled and carry no $set, which would overwrite today's person
 properties. They are attributed actor=user, trigger=system, surface=worker:
 the person did it, a backfill reported it.
 
-Sent with posthog-python's historical_migration client, the pipeline PostHog
-documents for imports; its docs say it needs a paid product-analytics plan.
+Sent through the normal capture pipeline, which stores a past timestamp as
+given (prepare_capture sets $ignore_sent_at for a deduped event); the
+historical_migration pipeline needs a paid plan this org does not have.
 """
 
 from __future__ import annotations
@@ -113,18 +114,19 @@ def plan_signups(read: PostHogReader, db: Database[Document]) -> list[Backfill]:
     tracked = _already_tracked(
         read, [str(user["_id"]) for user in users], UserSignedUp.event, _earliest(db, "users")
     )
-    return [
-        Backfill(
-            UserId(str(user["_id"])),
-            UserSignedUp(backfilled=True),
-            Dedupe(key=str(user["_id"]), occurred_at=_created_at(user)),
-        )
-        for user in users
-        if str(user["_id"]) not in tracked
-    ]
+    return [signup(user) for user in users if str(user["_id"]) not in tracked]
 
 
-def _activation(row: SubscriptionDocument) -> Backfill:
+def signup(user: Document) -> Backfill:
+    """Build the signup a users record reports, keyed and timed by the record."""
+    return Backfill(
+        UserId(str(user["_id"])),
+        UserSignedUp(backfilled=True),
+        Dedupe(key=str(user["_id"]), occurred_at=_created_at(user)),
+    )
+
+
+def activation(row: SubscriptionDocument) -> Backfill:
     """Build the activation a subscription row reports; raise ValueError when it cannot be."""
     if row.created_at is None or row.currency is None:
         raise ValueError("no created_at or currency")
@@ -170,7 +172,7 @@ def plan_activations(
         if row.dodo_subscription_id in tracked_ids or row.user_id in owners_tracked:
             continue
         try:
-            planned.append(_activation(row))
+            planned.append(activation(row))
         except ValueError as error:
             unbuildable.append(f"subscription {row.dodo_subscription_id}: {error}")
     return planned, unbuildable

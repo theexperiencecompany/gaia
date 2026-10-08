@@ -9,9 +9,9 @@ re-run after an apply sends nothing.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-
-from pymongo.database import Database
+from datetime import UTC, datetime
 
 from app.models.payment_models import SubscriptionDocument, SubscriptionStatus
 from app.services.payments.subscription_events import paid_person_properties
@@ -26,6 +26,8 @@ PERSON_STATE_HOGQL = (
     "toString(person.properties.subscription_cancel_at_period_end) "
     "FROM person_distinct_ids WHERE has({ids}, distinct_id) LIMIT {limit}"
 )
+# A row with no timestamps sorts before any that has one.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 PROPERTY_ORDER = (
     "plan",
     "is_subscribed",
@@ -47,12 +49,18 @@ def _as_posthog_string(value: object) -> str:
     return str(value).lower() if isinstance(value, bool) else str(value)
 
 
-def latest_states(db: Database[Document]) -> list[PaidState]:
+def _recency(row: SubscriptionDocument) -> tuple[datetime, datetime]:
+    return (row.updated_at or _EPOCH, row.created_at or _EPOCH)
+
+
+def latest_states(rows: Iterable[Document]) -> list[PaidState]:
     """Project every user's newest subscription row; exit 1 on a row whose owner is not a user id."""
     latest: dict[str, SubscriptionDocument] = {}
-    for raw in db.subscriptions.find({}).sort([("updated_at", 1), ("created_at", 1)]):
+    for raw in rows:
         row = SubscriptionDocument.model_validate(raw)
-        latest[row.user_id] = row
+        current = latest.get(row.user_id)
+        if current is None or _recency(row) >= _recency(current):
+            latest[row.user_id] = row
     owners: dict[str, UserId] = {}
     bad_owners: list[str] = []
     for user_id in sorted(latest):

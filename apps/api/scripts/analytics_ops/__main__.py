@@ -47,7 +47,7 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
 def cmd_paid_status(args: argparse.Namespace) -> int:
     """Plan, and with --apply send, the paid-state person properties."""
     target = TARGETS[_target(args)]
-    states = backfill_paid_status.latest_states(ground_truth_db())
+    states = backfill_paid_status.latest_states(ground_truth_db().subscriptions.find({}))
     print(f"Mongo: {backfill_paid_status.summarize(states)}")
     read = reader(target)
     stale = backfill_paid_status.stale_states(read, states)
@@ -95,7 +95,7 @@ def cmd_history(args: argparse.Namespace) -> int:
     for problem in history.unbuildable:
         print(f"  cannot build: {problem}")
     if not args.apply:
-        print("dry run; --apply sends them with the historical_migration client")
+        print("dry run; --apply sends them at their records' own timestamps")
         return 0
     if pending_merges:
         print(
@@ -104,7 +104,7 @@ def cmd_history(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    sender = Sender.open(target, read, historical=True)
+    sender = Sender.open(target, read)
     backfill_history.apply(sender, history.signups + history.activations)
     sender.close()
     print(f"sent {len(history.signups) + len(history.activations)} historical events")

@@ -21,6 +21,8 @@ from shared.py.analytics.identity import AnalyticsId, PlatformIdentity, UserId
 from shared.py.wide_events import log
 
 DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
+# Ingestion otherwise moves timestamp by (its clock - sent_at), so a resend would land at another time.
+IGNORE_SENT_AT = "$ignore_sent_at"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +95,7 @@ def prepare_capture(
     return PostHogCapture(
         event.event,
         distinct_id.distinct_id,
-        properties,
+        properties | {IGNORE_SENT_AT: True},
         uuid=str(uuid5(NAMESPACE_URL, f"{event.event}:{distinct_id.distinct_id}:{dedupe.key}")),
         timestamp=dedupe.occurred_at,
     )

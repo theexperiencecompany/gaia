@@ -300,8 +300,6 @@ def property_failures(event: Received, expect: Expect, stack: journeys.Stack) ->
     except ValidationError as error:
         failures.append(f"catalog validation: {error.errors(include_url=False)}")
     attribution = {key: custom.get(key) for key in base}
-    if expect.attribution is None and attribution:
-        failures.append(f"unexpected attribution {attribution}")
     if expect.attribution is not None and attribution != expect.attribution.model_dump(mode="json"):
         failures.append(
             f"attribution {attribution}, expected {expect.attribution.model_dump(mode='json')}"

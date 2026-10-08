@@ -11,6 +11,7 @@ id is skipped, so a re-run merges nothing twice.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -96,11 +97,16 @@ def _is_user_id(distinct_id: str) -> bool:
     return True
 
 
-def _users_by_email(db: Database[Document]) -> dict[str, set[str]]:
-    """Map each case-folded users.email to the ids holding it."""
+def normalise_email(email: str) -> str:
+    """Return the form two spellings of one address share: trimmed and case-folded."""
+    return email.strip().casefold()
+
+
+def users_by_email(users: Iterable[Document]) -> dict[str, set[str]]:
+    """Map each normalised users.email to the ids holding it."""
     owners: defaultdict[str, set[str]] = defaultdict(set)
-    for user in db.users.find({"email": {"$type": "string"}}, {"email": 1}):
-        owners[str(user["email"]).casefold()].add(str(user["_id"]))
+    for user in users:
+        owners[normalise_email(str(user["email"]))].add(str(user["_id"]))
     return owners
 
 
@@ -117,8 +123,46 @@ def _persons(
     return persons
 
 
-def plan(read: PostHogReader, db: Database[Document]) -> MergePlan:
-    """Read every email person and match it to a GAIA user."""
+@dataclass(frozen=True)
+class EmailPerson:
+    """A PostHog person holding at least one email distinct_id."""
+
+    person_id: str
+    distinct_ids: tuple[str, ...]
+    created_at: str
+    properties: dict[str, object]
+
+
+def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> MergePlan:
+    """Sort each email person into merge, already merged, unmatched or ambiguous; merges oldest first."""
+    result = MergePlan([], [], [], [])
+    for person in persons:
+        if any(_is_user_id(d) for d in person.distinct_ids):
+            result.already_merged.append(person.person_id)
+            continue
+        matches = set().union(
+            *(owners.get(normalise_email(d), set()) for d in person.distinct_ids if "@" in d)
+        )
+        if not matches:
+            result.unmatched.append(person.person_id)
+        elif len(matches) > 1:
+            result.ambiguous.append(person.person_id)
+        else:
+            result.merges.append(
+                Merge(
+                    person.person_id,
+                    person.distinct_ids,
+                    person.created_at,
+                    person.properties,
+                    UserId(matches.pop()),
+                )
+            )
+    result.merges.sort(key=lambda merge: merge.created_at)
+    return result
+
+
+def email_persons(read: PostHogReader) -> list[EmailPerson]:
+    """Read every person holding an email distinct_id, with all its distinct_ids and properties."""
     email_rows = hogql_complete(read, EMAIL_PERSONS_HOGQL, {})
     person_ids = sorted({str(person_id) for _, person_id in email_rows})
     distinct_ids: defaultdict[str, list[str]] = defaultdict(list)
@@ -127,26 +171,16 @@ def plan(read: PostHogReader, db: Database[Document]) -> MergePlan:
     ):
         distinct_ids[str(person_id)].append(str(distinct_id))
     persons = _persons(read, person_ids)
-    owners = _users_by_email(db)
+    return [
+        EmailPerson(person_id, tuple(sorted(distinct_ids[person_id])), *persons[person_id])
+        for person_id in person_ids
+    ]
 
-    result = MergePlan([], [], [], [])
-    for person_id in person_ids:
-        ids = tuple(sorted(distinct_ids[person_id]))
-        if any(_is_user_id(d) for d in ids):
-            result.already_merged.append(person_id)
-            continue
-        matches = set().union(*(owners.get(d.casefold(), set()) for d in ids if "@" in d))
-        if not matches:
-            result.unmatched.append(person_id)
-        elif len(matches) > 1:
-            result.ambiguous.append(person_id)
-        else:
-            created_at, properties = persons[person_id]
-            result.merges.append(
-                Merge(person_id, ids, created_at, properties, UserId(matches.pop()))
-            )
-    result.merges.sort(key=lambda merge: merge.created_at)
-    return result
+
+def plan(read: PostHogReader, db: Database[Document]) -> MergePlan:
+    """Read every email person and match it to a GAIA user."""
+    users = db.users.find({"email": {"$type": "string"}}, {"email": 1})
+    return match(email_persons(read), users_by_email(users))
 
 
 def write_snapshot(merges: list[Merge], snapshot_dir: Path) -> Path:
