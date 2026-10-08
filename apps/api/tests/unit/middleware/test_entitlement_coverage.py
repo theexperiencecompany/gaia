@@ -193,6 +193,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/onboarding/writing-style",
         "/api/v1/onboarding/writing-style/regenerate-example",
         "/api/v1/payments/checkout-session",
+        "/api/v1/payments/discount-codes",
         "/api/v1/payments/plans",
         "/api/v1/payments/subscription-status",
         "/api/v1/payments/subscriptions",

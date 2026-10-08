@@ -4998,6 +4998,28 @@
         "title": "DisconnectPlatformResponse",
         "type": "object"
       },
+      "DiscountCodesResponse": {
+        "description": "Coupon codes the clients advertise, each a Dodo discount code or null when unset.",
+        "properties": {
+          "founder_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Code the founder's letter offers",
+            "title": "Founder Letter"
+          }
+        },
+        "required": [
+          "founder_letter"
+        ],
+        "title": "DiscountCodesResponse",
+        "type": "object"
+      },
       "DiscoverSkillsResponse": {
         "description": "Response for previewing the skills available in a GitHub repository.",
         "properties": {
@@ -32542,6 +32564,58 @@
           }
         },
         "summary": "Create Checkout Session Endpoint",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/discount-codes": {
+      "get": {
+        "description": "Get the discount codes the clients advertise.",
+        "operationId": "payments_get_discount_codes_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountCodesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Discount Codes Endpoint",
         "tags": [
           "Payments"
         ]

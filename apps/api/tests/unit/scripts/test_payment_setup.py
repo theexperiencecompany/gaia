@@ -293,3 +293,43 @@ async def test_deactivate_free_plan_tags_an_already_inactive_untagged_row() -> N
 
     assert changed is True
     assert collection.update_one.await_args.args[1]["$set"]["plan_type"] == "free"
+
+
+@pytest.mark.parametrize(
+    "dodo_monthly",
+    [
+        ProductPrice(product_id="pdt_m", amount=4000, currency="USD"),
+        ProductPrice(product_id="pdt_m", amount=3000, currency="EUR"),
+    ],
+)
+async def test_setup_refuses_a_monthly_price_the_marketing_copy_does_not_advertise(
+    monkeypatch: pytest.MonkeyPatch, dodo_monthly: ProductPrice
+) -> None:
+    """Static marketing pages quote the shared advertised price, so a catalogue that disagrees must not be written."""
+    monkeypatch.setenv("DODO_PAYMENTS_API_KEY", "key")
+    mongo = MagicMock()
+    with (
+        patch("scripts.payment_setup.payment_service"),
+        patch("scripts.payment_setup.fetch_product_price", side_effect=[dodo_monthly, YEARLY]),
+        patch("scripts.payment_setup.AsyncIOMotorClient", new=mongo),
+        pytest.raises(ValueError, match="the marketing pages advertise"),
+    ):
+        await setup_payment_plans("pdt_m", "pdt_y", dry_run=False)
+
+    mongo.assert_not_called()
+
+
+async def test_setup_accepts_the_advertised_monthly_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DODO_PAYMENTS_API_KEY", "key")
+    with (
+        patch("scripts.payment_setup.payment_service"),
+        patch("scripts.payment_setup.fetch_product_price", side_effect=[MONTHLY, YEARLY]),
+        patch("scripts.payment_setup.AsyncIOMotorClient"),
+        patch("scripts.payment_setup.reconcile_plan", new=AsyncMock(return_value="unchanged")),
+        patch("scripts.payment_setup.deactivate_free_plan", new=AsyncMock(return_value=False)),
+        patch("scripts.payment_setup.count_untagged_plans", new=AsyncMock(return_value=0)),
+        patch("scripts.payment_setup.print_active_plans", new=AsyncMock()),
+    ):
+        assert await setup_payment_plans("pdt_m", "pdt_y", dry_run=True) is True

@@ -33,6 +33,7 @@ SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
+DISCOUNT_CODES_URL = "/api/v1/payments/discount-codes"
 
 
 def _make_plan(**overrides) -> dict:
@@ -121,6 +122,30 @@ class TestGetPlans:
 
         assert response.status_code == 200
         assert response.json() == []
+
+
+class TestGetDiscountCodes:
+    """The founder letter advertises whatever coupon the server is configured with."""
+
+    async def test_returns_the_configured_founder_letter_code(self, client: AsyncClient):
+        with patch("app.services.payments.discount_codes.settings") as settings:
+            settings.FOUNDER_LETTER_DISCOUNT_CODE = "THANKYOU40"
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {"founder_letter": "THANKYOU40"}
+
+    async def test_an_unset_code_is_null(self, client: AsyncClient):
+        with patch("app.services.payments.discount_codes.settings") as settings:
+            settings.FOUNDER_LETTER_DISCOUNT_CODE = None
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.json() == {"founder_letter": None}
+
+    async def test_requires_authentication(self, unauthed_client: AsyncClient):
+        response = await unauthed_client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code in (401, 403)
 
 
 # ---------------------------------------------------------------------------

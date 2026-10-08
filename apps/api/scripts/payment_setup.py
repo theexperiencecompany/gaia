@@ -18,6 +18,8 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.resources import files
+import json
 import os
 from pathlib import Path
 import sys
@@ -67,6 +69,9 @@ DODO_INTERVAL: dict[PlanDuration, str] = {
 # Quoted by the team, never checked out, so it carries no Dodo price.
 ENTERPRISE_CURRENCY = "USD"
 
+# The Pro monthly price the static marketing pages quote; the web reads the same file.
+ADVERTISED_PRO_MONTHLY_PRICE = files("shared") / "assets" / "pricing" / "pro-monthly-price.json"
+
 
 @dataclass(frozen=True)
 class ProductPrice:
@@ -94,6 +99,18 @@ def fetch_product_price(
             f"not the {duration} plan's 1 {DODO_INTERVAL[duration]}"
         )
     return ProductPrice(product_id=product_id, amount=price.price, currency=price.currency)
+
+
+def require_advertised_monthly_price(monthly: ProductPrice) -> None:
+    """Refuse a Dodo monthly price that differs from the one the marketing pages advertise."""
+    advertised = json.loads(ADVERTISED_PRO_MONTHLY_PRICE.read_text())
+    if (monthly.amount, monthly.currency) != (advertised["amount"], advertised["currency"]):
+        raise ValueError(
+            f"Dodo prices Pro monthly at {format_money(monthly.amount, monthly.currency)}, "
+            f"but the marketing pages advertise "
+            f"{format_money(advertised['amount'], advertised['currency'])}. Update "
+            f"libs/shared/assets/pricing/pro-monthly-price.json in the same change."
+        )
 
 
 def build_plan_catalogue(monthly: ProductPrice, yearly: ProductPrice) -> list[PlanDocument]:
@@ -342,6 +359,7 @@ async def setup_payment_plans(
     )
     print(f"📦 Yearly Product ID: {yearly_product_id} (Dodo: {yearly.amount} {yearly.currency})")
     print()
+    require_advertised_monthly_price(monthly)
 
     client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(settings.MONGO_DB)
     try:
