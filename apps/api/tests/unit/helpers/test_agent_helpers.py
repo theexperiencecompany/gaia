@@ -314,6 +314,12 @@ class TestBuildAgentConfig:
         expected = users_turn.acting_as(Actor.AGENT)
         assert run_analytics_context(root) == expected
         assert run_analytics_context(resumed) == expected
+        # Stored as plain JSON: the configurable is checkpointed and queued past this process.
+        assert root["analytics_context"] == {
+            "attribution": {"actor": "agent", "trigger": "interactive", "surface": "bot"},
+            "posthog_session_id": "sess-1",
+        }
+        assert type(root["analytics_context"]["attribution"]["actor"]) is str
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self, mock_providers):

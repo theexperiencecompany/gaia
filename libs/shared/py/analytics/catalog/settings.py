@@ -6,6 +6,19 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "AccountSettingChanged",
+    "FeatureDiscovered",
+    "FeatureFlagEvaluated",
+    "FeatureToggled",
+    "ProfileLinkCopied",
+    "ProfileUpdated",
+    "SettingsChatChannelPriorityUpdated",
+    "SettingsDesktopPreferenceChanged",
+    "SettingsNotificationsToggled",
+    "SettingsPreferencesChanged",
+]
+
 FlagFallbackReason = Literal[
     "posthog_unconfigured", "evaluation_error", "flag_unevaluated", "killed", "user_choice"
 ]

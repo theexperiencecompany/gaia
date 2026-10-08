@@ -5,6 +5,25 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "IntegrationConnectInitiated",
+    "IntegrationConnected",
+    "IntegrationCustomDeleted",
+    "IntegrationCustomPublished",
+    "IntegrationCustomUnpublished",
+    "IntegrationCustomUpdated",
+    "IntegrationDisconnected",
+    "IntegrationError",
+    "IntegrationInstructionsUpdated",
+    "McpConnectionTested",
+    "SkillDisabled",
+    "SkillEnabled",
+    "SkillInstalled",
+    "SkillSearched",
+    "SkillUninstalled",
+    "SkillUpdated",
+]
+
 
 class IntegrationConnected(ServerEvent):
     """An integration or platform account finished connecting."""

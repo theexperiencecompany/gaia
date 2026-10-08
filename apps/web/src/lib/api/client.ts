@@ -57,6 +57,16 @@ export const clientHeaders = (): Record<string, string> => ({
   ...desktopClientHeaders(),
 });
 
+/** Marks a request no user action caused; the server reads it in its attribution middleware. */
+const REQUEST_ORIGIN_HEADER = "X-GAIA-Request-Origin";
+const BACKGROUND_REQUEST_ORIGIN = "background";
+
+/** The origin header for a request: present only on one no user action caused. */
+export const requestOriginHeaders = (
+  background: boolean | undefined,
+): Record<string, string> =>
+  background ? { [REQUEST_ORIGIN_HEADER]: BACKGROUND_REQUEST_ORIGIN } : {};
+
 /**
  * Authenticated axios instance for API calls.
  * Includes credentials (cookies) for authentication.

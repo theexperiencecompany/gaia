@@ -257,19 +257,23 @@ class TestProcessUser:
             assert await _process_user(self._user(email=None), NOW) is False
 
     async def test_sends_and_records_on_success(self) -> None:
-        user = self._user()
+        sent = _entry(NurtureStepStatus.SENT, datetime(2026, 5, 20, 12, 0))
+        user = self._user(nurture={"completed_steps": ["welcome"], "history": [sent.model_dump()]})
+        step = _step()
         with (
             patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
             patch(
                 "app.services.nurture.service.normalize_channel_preferences",
                 return_value={"email": True},
             ),
-            patch("app.services.nurture.service._within_frequency_caps", return_value=True),
+            patch(
+                "app.services.nurture.service._within_frequency_caps", return_value=True
+            ) as mock_caps,
             patch(
                 "app.services.nurture.service._select_step",
                 new_callable=AsyncMock,
-                return_value=_step(),
-            ),
+                return_value=step,
+            ) as mock_select,
             patch("app.services.nurture.service._send_step", new_callable=AsyncMock) as mock_send,
             patch(
                 "app.services.nurture.service._record_step", new_callable=AsyncMock
@@ -279,8 +283,12 @@ class TestProcessUser:
             result = await _process_user(user, NOW)
 
         assert result is True
-        mock_send.assert_awaited_once()
-        mock_record.assert_awaited_once()
+        mock_caps.assert_called_once_with([sent], NOW)
+        mock_select.assert_awaited_once_with(user, 2, {"welcome"}, NOW)
+        mock_send.assert_awaited_once_with(user, step)
+        mock_record.assert_awaited_once_with(
+            USER_ID, "first_win", NOW, status=NurtureStepStatus.SENT
+        )
         mock_capture.assert_called_once_with(
             UserId(USER_ID), NurtureEmailSent(step="first_win", day_offset=1)
         )

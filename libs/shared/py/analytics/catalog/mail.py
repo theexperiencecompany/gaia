@@ -5,6 +5,30 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "EmailArchived",
+    "EmailComposeOpened",
+    "EmailDraftComposed",
+    "EmailDraftCreated",
+    "EmailDraftDeleted",
+    "EmailDraftUpdated",
+    "EmailLabelApplied",
+    "EmailLabelCreated",
+    "EmailLabelDeleted",
+    "EmailLabelRemoved",
+    "EmailLabelUpdated",
+    "EmailMarkedRead",
+    "EmailMarkedUnread",
+    "EmailMovedToInbox",
+    "EmailOpened",
+    "EmailReplied",
+    "EmailSent",
+    "EmailStarred",
+    "EmailTrashed",
+    "EmailUnstarred",
+    "EmailUntrashed",
+]
+
 
 class EmailSent(ServerEvent):
     """A user sent a new email or a saved draft."""

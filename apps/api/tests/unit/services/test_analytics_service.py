@@ -11,10 +11,12 @@ import time_machine
 
 from app.constants.analytics import (
     ANALYTICS_DAY_TIMEZONE,
+    AT_MOST_ONCE_KEY_PREFIX,
     POSTHOG_PROVIDER_KEY,
 )
 from app.services.analytics_service import (
     _get_posthog_client,
+    analytics_day_start,
     capture,
     identify_user,
     track_signup,
@@ -157,6 +159,12 @@ class TestCapture:
         props = call_args.kwargs.get("properties")
         assert props["deleted_count"] == 3
 
+    async def test_the_wide_event_names_the_captured_event_and_its_person(self, mock_posthog):
+        async with captured_wide_event() as event:
+            capture(USER_1, MemoryCleared(deleted_count=3))
+
+        assert event["analytics"] == {"user_id": USER_1.value, "event": "memory:cleared"}
+
     def test_a_none_field_is_left_out_not_sent_as_null(self, mock_posthog):
         capture(USER_1, PaymentSucceeded(payment_id="pay_1", currency="USD", amount=None))
 
@@ -236,6 +244,21 @@ class TestCaptureDedupe:
         assert UUID(first["uuid"]).version == 5
         assert datetime.fromisoformat(first["timestamp"]) == OCCURRED_AT
 
+    @pytest.mark.regression
+    def test_a_deduped_event_is_stored_at_its_own_time_not_shifted_by_sent_at(self, posthog_events):
+        """PostHog moves timestamp by its clock minus sent_at (+3.6s on gaia-test) unless told not to."""
+        capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))
+
+        [sent] = posthog_events
+        assert sent["properties"]["$ignore_sent_at"] is True
+
+    def test_a_live_event_keeps_posthogs_clock_skew_correction(self, posthog_events):
+        """Without a Dedupe the SDK's own now() is the time, and sent_at corrects a skewed host clock."""
+        capture(USER_1, MemoryCleared(deleted_count=1))
+
+        [sent] = posthog_events
+        assert "$ignore_sent_at" not in sent["properties"]
+
     def test_the_uuid_changes_with_event_user_and_key(self, mock_posthog):
         """A uuid that ignores any of its three inputs silently deduplicates events that are not repeats."""
         capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))
@@ -302,6 +325,18 @@ def _user_context(surface: EntrySurface) -> AnalyticsContext:
     )
 
 
+class TestAnalyticsDayStart:
+    def test_the_last_instant_of_an_ist_day_starts_at_its_midnight(self):
+        last_instant = datetime(2026, 10, 8, 23, 59, 59, 999999, tzinfo=ANALYTICS_DAY_TIMEZONE)
+
+        assert analytics_day_start(last_instant) == IST_DAY_START
+
+    def test_a_utc_evening_already_in_the_next_ist_day_starts_there(self):
+        assert analytics_day_start(LATE_EVENING_IST + timedelta(hours=1)) == datetime(
+            2026, 10, 9, tzinfo=ANALYTICS_DAY_TIMEZONE
+        )
+
+
 @pytest.mark.usefixtures("fake_redis")
 class TestUserActive:
     """user:active is the one definition of an active user: once per user per IST day, any surface."""
@@ -360,6 +395,16 @@ class TestUserActive:
         await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
+
+    async def test_the_gate_outlives_the_day_it_keys(self, posthog_events, fake_redis):
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            capture(USER_1, MemoryCleared(deleted_count=1))
+            await drain_at_most_once_sends()
+
+        [key] = await fake_redis.keys(f"{AT_MOST_ONCE_KEY_PREFIX}*")
+        ttl = UserActive.at_most_once_ttl
+        assert ttl is not None
+        assert await fake_redis.ttl(key) == int(ttl.total_seconds())
 
     async def test_an_unlinked_bot_user_is_not_marked(self, posthog_events):
         """Only a GAIA user has a day to be active on; the platform id merges in on linking."""

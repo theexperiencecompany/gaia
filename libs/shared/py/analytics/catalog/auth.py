@@ -6,6 +6,13 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "UserLoggedIn",
+    "UserLoggedOut",
+    "UserSessionResumed",
+    "UserSignedUp",
+]
+
 
 class UserSignedUp(ServerEvent):
     """A new user account was created."""
