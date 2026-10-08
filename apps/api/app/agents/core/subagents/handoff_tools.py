@@ -51,6 +51,7 @@ from app.models.agent_models import (
     AgentUserContext,
     SubagentKind,
     agent_configurable,
+    read_run_metadata,
 )
 from app.models.subagent_models import Subagent
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
@@ -116,14 +117,6 @@ class _CustomIntegrationDoc(BaseModel):
     name: str | None = None
     mcp_config: dict[str, object] | None = None
     icon_url: str | None = None
-
-
-class _RunMetadata(BaseModel):
-    """The ``metadata`` key of a ``RunnableConfig`` the handoff falls back on."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
 
 
 def _extract_service_username(metadata: dict[str, str] | None) -> str | None:
@@ -708,7 +701,7 @@ async def handoff(
 
         # Fallback: try to get user_id from metadata if not in configurable
         if not user_id:
-            user_id = _RunMetadata.model_validate(config.get("metadata") or {}).user_id
+            user_id = read_run_metadata(config).user_id
             if user_id:
                 configurable["user_id"] = user_id
 

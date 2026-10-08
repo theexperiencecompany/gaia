@@ -48,7 +48,6 @@ apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
 apps/api/app/agents/tools/context_tool.py	TB001
-apps/api/app/agents/tools/core/mutations.py	TB002
 apps/api/app/agents/tools/desktop_tools.py	TB001
 apps/api/app/agents/tools/desktop_tools.py	TB002
 apps/api/app/agents/tools/discovery_tools.py	TB001

@@ -24,6 +24,7 @@ from app.models.agent_config import (
     SubagentResumeItem,
     agent_configurable,
     read_agent_configurable,
+    read_run_metadata,
 )
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
@@ -48,6 +49,7 @@ __all__ = [
     "SubagentResumeItem",
     "agent_configurable",
     "read_agent_configurable",
+    "read_run_metadata",
     "config_agent_name",
     "current_run_config",
     "runtime_configurable",

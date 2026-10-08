@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
@@ -260,3 +260,24 @@ class AgentConfigurableView(BaseModel):
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
     """Return agent_configurable, parsed into AgentConfigurableView."""
     return AgentConfigurableView.model_validate(agent_configurable(config))
+
+
+class RunMetadataView(BaseModel):
+    """The GAIA-owned keys of a run's metadata, which build_agent_config stamps beside configurable."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+
+
+class _RunConfigView(BaseModel):
+    """A run's RunnableConfig, read only for its metadata."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    metadata: RunMetadataView = Field(default_factory=RunMetadataView)
+
+
+def read_run_metadata(config: object) -> RunMetadataView:
+    """Return a run's metadata, parsed into RunMetadataView; empty when there is no config."""
+    return _RunConfigView.model_validate(config or {}).metadata

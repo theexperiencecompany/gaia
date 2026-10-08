@@ -3,12 +3,13 @@ from dataclasses import dataclass
 from langchain_core.messages import AnyMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from uuid_extensions import uuid7str
 
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
+from app.models.agent_config import read_run_metadata
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
@@ -25,22 +26,6 @@ class _TurnContent(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str
-
-
-class _RunMetadata(BaseModel):
-    """The user_id a run's config["metadata"] carries (stamped by build_agent_config)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
-
-
-class _RunConfigMetadata(BaseModel):
-    """The metadata view of a LangChain RunnableConfig, parsed once."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    metadata: _RunMetadata = Field(default_factory=_RunMetadata)
 
 
 class _ChatbotReply(BaseModel):
@@ -173,7 +158,7 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
         log.error(f"{LogTag.CHAT} Tool called without config")
         return ""
 
-    user_id = _RunConfigMetadata.model_validate(config).metadata.user_id or ""
+    user_id = read_run_metadata(config).user_id or ""
 
     if not user_id:
         log.error(f"{LogTag.CHAT} No user_id found in config metadata")

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.runnables.config import RunnableConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 import pytest
 
 from app.agents.tools.core.mutations import define_mutation_tool, user_id_from_config
@@ -224,11 +224,15 @@ class TestUserIdFromConfig:
         # `configurable` (the workflow/silent-run shape) must not explode.
         assert user_id_from_config({"configurable": {}}) is None
 
-    def test_none_and_non_string_user_ids_are_rejected(self) -> None:
+    def test_absent_user_ids_are_none(self) -> None:
         assert user_id_from_config(None) is None
         assert user_id_from_config({}) is None
-        assert user_id_from_config({"metadata": {"user_id": 123}}) is None
         assert user_id_from_config({"metadata": {"user_id": None}}) is None
+
+    def test_a_non_string_user_id_fails_loud(self) -> None:
+        """A non-string id is a broken config builder, not an anonymous caller."""
+        with pytest.raises(ValidationError):
+            user_id_from_config({"metadata": {"user_id": 123}})
 
     def test_whitespace_only_user_id_becomes_none_and_valid_ids_are_stripped(self) -> None:
         assert user_id_from_config({"metadata": {"user_id": "   "}}) is None
