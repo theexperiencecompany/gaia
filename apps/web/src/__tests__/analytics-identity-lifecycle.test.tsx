@@ -22,6 +22,7 @@ const { posthogMock, fetchUserInfo } = vi.hoisted(() => ({
     identify: vi.fn(),
     setPersonProperties: vi.fn(),
     reset: vi.fn(),
+    _isIdentified: vi.fn(),
     get_distinct_id: vi.fn(),
     get_session_id: vi.fn(),
   },
@@ -90,6 +91,7 @@ describe("useFetchUser identity reset", () => {
 
   it("resets on a 401 that ends a signed-in session, through the pre-init queue", async () => {
     fetchUserInfo.mockRejectedValue(new ApiError("expired", 401));
+    posthogMock._isIdentified.mockReturnValue(true);
 
     renderFetchUser(SIGNED_IN_USER);
     await waitFor(() => expect(console.error).toHaveBeenCalled());
@@ -107,6 +109,7 @@ describe("useFetchUser identity reset", () => {
 
   it("does not reset an anonymous visitor's 401", async () => {
     fetchUserInfo.mockRejectedValue(new ApiError("anonymous", 401));
+    posthogMock._isIdentified.mockReturnValue(false);
 
     renderFetchUser(null);
     await waitFor(() => expect(console.error).toHaveBeenCalled());
@@ -114,6 +117,18 @@ describe("useFetchUser identity reset", () => {
     flushPendingAnalytics();
 
     expect(posthogMock.reset).not.toHaveBeenCalled();
+  });
+
+  it("resets an identified browser whose profile cache was lost", async () => {
+    fetchUserInfo.mockRejectedValue(new ApiError("expired", 401));
+    posthogMock._isIdentified.mockReturnValue(true);
+
+    renderFetchUser(null);
+    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    posthogMock.__loaded = true;
+    flushPendingAnalytics();
+
+    expect(posthogMock.reset).toHaveBeenCalledTimes(1);
   });
 });
 

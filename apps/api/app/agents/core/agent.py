@@ -67,6 +67,8 @@ from app.services.chat.state import aggregate_usage_metadata
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.context import analytics_context, current_analytics_context
 from shared.py.wide_events import log
 
 
@@ -276,6 +278,12 @@ async def _core_agent_logic(
     return graph, initial_state, config
 
 
+def _capture_run(user_id: str, event: AgentRunStarted | AgentRunCompleted | AgentRunFailed) -> None:
+    """Capture a comms run event as the agent's work, within the turn that started it."""
+    with analytics_context(current_analytics_context().acting_as(Actor.AGENT)):
+        capture(UserId(user_id), event)
+
+
 async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
@@ -335,8 +343,8 @@ async def call_agent(
         if not user_id:
             return stream
 
-        capture(
-            UserId(user_id),
+        _capture_run(
+            user_id,
             AgentRunStarted(agent="comms", mode="interactive", conversation_id=conversation_id),
         )
 
@@ -346,15 +354,15 @@ async def call_agent(
                 async for chunk in stream:
                     yield chunk
             except Exception:
-                capture(
-                    UserId(user_id),
+                _capture_run(
+                    user_id,
                     AgentRunFailed(
                         agent="comms", mode="interactive", conversation_id=conversation_id
                     ),
                 )
                 raise
-            capture(
-                UserId(user_id),
+            _capture_run(
+                user_id,
                 AgentRunCompleted(
                     agent="comms", mode="interactive", conversation_id=conversation_id
                 ),
@@ -369,8 +377,8 @@ async def call_agent(
             error=str(exc),
         )
         if user_id:
-            capture(
-                UserId(user_id),
+            _capture_run(
+                user_id,
                 AgentRunFailed(agent="comms", mode="interactive", conversation_id=conversation_id),
             )
         error_message = f"Error when calling agent: {exc!s}"
@@ -422,8 +430,8 @@ async def call_agent_silent(
         register_executor_capture(stream_id)
 
         if user_id:
-            capture(
-                UserId(user_id),
+            _capture_run(
+                user_id,
                 AgentRunStarted(agent="comms", mode="background", conversation_id=conversation_id),
             )
 
@@ -447,8 +455,8 @@ async def call_agent_silent(
             )
 
         if user_id:
-            capture(
-                UserId(user_id),
+            _capture_run(
+                user_id,
                 AgentRunCompleted(
                     agent="comms", mode="background", conversation_id=conversation_id
                 ),
@@ -466,8 +474,8 @@ async def call_agent_silent(
             error=str(exc),
         )
         if user_id:
-            capture(
-                UserId(user_id),
+            _capture_run(
+                user_id,
                 AgentRunFailed(agent="comms", mode="background", conversation_id=conversation_id),
             )
         raise

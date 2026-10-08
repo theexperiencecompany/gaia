@@ -32,6 +32,7 @@ from app.services.feature_flags import (
 from app.utils.errors import AppError
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.settings import FeatureFlagEvaluated
+from shared.py.analytics.context import MissingAnalyticsContextError
 from tests.helpers import captured_wide_event
 
 USER_ID = "64abc123def4567890abcdef"
@@ -258,22 +259,6 @@ class TestClientLookup:
             assert _get_posthog_client() is None
 
 
-class TestTrackingNeverBreaksEvaluation:
-    async def test_capture_failure_still_returns_live_value(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.return_value = True
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-
-    async def test_capture_failure_still_returns_fallback(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-
-
 class TestHelpersWithoutUser:
     async def test_code_mode_none_user_is_default(self, evaluated: MagicMock) -> None:
         assert await is_code_mode_enabled(None) is False
@@ -429,19 +414,13 @@ class TestLogContract:
                 error_type="TimeoutError",
             )
 
-    async def test_tracking_failure_logs_debug_with_cause(
+    async def test_an_evaluation_outside_a_bound_context_fails_loud(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        evaluated.side_effect = RuntimeError("telemetry down")
-        with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-            mock_log.debug.assert_called_once_with(
-                "Feature flag evaluation event skipped",
-                flag="HIL_LEDGER",
-                error="telemetry down",
-                error_type="RuntimeError",
-            )
+        evaluated.side_effect = MissingAnalyticsContextError("no entry point bound a context")
+        with pytest.raises(MissingAnalyticsContextError, match="no entry point bound a context"):
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
 
     async def test_dedupe_clock_is_utc(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         from datetime import UTC, datetime as real_datetime
