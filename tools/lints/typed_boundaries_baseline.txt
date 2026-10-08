@@ -179,7 +179,6 @@ apps/api/app/services/onboarding/onboarding_service.py	TB001
 apps/api/app/services/onboarding/writing_style_service.py	TB002
 apps/api/app/services/payments/payment_webhook_service.py	TB001
 apps/api/app/services/payments/payment_webhook_service.py	TB002
-apps/api/app/services/payments/subscription_events.py	TB002
 apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/provider_metadata_service.py	TB001
