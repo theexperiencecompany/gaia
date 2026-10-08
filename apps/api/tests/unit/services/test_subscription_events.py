@@ -860,7 +860,7 @@ class TestResultsNameTheOwnerAndTheRow:
             user_id=FAKE_USER_ID,
             event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
             subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(name="Pro", amount=9.99, currency="USD"),
+            plan=SubscriptionPlan(currency="USD"),
             properties={"amount_charged_pre_tax": 9.99, "currency_charged": "USD"},
         )
 

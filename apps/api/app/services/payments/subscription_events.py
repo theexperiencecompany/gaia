@@ -319,7 +319,7 @@ def _capture_transition(
                 user_id=user_id,
                 event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
                 subscription_id=data.subscription_id,
-                plan=_plan_of(data),
+                plan=SubscriptionPlan(currency=data.currency),
                 properties=subscription_revenue_properties(data),
             )
         case SubscriptionEventKind.CANCELLED if (
