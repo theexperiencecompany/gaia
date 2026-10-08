@@ -30,6 +30,11 @@ def _oauth_ns(log_mock: MagicMock) -> dict:
     return fields
 
 
+PICTURE_URL = "https://cdn.example/avatar.png"
+#: What every callback stores for _mock_auth_response(picture_url=PICTURE_URL): name, email, picture.
+STORED_PROFILE = ("Test User", "test@example.com", PICTURE_URL)
+
+
 def _mock_auth_response(
     email: str = "test@example.com",
     first_name: str = "Test",
@@ -178,7 +183,9 @@ class TestWorkOSMobileCallback:
         client: AsyncClient,
     ):
         mock_redirect.return_value = "gaiamobile://auth/callback"
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/mobile/callback?code=abc&state=xyz",
@@ -186,6 +193,7 @@ class TestWorkOSMobileCallback:
         )
         assert response.status_code == 307
         assert "token=" in response.headers["location"]
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
@@ -264,7 +272,9 @@ class TestWorkOSDesktopCallback:
         mock_store: AsyncMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/desktop/callback?code=abc",
@@ -272,6 +282,7 @@ class TestWorkOSDesktopCallback:
         )
         assert response.status_code == 307
         assert "gaia://auth/callback?token=" in response.headers["location"]
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
     async def test_desktop_callback_no_code(self, client: AsyncClient):
         response = await client.get(
@@ -317,7 +328,9 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
@@ -325,6 +338,7 @@ class TestWorkOSCallback:
         )
         assert response.status_code == 307
         assert "wos_session" in response.headers.get("set-cookie", "")
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
     @pytest.mark.regression
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
