@@ -5,6 +5,16 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import WebEvent
 from shared.py.analytics.catalog.properties import Identifier, UrlPath
 
+__all__ = [
+    "ApiChunkRecovered",
+    "ApiRequestFailed",
+    "ErrorOccurred",
+    "ErrorRouteErrorShown",
+    "PinViewed",
+    "UiSidebarCollapsed",
+    "UiSidebarExpanded",
+]
+
 
 class UiSidebarCollapsed(WebEvent):
     """The user collapsed the app sidebar."""
@@ -72,14 +82,3 @@ class ApiChunkRecovered(WebEvent):
 
     error_type: Literal["chunk_load"]
     recovery_action: Literal["reload"]
-
-
-__all__ = [
-    "ApiChunkRecovered",
-    "ApiRequestFailed",
-    "ErrorOccurred",
-    "ErrorRouteErrorShown",
-    "PinViewed",
-    "UiSidebarCollapsed",
-    "UiSidebarExpanded",
-]

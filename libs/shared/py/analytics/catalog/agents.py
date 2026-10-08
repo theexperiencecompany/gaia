@@ -5,6 +5,15 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "AgentRunCompleted",
+    "AgentRunFailed",
+    "AgentRunStarted",
+    "AiLlmCallCompleted",
+    "ToolExecuteFailed",
+    "ToolUsed",
+]
+
 
 class _AgentRunEvent(ServerEvent):
     """The properties every agent-run lifecycle event carries."""
@@ -83,13 +92,3 @@ class AiLlmCallCompleted(ServerEvent):
     cost_usd: float
     charged: bool
     cost_estimated: bool
-
-
-__all__ = [
-    "AgentRunCompleted",
-    "AgentRunFailed",
-    "AgentRunStarted",
-    "AiLlmCallCompleted",
-    "ToolExecuteFailed",
-    "ToolUsed",
-]

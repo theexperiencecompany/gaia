@@ -5,6 +5,19 @@ from typing import ClassVar
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
+__all__ = [
+    "WorkflowActivated",
+    "WorkflowCardNavigate",
+    "WorkflowCreated",
+    "WorkflowDeactivated",
+    "WorkflowDeleted",
+    "WorkflowExecuted",
+    "WorkflowPublished",
+    "WorkflowStepsRegenerated",
+    "WorkflowUnpublished",
+    "WorkflowUpdated",
+]
+
 
 class WorkflowCreated(ServerEvent):
     """A workflow was created, by the user or generated for a todo."""
@@ -90,17 +103,3 @@ class WorkflowCardNavigate(WebEvent):
 
     slug: Identifier
     variant: Identifier
-
-
-__all__ = [
-    "WorkflowActivated",
-    "WorkflowCardNavigate",
-    "WorkflowCreated",
-    "WorkflowDeactivated",
-    "WorkflowDeleted",
-    "WorkflowExecuted",
-    "WorkflowPublished",
-    "WorkflowStepsRegenerated",
-    "WorkflowUnpublished",
-    "WorkflowUpdated",
-]

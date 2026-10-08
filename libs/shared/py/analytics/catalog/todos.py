@@ -5,6 +5,21 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
+__all__ = [
+    "ProjectsCreated",
+    "ProjectsDeleted",
+    "ProjectsUpdated",
+    "TodosCreated",
+    "TodosDeleted",
+    "TodosRunResultDelivered",
+    "TodosSubscriptionFailed",
+    "TodosSubscriptionRegistered",
+    "TodosToggled",
+    "TodosTriggerFired",
+    "TodosUpdated",
+    "TodosViewChanged",
+]
+
 SubscriptionFailureReason = Literal[
     "unknown_trigger",
     "todo_not_found",
@@ -158,20 +173,3 @@ class TodosViewChanged(WebEvent):
         "label",
         "project",
     ]
-
-
-__all__ = [
-    "ProjectsCreated",
-    "ProjectsDeleted",
-    "ProjectsUpdated",
-    "SubscriptionFailureReason",
-    "TodosCreated",
-    "TodosDeleted",
-    "TodosRunResultDelivered",
-    "TodosSubscriptionFailed",
-    "TodosSubscriptionRegistered",
-    "TodosToggled",
-    "TodosTriggerFired",
-    "TodosUpdated",
-    "TodosViewChanged",
-]
