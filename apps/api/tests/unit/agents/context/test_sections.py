@@ -17,8 +17,8 @@ from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from tests.factories import make_integration_account, make_integration_record
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import SECTIONS, Section, sections_for

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from httpx import AsyncClient
 import pytest
-from tests.factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.models.integration_models import (

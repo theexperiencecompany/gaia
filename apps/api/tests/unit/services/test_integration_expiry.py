@@ -24,7 +24,7 @@ from app.services.integrations.integration_expiry import (
     announce_account_expiry,
     expire_account,
 )
-from tests.factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 MODULE = "app.services.integrations.integration_expiry"
 ACCOUNTS_MODULE = "app.services.integrations.integration_accounts"

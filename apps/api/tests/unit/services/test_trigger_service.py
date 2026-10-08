@@ -54,7 +54,8 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.triggers.base import TriggerHandler, primary_account_for_trigger
+from app.services.triggers import base as trigger_base
+from app.services.triggers.base import TriggerHandler
 from app.services.triggers.handlers.calendar import (
     CalendarTriggerHandler,
     calendar_trigger_handler,
@@ -577,7 +578,7 @@ class TestPrimaryAccountForTrigger:
 
     async def test_a_slug_no_integration_owns_is_refused_by_name(self) -> None:
         with pytest.raises(TriggerRegistrationError) as exc_info:
-            await primary_account_for_trigger(USER_ID, "NOBODY_OWNS_THIS")
+            await trigger_base.primary_account_for_trigger(USER_ID, "NOBODY_OWNS_THIS")
 
         assert str(exc_info.value) == "No integration owns trigger NOBODY_OWNS_THIS"
         assert exc_info.value.trigger_name == "NOBODY_OWNS_THIS"

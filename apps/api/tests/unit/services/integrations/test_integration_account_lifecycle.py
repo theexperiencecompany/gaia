@@ -10,7 +10,7 @@ from functools import partial
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from tests.factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.models.integration_models import (
     IntegrationAccount,

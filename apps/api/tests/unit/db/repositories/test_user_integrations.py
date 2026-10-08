@@ -65,6 +65,16 @@ class TestSaveAccounts:
             "$setOnInsert": {"created_at": now},
         }
 
+    async def test_a_save_invalidates_only_that_users_cache_scope(
+        self, collection: MagicMock
+    ) -> None:
+        with patch.object(UserIntegrationsRepository, "_invalidate", AsyncMock()) as invalidate:
+            await UserIntegrationsRepository().save_accounts(
+                USER_ID, INTEGRATION_ID, accounts=[], primary_account_id=None, status="created"
+            )
+
+        invalidate.assert_awaited_once_with(USER_ID)
+
     async def test_an_upsert_that_returns_nothing_fails_loud(self, collection: MagicMock) -> None:
         collection.find_one_and_update.return_value = None
 

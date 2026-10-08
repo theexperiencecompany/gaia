@@ -5,7 +5,7 @@ from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from tests.factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.integrations.integration_accounts import (
