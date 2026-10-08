@@ -1021,8 +1021,24 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
 
         await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
 
-        properties = _person_properties(posthog_client)
-        assert (properties["is_subscribed"], properties["plan"]) == (True, "pro")
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": False,
+        }
+
+    async def test_a_row_gone_after_its_own_write_fails_loudly_naming_it(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), None]
+        )
+
+        with pytest.raises(LookupError, match="subscription sub_xyz789 vanished"):
+            await _apply(SubscriptionEventKind.FAILED)
+
+        posthog_client.set.assert_not_called()
 
     async def test_a_plan_change_leaves_the_paid_status_alone(
         self, mock_webhook_subscription_repository, posthog_client

@@ -28,6 +28,7 @@ from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.services.reminder_service import ReminderScheduler
+from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER
 
 pytestmark = pytest.mark.e2e
 
@@ -182,6 +183,7 @@ class TestLapsedSubscriptionSkipsButRearms:
                 )
             )
             capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
+            paywall_block = stack.enter_context(patch(f"{REMINDER_TASKS}.capture_paywall_block"))
             result = await _make_scheduler().process_task_execution(reminder.id)
 
         assert result.success is True
@@ -190,4 +192,6 @@ class TestLapsedSubscriptionSkipsButRearms:
         plat_m.assert_not_awaited()
         # Re-armed for the next occurrence, not completed away.
         assert store.statuses == [ScheduledTaskStatus.SCHEDULED]
-        assert capture.call_count >= 1
+        # The skipped fire is a paywall block, never a completed reminder.
+        paywall_block.assert_called_once_with(reminder.user_id, PAYWALL_FEATURE_REMINDER)
+        capture.assert_not_called()

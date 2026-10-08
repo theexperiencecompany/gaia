@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
@@ -266,6 +267,27 @@ class TestCompleteOauth:
             await self._complete(_client())
 
         assert capture.call_args.args[1].is_reconnect is True
+
+    async def test_an_unreadable_connection_history_does_not_fail_the_connect(
+        self, connected_before
+    ):
+        """Whether it is a reconnect is analytics; the user's connect must not hinge on it."""
+        connected_before.side_effect = PyMongoError("mongo down")
+        client = _client()
+
+        with (
+            patch(f"{MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await self._complete(client)
+
+        client.handle_oauth_callback.assert_awaited_once()
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            IntegrationConnected(
+                integration_id=INTEGRATION_ID, connection_method="oauth", is_reconnect=None
+            ),
+        )
 
     async def test_clear_excluded_scopes_failure_does_not_fail_the_connect(self):
         client = _client()

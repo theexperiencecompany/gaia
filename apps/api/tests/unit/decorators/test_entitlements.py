@@ -5,9 +5,11 @@ with none at all, rather than capping usage. The 402 wire shape is fixed (the
 frontend is built against it), so the contract tests assert the exact body.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import time_machine
 
 from app.decorators.entitlements import (
     PAYWALL_MESSAGE,
@@ -267,3 +269,20 @@ class TestOneBlockIsCountedPerRouteWindow:
 
         [key] = await fake_redis.keys("*")
         assert await fake_redis.ttl(key) == billing.PAYWALL_BLOCKED_WINDOW.total_seconds()
+
+    @time_machine.travel(datetime(2026, 10, 8, 10, 37, 12, tzinfo=UTC), tick=False)
+    async def test_a_block_is_stamped_at_the_start_of_its_window(self, fake_redis) -> None:
+        """Every repeat inside the hour must share one timestamp, or PostHog keeps each as a row."""
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
+
+        assert client.capture.call_args.kwargs["timestamp"] == datetime(2026, 10, 8, 10, tzinfo=UTC)

@@ -34,48 +34,58 @@ SCRIPT = CI / "analytics.py"
 INSIGHTS = json.loads((CI / "tests" / "fixtures" / "posthog_insights.json").read_text())["insights"]
 
 CATALOG_DOC: dict[str, Any] = {
+    # The generated shape: shared fields live once, in base_properties.
+    "base_properties": {"Attribution": {"properties": {"actor": {}, "trigger": {}, "surface": {}}}},
     "events": [
         {
             "event": "chat:message_submitted",
             "previous_names": ["chat:message_sent"],
+            "base_properties": "Attribution",
             "properties": {"properties": {"source": {}, "has_files": {}, "platform": {}}},
         },
         {
             "event": "hil:decision_submitted",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {"approval_id": {}, "card_age_seconds": {}}},
         },
         {
             "event": "rate_limit:hit",
             "previous_names": ["rate_limit_hit"],
+            "base_properties": "Attribution",
             "properties": {"properties": {"feature": {}, "plan": {}, "origin": {}}},
         },
         {
             "event": "onboarding:started",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {}},
         },
         {
             "event": "onboarding:completed",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {"platform": {}}},
         },
         {
             "event": "payment:checkout_started",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {"source": {}}},
         },
         {
             "event": "subscription:activated",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {"plan": {}}},
         },
         {
             "event": "user:signed_up",
             "previous_names": [],
+            "base_properties": "Attribution",
             "properties": {"properties": {"signup_method": {}}},
         },
-    ]
+    ],
 }
 
 
@@ -120,6 +130,19 @@ def test_a_series_property_filter_is_checked_against_that_series_event(catalog: 
     assert _bad_query(query, catalog) == [("property", "approval_id", None)]
 
 
+def test_the_generated_catalog_gives_a_server_event_its_attribution() -> None:
+    catalog = analytics.Catalog.load()
+    assert {"actor", "trigger", "surface"} <= catalog.properties["chat:message_submitted"]
+
+
+@pytest.mark.parametrize("shared", ["actor", "trigger", "surface"])
+def test_a_filter_on_a_shared_attribution_property_is_a_real_ref(catalog: Any, shared: str) -> None:
+    """The generated catalog keeps attribution in base_properties, not on each event."""
+    query = json.loads(json.dumps(_insight(11843360)["query"]))
+    query["source"]["series"][0]["properties"][0]["key"] = shared
+    assert _bad_query(query, catalog) == []
+
+
 def _bad_query(query: dict[str, Any], catalog: Any) -> list[tuple[str, str, str | None]]:
     return sorted(
         (f.kind, f.name, f.suggestion) for f in analytics.bad_refs(query, catalog, actions={})
@@ -137,8 +160,8 @@ def test_retention_entities_are_events_too(catalog: Any) -> None:
 def test_a_hogql_breakdown_contributes_its_properties(catalog: Any) -> None:
     assert _bad(11845123, catalog) == []
     query = json.loads(json.dumps(_insight(11845123)["query"]))
-    query["source"]["breakdownFilter"]["breakdowns"][0]["property"] = "properties.surface"
-    assert _bad_query(query, catalog) == [("property", "surface", "source")]
+    query["source"]["breakdownFilter"]["breakdowns"][0]["property"] = "properties.sources"
+    assert _bad_query(query, catalog) == [("property", "sources", "source")]
 
 
 def test_a_funnel_flags_each_dead_step_once(catalog: Any) -> None:

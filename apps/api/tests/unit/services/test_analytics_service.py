@@ -244,7 +244,6 @@ class TestCaptureDedupe:
         assert UUID(first["uuid"]).version == 5
         assert datetime.fromisoformat(first["timestamp"]) == OCCURRED_AT
 
-    @pytest.mark.regression
     def test_a_deduped_event_is_stored_at_its_own_time_not_shifted_by_sent_at(self, posthog_events):
         """PostHog moves timestamp by its clock minus sent_at (+3.6s on gaia-test) unless told not to."""
         capture(USER_1, MemoryCleared(deleted_count=1), Dedupe("run-1", OCCURRED_AT))

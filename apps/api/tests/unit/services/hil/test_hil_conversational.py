@@ -664,11 +664,12 @@ def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
 
 
 def assert_abandoned_as_the_user(ledger: dict[str, AsyncMock]) -> None:
-    """Moved-on denials read this conversation's rows and carry no row version."""
+    """Moved-on denials read this conversation's rows, carry no row version and count as chat decisions."""
     assert {c.args for c in ledger["list_open"].await_args_list} == {(CONVERSATION_ID,)}
-    assert {(c.kwargs["user_id"], c.kwargs["v"]) for c in ledger["decide"].await_args_list} == {
-        (USER_ID, None)
-    }
+    assert {
+        (c.kwargs["user_id"], c.kwargs["v"], c.kwargs["via"])
+        for c in ledger["decide"].await_args_list
+    } == {(USER_ID, None, "chat")}
 
 
 class TestLedgerRows:
