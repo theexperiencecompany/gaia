@@ -47,10 +47,9 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
         user = get_current_user(request)
         user_id = user.user_id if user else None
         session_id = request.headers.get(POSTHOG_SESSION_HEADER)
-        if not (user_id or session_id) or not providers.is_available("posthog"):
-            return await call_next(request)
-
-        if providers.get(POSTHOG_PROVIDER_KEY) is None:
+        # An unconfigured provider resolves to None (SILENT strategy), so this one
+        # check covers both a missing token and an unbuilt client.
+        if not (user_id or session_id) or providers.get(POSTHOG_PROVIDER_KEY) is None:
             return await call_next(request)
 
         # capture_exceptions=False is load-bearing: autocapture uses the

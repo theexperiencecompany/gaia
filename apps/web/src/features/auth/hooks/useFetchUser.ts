@@ -6,7 +6,6 @@ import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
-  CURRENT_USER_QUERY_KEY,
   clearCurrentUser,
   currentUserQueryOptions,
 } from "@/features/auth/hooks/useCurrentUser";
@@ -111,14 +110,11 @@ const useFetchUser = () => {
     if (!error || hasClearedOnError.current) return;
     hasClearedOnError.current = true;
     console.error("Error fetching user info:", error);
-    // Only a 401 that ends a signed-in session resets: an anonymous visitor's
-    // 401 would orphan their pre-signup history, and a 5xx is not a sign-out.
-    const endedSignedInSession =
-      error instanceof ApiError &&
-      error.status === HTTP_UNAUTHORIZED &&
-      queryClient.getQueryData(CURRENT_USER_QUERY_KEY) !== undefined;
+    // A 5xx is not a sign-out. resetUser leaves an anonymous visitor's 401 alone.
+    const unauthorized =
+      error instanceof ApiError && error.status === HTTP_UNAUTHORIZED;
     clearCurrentUser(queryClient);
-    if (endedSignedInSession) resetUser();
+    if (unauthorized) resetUser();
     hasIdentified.current = false;
   }, [error, queryClient]);
 };

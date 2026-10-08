@@ -22,6 +22,7 @@ const { posthogMock, capture, identify, setPersonProperties } = vi.hoisted(
         identify,
         setPersonProperties,
         reset: vi.fn(),
+        _isIdentified: vi.fn(() => true),
       },
     };
   },
@@ -33,6 +34,7 @@ import {
   ANALYTICS_EVENTS,
   flushPendingAnalytics,
   identifyUser,
+  resetUser,
   trackEvent,
 } from "@/lib/analytics";
 
@@ -42,6 +44,7 @@ beforeEach(() => {
   identify.mockClear();
   setPersonProperties.mockClear();
   flushPendingAnalytics();
+  posthogMock.reset.mockClear();
 });
 
 describe("analytics buffering before posthog.init", () => {
@@ -88,5 +91,21 @@ describe("analytics buffering before posthog.init", () => {
     flushPendingAnalytics();
 
     expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an identity reset that arrives after the queue is full, in order", () => {
+    for (let i = 0; i < 60; i++) {
+      trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED);
+    }
+    resetUser();
+
+    posthogMock.__loaded = true;
+    flushPendingAnalytics();
+
+    expect(capture).toHaveBeenCalledTimes(50);
+    expect(posthogMock.reset).toHaveBeenCalledTimes(1);
+    expect(capture.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      posthogMock.reset.mock.invocationCallOrder[0],
+    );
   });
 });
