@@ -11,6 +11,7 @@ __all__ = [
     "FeatureDiscovered",
     "FeatureFlagEvaluated",
     "FeatureToggled",
+    "FlagFallbackReason",
     "ProfileLinkCopied",
     "ProfileUpdated",
     "SettingsChatChannelPriorityUpdated",
