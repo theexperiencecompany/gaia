@@ -21,12 +21,8 @@ from app.templates.docstrings.subscription_tool_docs import (
     CREATE_UPGRADE_LINK,
     GET_SUBSCRIPTION_DETAILS,
 )
+from app.utils.money import format_money
 from shared.py.wide_events import log
-
-
-def _format_money(amount_minor: int, currency: str) -> str:
-    """Render a minor-unit amount (Dodo's wire format) as ``30.00 USD``."""
-    return f"{amount_minor / 100:.2f} {currency.upper()}"
 
 
 def _format_details(details: SubscriptionDetails) -> str:
@@ -45,7 +41,7 @@ def _format_details(details: SubscriptionDetails) -> str:
             if details.billing_cycle
             else ""
         )
-        lines.append(f"Price: {_format_money(details.amount, details.currency)}{cycle}")
+        lines.append(f"Price: {format_money(details.amount, details.currency)}{cycle}")
     if details.next_billing_date:
         renews = "Cancels on" if details.cancel_at_next_billing_date else "Renews on"
         lines.append(f"{renews}: {details.next_billing_date}")
@@ -59,7 +55,7 @@ def _format_details(details: SubscriptionDetails) -> str:
         lines.append(f"Recent charges ({len(details.payments)}):")
         lines.extend(
             f"  - {payment.created_at.date()} "
-            f"{_format_money(payment.amount, payment.currency)} "
+            f"{format_money(payment.amount, payment.currency)} "
             f"({payment.status or 'unknown'})"
             for payment in details.payments
         )
@@ -124,7 +120,7 @@ async def create_upgrade_link(
     log.info(f"{LogTag.TOOL} Upgrade link created", billing_cycle=billing_cycle)
 
     period = billing_cycle.value.removesuffix("ly")
-    lines = [f"GAIA Pro: {_format_money(pro.plan.amount, pro.plan.currency)} per {period}."]
+    lines = [f"GAIA Pro: {format_money(pro.plan.amount, pro.plan.currency)} per {period}."]
     if pro.plan.features:
         # Straight from the plan catalogue, so the pitch can never promise
         # something the plan stopped including.

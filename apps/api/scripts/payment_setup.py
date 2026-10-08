@@ -50,6 +50,7 @@ from app.constants.cache import PLANS_CACHE_KEYS
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanDocument, PlanDuration, PlanTier
 from app.services.payments.payment_service import payment_service
+from app.utils.money import format_money
 
 # Timestamps are bookkeeping, not catalogue content: a run that changes none of
 # these fields is a no-op, so they are what the diff compares.
@@ -265,7 +266,7 @@ async def reconcile_plan(
 
 def print_plan_details(plan: PlanDocument) -> None:
     """Print the human-readable summary under each processed plan."""
-    print(f"   💰 Amount: ${plan.amount / 100:.2f} {plan.currency}")
+    print(f"   💰 Amount: {format_money(plan.amount, plan.currency)}")
     print(f"   📅 Duration: {plan.duration.capitalize()}")
     print(f"   👥 Max Users: {plan.max_users}")
     print(f"   🏷️  Dodo Product ID: {plan.dodo_product_id or 'Free Plan (No Product ID)'}")
@@ -292,7 +293,9 @@ async def print_active_plans(
 
     print("📋 Active Plans (current state, before any write):" if dry_run else "📋 Active Plans:")
     for plan in plans:
-        print(f"   • {plan['name']} ({plan['duration']}) - ${plan['amount'] / 100:.2f}")
+        print(
+            f"   • {plan['name']} ({plan['duration']}) - {format_money(plan['amount'], plan['currency'])}"
+        )
         print(f"     Dodo Product ID: {plan.get('dodo_product_id') or 'N/A'}")
     print()
 

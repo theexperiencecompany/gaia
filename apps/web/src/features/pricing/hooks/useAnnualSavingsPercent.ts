@@ -2,7 +2,6 @@
 
 import { MONTHS_PER_YEAR } from "../constants";
 import { getAnnualSavingsPercent } from "../utils/annualSavings";
-import { convertToUSDCents } from "../utils/currencyConverter";
 import { isProPlan } from "../utils/planPredicates";
 import { usePricing } from "./usePricing";
 
@@ -23,8 +22,8 @@ export function useAnnualSavingsPercent(): number | null {
   if (!monthly || !yearly) return null;
 
   const percent = getAnnualSavingsPercent(
-    convertToUSDCents(monthly.amount, monthly.currency) * MONTHS_PER_YEAR,
-    convertToUSDCents(yearly.amount, yearly.currency),
+    monthly.amount * MONTHS_PER_YEAR,
+    yearly.amount,
   );
   return percent > 0 ? percent : null;
 }

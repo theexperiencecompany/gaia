@@ -1,8 +1,5 @@
 import type { UserSubscriptionStatus } from "@/features/pricing/api/pricingApi";
-import {
-  convertToUSDCents,
-  formatUSDFromCents,
-} from "@/features/pricing/utils/currencyConverter";
+import { formatWholeOrCentsUSD } from "@/features/pricing/utils/money";
 
 // Module-scope formatter: hoisting keeps locale resolution out of the render
 // path (js-hoist-intl); explicit locale+timeZone gives deterministic
@@ -72,11 +69,9 @@ function getStatusText(status: string): string {
 
 function getPriceFormatted(status: UserSubscriptionStatus): string {
   const plan = status.current_plan;
-  if (plan) {
-    return formatUSDFromCents(convertToUSDCents(plan.amount, plan.currency));
-  }
+  if (plan) return formatWholeOrCentsUSD(plan.amount);
   const preTaxAmount = status.subscription?.recurring_pre_tax_amount;
-  if (preTaxAmount) return formatUSDFromCents(preTaxAmount);
+  if (preTaxAmount) return formatWholeOrCentsUSD(preTaxAmount);
   return "$0";
 }
 

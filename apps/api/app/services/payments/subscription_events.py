@@ -38,12 +38,12 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
+from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
-CENTS_PER_UNIT = 100
 EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 LAPSED_STATUSES = frozenset(
@@ -286,7 +286,7 @@ def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
 def _plan_of(data: DodoSubscriptionData) -> SubscriptionPlan:
     return SubscriptionPlan(
         name="Pro",
-        amount=data.recurring_pre_tax_amount / CENTS_PER_UNIT
+        amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency))
         if data.recurring_pre_tax_amount
         else None,
         currency=data.currency,

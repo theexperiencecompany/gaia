@@ -22,12 +22,12 @@ from app.models.webhook_models import (
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, track_payment_event
 from app.services.payments.subscription_events import (
-    CENTS_PER_UNIT,
     SubscriptionEvent,
     SubscriptionEventKind,
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from app.utils.money import to_major_units
 from shared.py.wide_events import log
 
 WebhookHandler = Callable[[DodoWebhookEvent], Awaitable[DodoWebhookProcessingResult]]
@@ -304,7 +304,7 @@ class PaymentWebhookService:
             user_id=user_id,
             event_type=event_type,
             payment_id=payment_data.payment_id,
-            amount=payment_data.total_amount / CENTS_PER_UNIT
+            amount=float(to_major_units(payment_data.total_amount, payment_data.currency))
             if payment_data.total_amount
             else None,
             currency=payment_data.currency,
