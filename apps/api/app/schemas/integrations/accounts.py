@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import Field
 
+from app.constants.integrations import MAX_ACCOUNT_NICKNAME_LENGTH
 from app.models.integration_models import (
     IntegrationAccount,
     IntegrationAccountStatus,
@@ -61,4 +62,4 @@ class UpdateIntegrationAccountRequest(CamelModel):
     """Make the account primary and/or rename it; an empty nickname clears it."""
 
     is_primary: bool | None = Field(default=None)
-    nickname: str | None = Field(default=None, max_length=60)
+    nickname: str | None = Field(default=None, max_length=MAX_ACCOUNT_NICKNAME_LENGTH)

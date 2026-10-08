@@ -425,13 +425,14 @@ def _builtin_overlap_lines(items: list[_ConnectedIntegration]) -> list[str]:
     return lines
 
 
-async def build_connected_integrations_manifest(user_id: str, header: str) -> str:
+async def build_connected_integrations_manifest(
+    user_id: str, header: str, account_guidance: str
+) -> str:
     """One line per connected integration, so the agent knows what it can reach.
 
-    Capability awareness only; schemas still come from retrieve_tools. The
-    parenthesised id is the integration_id for activate_integration; a row
-    collapses to just the id when the name IS the id. A builtin shadowed by
-    a connected provider gets its own row above the accounts.
+    The parenthesised id is the integration_id for activate_integration; a
+    builtin shadowed by a connected provider gets its own row above the rest.
+    account_guidance follows the rows only when an integration has several accounts.
     """
     try:
         items = cast(list[_ConnectedIntegration], await get_connected_integrations_named(user_id))
@@ -452,6 +453,8 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
         iid, name = item["id"], item["name"]
         row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
         lines.append(f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}")
+    if accounts:
+        lines.append(account_guidance)
     return "\n".join(lines)
 
 
@@ -539,14 +542,14 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
 
 
 def _account_line(account: IntegrationAccount, primary_id: str | None) -> str:
-    # A nickname hides the address the user may name the account by.
-    tags = [account.label] if account.nickname else []
-    if account.connected_account_id == primary_id:
-        tags.append("primary")
+    # Quoted, so a model passing one as `account` copies the name and not the tags after it.
+    # A nickname hides the address the user may name the account by, so both are names.
+    names = [account.display_name, *([account.label] if account.nickname else [])]
+    tags = ["primary"] if account.connected_account_id == primary_id else []
     if account.status != "connected":
         tags.append("expired")
     suffix = f" ({', '.join(tags)})" if tags else ""
-    return f"{account.display_name}{suffix}"
+    return " or ".join(f'"{name}"' for name in names) + suffix
 
 
 async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:

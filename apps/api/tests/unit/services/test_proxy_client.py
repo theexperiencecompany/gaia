@@ -11,6 +11,7 @@ from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.models.integrations.composio_hooks import ComposioAccountSelection
 from app.services.composio import proxy_client
 from app.services.composio.account_scope import account_scope
+from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.proxy_client import (
     ProxyRequest,
     _build_parameters,
@@ -20,6 +21,7 @@ from app.services.composio.proxy_client import (
 )
 from app.utils.errors import AppError
 from shared.py.wide_events import log
+from tests.factories import make_composio_not_found
 
 
 def _make_composio(
@@ -235,6 +237,34 @@ class TestProxyRequestSync:
             "method": "POST",
             "exception": "boom",
         }
+
+    def test_an_account_composio_no_longer_holds_is_reported_as_gone(self) -> None:
+        """Seen live: the tool path never recognised this 404, so the agent retried a dead account."""
+        composio = _make_composio()
+        composio.tools.proxy.side_effect = make_composio_not_found(
+            {"error": {"code": 606, "slug": "ConnectedAccount_ResourceNotFound"}},
+            'Connected account "ca_gone" not found',
+        )
+        with _patch_primary("ca_gone"), _patch_composio(composio):
+            with pytest.raises(ConnectedAccountGoneError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert exc.value.code == INTEGRATION_NOT_CONNECTED
+        assert exc.value.public == {"toolkit": "GMAIL"}
+
+    def test_any_other_composio_404_stays_a_loud_502(self) -> None:
+        composio = _make_composio()
+        composio.tools.proxy.side_effect = make_composio_not_found(
+            {"error": {"code": 1404, "slug": "Tool_NotFound"}}, "Tool not found"
+        )
+        with _patch_primary(), _patch_composio(composio):
+            with pytest.raises(AppError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert not isinstance(exc.value, ConnectedAccountGoneError)
+        assert exc.value.status_code == 502
 
     def test_request_identity_is_recorded_on_the_wide_event(self) -> None:
         log.reset()

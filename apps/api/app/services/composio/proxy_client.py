@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
 from composio import Composio
+import composio_client
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.log_tags import LogTag
 from app.services.composio.account_scope import scoped_connected_account_id
+from app.services.composio.dead_account import ConnectedAccountGoneError, is_dead_account_error
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -98,6 +100,30 @@ def _build_parameters(
     return params
 
 
+def _proxy_failure(request: ProxyRequest, error: Exception) -> AppError:
+    """Log and build the loud failure for a proxy call the SDK or transport could not complete."""
+    log.error(
+        f"{LogTag.COMPOSIO} composio.tools.proxy raised",
+        user_id=request.user_id,
+        toolkit=request.toolkit,
+        method=request.method,
+        endpoint=request.endpoint,
+        error=str(error),
+        error_type=type(error).__name__,
+    )
+    return AppError(
+        message=f"Composio tools.proxy failed: {error}",
+        why="SDK or transport error while calling the provider",
+        status_code=502,
+        meta={
+            "toolkit": request.toolkit,
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "exception": str(error),
+        },
+    )
+
+
 def _proxy_call(request: ProxyRequest) -> ProxyResponse:
     """Send a proxy request and return its status, data and headers."""
     log.set(
@@ -128,27 +154,12 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
         response = _get_composio().tools.proxy(**proxy_kwargs)
     except AppError:
         raise
+    except composio_client.NotFoundError as e:
+        if not is_dead_account_error(e):
+            raise _proxy_failure(request, e) from e
+        raise ConnectedAccountGoneError(request.toolkit, str(e)) from e
     except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} composio.tools.proxy raised",
-            user_id=request.user_id,
-            toolkit=request.toolkit,
-            method=request.method,
-            endpoint=request.endpoint,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise AppError(
-            message=f"Composio tools.proxy failed: {e}",
-            why="SDK or transport error while calling the provider",
-            status_code=502,
-            meta={
-                "toolkit": request.toolkit,
-                "endpoint": request.endpoint,
-                "method": request.method,
-                "exception": str(e),
-            },
-        ) from e
+        raise _proxy_failure(request, e) from e
 
     status = int(response.status)
     if status >= 400:

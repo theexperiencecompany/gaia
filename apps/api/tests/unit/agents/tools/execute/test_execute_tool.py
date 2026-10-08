@@ -303,3 +303,25 @@ class TestExecuteToolCall:
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output)
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
             assert await _invoke(build_execute_tool()) == rendered
+
+    @pytest.mark.parametrize(
+        ("output", "rendered"),
+        [
+            (
+                {"data": [1], "__offload__": {"path": "f"}},
+                json.dumps({"ran_as_account": "Work", "data": [1], "__offload__": {"path": "f"}}),
+            ),
+            ("plain text", "ran_as_account: Work\nplain text"),
+            ([1, 2], json.dumps({"ran_as_account": "Work", "result": [1, 2]})),
+        ],
+        ids=["structured", "text", "other"],
+    )
+    async def test_with_several_accounts_the_model_is_told_which_one_answered(
+        self, output: object, rendered: str
+    ) -> None:
+        """Seen live: a call that omitted account ran as the primary and was reported as another account."""
+        result = ToolExecutionResult(
+            ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output, account="Work"
+        )
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
+            assert await _invoke(build_execute_tool()) == rendered

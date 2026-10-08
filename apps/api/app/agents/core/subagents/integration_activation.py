@@ -19,6 +19,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
 
 from app.agents.context.fetchers import build_provider_metadata_block
+from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
 from app.agents.core.subagents.active_integrations import mark_active
 from app.agents.core.subagents.handoff_tools import (
     CustomMcpSubagent,
@@ -32,10 +33,12 @@ from app.agents.skills.discovery import get_available_skills_text
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import render_preload_block, split_startup_tools
 from app.agents.workspace.system_docs import integration_skills_block
+from app.constants.integrations import RENAME_INTEGRATION_ACCOUNT_TOOL
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
 from app.services.integration_instructions_service import get_instructions
+from app.services.integrations.integration_accounts import get_account_record
 from shared.py.wide_events import log
 
 
@@ -87,7 +90,26 @@ async def _activate_tools(
     return total, bind, preload, docs
 
 
-async def _activation_context(integration_id: str, user_id: str | None) -> str:
+async def _has_several_accounts(integration_id: str, user_id: str | None) -> bool:
+    """Whether the user connected more than one account to this integration."""
+    if not user_id:
+        return False
+    try:
+        record = await get_account_record(user_id, integration_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.AGENT} Activation could not read the integration's accounts",
+            integration=integration_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return False
+    return record is not None and len(record.accounts) > 1
+
+
+async def _activation_context(
+    integration_id: str, integration_name: str, user_id: str | None, several_accounts: bool
+) -> str:
     """Best-effort enrichment prose for an activated integration.
 
     This is enrichment, not the tools. The tools are already registered and bound
@@ -121,12 +143,18 @@ async def _activation_context(integration_id: str, user_id: str | None) -> str:
                     f"## The user's standing instructions for {integration_id}\n{instructions}"
                 )
 
-            # Which account the caller is acting as. An MCP worker gets this
-            # as its own context section; without it the executor operates an
-            # integration without knowing whose inbox/repo/workspace it is in.
-            identity = await build_provider_metadata_block(integration_id, user_id)
-            if identity:
-                sections.append(identity)
+            # Which account the caller is acting as. Several accounts can change
+            # mid-conversation, so those are read from the per-turn manifest instead.
+            if several_accounts:
+                sections.append(
+                    ACTIVATION_MULTI_ACCOUNT_POINTER.format(
+                        integration=integration_name, tool=RENAME_INTEGRATION_ACCOUNT_TOOL
+                    )
+                )
+            else:
+                identity = await build_provider_metadata_block(integration_id, user_id)
+                if identity:
+                    sections.append(identity)
 
             agent_name = ""
             subagent = get_subagent_by_id(integration_id)
@@ -302,7 +330,10 @@ async def activate_integration(
             return _reply(tool_call_id, connect_prompt)
 
     tool_count, bind, preloaded, docs = await _activate_tools(subagent, user_id)
-    context = await _activation_context(integration_id, user_id)
+    several_accounts = await _has_several_accounts(integration_id, user_id)
+    if several_accounts:
+        bind = [*bind, RENAME_INTEGRATION_ACCOUNT_TOOL]
+    context = await _activation_context(integration_id, subagent.name, user_id, several_accounts)
     log.set(
         activation={
             "integration": integration_id,

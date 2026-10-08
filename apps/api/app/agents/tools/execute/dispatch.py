@@ -31,6 +31,7 @@ from app.constants.execute import (
     TICKET_NAMES,
     TICKET_REVOKE_NAME,
 )
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -93,18 +94,21 @@ class ToolExecutionResult(BaseModel):
     # own shape and the proxy must pass it through unaltered (boundary, item 8).
     output: Any = None
     error: DispatchError | None = None
+    # The account the call ran as, named only when the user has several on that integration.
+    account: str | None = None
 
 
 @dataclass(frozen=True)
 class _AccountChoice:
     selection: ComposioAccountSelection
+    display_name: str
     is_primary: bool
     account_count: int
 
 
 def _account_names(record: UserIntegrationDocument) -> str:
     return ", ".join(
-        f"{a.display_name} ({'expired' if a.status != 'connected' else 'connected'})"
+        f'"{a.display_name}" ({"expired" if a.status != "connected" else "connected"})'
         for a in record.accounts
     )
 
@@ -135,22 +139,23 @@ async def _choose_account(
         return DispatchError(
             kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
             detail=f"No connected {integration.name} account is called '{account}'.",
-            hint=f"Pass one of these as `account`: {_account_names(record)}.",
+            hint=(
+                f"If the user meant one of these, pass it as `account`: {_account_names(record)}. "
+                "Otherwise ask them which account they meant."
+            ),
         )
     live = [a for a in record.accounts if a.status == "connected"]
     if chosen.status != "connected" and live:
         return DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",
-            hint=(
-                "Tell the user it must be reconnected in Integrations, or act through "
-                f"another account via `account`: {_account_names(record)}."
-            ),
+            hint=ACCOUNT_NEEDS_RECONNECT_HINT,
         )
     return _AccountChoice(
         selection=ComposioAccountSelection(
             toolkit=composio_config.toolkit, connected_account_id=chosen.connected_account_id
         ),
+        display_name=chosen.display_name,
         is_primary=chosen.connected_account_id == record.primary_account_id,
         account_count=len(record.accounts),
     )
@@ -329,6 +334,12 @@ async def dispatch_tool(
     # which tool it was; the ok outcome is stamped only once the invoke has
     # actually returned.
     log.set_ns("execute", tool=resolved_name)
+    if choice is not None:
+        log.set_ns(
+            "execute",
+            connected_account_id=choice.selection.connected_account_id,
+            account_is_primary=choice.is_primary,
+        )
     # Long-running orchestration tools manage their own lifecycles — the same
     # exemption the in-graph node applies, read from the same constant so a
     # proxied call is never bounded more tightly than a direct one.
@@ -372,7 +383,8 @@ async def dispatch_tool(
         # this reason: one action, one event, one emitter).
         capture_event(user_id, AnalyticsEvents.TOOL_USED, _usage_properties(resolved_name, choice))
 
-    return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output)
+    account = choice.display_name if choice is not None and choice.account_count > 1 else None
+    return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output, account=account)
 
 
 async def _dispatch_ticket(

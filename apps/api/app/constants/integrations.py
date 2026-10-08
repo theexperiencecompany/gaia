@@ -49,6 +49,15 @@ MAX_ACCOUNTS_PER_INTEGRATION: Final = 5
 COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
 # Label for an account whose provider exposes no identity (no metadata_config).
 FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
+# What the agent is told when the account a call ran as has lost its connection.
+ACCOUNT_NEEDS_RECONNECT_HINT: Final = (
+    "Tell the user it must be reconnected in Integrations. Do not use another account "
+    "in its place, or answer with another account's data, unless they ask."
+)
+# The agent tool that names an account; bound when a multi-account integration is activated.
+RENAME_INTEGRATION_ACCOUNT_TOOL: Final = "rename_integration_account"
+# A nickname replaces the account's label in the UI and the agent's context.
+MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
 # Redirect error code when a connect would exceed MAX_ACCOUNTS_PER_INTEGRATION.
 ACCOUNT_LIMIT_ERROR: Final = "account_limit"
 

@@ -359,6 +359,7 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
+            integration_account_tools,
             integration_instructions_tools,
             integration_tool,
             manual_tool,
@@ -489,7 +490,7 @@ class ToolRegistry:
         )
         self._add_category(
             "integrations",
-            tools=integration_tool.tools,
+            tools=[*integration_tool.tools, *integration_account_tools.tools],
             risk=CategoryRisk(
                 destructive_tools={"connect_integration"},
                 # add_custom_mcp_server: untrusted, LLM-resolved MCP server. approve_device_pairing:

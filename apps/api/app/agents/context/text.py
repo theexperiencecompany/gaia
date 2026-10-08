@@ -6,6 +6,9 @@ reviewer can read without also reading the fetch logic around it.
 
 from typing import Final, NamedTuple
 
+from app.constants.execute import RAN_AS_ACCOUNT_KEY
+from app.constants.integrations import RENAME_INTEGRATION_ACCOUNT_TOOL
+
 #: Sections within the stable block are single lines or short line groups, so
 #: they read as one block. Volatile sections are paragraphs and get a blank line.
 STABLE_SECTION_JOIN = "\n"
@@ -94,16 +97,48 @@ EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER = (
     "are always available and are not listed here:"
 )
 
-#: Shown with an integration's account list only when the user has connected more
-#: than one account to it; single-account users never see account handling.
+#: Shown wherever an integration's accounts are listed, only when the user has
+#: connected more than one account to it; single-account users never see it.
 MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
-    "Integration tools act as the primary account unless you pass `account` to execute "
-    "with one of the names above. When the user means a specific account (an address, a "
-    "workspace, 'my work email'), pass it. For requests across their accounts ('my inbox', "
-    "'my repos'), run the tool once per connected account and say which result came from "
-    "which. For a write where the user named no account, use the primary. If they name an "
-    "account that is not listed, ask instead of guessing. Expired accounts cannot be used "
-    "until the user reconnects them in Integrations."
+    "Some integrations have several connected accounts, listed with the integration. Tools "
+    "act as the primary account unless you pass `account` to execute with one of those "
+    "names. When the user names an account (an address, a workspace, 'my work email') or "
+    "the conversation makes clear which one they mean, use only that one. Otherwise be "
+    "information complete: a read could be in any of them ('my latest email', 'what is on "
+    "today'), so call the tool for every connected account at once, as parallel tool calls "
+    "in one turn, and say which result came from which. For a write where the user named "
+    "no account, use the primary. If the name matches no listed account ('my school email' "
+    "with no school account), ask instead of picking the closest. Each result names the "
+    f"account it ran as ({RAN_AS_ACCOUNT_KEY}); check it is the one you meant before "
+    "reporting it. If the account they named fails or needs reconnecting, tell them: never "
+    "use another account in its place without asking, and never present another account's "
+    "results as the one they named. Be smart about the accounts over time: when one only "
+    "has a generic name (like 'Google Calendar account 2') and you learn whose it is, name "
+    f"it with {RENAME_INTEGRATION_ACCOUNT_TOOL}; when you learn how the user uses them "
+    "(which one is for work, where invoices or a client's mail arrive), save that pattern "
+    "with add_memory, and use the patterns you remember to pick the right account next time."
+)
+
+#: The comms agent sees the same account lists but acts on none of them.
+COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
+    "Some integrations have several connected accounts, listed with the integration. "
+    "Anything about those accounts, using one or renaming them, is executor work: delegate "
+    "it with call_executor. Pass on only what the user said about accounts: if they named "
+    "one, include it; if they did not, do not choose one or tell the executor to avoid the "
+    "others, because it decides. If you remember how they use their accounts (which one is "
+    "for work, where a client's mail arrives), pass that along as context, not as a limit. "
+    "When the user tells you what an account is for, save it with add_memory. When you report "
+    "back, say which account each result or action came from, and never describe a step the "
+    "executor did not report. Never just acknowledge a rename yourself; it only happens when "
+    "the executor does it."
+)
+
+#: Activation runs once per conversation, so it points at the per-turn list
+#: instead of copying accounts that can change before the next turn.
+ACTIVATION_MULTI_ACCOUNT_POINTER: Final[str] = (
+    "The user has several {integration} accounts. The current list, refreshed every turn, "
+    "is with {integration} in the connected integrations section of your context, along "
+    "with how to choose one. {tool} is bound for naming them."
 )
 
 #: What every block of remembered history says about itself. A memory of the

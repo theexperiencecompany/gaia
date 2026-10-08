@@ -18,6 +18,7 @@ from app.services.integrations.integration_accounts import (
     get_account_record,
     pick_primary,
     save_accounts,
+    set_account_nickname,
 )
 from app.services.integrations.integration_connection_service import disconnect_integration
 from app.services.triggers.subscription_service import resync_subscriptions_for_trigger_names
@@ -173,12 +174,16 @@ def _require_account(
 ) -> IntegrationAccount:
     account = record.find_account(connected_account_id)
     if account is None:
-        raise AppError(
-            message="Account not found on this integration",
-            status_code=404,
-            meta={"integration_id": record.integration_id, "account": connected_account_id},
-        )
+        raise _account_not_found(record.integration_id, connected_account_id)
     return account
+
+
+def _account_not_found(integration_id: str, connected_account_id: str) -> AppError:
+    return AppError(
+        message="Account not found on this integration",
+        status_code=404,
+        meta={"integration_id": integration_id, "account": connected_account_id},
+    )
 
 
 async def _set_primary_account(
@@ -208,15 +213,18 @@ async def _rename_account(
     user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
 ) -> UserIntegrationDocument:
     composio_integration(integration_id)
-    record = await _require_record(user_id, integration_id)
-    _require_account(record, connected_account_id)
-    accounts = [
-        a.model_copy(update={"nickname": (nickname or "").strip() or None})
-        if a.connected_account_id == connected_account_id
-        else a
-        for a in record.accounts
-    ]
-    return await save_accounts(user_id, integration_id, accounts, record.primary_account_id)
+    _require_account(await _require_record(user_id, integration_id), connected_account_id)
+    cleaned = (nickname or "").strip() or None
+    saved = await set_account_nickname(user_id, integration_id, connected_account_id, cleaned)
+    if saved is None:
+        # Removed between the check above and this write.
+        raise _account_not_found(integration_id, connected_account_id)
+    capture_event(
+        user_id,
+        AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
+        {"integration_id": integration_id, "cleared": cleaned is None},
+    )
+    return saved
 
 
 async def list_accounts(user_id: str, integration_id: str) -> UserIntegrationDocument | None:

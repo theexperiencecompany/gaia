@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from httpx import AsyncClient
 import pytest
-from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import (
+    make_integration_account,
+    make_integration_record,
+    with_nickname,
+)
 
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.models.integration_models import (
@@ -49,10 +53,19 @@ def repo(fake_redis: object) -> Iterator[MagicMock]:
         repository.get_for_user.return_value = doc
         return doc
 
+    async def name(
+        _user_id: str, _integration_id: str, connected_account_id: str, nickname: str | None
+    ) -> UserIntegrationDocument | None:
+        doc = with_nickname(repository.get_for_user.return_value, connected_account_id, nickname)
+        if doc is not None:
+            repository.get_for_user.return_value = doc
+        return doc
+
     with patch(
         "app.services.integrations.integration_accounts.user_integration_repository"
     ) as repository:
         repository.get_for_user = AsyncMock(return_value=None)
+        repository.set_account_nickname = AsyncMock(side_effect=name)
         repository.save_accounts = AsyncMock(side_effect=save)
         yield repository
 

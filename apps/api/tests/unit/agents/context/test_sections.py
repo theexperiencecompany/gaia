@@ -24,6 +24,7 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import SECTIONS, Section, sections_for
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
+    COMMS_MULTI_ACCOUNT_NOTE,
     CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
     MULTI_ACCOUNT_INSTRUCTION,
@@ -353,6 +354,36 @@ class TestIntegrationsManifest:
 
         assert rendered.startswith(CONNECTED_INTEGRATIONS_HEADER)
 
+    @pytest.mark.parametrize(
+        ("tier", "guidance"),
+        [
+            (AgentTier.EXECUTOR, MULTI_ACCOUNT_INSTRUCTION),
+            (AgentTier.COMMS, COMMS_MULTI_ACCOUNT_NOTE),
+        ],
+    )
+    async def test_several_accounts_bring_the_guidance_each_tier_acts_on(
+        self, tier: AgentTier, guidance: str
+    ) -> None:
+        """Rebuilt every turn, so an account added mid-conversation reaches the agent."""
+        record = _record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com"),
+        )
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named", self._connected()
+            ),
+            patch(
+                "app.agents.context.fetchers.list_multi_account_records",
+                AsyncMock(return_value=[record]),
+            ),
+        ):
+            rendered = await section("integrations_manifest").fetch(ctx(tier))
+
+        assert rendered.endswith(
+            '- Gmail (gmail) [accounts: "work@acme.com" (primary), "me@gmail.com"]\n' + guidance
+        )
+
     async def test_an_unknown_user_is_asked_for_no_manifest_at_all(self) -> None:
         connected = self._connected()
         with patch("app.agents.context.fetchers.get_connected_integrations_named", connected):
@@ -397,9 +428,9 @@ class TestProviderMetadata:
 
         assert rendered == (
             "USER'S GMAIL ACCOUNTS:\n"
-            "- work@acme.com\n"
-            "- Personal (me@gmail.com, primary)\n"
-            "- old@acme.com (expired)\n" + MULTI_ACCOUNT_INSTRUCTION
+            '- "work@acme.com"\n'
+            '- "Personal" or "me@gmail.com" (primary)\n'
+            '- "old@acme.com" (expired)\n' + MULTI_ACCOUNT_INSTRUCTION
         )
 
     async def test_it_asks_about_this_user_on_this_integration(self) -> None:

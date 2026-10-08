@@ -455,6 +455,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         finish_task_tool,
         flowchart_tool,
         image_tool,
+        integration_account_tools,
         integration_instructions_tools,
         integration_tool,
         manual_tool,
@@ -495,7 +496,9 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "billing": {t.name for t in subscription_tool.tools},
         "manual": {t.name for t in manual_tool.tools},
         "memory": {t.name for t in memory_tools.tools},
-        "integrations": {t.name for t in integration_tool.tools},
+        "integrations": {
+            t.name for t in [*integration_tool.tools, *integration_account_tools.tools]
+        },
         "integration_instructions": {t.name for t in integration_instructions_tools.tools},
         "development": {t.name for t in coding.tools},
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
@@ -1004,6 +1007,8 @@ class TestInitializedCategoryContract:
             "suggest_integrations": False,
             "connect_integration": True,
             "check_integrations_status": False,
+            # A label on the user's own account; reversible, so it runs without asking.
+            "rename_integration_account": False,
             # Force-gated (always_gate), not destructive — see the always_gate test.
             "add_custom_mcp_server": False,
             # Read-only device catalog lookup.

@@ -21,26 +21,20 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.constants.log_tags import LogTag
 from app.models.integrations.composio_hooks import RunMetadata
 from app.services.composio.account_scope import account_scope
+from app.services.composio.dead_account import (
+    ConnectedAccountGoneError,
+    is_dead_account_error,
+    message_mentions_dead_account,
+)
 from app.services.integrations.integration_expiry import expire_account
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
-
-# Composio's tool-execute failure for a missing/expired/revoked connected
-# account: error code 1810, name ActionExecute_ConnectedAccountNotFound. It
-# surfaces as a raised NotFoundError (404) or a non-raising result, so both gate on this one marker set.
-_DEAD_ACCOUNT_ERROR_CODE = "1810"
-_DEAD_ACCOUNT_ERROR_NAME = "actionexecute_connectedaccountnotfound"
-_DEAD_ACCOUNT_MESSAGE_MARKERS = (
-    _DEAD_ACCOUNT_ERROR_CODE,
-    _DEAD_ACCOUNT_ERROR_NAME,
-    "no active connected account",
-    "no connected account",
-)
 
 # How long the tool wrapper waits on the main loop for the expiry write plus the
 # connect prompt. A timeout only abandons the wait — the coroutine keeps running
@@ -63,17 +57,6 @@ class _RenamedKeyword:
     nested: dict[str, "_RenamedKeyword"]
 
 
-class _ComposioErrorBody(t.TypedDict, total=False):
-    error: object
-
-
-class _ComposioErrorDetail(t.TypedDict, total=False):
-    error_code: object
-    code: object
-    name: object
-    type: object
-
-
 class _ToolCallTransport(t.TypedDict, total=False):
     """The one key the wrapper reads off a tool call's kwargs; the rest are tool arguments."""
 
@@ -87,34 +70,6 @@ def _running_loop_or_none() -> asyncio.AbstractEventLoop | None:
         return None
 
 
-def _message_mentions_dead_account(message: str) -> bool:
-    lowered = message.lower()
-    return any(marker in lowered for marker in _DEAD_ACCOUNT_MESSAGE_MARKERS)
-
-
-def _is_dead_account_error(error: composio_client.NotFoundError) -> bool:
-    """Confirm a Composio 404 is the dead-connected-account failure, not some other 404.
-
-    Prefers the structured error body, because a false positive here marks a
-    healthy integration expired; falls back to the message, which carries the
-    same code and name.
-    """
-    body = error.body
-    if isinstance(body, dict):
-        error_body: _ComposioErrorBody = t.cast(_ComposioErrorBody, body)
-        nested = error_body.get("error")
-        raw_detail = nested if isinstance(nested, dict) else body
-        if isinstance(raw_detail, dict):
-            detail: _ComposioErrorDetail = t.cast(_ComposioErrorDetail, raw_detail)
-            code = detail.get("error_code", detail.get("code"))
-            name = detail.get("name", detail.get("type"))
-            if str(code) == _DEAD_ACCOUNT_ERROR_CODE:
-                return True
-            if isinstance(name, str) and name.lower() == _DEAD_ACCOUNT_ERROR_NAME:
-                return True
-    return _message_mentions_dead_account(str(error))
-
-
 async def _expire_and_request_reconnect(
     user_id: str,
     integration_id: str,
@@ -122,16 +77,20 @@ async def _expire_and_request_reconnect(
     connected_account_id: str | None,
     reason: str,
 ) -> str:
-    """Mark the account expired, then ask the user to reconnect.
+    """Mark the account expired, then tell the agent what the user must do.
 
-    Ordered, not concurrent: the prompt reads the stored status to tell "expired"
-    from "never connected", so racing the write would show first-time-connect copy
-    for a connection that plainly died. Runs under its own wide-event boundary:
-    it is dispatched from an executor thread, which carries none.
+    With another account still live the integration stays connected, so the message names
+    the one account instead of showing a connect card. Ordered, not concurrent: the card
+    reads the stored status. Own wide-event boundary: executor threads carry none.
     """
     async with log_context("composio_tool_integration_expiry", user_id=user_id):
-        await expire_account(
+        expired = await expire_account(
             user_id, integration_id, connected_account_id, trigger="tool_execution", reason=reason
+        )
+    if expired is not None and not expired.integration_expired:
+        return (
+            f"The {integration_name} account {expired.account.display_name} has lost its "
+            f"connection. {ACCOUNT_NEEDS_RECONNECT_HINT}"
         )
     return await request_integration_connection(integration_id, integration_name, user_id)
 
@@ -352,8 +311,12 @@ class LangchainProvider(
                 # Only the dead-connected-account 404 is recoverable here. Any
                 # other 404 — and every timeout, 5xx and genuine bug — must stay
                 # loud so it still reaches Sentry.
-                if not _is_dead_account_error(e):
+                if not is_dead_account_error(e):
                     raise
+                return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
+            except ConnectedAccountGoneError as e:
+                # Custom tools reach the provider through the proxy, which reports
+                # the same dead account as this error instead of a raised 404.
                 return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
 
             # Surface tool invocation outcome for observability.
@@ -377,7 +340,7 @@ class LangchainProvider(
                 # string match is too loose to drive a state mutation, so this
                 # stays a log line — but it shares the raising path's markers.
                 if err_preview is not None:
-                    if _message_mentions_dead_account(err_preview):
+                    if message_mentions_dead_account(err_preview):
                         log.warning(
                             f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
                             tool=tool,

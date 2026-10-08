@@ -125,6 +125,21 @@ class UserIntegrationsRepository(
             raise RuntimeError(f"user_integrations upsert returned nothing for {integration_id}")
         return doc
 
+    async def set_account_nickname(
+        self, user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+    ) -> UserIntegrationDocument | None:
+        """Name one account in place, so concurrent writes to other accounts survive; None when absent."""
+        return await self._apply_raw_update(
+            {
+                "user_id": user_id,
+                "integration_id": integration_id,
+                "accounts.connected_account_id": connected_account_id,
+            },
+            {"$set": {"accounts.$[account].nickname": nickname}},
+            scope=user_id,
+            array_filters=[{"account.connected_account_id": connected_account_id}],
+        )
+
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:
         """Every user_id that has added integration_id (cross-user fan-out for cache-bust/cleanup)."""
         return await self._distinct("user_id", {"integration_id": integration_id})

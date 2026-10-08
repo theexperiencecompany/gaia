@@ -218,6 +218,7 @@ class AnalyticsEvents(StrEnum):
     INTEGRATION_DISCONNECTED = "integration:disconnected"
     INTEGRATION_ACCOUNT_ADDED = "integration:account_added"
     INTEGRATION_ACCOUNT_REMOVED = "integration:account_removed"
+    INTEGRATION_ACCOUNT_RENAMED = "integration:account_renamed"
     INTEGRATION_PRIMARY_CHANGED = "integration:primary_changed"
     INTEGRATION_INSTRUCTIONS_UPDATED = "integration:instructions_updated"
     INTEGRATION_CUSTOM_UPDATED = "integration:custom_updated"

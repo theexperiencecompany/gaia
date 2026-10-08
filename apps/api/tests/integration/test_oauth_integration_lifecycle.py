@@ -66,6 +66,7 @@ from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
 from app.utils.errors import AppError
+from tests.integration_account_factories import with_nickname
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -181,6 +182,16 @@ class _FakeUserIntegrationRepo:
             }
         )
         self.docs[(user_id, integration_id)] = doc
+        return doc
+
+    async def set_account_nickname(
+        self, user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+    ) -> UserIntegrationDocument | None:
+        doc = with_nickname(
+            self.docs.get((user_id, integration_id)), connected_account_id, nickname
+        )
+        if doc is not None:
+            self.docs[(user_id, integration_id)] = doc
         return doc
 
     async def get_for_user(

@@ -10,7 +10,11 @@ from functools import partial
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import (
+    make_integration_account,
+    make_integration_record,
+    with_nickname,
+)
 
 from app.models.integration_models import (
     IntegrationAccount,
@@ -50,6 +54,7 @@ async def _persist(
 class Seams:
     get_record: AsyncMock
     save: AsyncMock
+    name: AsyncMock
     capture: MagicMock
     workflow_triggers: AsyncMock
     subscriptions: AsyncMock
@@ -64,16 +69,21 @@ def seams() -> Iterator[Seams]:
     with (
         patch(f"{LIFECYCLE}.get_account_record", AsyncMock(return_value=None)) as get_record,
         patch(f"{LIFECYCLE}.save_accounts", AsyncMock(side_effect=_persist)) as save,
+        patch(f"{LIFECYCLE}.set_account_nickname", AsyncMock()) as name,
         patch(f"{LIFECYCLE}.capture_event") as capture,
         patch(f"{LIFECYCLE}.TriggerService") as trigger_service,
         patch(f"{LIFECYCLE}.resync_subscriptions_for_trigger_names", AsyncMock()) as subscriptions,
         patch(f"{LIFECYCLE}.get_composio_service", return_value=composio),
         patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect,
     ):
+        name.side_effect = lambda _u, _i, account_id, nickname: with_nickname(
+            get_record.return_value, account_id, nickname
+        )
         trigger_service.resync_user_workflow_triggers = AsyncMock()
         yield Seams(
             get_record=get_record,
             save=save,
+            name=name,
             capture=capture,
             workflow_triggers=trigger_service.resync_user_workflow_triggers,
             subscriptions=subscriptions,
@@ -201,6 +211,27 @@ class TestUpdateAccount:
         assert result.primary_account_id == "ca_2"
         assert seams.get_record.await_args_list == [call(USER_ID, "gmail")] * 2
         seams.workflow_triggers.assert_not_awaited()
+        seams.capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
+            {"integration_id": "gmail", "cleared": False},
+        )
+
+    async def test_a_blank_name_clears_the_nickname(self, seams: Seams) -> None:
+        seams.get_record.return_value = _record(
+            make_integration_account("ca_1", nickname="Work"), make_integration_account("ca_2")
+        )
+
+        result = await update_account(
+            USER_ID, "gmail", "ca_1", nickname="   ", rename=True, make_primary=False
+        )
+
+        assert result.accounts[0].nickname is None
+        seams.capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
+            {"integration_id": "gmail", "cleared": True},
+        )
 
 
 class TestRemoveAccount:

@@ -68,6 +68,16 @@ async def save_accounts(
     )
 
 
+@CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
+async def set_account_nickname(
+    user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+) -> UserIntegrationDocument | None:
+    """Name one account without rewriting the others; None when the record lacks it."""
+    return await user_integration_repository.set_account_nickname(
+        user_id, integration_id, connected_account_id, nickname
+    )
+
+
 async def list_multi_account_records(user_id: str) -> list[UserIntegrationDocument]:
     """List the user's integrations that hold more than one account."""
     records = await user_integration_repository.list_for_user(user_id)

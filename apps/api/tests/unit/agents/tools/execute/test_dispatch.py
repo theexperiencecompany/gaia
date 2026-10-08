@@ -24,6 +24,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.analytics_service import AnalyticsEvents
 from tests.helpers import captured_wide_event
@@ -106,6 +107,48 @@ class TestAccountChoice:
         assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
         account_record.assert_awaited_once_with("u1", "gmail")
 
+    @pytest.mark.parametrize(
+        ("name", "account"), [(None, "work@acme.com"), ("me@gmail.com", "Personal")]
+    )
+    async def test_with_several_accounts_the_result_names_the_one_it_ran_as(
+        self, account_record: AsyncMock, name: str | None, account: str
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        result = await _dispatch_send(name, _tool())
+
+        assert (result.output, result.account) == ({"status": "sent"}, account)
+
+    async def test_with_one_account_the_result_names_none(self, account_record: AsyncMock) -> None:
+        account_record.return_value = _gmail_accounts(WORK)
+
+        result = await _dispatch_send(None, _tool())
+
+        assert result.account is None
+
+    @pytest.mark.parametrize(
+        ("name", "connected_account_id", "is_primary"),
+        [(None, "ca_work", True), ("Personal", "ca_personal", False)],
+    )
+    async def test_the_wide_event_names_the_account_the_call_ran_as(
+        self,
+        account_record: AsyncMock,
+        name: str | None,
+        connected_account_id: str,
+        is_primary: bool,
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        async with captured_wide_event() as event:
+            await _dispatch_send(name, _tool())
+
+        assert event["execute"] == {
+            "tool": "GMAIL_SEND_EMAIL",
+            "connected_account_id": connected_account_id,
+            "account_is_primary": is_primary,
+            "outcome": "ok",
+        }
+
     @pytest.mark.parametrize("name", ["Personal", "me@gmail.com", " ME@GMAIL.COM "])
     async def test_a_named_account_runs_as_that_account(
         self, account_record: AsyncMock, name: str
@@ -130,8 +173,8 @@ class TestAccountChoice:
 
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
-        assert "work@acme.com (connected)" in result.error.hint
-        assert "Personal (connected)" in result.error.hint
+        assert '"work@acme.com" (connected)' in result.error.hint
+        assert '"Personal" (connected)' in result.error.hint
         tool.ainvoke.assert_not_awaited()
 
     async def test_an_expired_account_is_refused_while_another_still_works(
@@ -786,7 +829,10 @@ REFUSALS = {
         error=DispatchError(
             kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
             detail="No connected Gmail account is called 'boss@acme.com'.",
-            hint=("Pass one of these as `account`: work@acme.com (connected), Personal (expired)."),
+            hint=(
+                'If the user meant one of these, pass it as `account`: "work@acme.com" '
+                '(connected), "Personal" (expired). Otherwise ask them which account they meant.'
+            ),
         ),
         warning="execute: account not usable",
         data={"recipient": "a@b.c", "subject": "hi"},
@@ -799,10 +845,7 @@ REFUSALS = {
         error=DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail="The Gmail account Personal needs reconnecting.",
-            hint=(
-                "Tell the user it must be reconnected in Integrations, or act through "
-                "another account via `account`: work@acme.com (connected), Personal (expired)."
-            ),
+            hint=ACCOUNT_NEEDS_RECONNECT_HINT,
         ),
         warning="execute: account not usable",
         data={"recipient": "a@b.c", "subject": "hi"},

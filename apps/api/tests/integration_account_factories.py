@@ -41,3 +41,18 @@ def make_integration_record(
         accounts=list(accounts),
         primary_account_id=primary,
     )
+
+
+def with_nickname(
+    record: UserIntegrationDocument | None, connected_account_id: str, nickname: str | None
+) -> UserIntegrationDocument | None:
+    """Return what set_account_nickname leaves: the record with one account renamed, or None."""
+    if record is None or record.find_account(connected_account_id) is None:
+        return None
+    accounts = [
+        a.model_copy(update={"nickname": nickname})
+        if a.connected_account_id == connected_account_id
+        else a
+        for a in record.accounts
+    ]
+    return record.model_copy(update={"accounts": accounts})
