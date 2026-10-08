@@ -41,6 +41,13 @@ SUBSCRIPTION_WORKFLOW_SYNC_TASK = "sync_workflows_for_subscription_state"
 #: user's automation stops within minutes rather than hours.
 SUBSCRIPTION_WORKFLOW_SYNC_RETRY_DELAY = timedelta(minutes=2)
 
+#: The ARQ task that re-sets a user's paid-state person properties from their
+#: subscription row when the webhook's own post-write read failed.
+PAID_PERSON_SYNC_TASK = "sync_paid_person_properties"
+
+#: Delay before that task's first retry; each further try doubles it.
+PAID_PERSON_SYNC_RETRY_DELAY = timedelta(minutes=2)
+
 NO_USER_MESSAGE = "Could not identify the user, so their billing state is unavailable."
 
 #: Everything a checkout opened outside production prefills. The country
