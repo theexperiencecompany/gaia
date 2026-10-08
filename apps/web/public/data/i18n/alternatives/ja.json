@@ -42,7 +42,7 @@
       "能動的 — GAIAが必要な情報を先回りして提示",
       "設定不要でGmailやGoogleカレンダー、50以上のツールに即時連携可能",
       "オープンソース・自分でホスティングもでき、データを自分で管理可能",
-      "無料プランあり。プロ版は月額20ドルから。個人利用はユーザー数制限なし",
+      "無料プランあり。プロ版は月額{{PRO_MONTHLY_PRICE}}ドルから。個人利用はユーザー数制限なし",
       "デスクトップ、モバイル、Web、CLI、Discord、Slack、Telegramで利用可"
     ],
     "migrationSteps": [
@@ -58,7 +58,7 @@
       },
       {
         "question": "GAIAはNotionの無料プランのように無料で利用できますか？",
-        "answer": "はい。GAIAにもコアAIアシスタント機能を含む無料プランがあります。有料プランは月額20ドルから開始します。セルフホストの場合、GAIAは常に無料です（Notionとは異なり、Notionはセルフホストが完全に制限されています）。"
+        "answer": "はい。GAIAにもコアAIアシスタント機能を含む無料プランがあります。有料プランは月額{{PRO_MONTHLY_PRICE}}ドルから開始します。セルフホストの場合、GAIAは常に無料です（Notionとは異なり、Notionはセルフホストが完全に制限されています）。"
       },
       {
         "question": "GAIAにはデータベースやWiki機能はありますか？",
@@ -97,7 +97,7 @@
       },
       {
         "feature": "価格設定",
-        "gaia": "無料プランあり。Proは月額20ドルから定額制。セルフホスティングは完全無料・人数無制限",
+        "gaia": "無料プランあり。Proは月額{{PRO_MONTHLY_PRICE}}ドルから定額制。セルフホスティングは完全無料・人数無制限",
         "competitor": "Plus 月額10ドル/ユーザー、Business 月額20ドル/ユーザー、Enterpriseは要問合せ（利用人数で変動）"
       }
     ]
@@ -156,7 +156,7 @@
       },
       {
         "question": "GAIAの料金はMonday.comと比べてどうですか？",
-        "answer": "Monday.comは1席あたり月額約$9〜$16からで、年契約も必要です。GAIAのProプランは統合数に関係なく個人で月額$20、セルフホスティングは常に無料です。"
+        "answer": "Monday.comは1席あたり月額約$9〜$16からで、年契約も必要です。GAIAのProプランは統合数に関係なく個人で月額${{PRO_MONTHLY_PRICE}}、セルフホスティングは常に無料です。"
       },
       {
         "question": "GAIAはMonday.comのボードと連携できますか？",
@@ -228,7 +228,7 @@
       },
       {
         "question": "GAIAはAsanaより安価ですか？",
-        "answer": "Asanaのプレミアムプランは1ユーザーあたり年払いで月額$10.99からです。GAIA Proは1ユーザー月額$20でAIアクションが無制限に使えます。自分でGAIAをホスティングすれば無料です。"
+        "answer": "Asanaのプレミアムプランは1ユーザーあたり年払いで月額$10.99からです。GAIA Proは1ユーザー月額${{PRO_MONTHLY_PRICE}}でAIアクションが無制限に使えます。自分でGAIAをホスティングすれば無料です。"
       },
       {
         "question": "GAIAはAsanaと比べて繰り返しタスクをどう管理しますか？",
@@ -431,7 +431,7 @@
       },
       {
         "question": "GAIAの料金はJiraと比べてどうですか？",
-        "answer": "Jiraはユーザー単位で課金され、小規模チームの場合1席につき月額$7.75からです。GAIAは統合数に関わらず1人あたり月額$20、またはセルフホストなら無料です。個人利用ならGAIAのほうがコストパフォーマンスに優れる場合が多いです。"
+        "answer": "Jiraはユーザー単位で課金され、小規模チームの場合1席につき月額$7.75からです。GAIAは統合数に関わらず1人あたり月額${{PRO_MONTHLY_PRICE}}、またはセルフホストなら無料です。個人利用ならGAIAのほうがコストパフォーマンスに優れる場合が多いです。"
       }
     ]
   },
@@ -489,7 +489,7 @@
       },
       {
         "question": "GAIAはBasecampより安いですか？",
-        "answer": "個人やごく少人数のチームであれば、はい。GAIA Proは1ユーザーにつき月額20ドルです。Basecampは月額15ドル/ユーザー、もしくは月額299ドルの定額料金から始まります。セルフホスト型のGAIAは完全に無料です。"
+        "answer": "GAIA Proは1ユーザーにつき月額{{PRO_MONTHLY_PRICE}}ドルです。Basecampは月額15ドル/ユーザー、もしくは月額299ドルの定額料金から始まります。セルフホスト型のGAIAは完全に無料です。"
       },
       {
         "question": "GAIAはBasecampと一緒に使えますか？",
@@ -561,7 +561,7 @@
       },
       {
         "question": "GAIAはChatGPT Plusより安価ですか？",
-        "answer": "ChatGPT Plusは月額20ドルです。GAIA Proも月額20ドルですが、実際のツール連携やメモリ、プロアクティブなアクション機能を含んでいます。もしGAIAをセルフホストする場合、完全に無料で利用可能です。"
+        "answer": "ChatGPT Plusは月額20ドルです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、実際のツール連携やメモリ、プロアクティブなアクション機能を含んでいます。もしGAIAをセルフホストする場合、完全に無料で利用可能です。"
       },
       {
         "question": "GAIAにもChatGPTのメモリ機能のようなものがありますか？",
@@ -596,7 +596,7 @@
       },
       {
         "feature": "料金",
-        "gaia": "無料プランあり。Proは月額20ドル。自身のインフラでのセルフホスティングは完全無料",
+        "gaia": "無料プランあり。Proは月額{{PRO_MONTHLY_PRICE}}ドル。自身のインフラでのセルフホスティングは完全無料",
         "competitor": "無料プランあり。ChatGPT Plusは月額20ドル、ChatGPT Proは月額200ドル（チャットのみ、ネイティブのツール自動化なし）"
       }
     ]
@@ -657,7 +657,7 @@
       },
       {
         "question": "GAIAはMicrosoft Copilotより安いですか？",
-        "answer": "大幅に安いです。Microsoft 365 Copilotは、既存のMicrosoft 365プランに加えて1ユーザーあたり月額30ドルからです。GAIA Proは個人向けに月額20ドルで、無料プランやセルフホスティングも可能です。"
+        "answer": "大幅に安いです。Microsoft 365 Copilotは、既存のMicrosoft 365プランに加えて1ユーザーあたり月額30ドルからです。GAIA Proは個人向けに月額{{PRO_MONTHLY_PRICE}}ドルで、無料プランやセルフホスティングも可能です。"
       },
       {
         "question": "GoogleとMicrosoft両方を利用しています。GAIAはMicrosoftツールと連携できますか？",
@@ -733,7 +733,7 @@
       },
       {
         "question": "GAIAはGoogle One AI Premiumより高額ですか？",
-        "answer": "Google One AI Premium（Gemini Advanced）は月額19.99ドル、GAIA Proは月額20ドルです。セルフホストの場合GAIAは無料で利用できます。GAIAは同等の価格でよりエージェント的な機能を提供します。"
+        "answer": "Google One AI Premium（Gemini Advanced）は月額19.99ドル、GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルです。セルフホストの場合GAIAは無料で利用できます。GAIAはよりエージェント的な機能を提供します。"
       }
     ]
   },
@@ -859,7 +859,7 @@
       },
       {
         "question": "GAIAはMotionより安いですか？",
-        "answer": "はい。Motionは月額19～34ドルですが、GAIA Proは月額20ドルで、メール管理や50以上の外部連携、ワークフロー自動化など幅広い機能が含まれます。セルフホスト型のGAIAは無料です。"
+        "answer": "Motionは月額19～34ドルですが、GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルで、メール管理や50以上の外部連携、ワークフロー自動化など幅広い機能が含まれます。セルフホスト型のGAIAは無料です。"
       },
       {
         "question": "GAIAはMotionではできないメールからのタスク作成が可能ですか？",
@@ -933,7 +933,7 @@
       },
       {
         "question": "GAIAの料金はReclaimと比べてどうですか？",
-        "answer": "Reclaim Proは1ユーザーあたり月額8ドルからです。GAIA Proは月額20ドルですが、メール管理や50以上の連携、メモリ、ワークフロー自動化を含みます。セルフホスト型のGAIAは無料です。"
+        "answer": "Reclaim Proは1ユーザーあたり月額8ドルからです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール管理や50以上の連携、メモリ、ワークフロー自動化を含みます。セルフホスト型のGAIAは無料です。"
       }
     ]
   },
@@ -999,7 +999,7 @@
       },
       {
         "question": "GAIAの料金はClockwiseと比べてどうですか？",
-        "answer": "Clockwiseの有料プランは1ユーザーあたり月額6.75ドルからです。GAIA Proは個人向けで、メール・タスク・ワークフロー管理も含めて月額20ドルです。セルフホスト版GAIAは無料です。"
+        "answer": "Clockwiseの有料プランは1ユーザーあたり月額6.75ドルからです。GAIA Proは個人向けで、メール・タスク・ワークフロー管理も含めて月額{{PRO_MONTHLY_PRICE}}ドルです。セルフホスト版GAIAは無料です。"
       }
     ]
   },
@@ -1065,7 +1065,7 @@
       },
       {
         "question": "GAIAはFantastical Premiumより安価ですか？",
-        "answer": "Fantastical Premiumはカレンダーアプリのみで月額4.75ドル（年額57ドル）です。GAIA Proは月額20ドルですが、メール管理・タスク管理・50種類以上の連携・ワークフロー自動化を含みます。GAIAはセルフホストであれば無料です。"
+        "answer": "Fantastical Premiumはカレンダーアプリのみで月額4.75ドル（年額57ドル）です。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール管理・タスク管理・50種類以上の連携・ワークフロー自動化を含みます。GAIAはセルフホストであれば無料です。"
       }
     ]
   },
@@ -1127,7 +1127,7 @@
       },
       {
         "question": "GAIAはCalendly Teamsより安いですか？",
-        "answer": "Calendly Teamsは1ユーザーあたり月額$16から。GAIA Proは個人利用で月額$20ですが、より幅広い機能を提供します。セルフホスト版GAIAは無料です。"
+        "answer": "Calendly Teamsは1ユーザーあたり月額$16から。GAIA Proは個人利用で月額${{PRO_MONTHLY_PRICE}}ですが、より幅広い機能を提供します。セルフホスト版GAIAは無料です。"
       },
       {
         "question": "GAIAは会議から自動的にタスクを作成しますか？",
@@ -1174,7 +1174,7 @@
     "gaiaAdvantages": [
       "メールだけでなく、カレンダー、タスク、ワークフローも一括管理",
       "プロアクティブに受信トレイを監視し、重要なメールを自動でピックアップ",
-      "月額20ドルで利用可能（Superhumanは月額30ドル）— さらに多機能",
+      "月額{{PRO_MONTHLY_PRICE}}ドルで利用可能（Superhumanは月額30ドル）— さらに多機能",
       "オープンソース＆セルフホスト可。SuperhumanはクローズドソースSaaS",
       "招待やオンボーディングコール不要ですぐに利用開始可能"
     ],
@@ -1199,7 +1199,7 @@
       },
       {
         "question": "GAIAの料金はSuperhumanと比べてどうですか？",
-        "answer": "Superhumanは月額30ドルで無料プランなし。GAIA Proは月額20ドル＆無料プランあり。セルフホスト型GAIAは完全無料。GAIAはメール、カレンダー、タスク、50以上の連携がより安価に利用できます。"
+        "answer": "Superhumanは月額30ドルで無料プランなし。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドル＆無料プランあり。セルフホスト型GAIAは完全無料。GAIAはメール、カレンダー、タスク、50以上の連携が利用できます。"
       }
     ],
     "comparisonRows": [
@@ -1225,7 +1225,7 @@
       },
       {
         "feature": "料金",
-        "gaia": "無料プランあり、プロは月額$20の定額、セルフホストは完全無料",
+        "gaia": "無料プランあり、プロは月額${{PRO_MONTHLY_PRICE}}の定額、セルフホストは完全無料",
         "competitor": "月額$30、無料プランなし。利用開始には招待＆オンボーディング通話が必要"
       }
     ]
@@ -1286,7 +1286,7 @@
       },
       {
         "question": "GAIAはSaneBoxより高額ですか？",
-        "answer": "SaneBoxは基本的なフィルタ機能で月額7ドルからです。GAIA Proは月額20ドルですが、アクティブなメール管理、カレンダー、タスク、メモリ、50以上の連携機能を含みます。セルフホストのGAIAは無料です。"
+        "answer": "SaneBoxは基本的なフィルタ機能で月額7ドルからです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、アクティブなメール管理、カレンダー、タスク、メモリ、50以上の連携機能を含みます。セルフホストのGAIAは無料です。"
       },
       {
         "question": "GAIAはSaneBoxのように自分のメールパターンを学習できますか？",
@@ -1456,7 +1456,7 @@
       },
       {
         "feature": "価格",
-        "gaia": "無料プランあり。Proは月額20ドルでメール・カレンダー・50以上の連携を含む。セルフホスティングは無料。",
+        "gaia": "無料プランあり。Proは月額{{PRO_MONTHLY_PRICE}}ドルでメール・カレンダー・50以上の連携を含む。セルフホスティングは無料。",
         "competitor": "無料プランあり。Proは月額4ドルでリマインダーやフィルタ機能。ビジネスプランは1ユーザー月額6ドル。"
       }
     ]
@@ -1524,7 +1524,7 @@
       },
       {
         "question": "GAIAはTickTick Premiumより安いですか？",
-        "answer": "TickTick Premiumは月額$2.99（または年額$27.99）です。GAIA Proは月額$20ですが、メール管理やカレンダー連携、50以上のツール連携、AIによるワークフロー自動化が含まれています。GAIAのセルフホスト版は無料です。"
+        "answer": "TickTick Premiumは月額$2.99（または年額$27.99）です。GAIA Proは月額${{PRO_MONTHLY_PRICE}}ですが、メール管理やカレンダー連携、50以上のツール連携、AIによるワークフロー自動化が含まれています。GAIAのセルフホスト版は無料です。"
       }
     ]
   },
@@ -1591,7 +1591,7 @@
       },
       {
         "question": "Things 3は買い切り型ですが、GAIAは無料で使えますか？",
-        "answer": "Things 3はMac版が$49.99、iPhone版が$9.99、iPad版が$19.99（いずれも一括払い）です。GAIAには無料プランがあり、セルフホスティングは常に無料です。Proプランは月額$20で、AIや全ての連携機能が含まれています。"
+        "answer": "Things 3はMac版が$49.99、iPhone版が$9.99、iPad版が$19.99（いずれも一括払い）です。GAIAには無料プランがあり、セルフホスティングは常に無料です。Proプランは月額${{PRO_MONTHLY_PRICE}}で、AIや全ての連携機能が含まれています。"
       }
     ]
   },
@@ -1658,7 +1658,7 @@
       },
       {
         "question": "GAIAはAny.do Premiumより安いですか？",
-        "answer": "Any.do Premiumは月額5.99ドルです。GAIA Proは月額20ドルですが、メール管理・カレンダー統合・記憶容量・50以上の連携・ワークフロー自動化を含みます。自己ホスト型GAIAは完全無料です。"
+        "answer": "Any.do Premiumは月額5.99ドルです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール管理・カレンダー統合・記憶容量・50以上の連携・ワークフロー自動化を含みます。自己ホスト型GAIAは完全無料です。"
       }
     ]
   },
@@ -1718,7 +1718,7 @@
       },
       {
         "question": "GAIAはZapierより自動化のコストが安いですか？",
-        "answer": "Zapierのプロフェッショナルプランは750タスクで月額$19.99から始まります。大量の自動化を行うと、すぐにコストが高くなります。GAIA Proは個人のワークフロー向けにタスク制限なしで月額$20です。セルフホスト型GAIAは無料で利用できます。"
+        "answer": "Zapierのプロフェッショナルプランは750タスクで月額$19.99から始まります。大量の自動化を行うと、すぐにコストが高くなります。GAIA Proは個人のワークフロー向けにタスク制限なしで月額${{PRO_MONTHLY_PRICE}}です。セルフホスト型GAIAは無料で利用できます。"
       },
       {
         "question": "GAIAはプログラミング知識がなくてもワークフローを自動化できますか？",
@@ -1752,7 +1752,7 @@
       },
       {
         "feature": "料金",
-        "gaia": "無料プランあり。Proは月額$20で個人ワークフローにタスク制限なし。セルフホストは無料",
+        "gaia": "無料プランあり。Proは月額${{PRO_MONTHLY_PRICE}}で個人ワークフローにタスク制限なし。セルフホストは無料",
         "competitor": "無料プランは月100タスクまでに制限。プロフェッショナルプランは月額19.99ドルで750タスクまで対応。タスク量が多くなると料金が急激に上昇します。"
       }
     ]
@@ -1816,7 +1816,7 @@
       },
       {
         "question": "個人用の自動化ではGAIAはMakeより安価ですか？",
-        "answer": "MakeのCoreプランは10,000オペレーションで月額$9から。GAIA Proは個人用途ならオペレーション無制限で月額$20。セルフホスト版GAIAは無料です。"
+        "answer": "MakeのCoreプランは10,000オペレーションで月額$9から。GAIA Proは個人用途ならオペレーション無制限で月額${{PRO_MONTHLY_PRICE}}。セルフホスト版GAIAは無料です。"
       },
       {
         "question": "GAIAはMakeのようにWebhookやAPI連携に対応していますか？",
@@ -2146,7 +2146,7 @@
       },
       {
         "question": "GAIAはMem.aiより安いですか？",
-        "answer": "Mem.aiは月額14.99ドルです。GAIA Proは月額20ドルですが、メール管理、カレンダー、タスク管理、50以上の外部連携、ワークフロー自動化、ナレッジ管理まで含まれます。さらに、GAIAはセルフホスティングなら無料で利用可能です。"
+        "answer": "Mem.aiは月額14.99ドルです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール管理、カレンダー、タスク管理、50以上の外部連携、ワークフロー自動化、ナレッジ管理まで含まれます。さらに、GAIAはセルフホスティングなら無料で利用可能です。"
       },
       {
         "question": "GAIAはMemのようなセマンティック検索機能がありますか？",
@@ -2213,7 +2213,7 @@
       },
       {
         "question": "GAIAはReflectより安いですか？",
-        "answer": "Reflectの料金は月額10ドルです。GAIA Proは月額20ドルですが、メール、カレンダー、タスク、メモリ、50以上の連携機能が含まれています。セルフホスト型のGAIAは無料です。"
+        "answer": "Reflectの料金は月額10ドルです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール、カレンダー、タスク、メモリ、50以上の連携機能が含まれています。セルフホスト型のGAIAは無料です。"
       },
       {
         "question": "GAIAはネットワーク型ノート作成でReflectの代わりになりますか？",
@@ -2278,7 +2278,7 @@
       },
       {
         "question": "GAIAはNotion AIのBusinessプランより安いですか？",
-        "answer": "NotionのBusinessプラン（AI無制限利用）は月額$20/ユーザーです。GAIA Proも個人向けなら月額$20で、メール管理、カレンダー連携、50以上のツール連携、ワークフロー自動化などを含み、AI執筆機能だけに留まりません。セルフホスティング版GAIAは無料です。"
+        "answer": "NotionのBusinessプラン（AI無制限利用）は月額$20/ユーザーです。GAIA Proは個人向けなら月額${{PRO_MONTHLY_PRICE}}で、メール管理、カレンダー連携、50以上のツール連携、ワークフロー自動化などを含み、AI執筆機能だけに留まりません。セルフホスティング版GAIAは無料です。"
       },
       {
         "question": "GAIAはNotion AIのようにコンテンツ作成やドキュメント要約ができますか？",
@@ -2344,7 +2344,7 @@
       },
       {
         "question": "2026年のGAIAはEvernoteより安いですか？",
-        "answer": "Evernoteのスタータープランは年間$100（月額$8.33）、アドバンストは年間$250（月額$20.83）です。GAIAプロは、メール管理・タスク自動化・カレンダー連携・50以上のツール連携が付いて月額$20です。GAIAのセルフホスト版は完全無料です。"
+        "answer": "Evernoteのスタータープランは年間$100（月額$8.33）、アドバンストは年間$250（月額$20.83）です。GAIAプロは、メール管理・タスク自動化・カレンダー連携・50以上のツール連携が付いて月額${{PRO_MONTHLY_PRICE}}です。GAIAのセルフホスト版は完全無料です。"
       },
       {
         "question": "GAIAにもEvernoteのようなノートブックやタグはありますか？",
@@ -2478,7 +2478,7 @@
       },
       {
         "question": "GAIAはCraftより安いですか？",
-        "answer": "CraftのPlusプランは月額8ドル（年額96ドル）です。GAIA Proは月額20ドルですが、メール管理、カレンダー連携、タスク、50以上のツール連携が含まれています。セルフホスト版GAIAは常に無料です。"
+        "answer": "CraftのPlusプランは月額8ドル（年額96ドル）です。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、メール管理、カレンダー連携、タスク、50以上のツール連携が含まれています。セルフホスト版GAIAは常に無料です。"
       },
       {
         "question": "GAIAとCraftは併用できますか？",
@@ -2547,7 +2547,7 @@
       },
       {
         "question": "GAIA は Coda Pro より安いですか？",
-        "answer": "Coda Pro は、ドキュメント作成者 1 人あたり月額 10 ドルです。GAIA Pro は、フルメール、タスク、カレンダー、メモリ、自動化機能を備えた個人向けに月額 20 ドルです。セルフホストの GAIA は無料です。"
+        "answer": "Coda Pro は、ドキュメント作成者 1 人あたり月額 10 ドルです。GAIA Pro は、フルメール、タスク、カレンダー、メモリ、自動化機能を備えた個人向けに月額 {{PRO_MONTHLY_PRICE}} ドルです。セルフホストの GAIA は無料です。"
       }
     ]
   },
@@ -2604,7 +2604,7 @@
       },
       {
         "question": "GAIA は Airtable より安いですか？",
-        "answer": "Airtable のチームプランは 1 シートあたり月額 20 ドルです。GAIA Pro は、メール管理、タスク自動化、50 以上の統合を備えた 1 人あたり月額 20 ドルです。チームの場合、GAIA の個人向け価格設定は、1 人あたりでより費用対効果が高い場合があります。セルフホストの GAIA は無料です。"
+        "answer": "Airtable のチームプランは 1 シートあたり月額 20 ドルです。GAIA Pro は、メール管理、タスク自動化、50 以上の統合を備えた 1 人あたり月額 {{PRO_MONTHLY_PRICE}} ドルです。チームの場合、GAIA の個人向け価格設定は、1 人あたりでより費用対効果が高い場合があります。セルフホストの GAIA は無料です。"
       },
       {
         "question": "GAIA には Airtable のギャラリービューとガントビューがありますか？",
@@ -2674,7 +2674,7 @@
       },
       {
         "question": "GAIA の費用は Sunsama と同じですか？",
-        "answer": "Sunsama の費用は、無料の階層なしで月額 20 ドルです。GAIA Pro も月額 20 ドルですが、メール管理、ワークフローの自動化、メモリ、50 以上の統合が含まれています。GAIA には無料の階層もあり、セルフホストの GAIA は完全に無料です。"
+        "answer": "Sunsama の費用は、無料の階層なしで月額 20 ドルです。GAIA Pro は月額 {{PRO_MONTHLY_PRICE}} ドルですが、メール管理、ワークフローの自動化、メモリ、50 以上の統合が含まれています。GAIA には無料の階層もあり、セルフホストの GAIA は完全に無料です。"
       },
       {
         "question": "GAIA は Sunsama のように 1 日の終わりのレビューに役立ちますか？",
@@ -2740,7 +2740,7 @@
       },
       {
         "question": "GAIA は Akiflow よりも安いですか？",
-        "answer": "Akiflow の費用は、無料プランなしで年間請求される月額 15 ドルです。GAIA Pro は、無料の階層とセルフホスティングオプションで月額 20 ドルです。セルフホストの GAIA は完全に無料であり、はるかにアクセスしやすくなっています。"
+        "answer": "Akiflow の費用は、無料プランなしで年間請求される月額 15 ドルです。GAIA Pro は、無料の階層とセルフホスティングオプションで月額 {{PRO_MONTHLY_PRICE}} ドルです。セルフホストの GAIA は完全に無料であり、はるかにアクセスしやすくなっています。"
       },
       {
         "question": "GAIA は Akiflow のように Asana や Jira などのツールからタスクを集約しますか？",
@@ -2806,7 +2806,7 @@
       },
       {
         "question": "GAIA は Spark Premium よりも安いですか？",
-        "answer": "Spark のプレミアム個人プランは月額 7.99 ドルです。GAIA Pro は月額 20 ドルですが、メール管理、カレンダー、タスク、メモリ、および 50 以上の統合が含まれています。メールのみの使用の場合、Spark の方が安価です。完全な生産性管理の場合、GAIA はより多くの価値を提供します。セルフホストの GAIA は無料です。"
+        "answer": "Spark のプレミアム個人プランは月額 7.99 ドルです。GAIA Pro は月額 {{PRO_MONTHLY_PRICE}} ドルですが、メール管理、カレンダー、タスク、メモリ、および 50 以上の統合が含まれています。メールのみの使用の場合、Spark の方が安価です。完全な生産性管理の場合、GAIA はより多くの価値を提供します。セルフホストの GAIA は無料です。"
       },
       {
         "question": "GAIA は Spark ができないようにメールからタスクを作成できますか？",
@@ -2868,7 +2868,7 @@
       },
       {
         "question": "GAIA は Missive より安いですか？",
-        "answer": "Missive のスタータープランは、年間請求される 1 ユーザーあたり月額 14 ドルです。GAIA Pro は、メール管理、カレンダー、タスク、および 50 以上の統合を備えた 1 人あたり月額 20 ドルです。セルフホストの GAIA は完全に無料です。"
+        "answer": "Missive のスタータープランは、年間請求される 1 ユーザーあたり月額 14 ドルです。GAIA Pro は、メール管理、カレンダー、タスク、および 50 以上の統合を備えた 1 人あたり月額 {{PRO_MONTHLY_PRICE}} ドルです。セルフホストの GAIA は完全に無料です。"
       },
       {
         "question": "GAIA には Missive の内部コメントと割り当て機能がありますか？",
@@ -2998,7 +2998,7 @@
       },
       {
         "question": "Is GAIA cheaper than Relay.app?",
-        "answer": "Relay.app's Professional plan starts at $38/month. GAIA Pro is $20/month with a free tier and self-hosting option. Self-hosted GAIA is completely free."
+        "answer": "Relay.app's Professional plan starts at $38/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with a free tier and self-hosting option. Self-hosted GAIA is completely free."
       },
       {
         "question": "Does GAIA have Relay.app's AI-powered workflow steps?",
@@ -3064,7 +3064,7 @@
       },
       {
         "question": "Is GAIA cheaper than Capacities Pro?",
-        "answer": "Capacities Pro is $11.99/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
+        "answer": "Capacities Pro is $11.99/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
       },
       {
         "question": "Does GAIA have an AI chat for knowledge queries like Capacities?",
@@ -3133,7 +3133,7 @@
       },
       {
         "question": "Is GAIA cheaper than Tana Plus?",
-        "answer": "Tana Plus is $10/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, workflow automation, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
+        "answer": "Tana Plus is $10/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, workflow automation, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
       },
       {
         "question": "Can GAIA connect to Gmail like Tana cannot?",
@@ -3194,7 +3194,7 @@
       },
       {
         "question": "Is GAIA free compared to Google Calendar?",
-        "answer": "Google Calendar is free. GAIA has a free tier and a Pro plan at $20/month flat (no per-seat fees). For self-hosters, GAIA is entirely free to run on your own infrastructure via Docker."
+        "answer": "Google Calendar is free. GAIA has a free tier and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat (no per-seat fees). For self-hosters, GAIA is entirely free to run on your own infrastructure via Docker."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3235,7 +3235,7 @@
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing",
       "Open source and self-hostable; Linear is closed-source SaaS",
-      "Flat $20/month Pro pricing vs Linear's per-seat model"
+      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
     ],
     "migrationSteps": [
       "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
@@ -3296,7 +3296,7 @@
       "Tasks and calendar events created directly from email threads without copy-paste",
       "Email context connects to calendar and tasks in one unified workspace",
       "Open source and self-hostable; HEY is a closed SaaS product",
-      "GAIA Pro is $20/month flat vs HEY's $99/year — and includes task, calendar, and workflow features HEY lacks"
+      "GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month flat vs HEY's $99/year — and includes task, calendar, and workflow features HEY lacks"
     ],
     "migrationSteps": [
       "Export your HEY contacts and set up email forwarding or connect your existing Gmail/Outlook account to GAIA",
@@ -3311,7 +3311,7 @@
       },
       {
         "question": "Is GAIA cheaper than HEY?",
-        "answer": "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is $20/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option at no cost."
+        "answer": "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option at no cost."
       },
       {
         "question": "Can GAIA work with my existing Gmail account?",
@@ -3357,7 +3357,7 @@
       "Tasks created automatically from Gmail and calendar meeting action items",
       "Proactive surfacing of what to work on without configuring Perspectives manually",
       "Open source and self-hostable via Docker at no cost",
-      "Free tier and $20/month Pro — no one-time $150 purchase required"
+      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time $150 purchase required"
     ],
     "migrationSteps": [
       "Export your OmniFocus database as a plain text or OmniOutliner file to extract project and task structure",
@@ -3449,7 +3449,7 @@
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
     "metaTitle": "Lindy AI Alternative — GAIA — Open-Source AI Assistant with Email & Calendar Depth",
-    "metaDescription": "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat $20/month or free to self-host.",
+    "metaDescription": "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
@@ -3477,7 +3477,7 @@
     "gaiaAdvantages": [
       "Fully open source — audit the code, fork it, extend it, or contribute",
       "Self-hostable via Docker with no usage-based metering on self-hosted instances",
-      "Flat $20/month Pro pricing vs Lindy's usage-scaled costs",
+      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Lindy's usage-scaled costs",
       "Deeper email and calendar specialization — GAIA is purpose-built for personal productivity, not general agent building",
       "Graph-based memory that learns from your email, calendar, and task history without manual configuration"
     ],
@@ -3494,7 +3494,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Lindy AI?",
-        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat $20/month regardless of how many automations you run. Self-hosted GAIA is free."
+        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat ${{PRO_MONTHLY_PRICE}}/month regardless of how many automations you run. Self-hosted GAIA is free."
       },
       {
         "question": "Can GAIA build custom agents like Lindy?",
@@ -3539,7 +3539,7 @@
       "GAIA takes action: creates tasks, drafts emails, updates calendar — Perplexity only provides answers",
       "50+ tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
       "Open source and self-hostable; Perplexity is a closed cloud service",
-      "GAIA Pro at $20/month includes full productivity management vs Perplexity Pro's search-only scope"
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month includes full productivity management vs Perplexity Pro's search-only scope"
     ],
     "migrationSteps": [
       "Identify the Perplexity use cases that relate to personal productivity (scheduling help, email drafting, task planning) — these map directly to GAIA",
@@ -3615,7 +3615,7 @@
       },
       {
         "question": "Is GAIA free compared to Roam Research?",
-        "answer": "Roam costs $15/month with no free tier. GAIA has a free tier and is open source — self-hosters can run it for free via Docker. GAIA Pro is $20/month but includes task management, email integration, and calendar coordination alongside knowledge management."
+        "answer": "Roam costs $15/month with no free tier. GAIA has a free tier and is open source — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
       },
       {
         "question": "Why do people leave Roam Research for Obsidian?",

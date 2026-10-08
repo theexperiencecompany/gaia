@@ -16,19 +16,6 @@
   },
   "ignore": {
     "overrides": [
-      // ── Codegen source-of-truth data files ──────────────────────────────
-      // entries/*.ts and combosData-*.ts are compiled to JSON in public/data/
-      // by `pnpm tsx scripts/extract-static-data.ts`; the app fetches the JSON
-      // at runtime (Cloudflare ASSETS binding). No static imports BY DESIGN —
-      // headers of alternativesData.ts / combosData.ts document this pipeline.
-      {
-        "files": [
-          "src/features/alternatives/data/entries/**",
-          "src/features/comparisons/data/entries/**",
-          "src/features/integrations/data/combosData-*.ts"
-        ],
-        "rules": ["deslop/unused-file"]
-      },
       // ── Intentionally disabled feature (parked, not dead) ───────────────
       // The calendar feature is temporarily disabled: (main)/calendar/page.tsx
       // renders notFound() and its CalendarPage import is commented out with

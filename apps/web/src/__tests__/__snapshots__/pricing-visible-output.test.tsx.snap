@@ -3,7 +3,7 @@
 exports[`marketing price strings > the FAQ answers that name a price or a free tier 1`] = `
 [
   {
-    "answer": "GAIA is a paid product. Pro starts at $20 a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
+    "answer": "GAIA is a paid product. Pro starts at $30 a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
     "question": "Is GAIA free?",
   },
   {
@@ -11,7 +11,7 @@ exports[`marketing price strings > the FAQ answers that name a price or a free t
     "question": "What is included in GAIA's free plan?",
   },
   {
-    "answer": "GAIA Pro starts at $20/month, comparable to ChatGPT Plus ($20/month) and Motion ($19/month). Unlike these tools, GAIA offers a free tier, self-hosting for $0, and combines capabilities that would otherwise require multiple subscriptions (email management, calendar AI, workflow automation, task management).",
+    "answer": "GAIA Pro starts at $30/month, comparable to ChatGPT Plus ($20/month) and Motion ($19/month). Unlike these tools, GAIA offers a free tier, self-hosting for $0, and combines capabilities that would otherwise require multiple subscriptions (email management, calendar AI, workflow automation, task management).",
     "question": "How does GAIA's pricing compare to competitors?",
   },
   {
