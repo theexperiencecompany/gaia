@@ -10,6 +10,7 @@ import {
   usePricing,
 } from "../hooks/usePricing";
 import { getPlanViewerState } from "../types";
+import { isMonthlyTwin } from "../utils/annualSavings";
 import {
   displayPlanName,
   isEnterprisePlan,
@@ -164,11 +165,7 @@ export function PricingCards({
           // monthly row, so the saving is whatever the two live prices say.
           const monthlyTwin = durationIsMonth
             ? undefined
-            : plans.find(
-                (candidate: Plan) =>
-                  candidate.plan_type === plan.plan_type &&
-                  candidate.duration === "monthly",
-              );
+            : plans.find((candidate: Plan) => isMonthlyTwin(candidate, plan));
           const originalPrice = monthlyTwin
             ? monthlyTwin.amount * MONTHS_PER_YEAR
             : undefined;

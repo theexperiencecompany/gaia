@@ -337,6 +337,85 @@ class TestProcessWebhookIdempotency:
         ]
 
 
+class TestProcessWebhookLogFields:
+    """The fields a delivery is logged with are read before its type picks a full model."""
+
+    async def test_a_payment_is_logged_with_its_customer_amount_and_currency(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        with patch(f"{MODULE}.schedule_account_sync"):
+            async with captured_wide_event() as wide:
+                await webhook_service.process_webhook(event_data, "wh_log_pay")
+
+        payment = wide["payment"]
+        assert (payment["customer_id"], payment["amount_cents"], payment["currency"]) == (
+            "cust_001",
+            999,
+            "USD",
+        )
+
+    async def test_a_top_level_customer_id_is_logged_when_there_is_no_customer_object(
+        self, webhook_service, mock_processed_webhook_repository
+    ):
+        event_data = _make_webhook_event("subscription.updated", {"customer_id": "cust_top"})
+
+        async with captured_wide_event() as wide:
+            await webhook_service.process_webhook(event_data, "wh_log_top")
+
+        assert wide["payment"]["customer_id"] == "cust_top"
+
+    @pytest.mark.parametrize("customer", [None, "cust_as_a_string"])
+    async def test_a_malformed_customer_is_abandoned_not_retried(
+        self, webhook_service, mock_processed_webhook_repository, customer: object
+    ):
+        """A failed delivery is a 503 Dodo retries forever; a body that cannot parse never will."""
+        event_data = _make_webhook_event(
+            "payment.succeeded", {**PAYMENT_DATA_PAYLOAD, "customer": customer}
+        )
+
+        result = await webhook_service.process_webhook(event_data, "wh_bad_customer")
+
+        assert result.status == "abandoned"
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_bad_customer")
+
+    async def test_a_processed_delivery_syncs_the_account_named_in_its_metadata(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        with patch(f"{MODULE}.schedule_account_sync") as sync:
+            result = await webhook_service.process_webhook(event_data, "wh_sync")
+
+        assert result.status == "processed"
+        sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_processed_delivery_without_metadata_syncs_nothing(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        payload = {key: value for key, value in PAYMENT_DATA_PAYLOAD.items() if key != "metadata"}
+        event_data = _make_webhook_event("payment.succeeded", payload)
+
+        with patch(f"{MODULE}.schedule_account_sync") as sync:
+            result = await webhook_service.process_webhook(event_data, "wh_no_meta")
+
+        assert result.status == "processed"
+        sync.assert_not_called()
+
+
 # ============================================================================
 # Payment Event Handlers
 # ============================================================================

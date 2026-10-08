@@ -14,7 +14,6 @@ from app.models.payment_models import ProcessedWebhookUpdate
 from app.models.webhook_models import (
     DodoCheckoutMetadata,
     DodoPaymentData,
-    DodoWebhookCustomerRef,
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookLogFields,
@@ -159,18 +158,15 @@ class PaymentWebhookService:
                 message="Webhook already processed",
             )
         try:
-            payload_data: DodoWebhookLogFields = webhook_data.get("data", DodoWebhookLogFields())
-            customer: DodoWebhookCustomerRef = payload_data.get(
-                "customer", DodoWebhookCustomerRef()
-            )
+            payload_data = DodoWebhookLogFields.model_validate(webhook_data.get("data", {}))
             log.set(
                 payment={
                     "event_type": event_type_raw,
                     "status": "processing",
                     "webhook_id": webhook_id,
-                    "customer_id": customer.get("customer_id", payload_data.get("customer_id")),
-                    "amount_cents": payload_data.get("total_amount"),
-                    "currency": payload_data.get("currency"),
+                    "customer_id": payload_data.customer.customer_id or payload_data.customer_id,
+                    "amount_cents": payload_data.total_amount,
+                    "currency": payload_data.currency,
                 }
             )
 
@@ -219,9 +215,7 @@ class PaymentWebhookService:
             # Keep the workspace's account/subscription projection honest after
             # any billing state change.
             if result.status == WebhookProcessingStatus.PROCESSED:
-                metadata: DodoCheckoutMetadata = payload_data.get(
-                    "metadata", DodoCheckoutMetadata()
-                )
+                metadata: DodoCheckoutMetadata = payload_data.metadata
                 webhook_user_id = metadata.get("user_id")
                 if webhook_user_id:
                     schedule_account_sync(webhook_user_id)
