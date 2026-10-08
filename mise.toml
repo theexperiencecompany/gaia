@@ -387,7 +387,7 @@ description = "Export apps/api/openapi.json and regenerate the TypeScript API ty
 run = "node scripts/ci/checks.mjs api-schema --write"
 
 [tasks."analytics:e2e"]
-description = "Boot the API in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
+description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
 usage = '''
 flag "--no-assert" help="Drive the journeys without a personal API key and assert nothing (exits 2)"
 '''
@@ -412,7 +412,10 @@ uv run tools/llm-stub/server.py &
 stub_pid=$!
 ( cd apps/api && exec uv run --group backend uvicorn app.main:app --host 127.0.0.1 --port "${API_PORT:-8000}" --log-level warning ) &
 api_pid=$!
-trap 'kill "$stub_pid" "$api_pid" 2>/dev/null || true' EXIT INT TERM
+# The real worker, so workflow runs and background work take their production path.
+( cd apps/api && exec uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG ) &
+worker_pid=$!
+trap 'kill "$stub_pid" "$api_pid" "$worker_pid" 2>/dev/null || true' EXIT INT TERM
 
 # A fresh worktree's first boot indexes the tool store in Chroma, which took over 180s.
 boot_timeout_s=600
@@ -422,6 +425,9 @@ until curl -s -o /dev/null "$api/health"; do
   [ "$(date +%s)" -lt "$deadline" ] || { echo "the API did not answer within ${boot_timeout_s}s" >&2; exit 1; }
   sleep 1
 done
+
+# The e2e itself waits for the worker's health key and fails loudly without it.
+kill -0 "$worker_pid" 2>/dev/null || { echo "the ARQ worker exited while starting" >&2; exit 1; }
 
 no_assert=""
 [ "${usage_no_assert:-}" = "true" ] && no_assert="--no-assert"

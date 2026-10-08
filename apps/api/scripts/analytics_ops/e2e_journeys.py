@@ -13,6 +13,7 @@ from http import HTTPStatus
 import os
 from pathlib import Path
 import subprocess
+import time
 from uuid import uuid4
 
 import httpx
@@ -35,6 +36,7 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
 )
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -56,6 +58,11 @@ PRO_PRICE_CENTS = 2000
 CURRENCY = "USD"
 BILLING_COUNTRY = "US"
 SIM_REPLY = "[[say:analytics e2e]]"
+# The ARQ worker runs a manual workflow; a sim run finishes in seconds.
+WORKFLOW_RUN_TIMEOUT_S = 120.0
+WORKFLOW_POLL_INTERVAL_S = 1.0
+EXECUTION_RUNNING = "running"
+EXECUTION_SUCCEEDED = "success"
 
 
 class JourneyError(RuntimeError):
@@ -250,6 +257,37 @@ def workflow(stack: Stack) -> None:
             api.post(f"/workflows/{workflow_id}/execute", json={}, headers=stack.browser()),
             HTTPStatus.OK,
         )
+        await_execution(api, workflow_id)
+
+
+def await_execution(
+    api: httpx.Client,
+    workflow_id: str,
+    *,
+    timeout_s: float = WORKFLOW_RUN_TIMEOUT_S,
+    poll_s: float = WORKFLOW_POLL_INTERVAL_S,
+) -> None:
+    """Wait for the worker to finish the workflow's run; raise unless it succeeded."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        executions = WorkflowExecutionsResponse.model_validate(
+            _expect(api.get(f"/workflows/{workflow_id}/executions"), HTTPStatus.OK).json()
+        ).executions
+        finished = [run for run in executions if run.status != EXECUTION_RUNNING]
+        if finished:
+            [run] = finished
+            if run.status != EXECUTION_SUCCEEDED:
+                raise JourneyError(
+                    f"workflow {workflow_id} run ended {run.status}: {run.error_message}"
+                )
+            return
+        if time.monotonic() >= deadline:
+            raise JourneyError(
+                f"workflow {workflow_id} still {EXECUTION_RUNNING} after {timeout_s:.0f}s"
+                if executions
+                else f"workflow {workflow_id} never started in {timeout_s:.0f}s: no ARQ worker took it"
+            )
+        time.sleep(poll_s)
 
 
 def bot(stack: Stack, transcript: Path) -> None:

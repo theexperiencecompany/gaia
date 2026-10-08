@@ -1,18 +1,21 @@
 """The e2e's judgement of what reached PostHog: a clean run passes, and each way a run goes wrong fails it.
 
-The clean events are the ones a real run against gaia-test stored (2026-10-08);
-every other test corrupts one of them the way a real regression would.
+The clean events are the ones a real run emitted (2026-10-08, API plus ARQ
+worker, captured at a local PostHog sink); every other test corrupts one of
+them the way a real regression would.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import fakeredis
 import pytest
 from scripts.analytics_ops import e2e
 from scripts.analytics_ops.e2e_journeys import Stack
 from scripts.analytics_ops.posthog_api import ROW_CAP
 
+from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics import UserId
 from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
@@ -21,10 +24,15 @@ SESSION = "6be4c37a-8a72-4bbd-831f-6f793d241c95"
 WEB = {"actor": "user", "trigger": "interactive", "surface": "web", "$session_id": SESSION}
 WEBHOOK = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
 BOT = {"actor": "user", "trigger": "interactive", "surface": "bot"}
+# The agent acts in the run tree the user's request started.
+AGENT_WEB = {**WEB, "actor": "agent"}
+AGENT_BOT = {**BOT, "actor": "agent"}
 CONVERSATION = "6d3dbe42-7de8-4f11-a897-fedb2cb44193"
 BOT_CONVERSATION = "2014a5eb-fff2-4414-9a74-530e562a9f96"
+WORKFLOW_CONVERSATION = "acd858d4-2d9b-46a6-ade1-ca7de0f1ada1"
 TURN = {"conversation_id": CONVERSATION, "mode": "interactive", "agent": "comms"}
 BOT_TURN = {"conversation_id": BOT_CONVERSATION, "mode": "interactive", "agent": "comms"}
+WORKFLOW_RUN = {"conversation_id": WORKFLOW_CONVERSATION, "mode": "background", "agent": "comms"}
 COMPLETED = {
     "delegated": False,
     "queued": False,
@@ -70,9 +78,9 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "chat:conversation_created",
         {**WEB, "is_onboarding_demo": False, "is_system_generated": False},
     ),
-    ("chat:conversation_renamed", {**WEB, "conversation_id": CONVERSATION}),
-    ("agent:run_started", {**WEB, **TURN}),
-    ("agent:run_completed", {**WEB, **TURN}),
+    ("chat:conversation_renamed", {**AGENT_WEB, "conversation_id": CONVERSATION}),
+    ("agent:run_started", {**AGENT_WEB, **TURN}),
+    ("agent:run_completed", {**AGENT_WEB, **TURN}),
     (
         "chat:message_completed",
         {
@@ -89,6 +97,13 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         {**WEB, "steps_count": 1, "generated_immediately": False, "trigger_type": "manual"},
     ),
     ("workflow:executed", WEB),
+    # The ARQ worker's run of that workflow.
+    (
+        "chat:conversation_created",
+        {**AGENT_WEB, "is_system_generated": True, "system_purpose": "workflow_execution"},
+    ),
+    ("agent:run_started", {**AGENT_WEB, **WORKFLOW_RUN}),
+    ("agent:run_completed", {**AGENT_WEB, **WORKFLOW_RUN}),
     (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},
@@ -97,10 +112,10 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "chat:conversation_created",
         {**BOT, "is_onboarding_demo": False, "is_system_generated": False},
     ),
-    ("agent:run_started", {**BOT, **BOT_TURN}),
+    ("agent:run_started", {**AGENT_BOT, **BOT_TURN}),
     ("bot:chat_started", {"message_length": 21, "streaming_enabled": True}),
     ("bot:message_received", {"interaction_type": "chat", "message_length": 21}),
-    ("agent:run_completed", {**BOT, **BOT_TURN}),
+    ("agent:run_completed", {**AGENT_BOT, **BOT_TURN}),
     (
         "chat:message_completed",
         {
@@ -222,7 +237,7 @@ def test_an_event_on_another_distinct_id_fails() -> None:
 def test_an_unexpected_catalog_event_on_the_user_fails() -> None:
     failures = _judge([*CLEAN, ("todo:created", WEB)])
 
-    assert failures == ["unexpected todo:created at t23 on " + USER]
+    assert failures == [f"unexpected todo:created at t{len(CLEAN)} on {USER}"]
 
 
 def test_a_stray_event_on_another_distinct_id_fails() -> None:
@@ -250,3 +265,32 @@ def test_a_query_that_fills_the_row_cap_stops_the_run() -> None:
 
     with pytest.raises(SystemExit, match="partial"):
         e2e.fetch(reader, stack, e2e.datetime.now(e2e.UTC))
+
+
+def test_a_workflow_run_the_worker_never_finished_fails() -> None:
+    events = [event for event in CLEAN if event[1].get("conversation_id") != WORKFLOW_CONVERSATION]
+
+    assert _judge(events) == [
+        "workflow: agent:run_started [surface=web, mode=background]: arrived 0x, expected 1x",
+        "workflow: agent:run_completed [surface=web, mode=background]: arrived 0x, expected 1x",
+    ]
+
+
+def test_a_user_attributed_agent_run_fails() -> None:
+    [failure] = _judge(_with(_index("agent:run_started"), actor="user"))
+
+    assert failure.startswith(
+        "web chat turn: agent:run_started [surface=web, mode=interactive]: attribution"
+    )
+
+
+class TestWaitForWorker:
+    def test_a_healthy_worker_lets_the_run_drive(self) -> None:
+        client = fakeredis.FakeRedis()
+        client.set(WorkerSettings.health_check_key, "ok")
+
+        e2e.wait_for_worker(client, timeout_s=0)
+
+    def test_no_worker_refuses_to_drive_the_journeys(self) -> None:
+        with pytest.raises(SystemExit, match=WorkerSettings.health_check_key):
+            e2e.wait_for_worker(fakeredis.FakeRedis(), timeout_s=0)

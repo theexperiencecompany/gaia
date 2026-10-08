@@ -21,8 +21,12 @@ import tempfile
 import time
 
 from pydantic import ValidationError
+import redis
 
+from app.config.settings import settings
 from app.constants.chat import ConversationSource
+from app.models.chat_models import SystemPurpose
+from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -61,10 +65,19 @@ SDK_PREFIX = "$"
 # user:active is stamped at the start of the IST day, up to a day before the run.
 LOOKBACK = timedelta(days=1)
 EXIT_NOT_ASSERTED = 2
+# The worker imports the whole app before its first health write.
+WORKER_READY_TIMEOUT_S = 120
+WORKER_POLL_INTERVAL_S = 1.0
 
 BROWSER = Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB)
 WEBHOOK = Attribution(actor=Actor.AGENT, trigger=Trigger.WEBHOOK, surface=EntrySurface.WORKER)
 BOT = Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.BOT)
+# Which conversation a conversation_created belongs to: a user's turn, onboarding's, or a workflow run's.
+NOT_SYSTEM = ("is_system_generated", False)
+NO_SYSTEM_PURPOSE = ("system_purpose", None)
+WORKFLOW_EXECUTION_PURPOSE = SystemPurpose.WORKFLOW_EXECUTION.value
+# The agent acting inside the run tree a user's request started.
+BROWSER_AGENT = BROWSER.model_copy(update={"actor": Actor.AGENT})
 
 RUN_EVENTS_HOGQL = (
     "SELECT toString(uuid), event, distinct_id, toString(timestamp), properties FROM events "
@@ -147,11 +160,29 @@ class Verdict:
 def _agent_turn(attribution: Attribution, in_session: bool, source: str) -> tuple[Expect, ...]:
     """Return what one agent turn emits after its submit: the conversation, the run, the completion."""
     surface = (("surface", attribution.surface.value),)
+    run = (*surface, ("mode", "interactive"))
+    agent = attribution.model_copy(update={"actor": Actor.AGENT})
     return (
-        Expect(ChatConversationCreated.event, attribution, in_session, surface),
-        Expect(AgentRunStarted.event, attribution, in_session, surface),
-        Expect(AgentRunCompleted.event, attribution, in_session, surface),
+        Expect(ChatConversationCreated.event, attribution, in_session, (*surface, NOT_SYSTEM)),
+        Expect(AgentRunStarted.event, agent, in_session, run),
+        Expect(AgentRunCompleted.event, agent, in_session, run),
         Expect(ChatMessageCompleted.event, attribution, in_session, (("source", source),)),
+    )
+
+
+def _workflow_run() -> tuple[Expect, ...]:
+    """Return what the worker's run of a manual workflow emits: its own conversation and a background run."""
+    surface = (("surface", BROWSER_AGENT.surface.value),)
+    run = (*surface, ("mode", "background"))
+    return (
+        Expect(
+            ChatConversationCreated.event,
+            BROWSER_AGENT,
+            True,
+            (*surface, ("system_purpose", WORKFLOW_EXECUTION_PURPOSE)),
+        ),
+        Expect(AgentRunStarted.event, BROWSER_AGENT, True, run),
+        Expect(AgentRunCompleted.event, BROWSER_AGENT, True, run),
     )
 
 
@@ -170,7 +201,12 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(OnboardingPhaseCompleted.event, BROWSER, True),
                 Expect(UserActive.event, BROWSER, True),
                 # Onboarding opens the user's first conversation.
-                Expect(ChatConversationCreated.event, BROWSER, True, browser_surface),
+                Expect(
+                    ChatConversationCreated.event,
+                    BROWSER,
+                    True,
+                    (*browser_surface, ("is_system_generated", True), NO_SYSTEM_PURPOSE),
+                ),
             ),
         ),
         Journey("paywall", journeys.paywall, (Expect(PaywallBlocked.event, BROWSER, True),)),
@@ -187,7 +223,8 @@ def build_journeys(transcript: Path) -> list[Journey]:
             journeys.chat,
             (
                 Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
-                Expect(ChatConversationRenamed.event, BROWSER, True),
+                # The agent titles the conversation.
+                Expect(ChatConversationRenamed.event, BROWSER_AGENT, True),
                 *_agent_turn(BROWSER, True, web),
             ),
         ),
@@ -197,6 +234,7 @@ def build_journeys(transcript: Path) -> list[Journey]:
             (
                 Expect(WorkflowCreated.event, BROWSER, True),
                 Expect(WorkflowExecuted.event, BROWSER, True),
+                *_workflow_run(),
             ),
         ),
         Journey(
@@ -355,6 +393,24 @@ def ledger_failures(stack: journeys.Stack, since: datetime) -> list[str]:
     return [] if rows else ["LLM ledger: the chat turn wrote no llm_calls row"]
 
 
+def wait_for_worker(
+    client: redis.Redis,
+    *,
+    timeout_s: float = WORKER_READY_TIMEOUT_S,
+    poll_s: float = WORKER_POLL_INTERVAL_S,
+) -> None:
+    """Wait for this host's ARQ worker health key; exit naming it, since without a worker the workflow never runs."""
+    key = WorkerSettings.health_check_key
+    deadline = time.monotonic() + timeout_s
+    while not client.exists(key):
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                f"no ARQ worker: {key} is absent from Redis after {timeout_s:.0f}s. "
+                "Start one (`nx worker api`) with this run's env, or use `mise analytics:e2e`."
+            )
+        time.sleep(poll_s)
+
+
 def run(args: argparse.Namespace) -> int:
     """Drive the journeys, then assert them against gaia-test."""
     target = TARGETS[TargetName.E2E]
@@ -363,6 +419,8 @@ def run(args: argparse.Namespace) -> int:
         read = reader(target)
         if read.project()["api_token"] != os.environ.get(target.token_env):
             raise SystemExit(f"{target.token_env} is not the token of the gaia-test project")
+    with redis.Redis.from_url(settings.REDIS_URL) as client:
+        wait_for_worker(client)
     stack = journeys.Stack(api_url=args.api_url, email=args.email)
     started = datetime.now(UTC)
     with tempfile.TemporaryDirectory() as scratch:
