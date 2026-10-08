@@ -35,8 +35,6 @@ from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants import sandbox as sandbox_limits
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
-from app.services.agent_lab.agents_home import build_agents_setup_command
-from app.services.agent_lab.sandbox_events import SandboxEventKind
 from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
@@ -1138,17 +1136,18 @@ def _ran(sbx: AsyncMock, command: str) -> bool:
     return any(call.args and call.args[0] == command for call in sbx.commands.run.await_args_list)
 
 
+# Agent-lab symbols go through `lifecycle` so this file still collects on base.
 async def test_a_fresh_agent_lab_sandbox_gets_the_agents_home_set_up() -> None:
     # Without it the CLIs would start on an empty home: no logins, no sessions.
     sbx = _fake_sandbox("sbx-new")
     await _acquire_lab(_uid(), sbx, None)
-    assert _ran(sbx, build_agents_setup_command())
+    assert _ran(sbx, lifecycle.build_agents_setup_command())
 
 
 async def test_a_default_template_sandbox_gets_no_agents_home() -> None:
     sbx = _fake_sandbox("sbx-new")
     await _acquire_lab(_uid(), sbx, None, lab=False)
-    assert not _ran(sbx, build_agents_setup_command())
+    assert not _ran(sbx, lifecycle.build_agents_setup_command())
 
 
 async def test_a_first_sandbox_is_not_reported_as_a_replacement() -> None:
@@ -1168,7 +1167,7 @@ async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> 
     previous.state = E2bSandboxState.DEAD
     _, report = await _acquire_lab(uid, sbx, previous)
     user_id, kind, detail = report.await_args.args
-    assert (user_id, kind) == (uid, SandboxEventKind.REPLACED)
+    assert (user_id, kind) == (uid, lifecycle.SandboxEventKind.REPLACED)
     assert "2026-10-07T10:00:00Z" in detail
 
 
@@ -1196,7 +1195,7 @@ async def test_a_failed_agents_home_setup_still_records_the_sandbox_and_tells_th
         assert get_sandbox_pool().get(uid) is entry
         assert repo.record_acquisition.await_args.kwargs["sandbox_id"] == "sbx-new"
         _user, kind, detail = report.await_args.args
-        assert kind == SandboxEventKind.REPLACED
+        assert kind == lifecycle.SandboxEventKind.REPLACED
         assert "setup timed out after 300s" in detail
     finally:
         for p in reversed(stack):
@@ -1428,6 +1427,7 @@ async def test_concurrent_acquisitions_for_one_user_do_not_overlap() -> None:
         patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
         patch.object(lifecycle, "_schedule_pause"),
+        patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
     ):
         await asyncio.gather(worker("a"), worker("b"))
 
@@ -1490,6 +1490,7 @@ async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() 
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
         patch.object(lifecycle, "_schedule_pause") as schedule_pause,
         patch.object(pool, "distributed_lock", side_effect=_fake_lock) as dlock,
+        patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
     ):
         async with lifecycle.acquire_sandbox(uid):
             pass

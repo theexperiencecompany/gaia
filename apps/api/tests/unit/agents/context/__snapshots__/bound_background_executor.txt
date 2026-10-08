@@ -424,6 +424,19 @@
     Two modes:
       IMMEDIATE: create → act → log subagent activity in activity.md → complete.
       LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
+    LONG-RUNNING SANDBOX WORK (coding agents, monitors, migrations, anything that
+    outlives this turn): the todo owns it, you only bootstrap. Create the todo
+    first, then call bash with run_todo_id set (it mints the run token, sets up the
+    agents' home ~/agents, and subscribes the todo to the run, so every event the
+    agent reports wakes the todo). Launch detached from the project's folder under
+    ~/agents/work, record the pid and log path on the canvas, finish your turn. Read the gaia-delegate-long-work skill before starting. The rule is
+    simple: one-shot commands run direct and return results inline, but an LLM run
+    is never certain, there is always possible back-and-forth, so it goes through
+    a tracked todo. Why the todo: it already owns everything long work needs,
+    scheduling and recurrence to wake itself, retries with backoff, abandoned-run sweeps,
+    durable canvas and activity notes, and notify routing. A sandbox run rides all of
+    that instead of duplicating it. If no one will need to observe or steer this
+    after this turn ends, plain background run, no todo.
     COMPLETION: when the underlying work is clearly resolved (the fix is live and
     verified, the PR is merged, the external system shows done, the watched event
     arrived and is handled, the user confirmed it), close it out yourself in the

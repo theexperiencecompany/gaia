@@ -220,11 +220,10 @@ class TestLabEventsBudgetAndAudit:
         assert err.value.status_code == 429
         record.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_long_run_is_not_cut_off_by_the_one_hour_execute_budget(
         self, fake_redis: Any
     ) -> None:
-        # Regression: the receiver reused /sandbox/execute's 300-call budget, sized
+        # the receiver reused /sandbox/execute's 300-call budget, sized
         # for a 1h token, on a 13h run token; a long run with many turns hit 429
         # and gaia-hook swallowed it, so the todo silently stopped hearing.
         await fake_redis.set("lab_events:calls:run-1", 300)

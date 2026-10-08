@@ -17,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.settings import settings
+from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -28,7 +30,6 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services import feature_flags
 from app.services.agent_lab import agents_home, lab_runs
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind
@@ -88,9 +89,8 @@ def _lab_todo(
 
 
 class TestSweep:
-    @pytest.mark.regression
     async def test_a_flagged_user_idle_past_the_cutoff_is_swept_like_anyone(self) -> None:
-        # Regression: flagged users were exempt on the assumption that keep-warm
+        # flagged users were exempt on the assumption that keep-warm
         # keeps their sandbox fresh; it only touches one with a live run.
         with (
             patch(
@@ -241,9 +241,8 @@ class TestKeepWarmTick:
         tick.pause.assert_not_awaited()
         assert result == "Kept 1 lab sandboxes warm, paused 0 idle, 0 failed"
 
-    @pytest.mark.regression
     async def test_a_run_past_the_cap_gets_its_idle_sandbox_paused(self) -> None:
-        # Regression: keep-warm stopped and left it to the idle pause, which
+        # keep-warm stopped and left it to the idle pause, which
         # skipped lab users, so the sandbox ran until E2B killed it.
         tick = _Tick()
         with tick.world({"lab": [_lab_todo(13)]}):
@@ -252,7 +251,6 @@ class TestKeepWarmTick:
         tick.pause.assert_awaited_once_with("lab")
         assert result == "Kept 0 lab sandboxes warm, paused 1 idle, 0 failed"
 
-    @pytest.mark.regression
     async def test_a_flagged_user_who_never_started_a_run_is_not_kept_warm(self) -> None:
         tick = _Tick()
         with tick.world({"lab": []}):
@@ -260,14 +258,13 @@ class TestKeepWarmTick:
         assert tick.acquired == []
         tick.pause.assert_awaited_once_with("lab")
 
-    @pytest.mark.regression
     async def test_a_live_run_stays_warm_when_the_flag_reads_off(self) -> None:
-        # Regression: the flag reads off whenever PostHog is unreachable, and
+        # the flag reads off whenever PostHog is unreachable, and
         # keep-warm then froze every running coding agent.
         tick = _Tick()
         with (
             tick.world({"lab": [_lab_todo(1)]}),
-            patch.object(feature_flags.settings, "ENABLE_AGENT_LAB", False),
+            patch.object(settings, "ENABLE_AGENT_LAB", False),
         ):
             await tick.run()
         assert tick.acquired == ["lab"]
@@ -329,9 +326,8 @@ class TestSaveAgentsHome:
         assert agents_home.SAVE_SCRIPT in run.await_args.args[0]
         report.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_home_whose_setup_failed_is_not_reported_as_a_failed_save(self) -> None:
-        # Regression: with setup failed there is no gaia-save, and the pause woke
+        # with setup failed there is no gaia-save, and the pause woke
         # the todos with "saving failed" though there was nothing to save.
         set_up_never = SimpleNamespace(
             exit_code=0, stdout=f"{agents_home.HOME_NOT_SET_UP}\n", stderr=""
@@ -355,7 +351,10 @@ class TestSaveAgentsHome:
 class TestRefreshTimeout:
     async def test_refreshes_when_window_elapsed(self) -> None:
         sbx, entry = _make_entry()
-        entry.timeout_refreshed_at = 0.0
+        # Before the monotonic clock began, not 0.0: on a freshly booted
+        # machine time.monotonic() itself can sit inside the first window,
+        # which would (correctly) read as "no refresh due yet" and flake.
+        entry.timeout_refreshed_at = -SANDBOX_LIFETIME_SECONDS
         assert await refresh_sandbox_timeout(entry) is True
         sbx.set_timeout.assert_awaited_once()
         assert entry.timeout_refreshed_at > 0.0

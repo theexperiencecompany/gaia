@@ -119,9 +119,8 @@ class TestLabGate:
         assert sbx.commands.run.await_count == 0
         todos.get.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_flagged_user_off_the_paid_plan_launches_nothing(self) -> None:
-        # Regression: launch checked only the flag while the event receiver also
+        # launch checked only the flag while the event receiver also
         # requires Pro, so the run's every event got 402 and its todo never heard.
         sbx = _sbx()
         todos = AsyncMock()
@@ -352,9 +351,8 @@ class TestLabSeedExecutes:
 
 @pytest.mark.unit
 class TestFailedLaunchUnsubscribes:
-    @pytest.mark.regression
     async def test_a_background_launch_that_never_starts_leaves_no_subscription(self) -> None:
-        # Regression: the todo subscribed before the launch and stayed subscribed
+        # the todo subscribed before the launch and stayed subscribed
         # when it failed, so a run that never existed counted as live.
         sbx = _sbx(_ok("seeded"), SimpleNamespace(exit_code=0, stdout="", stderr="no shell"))
         todos = InMemoryTodos(_todo())
@@ -375,11 +373,10 @@ class TestFailedLaunchUnsubscribes:
         assert stored is not None
         assert lab_runs.run_subscriptions(stored) == []
 
-    @pytest.mark.regression
     async def test_a_background_start_failure_is_a_command_error_not_a_sandbox_crash(
         self,
     ) -> None:
-        # Regression: it raised through acquire_sandbox, so the sandbox was
+        # it raised through acquire_sandbox, so the sandbox was
         # health-checked as if it had died and the tool logged a crash.
         sbx = _sbx(SimpleNamespace(exit_code=0, stdout="", stderr="no shell"))
         acquire = _acquire(sbx)

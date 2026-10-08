@@ -28,7 +28,7 @@ agent reports wakes the todo). Launch detached from the project's folder under
 simple: one-shot commands run direct and return results inline, but an LLM run
 is never certain, there is always possible back-and-forth, so it goes through
 a tracked todo. Why the todo: it already owns everything long work needs,
-scheduling and recurrence to wake itself, retries with backoff, orphan sweeps,
+scheduling and recurrence to wake itself, retries with backoff, abandoned-run sweeps,
 durable canvas and activity notes, and notify routing. A sandbox run rides all of
 that instead of duplicating it. If no one will need to observe or steer this
 after this turn ends, plain background run, no todo.
