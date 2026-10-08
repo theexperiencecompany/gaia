@@ -913,6 +913,7 @@ class TestToolChainFailsClosed:
         assert isinstance(result, ToolMessage)
         assert result.status == "error"
         assert result.tool_call_id == "call_1"
+        assert result.name == "send_email"
         assert result.content == MIDDLEWARE_FAILURE_TEMPLATE.format(tool="send_email")
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.kwargs["middleware"] == "HILApprovalMiddleware"
@@ -957,6 +958,61 @@ class TestToolChainFailsClosed:
         invoke_fn.assert_not_awaited()
         assert isinstance(result, ToolMessage) and result.status == "error"
         assert mock_log.error.call_args.kwargs["middleware"] == "_SyncPreToolBreak"
+
+    async def test_a_refusal_for_a_call_without_an_id_carries_an_empty_id(self) -> None:
+        result = await MiddlewareExecutor([_PreToolBreak()]).wrap_tool_invocation(
+            {"name": "t", "args": {}, "id": None},
+            None,
+            _make_state(),
+            _make_config(),
+            None,
+            AsyncMock(),
+        )
+
+        assert isinstance(result, ToolMessage)
+        assert result.tool_call_id == ""
+
+    async def test_a_tool_that_raises_is_not_blamed_on_a_middleware(self) -> None:
+        invoke_fn = AsyncMock(side_effect=RuntimeError("tool broke"))
+
+        with (
+            patch("app.agents.middleware.executor.log") as mock_log,
+            pytest.raises(RuntimeError, match="tool broke"),
+        ):
+            await MiddlewareExecutor([_WrapToolMiddleware()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_awaited_once()
+        assert mock_log.error.call_args.kwargs["middleware"] is None
+
+    async def test_a_post_tool_break_ships_the_result_and_blames_its_middleware(self) -> None:
+        class _PostToolBreak(AgentMiddleware):
+            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+                await handler(request)
+                raise RuntimeError("post-tool transform broke")
+
+        tool_output = ToolMessage(content="sent", tool_call_id="c1")
+        invoke_fn = AsyncMock(return_value=tool_output)
+
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor([_PostToolBreak()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_awaited_once()
+        assert result is tool_output
+        assert mock_log.error.call_args.kwargs["middleware"] == "_PostToolBreak"
 
 
 # ---------------------------------------------------------------------------
