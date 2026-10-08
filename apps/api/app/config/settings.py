@@ -148,6 +148,10 @@ class CommonSettings(BaseAppSettings):
     # one structured decision call per reply (hil-reply calibration: 0 dangerous
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
+    # Private agent lab — Claude Code / OpenCode CLIs inside the
+    # per-user E2B sandbox, controllable from chat. Off by default; PostHog
+    # targeting enables it for specific users.
+    ENABLE_AGENT_LAB: bool = False
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod
@@ -368,6 +372,16 @@ class CommonSettings(BaseAppSettings):
     # URL must be reachable FROM the E2B sandbox (public API base in prod).
     SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
     SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+    # Sandbox run events (hooks POSTing to /api/v1/lab/events); must be reachable
+    # from the E2B sandbox, so the public API base in prod. Unset = bash
+    # run_todo_id refuses to launch, since the run could never report back.
+    SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
+    # Template for users with the AGENT_LAB flag: the default one's 1GB OOM-kills
+    # coding-agent CLIs. Built with build_e2b_template.py --memory-mb 8192.
+    E2B_AGENT_LAB_TEMPLATE_ID: str | None = None
+    # Lab sandbox lifetime, at most the E2B team's cap: a create asking more is
+    # rejected (dev/staging team: 1h). Production's Pro team allows 12h (43200).
+    E2B_AGENT_LAB_LIFETIME_SECONDS: int = 3600
 
     # Rejected at startup rather than at mint time: the token's user_id is a
     # claim nothing else binds, so a guessable secret means running any user's

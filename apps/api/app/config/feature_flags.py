@@ -25,6 +25,7 @@ class FeatureFlag(StrEnum):
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
+    AGENT_LAB = "AGENT_LAB"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
 
 
@@ -96,6 +97,14 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             "failure; off keeps the LLM classifier."
         ),
         default=lambda: settings.ENABLE_HIL_JEV_REPLY,
+    ),
+    FeatureFlag.AGENT_LAB: FlagSpec(
+        description=(
+            "Private agent lab runs Claude Code and OpenCode CLIs inside "
+            "the per-user E2B sandbox, controllable from chat. Off by default "
+            "(see ENABLE_AGENT_LAB)."
+        ),
+        default=lambda: settings.ENABLE_AGENT_LAB,
     ),
     FeatureFlag.BROWSER_OBSCURA: FlagSpec(
         description=(

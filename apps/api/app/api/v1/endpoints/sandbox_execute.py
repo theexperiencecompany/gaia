@@ -11,7 +11,6 @@ entry per call. A runaway or injected script hits a wall, and every call is
 attributable to the exact bash run (and sandbox) whose token made it.
 """
 
-import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header
@@ -24,8 +23,8 @@ from app.constants.execute import (
     SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
 )
-from app.db.redis import redis_cache
-from app.services.sandbox.execute_token import SandboxExecuteClaims, verify_execute_token
+from app.services.sandbox.execute_token import SandboxExecuteClaims, claims_from_authorization
+from app.services.sandbox.token_budget import TokenBudget, enforce_token_budget
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -44,35 +43,16 @@ class SandboxExecuteResponse(BaseModel):
     error: DispatchError | None = None
 
 
-async def _enforce_budget(run_id: str) -> None:
-    """Hard per-token limits — the wall a runaway or injected script hits.
-
-    Counters live in Redis so every API replica enforces the same budget. The
-    total counter's TTL exceeds any legal token lifetime, so it cannot expire
-    (and reset) while its token is still valid.
-    """
-    total_key = f"sandbox_execute:calls:{run_id}"
-    total = await redis_cache.client.incr(total_key)
-    if total == 1:
-        await redis_cache.client.expire(total_key, SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS)
-    if total > SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN:
-        raise AppError(
-            message="Sandbox execute call budget exhausted for this run",
-            why=f"more than {SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN} calls on one token",
-            fix="Batch work inside the script; a fresh bash run mints a fresh budget",
-            status_code=429,
-        )
-    minute_key = f"sandbox_execute:rate:{run_id}:{int(time.time()) // 60}"
-    rate = await redis_cache.client.incr(minute_key)
-    if rate == 1:
-        await redis_cache.client.expire(minute_key, 120)
-    if rate > SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE:
-        raise AppError(
-            message="Sandbox execute rate limit hit",
-            why=f"more than {SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE} calls in one minute",
-            fix="Slow the loop down or batch the work",
-            status_code=429,
-        )
+EXECUTE_BUDGET = TokenBudget(
+    key_prefix="sandbox_execute",
+    max_calls=SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
+    max_per_minute=SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
+    window_seconds=SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS,
+    exhausted_message="Sandbox execute call budget exhausted for this run",
+    exhausted_fix="Batch work inside the script; a fresh bash run mints a fresh budget",
+    rate_message="Sandbox execute rate limit hit",
+    rate_fix="Slow the loop down or batch the work",
+)
 
 
 def _audit(claims: SandboxExecuteClaims, tool_name: str, ok: bool) -> None:
@@ -88,28 +68,15 @@ def _audit(claims: SandboxExecuteClaims, tool_name: str, ok: bool) -> None:
     )
 
 
-def _claims_from_authorization(authorization: str) -> SandboxExecuteClaims:
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise AppError(
-            message="Missing sandbox execute token",
-            why="the route is token-authenticated; there is no session here",
-            fix="Tokens are injected into bash runs as GAIA_EXECUTE_TOKEN; send "
-            "'Authorization: Bearer <token>'",
-            status_code=401,
-        )
-    return verify_execute_token(token)
-
-
 @router.post("/execute")
 async def sandbox_execute(
     payload: SandboxExecuteRequest,
     authorization: Annotated[str, Header()] = "",  # pragma: no mutate — no scheme, same 401
 ) -> SandboxExecuteResponse:
     log.set(sandbox_execute={"tool_name": payload.tool_name})
-    claims = _claims_from_authorization(authorization)
+    claims = claims_from_authorization(authorization)
     log.set(user={"id": claims.user_id}, sandbox_execute={"run_id": claims.run_id})
-    await _enforce_budget(claims.run_id)
+    await enforce_token_budget(EXECUTE_BUDGET, claims.run_id)
 
     result = await dispatch_tool(
         user_id=claims.user_id,
@@ -153,9 +120,9 @@ async def sandbox_tool_schema(
     token cannot use it as an unmetered probe of the catalog.
     """
     log.set(sandbox_tool_schema={"tool_name": payload.tool_name})
-    claims = _claims_from_authorization(authorization)
+    claims = claims_from_authorization(authorization)
     log.set(user={"id": claims.user_id}, sandbox_tool_schema={"run_id": claims.run_id})
-    await _enforce_budget(claims.run_id)
+    await enforce_token_budget(EXECUTE_BUDGET, claims.run_id)
 
     info = await full_tool_info(claims.user_id, payload.tool_name)
     if info is None:

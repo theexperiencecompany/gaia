@@ -7953,6 +7953,25 @@
         "title": "IntegrationsConfigResponse",
         "type": "object"
       },
+      "LabEventResponse": {
+        "description": "Accepted; the payload itself is never echoed back.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "run_id"
+        ],
+        "title": "LabEventResponse",
+        "type": "object"
+      },
       "LabelRequest": {
         "description": "Request model for creating or updating Gmail labels.",
         "properties": {
@@ -28567,6 +28586,81 @@
         "summary": "Get Integration Tools Endpoint",
         "tags": [
           "Integrations"
+        ]
+      }
+    },
+    "/api/v1/lab/events": {
+      "post": {
+        "operationId": "lab_report_lab_event",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "The raw Claude hook payload or the OpenCode plugin's {kind, raw}.",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabEventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Lab Event",
+        "tags": [
+          "Lab"
         ]
       }
     },

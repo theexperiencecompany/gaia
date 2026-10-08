@@ -112,6 +112,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # routes authenticate via the run's HMAC token (execute_token.py).
             "/api/v1/sandbox/execute",
             "/api/v1/sandbox/tool-schema",
+            # Lab lifecycle pushes — the sandbox hooks have no session either;
+            # same HMAC token scheme, verified in-handler (see lab_events.py).
+            "/api/v1/lab/events",
             # Single-purpose file-share downloads: fetched server-side by
             # Composio with no session; the unguessable token authenticates the
             # grant. Trailing slash avoids matching the rest of /api/v1/files.

@@ -114,6 +114,10 @@ const config: KnipConfig = {
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",
 
+    // Agent-lab sandbox files: read by agents_home.py render_vendored() and written
+    // into every lab sandbox at setup, never imported — so knip reads them as unused files.
+    "apps/api/app/services/agent_lab/*.js",
+
     // Human-edited `entries/*.ts` are read by the static-data codegen (scripts/extract-static-data*,
     // itself knip-ignored) and emitted to public/data/{feature}/*.json; the runtime fetches that
     // JSON via the Cloudflare ASSETS binding, so the .ts sources are never bundled.

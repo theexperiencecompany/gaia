@@ -8,6 +8,8 @@ that the scheduler doesn't leak overlapping pause tasks.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -15,7 +17,9 @@ import uuid
 
 import pytest
 
-from app.services.sandbox import lifecycle
+from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.models.todo_models import TodoDocument
+from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 
@@ -45,82 +49,130 @@ async def test_pause_sandbox_returns_false_and_swallows_errors() -> None:
     assert ok is False, "a pause failure must be reported, not raised"
 
 
+LAB_TEMPLATE = "gaia-coder-8gb"
+
+
+def _record(*, used_ago_s: int = 3600, template_id: str | None = None) -> E2bSandboxDocument:
+    """Build a running sandbox record last used used_ago_s seconds ago, on any replica."""
+    return E2bSandboxDocument(
+        user_id="u1",
+        shard_id=0,
+        state=E2bSandboxState.ACTIVE,
+        sandbox_id="sbx-1",
+        template_id=template_id,
+        last_used_at=datetime.now(UTC) - timedelta(seconds=used_ago_s),
+    )
+
+
+@contextmanager
+def _idle_timer_world(
+    entry: PooledSandbox,
+    record: E2bSandboxDocument | None,
+    *,
+    todos: list[TodoDocument] | None = None,
+) -> Iterator[tuple[str, AsyncMock]]:
+    """Pool the entry under a fresh user with a zero idle window; yields (user_id, repo)."""
+    user_id = f"u-{uuid.uuid4().hex}"
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=record)
+    get_sandbox_pool().put(user_id, entry)
+    try:
+        with (
+            patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
+            patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", LAB_TEMPLATE),
+            patch.object(lifecycle, "e2b_sandbox_repository", repo),
+            patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+            patch.object(lifecycle, "save_agents_home", AsyncMock(return_value=True)),
+            patch(
+                "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
+                AsyncMock(return_value=todos or []),
+            ),
+        ):
+            yield user_id, repo
+    finally:
+        get_sandbox_pool().evict(user_id)
+
+
+async def _fire_idle_timer(entry: PooledSandbox, user_id: str) -> None:
+    lifecycle._schedule_pause(user_id, entry)
+    assert entry.pause_task is not None
+    await entry.pause_task
+
+
 async def test_scheduled_idle_pause_actually_pauses() -> None:
     # End-to-end of the scheduler→pause path with a zero idle window. Would fail
     # if beta_pause were never called (the original bug).
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
-    coll = AsyncMock()
-    # No record: nothing on any replica has claimed this sandbox, so the pause
-    # proceeds. The cross-replica guard is covered by its own tests below.
-    coll.get_for_user = AsyncMock(return_value=None)
-    with (
-        patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
-        patch.object(lifecycle, "e2b_sandbox_repository", coll),
-        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
-    ):
-        lifecycle._schedule_pause("u1", entry)
-        await entry.pause_task  # let the debounced task run to completion
+    with _idle_timer_world(entry, _record()) as (user_id, repo):
+        await _fire_idle_timer(entry, user_id)
+        assert get_sandbox_pool().get(user_id) is None, "a frozen sandbox stayed pooled"
     sbx.beta_pause.assert_awaited_once()
-    assert _paused_state_written(coll)
+    assert _paused_state_written(repo)
+
+
+@pytest.mark.regression
+async def test_the_idle_timer_pauses_under_the_users_lock() -> None:
+    # Regression: the timer paused without the lock, so a command another
+    # replica started inside the (up to 120s) save was frozen mid-run.
+    sbx = AsyncMock()
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
+    held: list[str] = []
+    paused_holding: list[bool] = []
+
+    @asynccontextmanager
+    async def lock(user_id: str) -> AsyncIterator[None]:
+        held.append(user_id)
+        try:
+            yield
+        finally:
+            held.remove(user_id)
+
+    async def pause() -> None:
+        paused_holding.append(bool(held))
+
+    sbx.beta_pause = AsyncMock(side_effect=pause)
+    with (
+        _idle_timer_world(entry, _record()) as (user_id, _repo),
+        patch.object(get_sandbox_pool(), "distributed_lock", lock),
+    ):
+        await _fire_idle_timer(entry, user_id)
+    assert paused_holding == [True]
 
 
 async def test_scheduled_pause_aborts_if_work_arrived() -> None:
     # refcount > 0 when the timer fires → must NOT pause.
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=1)
-    with (
-        patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
-        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
-        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
-    ):
-        lifecycle._schedule_pause("u1", entry)
-        await entry.pause_task
+    with _idle_timer_world(entry, _record()) as (user_id, _repo):
+        await _fire_idle_timer(entry, user_id)
     sbx.beta_pause.assert_not_awaited()
 
 
 async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() -> None:
     """A recent last_used_at from another replica aborts the pause even at zero local refcount."""
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
-    coll = AsyncMock()
-    # Another replica touched it one second ago — it is not idle.
-    coll.get_for_user = AsyncMock(
-        return_value=SimpleNamespace(last_used_at=datetime.now(UTC) - timedelta(seconds=1))
-    )
     with (
+        _idle_timer_world(entry, _record(used_ago_s=1)) as (user_id, repo),
         patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
-        patch.object(lifecycle, "e2b_sandbox_repository", coll),
-        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
         patch.object(lifecycle.asyncio, "sleep", AsyncMock()),
     ):
-        lifecycle._schedule_pause("u1", entry)
-        await entry.pause_task
+        await _fire_idle_timer(entry, user_id)
     sbx.beta_pause.assert_not_awaited(), "paused a sandbox another replica was using"
-    # The idleness check must read THIS user's cross-replica stamp.
-    coll.get_for_user.assert_awaited_once_with("u1")
+    repo.get_for_user.assert_awaited_with(user_id)
 
 
 async def test_scheduled_pause_proceeds_when_no_replica_has_touched_it() -> None:
     """Control: a genuinely idle sandbox must still be paused (it is a cost saver)."""
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
-    coll = AsyncMock()
-    coll.get_for_user = AsyncMock(
-        return_value=SimpleNamespace(last_used_at=datetime.now(UTC) - timedelta(hours=1))
-    )
     with (
+        _idle_timer_world(entry, _record(used_ago_s=3600)) as (user_id, _repo),
         patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
-        patch.object(lifecycle, "e2b_sandbox_repository", coll),
-        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
         patch.object(lifecycle.asyncio, "sleep", AsyncMock()),
     ):
-        lifecycle._schedule_pause("u1", entry)
-        await entry.pause_task
+        await _fire_idle_timer(entry, user_id)
     sbx.beta_pause.assert_awaited_once()
 
 
@@ -145,12 +197,6 @@ async def test_schedule_pause_cancels_a_prior_pending_task() -> None:
         second.cancel()
         with pytest.raises(asyncio.CancelledError):
             await second
-
-
-async def test_pause_sandbox_for_user_noop_when_not_pooled() -> None:
-    missing = f"u-{uuid.uuid4().hex}"
-    get_sandbox_pool().evict(missing)
-    assert await lifecycle.pause_sandbox_for_user(missing) is False
 
 
 async def test_idle_check_treats_the_window_edge_as_idle() -> None:

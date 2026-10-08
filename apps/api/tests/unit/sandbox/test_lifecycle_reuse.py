@@ -6,13 +6,18 @@ real set_timeout call count and real pool state.
 
 from __future__ import annotations
 
+import asyncio
 import time
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-from app.constants.sandbox import SANDBOX_TIMEOUT_REFRESH_SECONDS
-from app.services.sandbox import lifecycle
+from e2b import NotFoundException, SandboxState
+import pytest
+
+from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
+from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 
@@ -40,14 +45,14 @@ def _patch_probes_healthy() -> tuple[Any, Any, Any, Any]:
 async def _reuse(entry: PooledSandbox) -> tuple[str, PooledSandbox | None]:
     user_id = _seed(entry)
     try:
-        return user_id, await lifecycle._reuse_cached_entry(user_id, {})
+        return user_id, await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
     finally:
         get_sandbox_pool().evict(user_id)
 
 
 async def test_set_timeout_refreshed_when_window_elapsed() -> None:
     entry = _healthy_entry()
-    entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_TIMEOUT_REFRESH_SECONDS + 5)
+    entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS // 2 + 5)
     p1, p2, p3, p4 = _patch_probes_healthy()
     with p1, p2, p3, p4:
         _, result = await _reuse(entry)
@@ -71,11 +76,14 @@ async def test_unhealthy_cached_handle_is_evicted() -> None:
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
+        ),
         patch.object(lifecycle, "_stop_watcher", AsyncMock()),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
-        result = await lifecycle._reuse_cached_entry(user_id, {})
+        result = await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
         assert result is None, "an unhealthy cached handle must not be reused"
         assert get_sandbox_pool().get(user_id) is None, "it must be evicted"
         entry.sandbox.set_timeout.assert_not_awaited()
@@ -96,7 +104,7 @@ async def test_stale_canary_is_evicted() -> None:
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
-        result = await lifecycle._reuse_cached_entry(user_id, {})
+        result = await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
         assert result is None, "a stale-canary (stale FS) sandbox must be recreated"
         assert get_sandbox_pool().get(user_id) is None
         repo.mark_dead.assert_awaited_once()
@@ -105,4 +113,180 @@ async def test_stale_canary_is_evicted() -> None:
 async def test_returns_none_when_no_cached_entry() -> None:
     missing = f"u-{uuid.uuid4().hex}"
     get_sandbox_pool().evict(missing)
-    assert await lifecycle._reuse_cached_entry(missing, {}) is None
+    assert await lifecycle._reuse_cached_entry(missing, {}, "gaia-coder") is None
+
+
+def _control_plane(state: SandboxState) -> object:
+    """Patch E2B's control plane to report the sandbox in the given state."""
+    return patch.object(
+        lifecycle.AsyncSandbox, "get_info", AsyncMock(return_value=SimpleNamespace(state=state))
+    )
+
+
+@pytest.mark.regression
+async def test_a_live_sandbox_that_misses_one_health_probe_is_kept() -> None:
+    # A live sandbox misses the 4s /health probe about 1 in 60 times (measured
+    # on E2B); killing on that miss recreated the sandbox, and the coding agent
+    # running in it, every few minutes.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
+        _control_plane(SandboxState.RUNNING),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is entry
+    entry.sandbox.kill.assert_not_awaited()
+    repo.mark_dead.assert_not_awaited()
+
+
+async def test_a_running_sandbox_whose_health_endpoint_stays_silent_is_evicted() -> None:
+    # E2B can report a sandbox running while its envd is wedged; every command
+    # would then hang to its deadline, so a second, longer miss means dead.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        _control_plane(SandboxState.RUNNING),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is None
+    repo.mark_dead.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_evicting_a_dead_cached_sandbox_marks_only_that_sandbox_dead() -> None:
+    # Another process may already have replaced it; marking the user's record
+    # dead wholesale abandoned that replacement and created a third sandbox.
+    entry = _healthy_entry()
+    entry.sandbox.sandbox_id = "sbx-stale"
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
+        ),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        await _reuse(entry)
+    assert repo.mark_dead.await_args.kwargs["sandbox_id"] == "sbx-stale"
+
+
+async def test_an_agent_lab_sandbox_refreshes_to_its_own_lifetime_on_its_own_window() -> None:
+    # Refreshing a lab sandbox back to 1h would cut its 12h Pro lifetime short.
+    lab_lifetime = 12 * 3600
+    entry = _healthy_entry()
+    entry.template_id = "gaia-coder-8gb"
+    p1, p2, p3, p4 = _patch_probes_healthy()
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", lab_lifetime),
+    ):
+        entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS + 5)
+        await _reuse(entry)
+        entry.sandbox.set_timeout.assert_not_awaited()
+        entry.timeout_refreshed_at = time.monotonic() - (lab_lifetime // 2 + 5)
+        await _reuse(entry)
+    entry.sandbox.set_timeout.assert_awaited_once_with(lab_lifetime)
+
+
+@pytest.mark.regression
+async def test_a_paused_cached_sandbox_is_dropped_for_resume_never_killed() -> None:
+    # Regression: PAUSED read as dead, so a sandbox paused by a failed renew
+    # (or another replica) was killed instead of resumed.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        _control_plane(SandboxState.PAUSED),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        user_id, result = await _reuse(entry)
+    assert result is None
+    assert get_sandbox_pool().get(user_id) is None
+    entry.sandbox.kill.assert_not_awaited()
+    repo.mark_dead.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_an_unreachable_control_plane_never_gets_a_live_sandbox_killed() -> None:
+    # Regression: a transient E2B error from get_info escaped the liveness check
+    # and failed the acquire while the user's lock was held.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
+        ),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is entry
+    repo.mark_dead.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_a_dead_sandbox_is_dropped_even_when_the_control_plane_cannot_be_asked() -> None:
+    # Regression: an unreachable control plane counted as alive, so a sandbox
+    # failing both probes stayed in use and each request stalled on it.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
+        ),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        user_id, result = await _reuse(entry)
+    assert result is None
+    assert get_sandbox_pool().get(user_id) is None
+    repo.mark_dead.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_a_hung_control_plane_is_bounded_in_the_liveness_check() -> None:
+    entry = _healthy_entry()
+
+    async def hang(*_args: object, **_kwargs: object) -> None:
+        await asyncio.sleep(3600)
+
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
+        patch.object(lifecycle.AsyncSandbox, "get_info", hang),
+        patch.object(lifecycle, "SANDBOX_CONNECT_TIMEOUT_SECONDS", 0.05),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+    ):
+        _, result = await asyncio.wait_for(_reuse(entry), timeout=2)
+    assert result is entry
+
+
+@pytest.mark.regression
+def test_the_lab_lifetime_is_the_environments_setting() -> None:
+    # Regression: a 12h constant made every agent-lab create fail on the dev E2B
+    # team, which rejects any timeout over its 1h cap ("Timeout cannot be greater
+    # than 1 hours"). The cap belongs to the team each environment's key is on.
+    with (
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", 3600),
+    ):
+        assert pool_module.sandbox_lifetime_seconds("gaia-coder-8gb") == 3600

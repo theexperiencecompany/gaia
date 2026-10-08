@@ -19,6 +19,19 @@ a summary as a todo is not tracking. One todo per initiative.
 Two modes:
   IMMEDIATE: create → act → log subagent activity in activity.md → complete.
   LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
+LONG-RUNNING SANDBOX WORK (coding agents, monitors, migrations, anything that
+outlives this turn): the todo owns it, you only bootstrap. Create the todo
+first, then call bash with run_todo_id set (it mints the run token, sets up the
+agents' home ~/agents, and subscribes the todo to the run, so every event the
+agent reports wakes the todo). Launch detached from the project's folder under
+~/agents/work, record the pid and log path on the canvas, finish your turn. Read the gaia-delegate-long-work skill before starting. The rule is
+simple: one-shot commands run direct and return results inline, but an LLM run
+is never certain, there is always possible back-and-forth, so it goes through
+a tracked todo. Why the todo: it already owns everything long work needs,
+scheduling and recurrence to wake itself, retries with backoff, abandoned-run sweeps,
+durable canvas and activity notes, and notify routing. A sandbox run rides all of
+that instead of duplicating it. If no one will need to observe or steer this
+after this turn ends, plain background run, no todo.
 COMPLETION: when the underlying work is clearly resolved (the fix is live and
 verified, the PR is merged, the external system shows done, the watched event
 arrived and is handled, the user confirmed it), close it out yourself in the
@@ -99,6 +112,32 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
     "a subject token), then note what you tightened and why."
 )
 
+
+# Guidance for a todo woken by its own sandbox run (bash run_todo_id). The event
+# is the coding agent's raw hook payload: it finished a turn, wants input, or failed.
+SANDBOX_RUN_EVENT_GUIDANCE = (
+    "This event came from the coding agent (Claude Code or OpenCode) this todo "
+    "launched in the sandbox, or from GAIA about that sandbox. It is never noise: do "
+    "not unsubscribe or tighten anything. The subscription already matched it to "
+    "this run; a session_id in the payload is the CLI's own id, not the run id. The "
+    "agent works under ~/agents/work on the sandbox's local disk, outside /workspace, "
+    "so read its work with bash there; its home is saved to an archive before every "
+    "event it sends. Read the event, then tail the run's log with bash (pid "
+    "and log path are on the canvas) and decide which one it is. The agent asked a "
+    "question or needs permission: tell the user plainly what it needs and record it "
+    "in activity.md. It finished: check the done-checks on the canvas, report the "
+    "outcome, and complete the todo. It stopped short of the goal: resume its session "
+    "with a nudge via bash background=True (claude-code-run-task / opencode-run-task "
+    "skills; source the run's lab-env first), then end your turn, since its next event "
+    "wakes you. It failed: say what broke. sandbox_replaced: the sandbox was replaced "
+    "and the agent's process stopped; its home came back from the save the event "
+    "names, so relaunch with bash background=True and run_todo_id set, resuming its "
+    "session by id, and tell the user that work after that save is lost. save_failed: "
+    "the agent's latest work is not saved; tell the user what failed. A question, "
+    "completion, failure, replacement or failed save of this run is a result the user "
+    "asked to hear every time: say so in your report. Never show the user run ids, "
+    "session ids, or tokens."
+)
 
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
 # reads the run's final report and messages the user only when it matters, so

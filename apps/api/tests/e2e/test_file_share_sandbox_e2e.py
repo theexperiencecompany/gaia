@@ -57,7 +57,9 @@ def _exec_secret() -> None:
 @pytest.fixture
 def _frozen_minute(monkeypatch: pytest.MonkeyPatch) -> None:
     minute = 29_000_000
-    monkeypatch.setattr(f"{SANDBOX_MODULE}.time", SimpleNamespace(time=lambda: minute * 60 + 30))
+    monkeypatch.setattr(
+        "app.services.sandbox.token_budget.time", SimpleNamespace(time=lambda: minute * 60 + 30)
+    )
 
 
 def _token_of(url: str) -> str:

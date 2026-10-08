@@ -67,7 +67,7 @@ class TestE2bSandboxesRepository:
         await repo.touch_last_used(user, timestamp=touched_at)
         assert (await repo.get_for_user(user)).state == "paused"  # touch leaves state
 
-        await repo.mark_dead(user, timestamp=_now())
+        await repo.mark_dead(user, sandbox_id=None, timestamp=_now())
         assert (await repo.get_for_user(user)).state == "dead"
 
     async def test_find_idle_user_ids_filters_by_cutoff_and_state(self, repo):
@@ -79,9 +79,29 @@ class TestE2bSandboxesRepository:
         await _acquire(repo, idle_user, when=cutoff - timedelta(days=1))  # older than cutoff
         await _acquire(repo, fresh_user, when=_now())  # recent
         await _acquire(repo, dead_user, when=cutoff - timedelta(days=1))
-        await repo.mark_dead(dead_user, timestamp=_now())  # already dead → excluded
+        await repo.mark_dead(
+            dead_user, sandbox_id=None, timestamp=_now()
+        )  # already dead → excluded
 
         idle = set(await repo.find_idle_user_ids(cutoff=cutoff))
         assert idle_user in idle
         assert fresh_user not in idle  # too recent
         assert dead_user not in idle  # already dead
+
+    @pytest.mark.regression
+    async def test_marking_a_superseded_sandbox_dead_leaves_its_replacement_alone(self, repo):
+        # Regression: a process whose cached sandbox died marked the user's record
+        # dead after another process had already replaced it, so the replacement
+        # was abandoned (left running, untracked) and a third sandbox was created.
+        user = f"u-{uuid.uuid4().hex}"
+        await _acquire(repo, user, when=_now())
+        stale = (await repo.get_for_user(user)).sandbox_id
+        await _acquire(repo, user, when=_now())
+        replacement = (await repo.get_for_user(user)).sandbox_id
+
+        await repo.mark_dead(user, sandbox_id=stale, timestamp=_now())
+
+        doc = await repo.get_for_user(user)
+        assert (doc.sandbox_id, doc.state) == (replacement, "active")
+        await repo.mark_dead(user, sandbox_id=replacement, timestamp=_now())
+        assert (await repo.get_for_user(user)).state == "dead"

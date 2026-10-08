@@ -302,3 +302,8 @@ async def is_jev_judge_enabled(user_id: str | None) -> bool:
 async def is_jev_reply_enabled(user_id: str | None) -> bool:
     """Whether the user's chat replies to pending approvals are classified by JEV first (LLM fallback on transport failure)."""
     return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
+
+
+async def is_agent_lab_enabled(user_id: str | None) -> bool:
+    """Whether the user can run private agent lab sessions inside their sandbox."""
+    return await is_enabled(FeatureFlag.AGENT_LAB, user_id)

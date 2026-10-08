@@ -63,9 +63,13 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
             scope=REPO_GLOBAL_SCOPE,
         )
 
-    async def mark_dead(self, user_id: str, *, timestamp: datetime) -> None:
+    async def mark_dead(self, user_id: str, *, sandbox_id: str | None, timestamp: datetime) -> None:
+        """Mark the user's sandbox dead; given a sandbox_id, only while the record still names it."""
+        filter_: dict[str, object] = {"user_id": user_id}
+        if sandbox_id is not None:
+            filter_["sandbox_id"] = sandbox_id
         await self._apply_raw_update_unfetched(
-            {"user_id": user_id},
+            filter_,
             {"$set": {"state": "dead", "last_used_at": timestamp}},
             scope=REPO_GLOBAL_SCOPE,
         )
@@ -81,6 +85,12 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         """User ids whose sandbox is idle past cutoff and not already dead."""
         return await self._distinct(
             "user_id", {"last_used_at": {"$lt": cutoff}, "state": {"$ne": "dead"}}
+        )
+
+    async def find_live_user_ids_on_template(self, template_id: str) -> list[str]:
+        """User ids with a non-dead sandbox built from template_id (the keep-warm candidates)."""
+        return await self._distinct(
+            "user_id", {"state": {"$ne": "dead"}, "template_id": template_id}
         )
 
 

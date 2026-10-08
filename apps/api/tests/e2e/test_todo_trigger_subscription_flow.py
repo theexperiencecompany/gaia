@@ -107,7 +107,7 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="That todo is now watching the thread."),
         ]
 
-        update = AsyncMock(return_value=None)
+        update = AsyncMock(return_value=_todo())
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
@@ -183,7 +183,7 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="Watching for anything from acme.com."),
         ]
 
-        update = AsyncMock(return_value=None)
+        update = AsyncMock(return_value=_todo())
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
