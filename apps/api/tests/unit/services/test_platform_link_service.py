@@ -926,7 +926,9 @@ class TestStartPlatformConnect:
 
 
 class TestDisconnectPlatformAccount:
-    async def test_success_clears_bot_cache_and_audits(self, sample_user_id, posthog_events):
+    async def test_success_clears_bot_cache_and_audits(
+        self, sample_user_id: str, posthog_events: list[dict[str, object]]
+    ) -> None:
         link_entry = {"platformUserId": "DISC999"}
         unlink_result = DisconnectPlatformResponse(status="disconnected", platform="discord")
         with (

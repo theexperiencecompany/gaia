@@ -939,7 +939,10 @@ class TestBotRequestAnalyticsAttribution:
     """
 
     def test_context_capture_on_a_bot_route_is_the_linked_user(
-        self, mock_platform_lookup: AsyncMock, mock_redis_cache: dict, posthog_events: list
+        self,
+        mock_platform_lookup: AsyncMock,
+        mock_redis_cache: dict,
+        posthog_events: list[dict[str, object]],
     ) -> None:
         mock_platform_lookup.return_value = TEST_USER_DOC
         app = FastAPI()

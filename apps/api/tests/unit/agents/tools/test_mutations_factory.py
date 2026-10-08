@@ -127,7 +127,9 @@ async def test_unexpected_error_is_logged_and_reported_not_raised() -> None:
     )
 
 
-async def test_event_captures_only_after_success_on_the_run_owner(posthog_events) -> None:
+async def test_event_captures_only_after_success_on_the_run_owner(
+    posthog_events: list[dict[str, object]],
+) -> None:
     """Executor runs have no request context, so the event must name the owner itself."""
 
     async def failing(user_id: str, *, value: int) -> str:
