@@ -146,3 +146,23 @@ class SkillSearched(WebEvent):
 
     event: ClassVar[str] = "skill:searched"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "IntegrationConnectInitiated",
+    "IntegrationConnected",
+    "IntegrationCustomDeleted",
+    "IntegrationCustomPublished",
+    "IntegrationCustomUnpublished",
+    "IntegrationCustomUpdated",
+    "IntegrationDisconnected",
+    "IntegrationError",
+    "IntegrationInstructionsUpdated",
+    "McpConnectionTested",
+    "SkillDisabled",
+    "SkillEnabled",
+    "SkillInstalled",
+    "SkillSearched",
+    "SkillUninstalled",
+    "SkillUpdated",
+]

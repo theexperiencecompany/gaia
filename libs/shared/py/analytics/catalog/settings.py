@@ -118,3 +118,18 @@ class FeatureFlagEvaluated(ServerEvent):
     flag: Identifier
     enabled: bool
     fallback_reason: FlagFallbackReason
+
+
+__all__ = [
+    "AccountSettingChanged",
+    "FeatureDiscovered",
+    "FeatureFlagEvaluated",
+    "FeatureToggled",
+    "FlagFallbackReason",
+    "ProfileLinkCopied",
+    "ProfileUpdated",
+    "SettingsChatChannelPriorityUpdated",
+    "SettingsDesktopPreferenceChanged",
+    "SettingsNotificationsToggled",
+    "SettingsPreferencesChanged",
+]

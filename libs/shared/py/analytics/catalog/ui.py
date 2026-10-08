@@ -72,3 +72,14 @@ class ApiChunkRecovered(WebEvent):
 
     error_type: Literal["chunk_load"]
     recovery_action: Literal["reload"]
+
+
+__all__ = [
+    "ApiChunkRecovered",
+    "ApiRequestFailed",
+    "ErrorOccurred",
+    "ErrorRouteErrorShown",
+    "PinViewed",
+    "UiSidebarCollapsed",
+    "UiSidebarExpanded",
+]

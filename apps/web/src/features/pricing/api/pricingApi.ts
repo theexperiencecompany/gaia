@@ -14,7 +14,7 @@ export type {
   UserSubscriptionStatus,
 } from "@shared/api/generated";
 
-import { api } from "@/lib/api/typed";
+import { api, type RequestOrigin } from "@/lib/api/typed";
 
 export type Plan = PlanResponse;
 
@@ -64,8 +64,10 @@ class PricingApi {
   }
 
   // Get user subscription status
-  getSubscriptionStatus(): Promise<UserSubscriptionStatus> {
-    return api.get("/api/v1/payments/subscription-status");
+  getSubscriptionStatus({
+    background,
+  }: RequestOrigin = {}): Promise<UserSubscriptionStatus> {
+    return api.get("/api/v1/payments/subscription-status", { background });
   }
 
   // Cancel the user's subscription (effective at the end of the billing period)

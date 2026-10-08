@@ -61,3 +61,12 @@ class HilResumed(ServerEvent):
 
     approval_id: Identifier
     owner_run_type: Literal["todo", "workflow"]
+
+
+__all__ = [
+    "ApprovalDecided",
+    "HilCardShown",
+    "HilDecisionSubmitted",
+    "HilResumed",
+    "HilRevoked",
+]

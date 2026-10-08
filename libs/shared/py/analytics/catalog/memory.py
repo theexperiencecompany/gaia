@@ -64,3 +64,15 @@ class NotesDeleted(ServerEvent):
 
     event: ClassVar[str] = "notes:deleted"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "MemoryCleared",
+    "MemoryCreated",
+    "MemoryDocumentUpdated",
+    "MemoryItemDeleted",
+    "MemoryUpdated",
+    "NotesCreated",
+    "NotesDeleted",
+    "NotesUpdated",
+]

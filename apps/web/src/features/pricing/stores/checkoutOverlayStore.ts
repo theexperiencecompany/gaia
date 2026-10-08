@@ -59,7 +59,8 @@ interface CheckoutOverlayStore {
 type PaidProbe = () => Promise<boolean>;
 
 const subscriptionIsActive: PaidProbe = async () =>
-  (await pricingApi.getSubscriptionStatus()).plan_type === "pro";
+  (await pricingApi.getSubscriptionStatus({ background: true })).plan_type ===
+  "pro";
 
 const verifySettles =
   (subscriptionId?: string): PaidProbe =>

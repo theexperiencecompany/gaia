@@ -15,6 +15,12 @@ export interface ApiOptions {
   successMessage?: string;
   errorMessage?: string;
   silent?: boolean;
+  /**
+   * No user action caused this request (a poll, a background sync, a reply to
+   * the agent). The server then attributes it as system work, so an idle tab
+   * never counts its user as active.
+   */
+  background?: boolean;
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

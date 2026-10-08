@@ -33,3 +33,10 @@ class SearchResultClicked(WebEvent):
     result_type: Literal["conversation", "message"]
     conversation_id: Identifier
     message_id: Identifier | None = None
+
+
+__all__ = [
+    "SearchGlobalOpened",
+    "SearchPerformed",
+    "SearchResultClicked",
+]

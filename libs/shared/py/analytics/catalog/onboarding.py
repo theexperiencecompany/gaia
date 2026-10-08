@@ -124,3 +124,20 @@ class NurtureEmailSent(ServerEvent):
 
     step: Identifier
     day_offset: int
+
+
+__all__ = [
+    "FirstStepsCollapsed",
+    "FirstStepsStepClicked",
+    "NurtureEmailSent",
+    "OnboardingCheckoutRetried",
+    "OnboardingCompleted",
+    "OnboardingPhaseCompleted",
+    "OnboardingReset",
+    "OnboardingRestarted",
+    "OnboardingSkipped",
+    "OnboardingSocialProfilesConfirmed",
+    "OnboardingStarted",
+    "OnboardingWritingStyleExampleRegenerated",
+    "OnboardingWritingStyleSaved",
+]

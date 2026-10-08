@@ -1,12 +1,13 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
+import { pricingApi } from "../api/pricingApi";
 import { PAYWALL_STATUS_POLL_MS } from "../constants";
 import { useIsPaid } from "./useIsPaid";
-import { useUserSubscriptionStatus } from "./usePricing";
 
 /**
  * Takes the paid-only wall down the moment the subscription is real — the
@@ -20,7 +21,7 @@ export function useClearPaywallWhenPaid(): void {
   const open = useUpgradeModalStore((state) => state.open);
   const closeModal = useUpgradeModalStore((state) => state.closeModal);
   const { isPaid, isUnknown } = useIsPaid();
-  const { refetch } = useUserSubscriptionStatus();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (open && !isUnknown && isPaid) closeModal({ force: true });
@@ -28,7 +29,14 @@ export function useClearPaywallWhenPaid(): void {
 
   useEffect(() => {
     if (!open || isPaid) return;
-    const interval = setInterval(() => void refetch(), PAYWALL_STATUS_POLL_MS);
+    // A poll from an idle tab, so it must not count the user as active.
+    const poll = () =>
+      void queryClient.prefetchQuery({
+        queryKey: ["subscription-status"],
+        queryFn: () => pricingApi.getSubscriptionStatus({ background: true }),
+        staleTime: 0,
+      });
+    const interval = setInterval(poll, PAYWALL_STATUS_POLL_MS);
     return () => clearInterval(interval);
-  }, [open, isPaid, refetch]);
+  }, [open, isPaid, queryClient]);
 }

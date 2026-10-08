@@ -243,3 +243,31 @@ class ImageDescribed(ServerEvent):
 
     event: ClassVar[str] = "image:described"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "ChatBackgroundUpdateResolved",
+    "ChatComposerPlusMenuClicked",
+    "ChatConversationCreated",
+    "ChatConversationDeleted",
+    "ChatConversationRenamed",
+    "ChatConversationStarred",
+    "ChatFileDeleted",
+    "ChatFileUpdated",
+    "ChatFileUploaded",
+    "ChatGridIntegrationConnectClicked",
+    "ChatMessageCancelled",
+    "ChatMessageCompleted",
+    "ChatMessagePinned",
+    "ChatMessageRefused",
+    "ChatMessageSubmitted",
+    "ChatMessageUnpinned",
+    "ChatSlashCommandCategoryChanged",
+    "ChatSlashCommandSelected",
+    "ChatToolsButtonClicked",
+    "ChatTurnReacted",
+    "ChatVoiceModeToggled",
+    "ImageDescribed",
+    "ImageGenerated",
+    "SessionArtifactPinned",
+]

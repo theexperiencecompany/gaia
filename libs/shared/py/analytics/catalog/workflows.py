@@ -90,3 +90,17 @@ class WorkflowCardNavigate(WebEvent):
 
     slug: Identifier
     variant: Identifier
+
+
+__all__ = [
+    "WorkflowActivated",
+    "WorkflowCardNavigate",
+    "WorkflowCreated",
+    "WorkflowDeactivated",
+    "WorkflowDeleted",
+    "WorkflowExecuted",
+    "WorkflowPublished",
+    "WorkflowStepsRegenerated",
+    "WorkflowUnpublished",
+    "WorkflowUpdated",
+]

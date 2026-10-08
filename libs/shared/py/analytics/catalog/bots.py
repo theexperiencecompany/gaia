@@ -124,3 +124,18 @@ class BotAudioTranscribed(ServerEvent):
 
     audio_bytes: int
     transcript_length: int
+
+
+__all__ = [
+    "BotAudioTranscribed",
+    "BotAuthInitiated",
+    "BotChatCompleted",
+    "BotChatStarted",
+    "BotCommandExecuted",
+    "BotError",
+    "BotFileDelivered",
+    "BotFileUploaded",
+    "BotMessageReceived",
+    "BotReactionDelivered",
+    "BotSessionReset",
+]

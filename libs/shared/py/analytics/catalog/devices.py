@@ -44,3 +44,12 @@ class DesktopPopupDismissed(WebEvent):
 
     event: ClassVar[str] = "desktop_popup:dismissed"
     budget_per_user_day: ClassVar[int] = 50
+
+
+__all__ = [
+    "DesktopPopupDismissed",
+    "DesktopPopupOpened",
+    "DeviceApproved",
+    "DeviceRevoked",
+    "DeviceSelfPaired",
+]

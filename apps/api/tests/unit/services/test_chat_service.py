@@ -30,7 +30,7 @@ from app.agents.core.background.session import (
 )
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.models.chat_models import ConversationModel, MessageKind
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
@@ -1323,8 +1323,28 @@ class TestRunChatStreamBackground:
         save_kwargs = mock_save.call_args.kwargs
         assert save_kwargs["complete_message"] == "recovered text"
 
-    async def test_description_task_spawned_for_new_conversation(self, test_user, basic_body):
-        """generate_and_update_description must be called for new conversations."""
+    @pytest.mark.parametrize(
+        ("selected_tool", "selected_workflow"),
+        [
+            (None, None),
+            (
+                "search_web",
+                SelectedWorkflowData(id="wf-1", title="Wf", description="d", steps=[]),
+            ),
+        ],
+        ids=["plain", "with_selection"],
+    )
+    async def test_description_task_spawned_for_new_conversation(
+        self,
+        test_user,
+        basic_body,
+        selected_tool: str | None,
+        selected_workflow: SelectedWorkflowData | None,
+    ):
+        """generate_and_update_description is called for a new conversation, with the turn's own inputs."""
+        basic_body = basic_body.model_copy(
+            update={"selectedTool": selected_tool, "selectedWorkflow": selected_workflow}
+        )
         mock_desc = AsyncMock(return_value="Generated description")
         sm = _make_stream_manager_mock()
 
@@ -1355,7 +1375,9 @@ class TestRunChatStreamBackground:
                 conversation_id="new_id",
             )
 
-        mock_desc.assert_called_once()
+        mock_desc.assert_called_once_with(
+            "new_id", basic_body.messages[-1], test_user, selected_tool, selected_workflow
+        )
 
     async def test_the_auto_title_is_the_agents_work_not_the_users(self, test_user, basic_body):
         """Greptile #1337: the title task inherited the turn's actor=user, so its rename read as a human edit."""

@@ -9,6 +9,7 @@ sits past it as a backstop only.
 import asyncio
 from collections.abc import Mapping
 import contextvars
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -187,3 +188,55 @@ async def test_a_job_nobody_attributed_is_the_workers_system_work() -> None:
         )
 
     assert seen == worker_context(Trigger.SYSTEM)
+
+
+async def test_the_jobs_id_and_try_reach_its_wide_event() -> None:
+    recorder = WideEventRecorder()
+
+    async def _done(ctx: Mapping[str, object]) -> str:
+        return "done"
+
+    with patch("shared.py.wide_events._loguru", recorder):
+        await arq_task(_done)({"job_id": "j1", "job_try": 2})
+
+    event = recorder.event("_done")
+    assert (event["job_id"], event["job_try"]) == ("j1", 2)
+
+
+async def test_enqueue_hands_arq_the_job_and_every_control_unchanged() -> None:
+    pool = AsyncMock()
+    defer_until = datetime(2026, 10, 9, tzinfo=UTC)
+    with analytics_context(worker_context(Trigger.SCHEDULE)):
+        await enqueue_worker_job(
+            pool,
+            "process_reminder",
+            "reminder-1",
+            7,
+            _job_id="job-1",
+            _queue_name="q",
+            _defer_until=defer_until,
+            _defer_by=timedelta(seconds=5),
+            _expires=timedelta(hours=1),
+            _job_try=3,
+            occurrence="o",
+        )
+
+    pool.enqueue_job.assert_awaited_once_with(
+        "process_reminder",
+        "reminder-1",
+        7,
+        _job_id="job-1",
+        _queue_name="q",
+        _defer_until=defer_until,
+        _defer_by=timedelta(seconds=5),
+        _expires=timedelta(hours=1),
+        _job_try=3,
+        occurrence="o",
+        # JSON, not enum objects: the payload outlives this code version in Redis.
+        _gaia_analytics_context={
+            "attribution": {"actor": "agent", "trigger": "schedule", "surface": "worker"},
+            "posthog_session_id": None,
+        },
+    )
+    carried = pool.enqueue_job.await_args.kwargs["_gaia_analytics_context"]
+    assert type(carried["attribution"]["actor"]) is str

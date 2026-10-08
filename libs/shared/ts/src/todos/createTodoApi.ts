@@ -28,6 +28,8 @@ export interface RequestOptions {
   silent?: boolean;
   successMessage?: string;
   errorMessage?: string;
+  /** No user action caused the request (a status read or a poll); it never counts the user as active. */
+  background?: boolean;
 }
 
 export interface HttpAdapter {
@@ -238,8 +240,10 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
       ),
 
     getWorkflowStatus: (todoId): Promise<WorkflowStatusResult> =>
+      // Read for display and polled after creation; never a user action.
       http.get<WorkflowStatusResult>(TODO_ENDPOINTS.workflowStatus(todoId), {
         silent: true,
+        background: true,
       }),
   } satisfies TodoApiClient;
 }

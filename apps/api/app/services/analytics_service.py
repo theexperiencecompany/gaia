@@ -174,7 +174,8 @@ def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe: Dedupe | None 
         and not isinstance(event, UserActive)
         and current_analytics_context().attribution.actor is Actor.USER
     ):
-        today = analytics_day_start(datetime.now(UTC))
+        # A naive now() names the same instant: astimezone reads it as local time.
+        today = analytics_day_start(datetime.now(UTC))  # pragma: no mutate — equivalent
         capture(distinct_id, UserActive(), Dedupe(key=today.date().isoformat(), occurred_at=today))
 
 
