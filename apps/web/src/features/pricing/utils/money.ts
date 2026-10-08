@@ -14,15 +14,20 @@ const WELL_FORMED_CURRENCY = /^[A-Za-z]{3}$/;
  *  `Intl.NumberFormat` is the expensive part, and prices re-render. */
 const MONEY_FORMATTERS = new Map<string, Intl.NumberFormat>();
 
-function moneyFormatter(code: string): Intl.NumberFormat {
-  const cached = MONEY_FORMATTERS.get(code);
+function moneyFormatter(
+  code: string,
+  trailingZeroDisplay: "auto" | "stripIfInteger" = "auto",
+): Intl.NumberFormat {
+  const key = `${code}:${trailingZeroDisplay}`;
+  const cached = MONEY_FORMATTERS.get(key);
   if (cached) return cached;
   const formatter = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: code,
     currencyDisplay: "narrowSymbol",
+    trailingZeroDisplay,
   });
-  MONEY_FORMATTERS.set(code, formatter);
+  MONEY_FORMATTERS.set(key, formatter);
   return formatter;
 }
 
@@ -47,13 +52,15 @@ export function formatMoney(amountMinor: number, currency: string): string {
 }
 
 /**
- * A minor-unit amount as whole dollars, or dollars and cents when it has any:
- * 3000 -> "$30", 3050 -> "$30.50", 0 -> "Free". Always a dollar sign, whatever
- * currency the amount was charged in.
+ * A minor-unit amount in its currency, dropping the fraction when it is whole:
+ * 3000 USD -> "$30", 3050 USD -> "$30.50", 3000 EUR -> "€30", 0 -> "Free".
  */
-export function formatWholeOrCentsUSD(amountMinor: number): string {
+export function formatWholeOrCents(
+  amountMinor: number,
+  currency: string,
+): string {
   if (amountMinor === 0) return "Free";
-  const dollars = toMajorUnits(amountMinor, "USD");
-  if (dollars % 1 === 0) return `$${dollars.toFixed(0)}`;
-  return `$${dollars.toFixed(2)}`;
+  return moneyFormatter(currency, "stripIfInteger").format(
+    toMajorUnits(amountMinor, currency),
+  );
 }
