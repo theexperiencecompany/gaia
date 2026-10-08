@@ -92,7 +92,6 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
 
 async def _retire_ownerless_todo(doc: TodoDocument) -> str:
     """Archive a todo whose owner is not a user and clear its schedule, so it never fires again."""
-    log.error("tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id)
     await todo_repository.update(doc.id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None))
     archived = await tracked_todo_service.archive_tracked_todo(
         doc.id, doc.user_id, reason="its owner is not a GAIA user"
@@ -198,7 +197,10 @@ async def _execute_todo_with_retry(
     # computation, so a tz change applies immediately without an extra DB round-trip.
     try:
         user_data, user_tz = await _load_user_with_tz(user_id)
-    except OwnerNotFoundError:
+    except OwnerNotFoundError as missing:
+        log.error(
+            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
+        )
         return await _retire_ownerless_todo(doc)
 
     # Cost wall before any LLM work, mirroring the workflow path. A trigger fire
@@ -535,7 +537,10 @@ async def resume_tracked_todo(
         return f"completed:{todo_id}"
     try:
         user_data, _ = await _load_user_with_tz(doc.user_id)
-    except OwnerNotFoundError:
+    except OwnerNotFoundError as missing:
+        log.error(
+            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
+        )
         return await _retire_ownerless_todo(doc)
     user_id = doc.user_id
 

@@ -1429,11 +1429,6 @@ async def _record_timed_out_fire(
 
 async def _retire_ownerless_workflow(workflow: Workflow, workflow_id: str) -> str:
     """Deactivate a workflow whose owner is not a user, so its schedule and triggers stop firing."""
-    log.error(
-        f"{LogTag.WORKER} Workflow owner is not a user; deactivating it",
-        workflow_id=workflow_id,
-        user_id=workflow.user_id,
-    )
     await WorkflowService.deactivate_workflow(
         workflow_id, workflow.user_id, reason=DeactivationReason.OWNER_NOT_FOUND
     )
@@ -1510,7 +1505,13 @@ async def execute_workflow_by_id(
         # itself a run as that non-user (the paywall even emits for it).
         try:
             owner = await require_owner(workflow.user_id)
-        except OwnerNotFoundError:
+        except OwnerNotFoundError as missing:
+            log.error(
+                f"{LogTag.WORKER} Workflow owner is not a user; deactivating it",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+                error=str(missing),
+            )
             return await _retire_ownerless_workflow(workflow, workflow_id)
 
         # Coalesced trigger events live in Redis keyed by batch_key, not the job
