@@ -259,6 +259,27 @@ class TestAgentRunLifecycle:
             ),
         ]
 
+    async def test_a_cancelled_run_is_started_then_failed_and_still_cancels(self) -> None:
+        async def run_until_cancelled() -> None:
+            with agent_run_lifecycle("u1", {"agent": "comms"}, dedupe_key="task-1"):
+                await asyncio.Event().wait()
+
+        with patch("app.services.analytics_service.capture_event") as capture:
+            task = asyncio.create_task(run_until_cancelled())
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        assert self._events(capture) == [
+            (AnalyticsEvents.AGENT_RUN_STARTED, {"agent": "comms"}, None),
+            (
+                AnalyticsEvents.AGENT_RUN_FAILED,
+                {"agent": "comms", "reason": "cancelled"},
+                "task-1",
+            ),
+        ]
+
     def test_a_failure_the_body_handled_is_failed_with_its_reason(self) -> None:
         with patch("app.services.analytics_service.capture_event") as capture:
             with agent_run_lifecycle("u1", {"agent": "executor"}, dedupe_key="task-1") as run:
@@ -274,18 +295,6 @@ class TestAgentRunLifecycle:
         with patch("app.services.analytics_service.capture_event") as capture:
             with agent_run_lifecycle("u1", {"agent": "executor"}) as run:
                 run.paused = True
-
-        assert [event for event, _, _ in self._events(capture)] == [
-            AnalyticsEvents.AGENT_RUN_STARTED
-        ]
-
-    def test_a_cancelled_run_has_no_terminal_event(self) -> None:
-        with (
-            patch("app.services.analytics_service.capture_event") as capture,
-            pytest.raises(asyncio.CancelledError),
-            agent_run_lifecycle("u1", {"agent": "comms"}),
-        ):
-            raise asyncio.CancelledError
 
         assert [event for event, _, _ in self._events(capture)] == [
             AnalyticsEvents.AGENT_RUN_STARTED
