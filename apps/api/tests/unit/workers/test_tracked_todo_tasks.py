@@ -49,6 +49,7 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.utils.auth_utils import OwnerNotFoundError
 from app.workers.tasks.tracked_todo_tasks import (
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
@@ -615,14 +616,21 @@ class TestATodoWhoseOwnerIsNotAUser:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc: TodoDocument):
-        pool = _pool()
+    @staticmethod
+    def _repo(doc: TodoDocument) -> MagicMock:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
         repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        return repo
+
+    async def _run(
+        self, doc: TodoDocument, *, archived: bool = True, repo: MagicMock | None = None
+    ):
+        pool = _pool()
+        repo = repo or self._repo(doc)
         executor = AsyncMock()
-        archive = AsyncMock(return_value=True)
+        archive = AsyncMock(return_value=archived)
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.utils.auth_utils.user_repository.get", users_get),
@@ -650,11 +658,21 @@ class TestATodoWhoseOwnerIsNotAUser:
         repo.update.assert_awaited_once_with(
             "todo-1", user_id=owner, update=TodoUpdate(scheduled_at=None)
         )
-        archive.assert_awaited_once()
-        assert archive.await_args.args[:2] == ("todo-1", owner)
-        assert [c.args[0] for c in log_mock.error.call_args_list] == [
-            "tracked_todo.owner_not_a_user"
-        ]
+        archive.assert_awaited_once_with("todo-1", owner, reason="its owner is not a GAIA user")
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.owner_not_a_user",
+            todo_id="todo-1",
+            user_id=owner,
+            error="The owner is not a GAIA user",
+        )
+
+    async def test_a_failed_archive_raises_and_keeps_the_schedule_for_a_retry(self):
+        doc = _doc(user_id=SYSTEM_USER_ID, recurrence="every_1h")
+        repo = self._repo(doc)
+        with pytest.raises(RuntimeError, match="Could not archive todo todo-1"):
+            await self._run(doc, archived=False, repo=repo)
+
+        repo.update.assert_not_awaited()
 
     async def test_a_real_owner_still_runs(self):
         owner = "64abc123def4567890abcdef"
@@ -1648,6 +1666,47 @@ class TestResumeTrackedTodo:
         assert run.entries()[-1] == (
             f"[run_failed] approval resume failed (RuntimeError: {'y' * 160})"
         )
+
+    @pytest.mark.parametrize(
+        ("doc", "result"),
+        [(None, "not_found:todo-1"), (_doc(completed=True), "completed:todo-1")],
+        ids=["missing", "completed"],
+    )
+    async def test_an_early_exit_releases_the_lock(
+        self, doc: TodoDocument | None, result: str
+    ) -> None:
+        run = self._build(doc=doc)
+        run.repo.get_by_id = AsyncMock(return_value=doc)
+        with self._patched(run):
+            run.result = await resume_tracked_todo({}, "todo-1", "conv-x", "ap_1", "r")
+
+        assert run.result == result
+        run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+
+    async def test_an_ownerless_todo_is_retired_and_releases_the_lock(self) -> None:
+        doc = _doc(user_id=SYSTEM_USER_ID)
+        run = self._build(doc=doc)
+        run.load_user.side_effect = OwnerNotFoundError(SYSTEM_USER_ID)
+        run.repo.update = AsyncMock()
+        archive = AsyncMock(return_value=True)
+        with (
+            self._patched(run),
+            patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", archive),
+        ):
+            run.result = await resume_tracked_todo({}, "todo-1", "conv-x", "ap_1", "r")
+
+        assert run.result == "no_owner:todo-1"
+        archive.assert_awaited_once_with(
+            "todo-1", SYSTEM_USER_ID, reason="its owner is not a GAIA user"
+        )
+        run.log.error.assert_called_once_with(
+            "tracked_todo.owner_not_a_user",
+            todo_id="todo-1",
+            user_id=SYSTEM_USER_ID,
+            error="The owner is not a GAIA user",
+        )
+        run.agent.assert_not_called()
+        run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
     async def test_completed_todo_needs_no_resume(self) -> None:
         run = await self._resume(

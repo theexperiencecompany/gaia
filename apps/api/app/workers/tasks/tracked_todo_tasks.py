@@ -91,12 +91,15 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
 
 
 async def _retire_ownerless_todo(doc: TodoDocument) -> str:
-    """Archive a todo whose owner is not a user and clear its schedule, so it never fires again."""
-    await todo_repository.update(doc.id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None))
-    archived = await tracked_todo_service.archive_tracked_todo(
+    """Archive a todo whose owner is not a user, then clear its schedule so it never fires again.
+
+    A failed archive raises with the schedule kept, so the next fire retries the retirement.
+    """
+    if not await tracked_todo_service.archive_tracked_todo(
         doc.id, doc.user_id, reason="its owner is not a GAIA user"
-    )
-    log.set(todo_archived=archived)
+    ):
+        raise RuntimeError(f"Could not archive todo {doc.id}, whose owner is not a GAIA user")
+    await todo_repository.update(doc.id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None))
     return f"no_owner:{doc.id}"
 
 
@@ -530,54 +533,58 @@ async def resume_tracked_todo(
         )
         return f"resume_deferred:{todo_id} (lock held)"
 
-    doc = await todo_repository.get_by_id(todo_id)
-    if not doc:
-        return f"not_found:{todo_id}"
-    if doc.completed:
-        return f"completed:{todo_id}"
     try:
-        user_data, _ = await _load_user_with_tz(doc.user_id)
-    except OwnerNotFoundError as missing:
-        log.error(
-            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
-        )
-        return await _retire_ownerless_todo(doc)
-    user_id = doc.user_id
-
-    try:
-        await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
-
-        await record_activity(
-            todo_id,
-            user_id,
-            TodoActivityEvent.APPROVAL_GRANTED,
-            f"{approval_id}: {receipt}; continuing the run in its own thread",
-        )
-
-        message = (
-            f"Approval {approval_id} was granted: {receipt} "
-            "The action has run — verify with a read if you need certainty, "
-            "never re-run the granted call blind. Continue the run from here."
-        )
-        # The parked conversation, so the executor continues its own thread.
-        await run_todo_on_executor(
-            TodoRunRequest(
-                user=user_data,
-                todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(None)),
-                todo_title=doc.title,
-                task=message,
-                conversation_id=conversation_id,
+        doc = await todo_repository.get_by_id(todo_id)
+        if not doc:
+            return f"not_found:{todo_id}"
+        if doc.completed:
+            return f"completed:{todo_id}"
+        try:
+            user_data, _ = await _load_user_with_tz(doc.user_id)
+        except OwnerNotFoundError as missing:
+            log.error(
+                "tracked_todo.owner_not_a_user",
+                todo_id=doc.id,
+                user_id=doc.user_id,
+                error=str(missing),
             )
-        )
-        return f"resumed:{todo_id}"
-    except Exception as exc:
-        await record_activity(
-            todo_id,
-            user_id,
-            TodoActivityEvent.RUN_FAILED,
-            f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
-        )
-        raise
+            return await _retire_ownerless_todo(doc)
+        user_id = doc.user_id
+
+        try:
+            await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+
+            await record_activity(
+                todo_id,
+                user_id,
+                TodoActivityEvent.APPROVAL_GRANTED,
+                f"{approval_id}: {receipt}; continuing the run in its own thread",
+            )
+
+            message = (
+                f"Approval {approval_id} was granted: {receipt} "
+                "The action has run — verify with a read if you need certainty, "
+                "never re-run the granted call blind. Continue the run from here."
+            )
+            # The parked conversation, so the executor continues its own thread.
+            await run_todo_on_executor(
+                TodoRunRequest(
+                    user=user_data,
+                    todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(None)),
+                    todo_title=doc.title,
+                    task=message,
+                    conversation_id=conversation_id,
+                )
+            )
+            return f"resumed:{todo_id}"
+        except Exception as exc:
+            await record_activity(
+                todo_id,
+                user_id,
+                TodoActivityEvent.RUN_FAILED,
+                f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
+            )
+            raise
     finally:
         await pool.delete(lock_key)
 

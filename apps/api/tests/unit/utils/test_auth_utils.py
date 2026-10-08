@@ -1,6 +1,7 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -881,7 +882,14 @@ class TestRequireOwner:
         ):
             await auth_utils.require_owner(SYSTEM_USER_ID)
 
-        assert refused.value.meta == {"owner_id": SYSTEM_USER_ID}
+        assert refused.value.status_code == HTTPStatus.FORBIDDEN
+        assert refused.value.to_dict() == {
+            "message": "The owner is not a GAIA user",
+            "why": "only a user may own a todo or workflow or have an agent act for them; "
+            "the template owner owns templates and never acts",
+            "code": "owner_not_a_user",
+            "owner_id": SYSTEM_USER_ID,
+        }
 
     async def test_an_object_id_with_no_user_row_is_refused(self) -> None:
         with (

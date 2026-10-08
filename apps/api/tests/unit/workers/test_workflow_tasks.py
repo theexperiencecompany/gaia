@@ -11,6 +11,7 @@ import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
+from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.agent_models import SilentRunResult
@@ -594,9 +595,16 @@ class TestAWorkflowWhoseOwnerIsNotAUser:
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as service,
         ):
             service.deactivate_workflow = AsyncMock()
-            result = await execute_workflow_by_id({}, workflow.id)
+            with patch("app.workers.tasks.workflow_tasks.log") as log_mock:
+                result = await execute_workflow_by_id({}, workflow.id)
 
         assert result == f"Workflow {workflow.id} retired: its owner is not a user"
+        log_mock.error.assert_called_once_with(
+            f"{LogTag.WORKER} Workflow owner is not a user; deactivating it",
+            workflow_id=workflow.id,
+            user_id=owner,
+            error="The owner is not a GAIA user",
+        )
         execute_chat.assert_not_awaited()
         create_exec.assert_not_awaited()
         paid.assert_not_awaited()
@@ -1004,8 +1012,15 @@ class TestExecuteWorkflowAsChat:
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
-                workflow, AuthenticatedUser(user_id=workflow.user_id), {}, reservation=RESERVATION
+                workflow,
+                AuthenticatedUser(user_id=workflow.user_id, timezone="Europe/Paris"),
+                {},
+                reservation=RESERVATION,
             )
+
+        # The run acts as the owner, in their profile zone.
+        run_user = mock_call_agent.call_args.kwargs["user"]
+        assert (run_user.user_id, run_user.timezone) == (workflow.user_id, "Europe/Paris")
 
         # Conversation was fetched for this workflow and user
         mock_get_conv.assert_awaited_once_with(

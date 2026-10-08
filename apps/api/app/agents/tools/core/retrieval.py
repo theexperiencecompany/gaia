@@ -952,7 +952,8 @@ def get_retrieve_tools_function(
         configurable: AgentConfigurable = agent_configurable(config)
         user_id = get_user_id(config)
         # Later readers of the live bag see the user even when only metadata named it.
-        configurable["user_id"] = user_id
+        # Indexed, not via agent_configurable: an empty bag reads back as a throwaway copy.
+        config["configurable"]["user_id"] = user_id
         # No user is present to connect anything, so an unconnected integration is reported.
         background = configurable.get("execution_mode") == "background"
         log.info(

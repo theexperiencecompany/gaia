@@ -27,10 +27,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id", return_value=FAKE_USER_ID)
     async def test_happy_path_auto_detect_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -54,13 +52,12 @@ class TestGatherContext:
         assert result["_performance"]["providers_attempted"] == 2
         assert result["_performance"]["providers_succeeded"] == 2
         mock_resolve.assert_awaited_once()
+        assert mock_resolve.await_args.args[:2] == (None, FAKE_USER_ID)
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id", return_value=FAKE_USER_ID)
     async def test_specific_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -82,10 +79,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id", return_value=FAKE_USER_ID)
     async def test_defaults_date_to_today(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -106,10 +101,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id", return_value=FAKE_USER_ID)
     async def test_no_connected_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -130,10 +123,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id", return_value=FAKE_USER_ID)
     async def test_performance_metrics_present(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:

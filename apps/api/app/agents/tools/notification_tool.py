@@ -106,9 +106,10 @@ async def get_notifications(
     offset: Annotated[int, "Number of notifications to skip for pagination"] = 0,
 ) -> NotificationListResult:
     """Get user notifications with filtering options."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notifications", "action": "get"})
-        user_id = get_user_id(config)
 
         # Get notifications with all filters
         notifications = await notification_service.get_user_notifications(
@@ -147,9 +148,10 @@ async def search_notifications(
     limit: Annotated[int, "Maximum number of results to return"] = 20,
 ) -> NotificationListResult:
     """Search notifications by content."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "search_notifications", "action": "search"})
-        user_id = get_user_id(config)
 
         if not query.strip():
             return {"error": "Search query cannot be empty", "notifications": []}
@@ -191,9 +193,10 @@ async def get_notification_count(
     status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
 ) -> NotificationCountResult:
     """Get count of notifications."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notification_count", "action": "count"})
-        user_id = get_user_id(config)
 
         total_count = await notification_service.get_user_notifications_count(
             user_id=user_id, status=status
@@ -214,9 +217,10 @@ async def mark_notifications_read(
     notification_ids: Annotated[list[str], "List of notification IDs to mark as read"],
 ) -> MarkReadResult:
     """Mark one or more notifications as read."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
-        user_id = get_user_id(config)
 
         if not notification_ids:
             return {"error": "No notification IDs provided", "success": False}
@@ -265,9 +269,10 @@ async def send_notification(
     ] = NotificationType.INFO,
 ) -> SentNotificationResult | SendNotificationFailure:
     """Send a notification to the user on their connected channels."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "send_notification", "action": "send"})
-        user_id = get_user_id(config)
 
         if not message.strip():
             return {"error": "Notification message cannot be empty", "success": False}
@@ -361,9 +366,10 @@ async def get_notification_preferences(
     config: RunnableConfig,
 ) -> NotificationPreferencesResult:
     """Get the user's notification channel preferences."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notification_preferences", "action": "get"})
-        user_id = get_user_id(config)
 
         preferences = await fetch_channel_preferences(user_id)
 

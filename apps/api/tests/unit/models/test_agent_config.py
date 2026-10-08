@@ -85,7 +85,7 @@ class TestGetUserId:
         ],
     )
     def test_a_config_without_a_user_is_refused(self, config: dict | None) -> None:
-        with pytest.raises(RunUserMissingError):
+        with pytest.raises(RunUserMissingError, match="^user_id not found in RunnableConfig$"):
             get_user_id(config)
 
     def test_the_refusal_is_a_value_error_the_coding_tools_already_catch(self) -> None:

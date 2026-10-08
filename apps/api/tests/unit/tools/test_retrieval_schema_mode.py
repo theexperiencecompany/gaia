@@ -342,6 +342,8 @@ class TestBindingConfigSources:
         config = {"configurable": {}, "metadata": {"user_id": "u-meta"}}
         result = await _bind(["read"], AsyncMock(return_value=None), config=config)
         assert result["tools_to_bind"] == ["read"]
+        # Later readers of the live bag see the metadata user too.
+        assert config["configurable"] == {"user_id": "u-meta"}
 
 
 @pytest.mark.unit
