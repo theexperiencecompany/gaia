@@ -111,6 +111,13 @@ class TestExecutorCrashText:
 
         assert result.text == EXECUTOR_STEP_LIMIT_MESSAGE
 
+    async def test_a_crash_reports_its_exception_type_as_the_failure_reason(self) -> None:
+        crash = await _run_with(TimeoutError())
+        step_limit = await _run_with(GraphRecursionError("limit"))
+
+        assert crash.error_type == "TimeoutError"
+        assert step_limit.error_type == "GraphRecursionError"
+
 
 @pytest.mark.unit
 class TestOrphanedBrowserJob:

@@ -39,6 +39,11 @@ EXECUTOR_APPROVAL_LOST_MESSAGE = (
     "I couldn't set up the approval for that action, so I've stopped. Please try again."
 )
 
+# agent:run_failed reasons for executor failures that are not a raised exception.
+EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
+EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
+EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
+
 # User-facing text when comms narration of a finished run is unavailable. The
 # executor's own terminal text is never substituted: it is internal monologue,
 # and on the error path can be a raw exception string.

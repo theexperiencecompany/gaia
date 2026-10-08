@@ -336,21 +336,21 @@ class TestHealthCheckExpired:
         assert outcome == "muted"
         notify.assert_not_awaited()
 
-    async def test_agent_failure_still_notifies_with_the_failure_text(self):
+    async def test_agent_failure_notifies_nobody(self):
         pool = _pool()
         notify = AsyncMock()
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
             patch(
                 f"{MODULE}._call_health_check_agent",
-                AsyncMock(return_value="NEEDS_ATTENTION: Health check failed"),
+                AsyncMock(side_effect=ValueError("No human message or selected tool")),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
+            pytest.raises(ValueError, match="No human message"),
         ):
-            outcome = await _health_check_expired(_doc(), pool)
+            await _health_check_expired(_doc(), pool)
 
-        assert outcome == "notified"
-        assert notify.await_args.args[0].content.body == "NEEDS_ATTENTION: Health check failed"
+        notify.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -415,17 +415,18 @@ class TestHealthCheckDormant:
         schedule.assert_not_awaited()
         pool.set.assert_not_awaited()
 
-    async def test_agent_failure_is_needs_attention(self):
+    async def test_agent_failure_is_not_a_needs_attention_verdict(self):
         pool = _pool()
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
             patch(
                 f"{MODULE}._call_health_check_agent",
-                AsyncMock(return_value="NEEDS_ATTENTION: Health check failed"),
+                AsyncMock(side_effect=ValueError("No human message or selected tool")),
             ),
+            pytest.raises(ValueError, match="No human message"),
         ):
-            outcome = await _health_check_dormant(_doc(), pool)
-        assert outcome == "needs_attention"
+            await _health_check_dormant(_doc(), pool)
+        pool.set.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -904,6 +905,18 @@ class TestHealthCheckAgentCall:
             result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
 
         assert result == ""
+
+    @pytest.mark.regression
+    async def test_an_agent_failure_is_raised_not_turned_into_a_verdict(self) -> None:
+        # A fabricated NEEDS_ATTENTION hid a health check that never ran for months,
+        # and on the expired tier it became the body of the user's notification.
+        agent = AsyncMock(side_effect=ValueError("No human message or selected tool"))
+        with (
+            patch(f"{MODULE}.call_agent_silent", agent),
+            patch(f"{MODULE}.load_user_context", AsyncMock(return_value=None)),
+            pytest.raises(ValueError, match="No human message"),
+        ):
+            await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
 
 
 # ---------------------------------------------------------------------------

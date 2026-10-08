@@ -602,11 +602,10 @@ async def _read_canvas(todo: TodoDocument) -> str:
 
 
 async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:
-    """
-    Call call_agent_silent with a health-check prompt.
+    """Run the health-check prompt through the comms agent and return its stripped verdict.
 
-    Returns the agent's response string, or "NEEDS_ATTENTION: Health check failed"
-    if the agent call errors.
+    An agent failure propagates to the per-todo containment, which logs it and
+    retries the todo next sweep.
     """
 
     try:
@@ -624,26 +623,17 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         messages=[],
     )
 
-    try:
-        run = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            options=AgentRunOptions(
-                trigger_context={
-                    "trigger_type": "maintenance_health_check",
-                    "todo_id": todo_id,
-                }
-            ),
-        )
-    except Exception as exc:
-        log.warning(
-            "maintenance_sweep.health_check_agent_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-        return "NEEDS_ATTENTION: Health check failed"
-
+    run = await call_agent_silent(
+        request=request,
+        conversation_id=conversation_id,
+        user=user_data,
+        options=AgentRunOptions(
+            trigger_context={
+                "trigger_type": "maintenance_health_check",
+                "todo_id": todo_id,
+            }
+        ),
+    )
     return (run.message or "").strip()
 
 

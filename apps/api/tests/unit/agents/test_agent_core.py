@@ -1,5 +1,6 @@
 """Unit tests for app.agents.core.agent — call_agent and call_agent_silent."""
 
+from collections.abc import AsyncGenerator
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -96,7 +97,7 @@ FAKE_CONFIG = {
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: agent lifecycle events are asserted through this mock and never reach a real PostHog client."""
-    with patch("app.agents.core.agent.capture_event") as mock_capture:
+    with patch("app.services.analytics_service.capture_event") as mock_capture:
         yield mock_capture
 
 
@@ -127,6 +128,11 @@ def _common_patches():
         ),
         "log": patch("app.agents.core.agent.log"),
     }
+
+
+async def _drain(stream: AsyncGenerator[str, None]) -> list[str]:
+    """Run a streaming turn to its end and return every frame it yielded."""
+    return [chunk async for chunk in stream]
 
 
 # ---------------------------------------------------------------------------
@@ -327,13 +333,14 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ),
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
-        chunks = [chunk async for chunk in gen]
         assert len(chunks) == 2
         assert "DONE" in chunks[-1]
 
@@ -371,11 +378,13 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ) as mock_exec,
         ):
-            await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-                ids=StreamMessageIds(stream_id="stream-abc"),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                    ids=StreamMessageIds(stream_id="stream-abc"),
+                )
             )
 
             # The config passed to execute_graph_streaming should have stream_id
@@ -409,10 +418,12 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ) as mock_exec,
         ):
-            await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -447,11 +458,13 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ) as mock_exec,
         ):
-            await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-                ids=StreamMessageIds(bot_message_id="bot-msg-7"),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                    ids=StreamMessageIds(bot_message_id="bot-msg-7"),
+                )
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -484,10 +497,12 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ) as mock_exec,
         ):
-            await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -508,13 +523,14 @@ class TestCallAgent:
             patches["build_config"],
             patches["log"],
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
-        chunks = [chunk async for chunk in gen]
         assert len(chunks) == 2
         parsed = json.loads(chunks[0].replace("data: ", "").strip())
         assert "error" in parsed
@@ -543,13 +559,14 @@ class TestCallAgent:
             ),
             patch("app.agents.core.agent.log"),
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
-        chunks = [chunk async for chunk in gen]
         # Each chunk should end with \n\n (SSE format)
         for chunk in chunks:
             assert chunk.endswith("\n\n")
@@ -574,16 +591,14 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ) as mock_stream,
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED]
-
-        chunks = [chunk async for chunk in gen]
         assert len(chunks) == 2
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
@@ -626,15 +641,15 @@ class TestCallAgent:
                 "app.agents.core.agent.execute_graph_streaming",
                 return_value=_failing_stream(),
             ),
+            pytest.raises(RuntimeError, match="graph exploded"),
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
-
-        with pytest.raises(RuntimeError, match="graph exploded"):
-            _ = [chunk async for chunk in gen]
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
         assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
@@ -644,11 +659,13 @@ class TestCallAgent:
             "agent": "comms",
             "mode": "interactive",
             "conversation_id": "conv-1",
+            "reason": "RuntimeError",
         }
 
     @pytest.mark.asyncio
-    async def test_setup_error_captures_failed(self, _no_real_analytics):
-        """Setup failure (before the stream exists) still emits FAILED."""
+    @pytest.mark.regression
+    async def test_setup_error_is_a_started_run_that_failed(self, _no_real_analytics):
+        """Regression: a setup failure emitted run_failed with no run_started before it."""
         patches = _common_patches()
         with (
             patch(
@@ -661,22 +678,24 @@ class TestCallAgent:
             patches["build_config"],
             patches["log"] as mock_log,
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                )
             )
-        chunks = [chunk async for chunk in gen]
         assert len(chunks) == 2
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_FAILED]
-        failed = _no_real_analytics.call_args_list[0]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+        failed = _no_real_analytics.call_args_list[1]
         assert failed.args[0] == "user-123"
         assert failed.args[2] == {
             "agent": "comms",
             "mode": "interactive",
             "conversation_id": "conv-1",
+            "reason": "RuntimeError",
         }
         mock_log.error.assert_called_once()
         assert "Error when calling agent" in mock_log.error.call_args.args[0]
@@ -702,13 +721,14 @@ class TestCallAgent:
                 return_value=_fake_stream(),
             ),
         ):
-            gen = await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(user_id=""),
+            chunks = await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(user_id=""),
+                )
             )
 
-        chunks = [chunk async for chunk in gen]
         assert len(chunks) == 1
         _no_real_analytics.assert_not_called()
 
@@ -951,6 +971,45 @@ class TestCallAgentSilent:
             )
 
     @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_a_setup_failure_is_a_started_run_that_failed(self, _no_real_analytics):
+        """Regression: setup raising emitted run_failed for a run that never emitted run_started."""
+        patches = _common_patches()
+        with (
+            patch(
+                "app.agents.core.agent.construct_langchain_messages",
+                new_callable=AsyncMock,
+                side_effect=ValueError("No human message or selected tool"),
+            ),
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            pytest.raises(ValueError, match="No human message"),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(
+                    trigger_context={"trigger_type": "maintenance_health_check"},
+                    source="system",
+                ),
+            )
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+        run_props = {
+            "agent": "comms",
+            "mode": "background",
+            "conversation_id": "conv-1",
+            "trigger_type": "maintenance_health_check",
+            "source": "system",
+        }
+        assert _no_real_analytics.call_args_list[0].args[2] == run_props
+        assert _no_real_analytics.call_args_list[1].args[2] == {**run_props, "reason": "ValueError"}
+
+    @pytest.mark.asyncio
     async def test_run_lifecycle_events_captured(self, _no_real_analytics):
         """STARTED before the silent run, COMPLETED after it succeeds."""
         patches = _common_patches()
@@ -1024,6 +1083,7 @@ class TestCallAgentSilent:
             "agent": "comms",
             "mode": "background",
             "conversation_id": "conv-1",
+            "reason": "RuntimeError",
         }
         mock_log.error.assert_called_once()
         assert "Error when calling silent agent" in mock_log.error.call_args.args[0]
@@ -1525,12 +1585,14 @@ class TestTheOptionsEachEntryPointDerives:
                 return_value=_fake_stream(),
             ),
         ):
-            await call_agent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-                options=AgentRunOptions(usage_metadata_callback=callback, source="whatsapp"),
-                ids=StreamMessageIds(bot_message_id="bot-7"),
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                    options=AgentRunOptions(usage_metadata_callback=callback, source="whatsapp"),
+                    ids=StreamMessageIds(bot_message_id="bot-7"),
+                )
             )
 
         assert seen == [

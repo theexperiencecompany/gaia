@@ -28,7 +28,6 @@ from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = pytest.mark.usefixtures("fake_redis")
@@ -220,7 +219,7 @@ class TestExecutorRunLatency:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "capture_event") as mock_capture,
+            patch("app.services.analytics_service.capture_event") as mock_capture,
         ):
             await run_executor_background(
                 run=run, task="do the thing", configurable={"conversation_source": "web"}
@@ -522,7 +521,7 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "capture_event", MagicMock()),
+            patch("app.services.analytics_service.capture_event", MagicMock()),
             patch.object(er.StreamManager, "is_cancelled", is_cancelled_mock),
             patch.object(er.time, "perf_counter", side_effect=list(perf_values)),
         ):
@@ -663,43 +662,6 @@ class TestBackgroundRunExactWiring:
         assert captured["active_ms"] is None
 
 
-class TestCaptureExecutorTerminalWiring:
-    """The terminal lifecycle event's exact payload: the user-id sentinel and dedupe key."""
-
-    def test_an_empty_user_id_captures_nothing(self) -> None:
-        run = _run("terminal-user", user=AuthenticatedUser(user_id=""))
-
-        with patch.object(er, "capture_event") as capture:
-            er._capture_executor_terminal(
-                run,
-                run_props={"agent": "executor"},
-                queued=False,
-                timing_fields={},
-                result_type="final",
-            )
-
-        capture.assert_not_called()
-
-    def test_dedupe_key_prefers_the_task_id_and_carries_exact_props(self) -> None:
-        run = _run("s1", user=AuthenticatedUser(user_id="u1"), task_id="task-1")
-
-        with patch.object(er, "capture_event") as capture:
-            er._capture_executor_terminal(
-                run,
-                run_props={"agent": "executor"},
-                queued=False,
-                timing_fields={"executor_active_ms": 12.5},
-                result_type="final",
-            )
-
-        capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.AGENT_RUN_COMPLETED,
-            {"agent": "executor", "queued": False, "executor_active_ms": 12.5},
-            dedupe_key="task-1",
-        )
-
-
 class TestResumeForwarding:
     def setup_method(self) -> None:
         sess._sessions.clear()
@@ -721,7 +683,7 @@ class TestResumeForwarding:
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
             patch.object(er, "release_resume_dispatch", AsyncMock()),
-            patch.object(er, "capture_event"),
+            patch("app.services.analytics_service.capture_event"),
         ):
             await run_executor_background(
                 run=run,
