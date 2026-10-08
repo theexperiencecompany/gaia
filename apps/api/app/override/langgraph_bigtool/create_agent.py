@@ -35,6 +35,7 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
     LLMInvokeOptions,
+    _is_openai_wire,
     _is_openrouter_wire,
     ainvoke_llm,
     invoke_llm,
@@ -167,7 +168,11 @@ def _bind_session_id(
     key = _agent_sticky_key(model_configurations, agent_name)
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
-    if key and model_configurations.get("provider") in PROMPT_CACHE_KEY_PROVIDERS:
+    if (
+        key
+        and model_configurations.get("provider") in PROMPT_CACHE_KEY_PROVIDERS
+        and _is_openai_wire(llm_with_tools)
+    ):
         return llm_with_tools.bind(prompt_cache_key=key)
     return llm_with_tools
 

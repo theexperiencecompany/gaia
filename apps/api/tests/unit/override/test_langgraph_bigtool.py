@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
@@ -1243,13 +1244,24 @@ class TestBindSessionId:
 
     def test_openai_gets_the_agent_key_as_its_prompt_cache_key(self) -> None:
         """OpenAI keeps a chain's cached prefix on one machine via prompt_cache_key; session_id is not its field."""
-        llm = MagicMock()
+        llm = MagicMock(spec=ChatOpenAI)
         bound = _bind_session_id(
             llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
         )
 
         llm.bind.assert_called_once_with(prompt_cache_key="conv-1-comms_agent")
         assert bound is llm.bind.return_value
+
+    def test_the_sim_stub_on_the_openai_lane_gets_no_prompt_cache_key(self) -> None:
+        """Under sim the OpenAI lane is a ChatOpenRouter on the stub, whose SDK rejects prompt_cache_key."""
+        llm = MagicMock(spec=ChatOpenRouter)
+        llm.openrouter_api_base = "http://localhost:9797/api/v1"
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        llm.bind.assert_not_called()
+        assert bound is llm
 
     def test_openai_without_a_session_id_binds_no_cache_key(self) -> None:
         llm = MagicMock()
