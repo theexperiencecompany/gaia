@@ -36,6 +36,7 @@ Unit tests (parser + turn-counting + wire shapes), no repo project needed:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 import sys
@@ -55,7 +56,7 @@ from directives import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-from wire import build_chat_completion, sse_lines
+from wire import build_chat_completion, estimate_tokens, sse_lines
 
 DEFAULT_PORT = 9797
 
@@ -125,12 +126,13 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
 
+    prompt_tokens = estimate_tokens(json.dumps(parsed.messages, ensure_ascii=False))
     if parsed.stream:
         return StreamingResponse(
-            sse_lines(parsed.model, response),
+            sse_lines(parsed.model, response, prompt_tokens),
             media_type="text/event-stream",
         )
-    return JSONResponse(content=build_chat_completion(parsed.model, response))
+    return JSONResponse(content=build_chat_completion(parsed.model, response, prompt_tokens))
 
 
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)

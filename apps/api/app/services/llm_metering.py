@@ -52,11 +52,13 @@ from app.db.repositories.llm_calls import (
     CostSource,
     ErrorFamily,
     LLMCallDocument,
+    carries_usage,
     llm_calls_repository,
     split_lane_thread,
 )
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
+from app.services.llm_usage_analytics import capture_llm_call
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -226,15 +228,15 @@ def _build_ledger_document(call: _PricedCall, context: LLMCallContext) -> LLMCal
 
 
 async def _insert_ledger_row(doc: LLMCallDocument) -> None:
-    """Append one row to the llm_calls ledger, or warn and move on.
+    """Append one row to the llm_calls ledger and mirror the stored row to PostHog, or warn and move on.
 
     The one place allowed to degrade silently: money is already booked by
     record_model_call_usage and the call is already in the llm_call wide
-    event, so a Mongo blip costs only an analytics row. Logged as a warning,
-    not swallowed, so a sustained gap is measurable.
+    event, so a Mongo blip costs only an analytics row (and its event, since
+    PostHog mirrors the ledger). Logged as a warning so a gap is measurable.
     """
     try:
-        await llm_calls_repository.create(doc)
+        stored = await llm_calls_repository.create(doc)
     except Exception as e:
         log.warning(
             f"{LogTag.MONGO} llm_calls ledger insert failed — the call is still "
@@ -244,6 +246,8 @@ async def _insert_ledger_row(doc: LLMCallDocument) -> None:
             error=str(e),
             error_type=type(e).__name__,
         )
+        return
+    capture_llm_call(stored)
 
 
 async def record_llm_call(
@@ -258,21 +262,36 @@ async def record_llm_call(
     """Price one model call and record its spend + tokens. Returns the USD cost.
 
     cached_tokens is billed at the discounted rate (not free); reasoning_tokens
-    is already billed as output. context is required — optional left 55% of
-    calls with no context ids. Fail-open: a pricing/write failure records cost
-    as 0.0 without failing an already-succeeded call.
+    is already billed as output. A call that reported no tokens and no cost is
+    recorded as a no_usage error, never as a free success. Fail-open: a
+    pricing/write failure records 0.0 without failing an already-succeeded call.
     """
     # Provider cost wins: upstream rates vary >10x (0.030-0.440 USD/M input,
     # measured 2026-08-29), under-stating spend 44% when priced from the table.
     # isfinite guards `inf >= 0.0`; a non-finite cost falls through to the table.
-    if provider_cost is not None and math.isfinite(provider_cost) and provider_cost >= 0.0:
+    reported_cost = (
+        float(provider_cost)
+        if provider_cost is not None and math.isfinite(provider_cost) and provider_cost >= 0.0
+        else None
+    )
+    if not carries_usage(usage["input_tokens"], usage["output_tokens"], reported_cost):
+        log.error(
+            f"{LogTag.AGENT} model call reported no token usage and no cost — "
+            "its spend is unknown and recorded as a no_usage error",
+            agent_name=context.agent_name,
+            model=model_name,
+            model_served=context.model_served,
+        )
+        _record_error_row(user_id, model_name, "no_usage", context)
+        return 0.0
+    if reported_cost is not None:
         return await _record(
             _PricedCall(
                 user_id=user_id,
                 model_name=model_name,
                 usage=usage,
                 root_request_id=root_request_id,
-                total_cost=float(provider_cost),
+                total_cost=reported_cost,
                 cost_source="provider",
             ),
             context,
@@ -326,7 +345,20 @@ async def record_failed_llm_call(
     reported on a failed call, and inventing a number would pollute real
     spend; budget windows and usage_daily are not touched, only the ledger.
     """
-    family = classify_error_family(error)
+    _record_error_row(
+        user_id, model_name, classify_error_family(error), context, error_type=type(error).__name__
+    )
+
+
+def _record_error_row(
+    user_id: str | None,
+    model_name: str,
+    family: ErrorFamily,
+    context: LLMCallContext,
+    *,
+    error_type: str | None = None,
+) -> None:
+    """Log and ledger one call that booked nothing: no money, no tokens, budget untouched."""
     # Parity with successful calls: without this log line a failure exists only
     # in the ledger, so the backfill (reads log lines) can't reconstruct it and
     # an incident grep for llm_event=llm_call would show traffic drop, not errors.
@@ -335,7 +367,7 @@ async def record_failed_llm_call(
         llm_event="llm_call",
         status="error",
         error_family=family,
-        error_type=type(error).__name__,
+        error_type=error_type,
         agent_name=context.agent_name,
         background=context.background,
         model=model_name,

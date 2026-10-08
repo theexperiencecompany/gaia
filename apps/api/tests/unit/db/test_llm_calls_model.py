@@ -27,6 +27,8 @@ def _doc(**overrides: object) -> LLMCallDocument:
         "background": False,
         "charge_to_budget": True,
         "model_requested": "deepseek/deepseek-v4-flash",
+        "input_tokens": 120,
+        "output_tokens": 8,
         "cost_source": "table",
     }
     fields.update(overrides)
@@ -149,8 +151,17 @@ def test_every_optional_identifier_defaults_to_none_rather_than_a_placeholder() 
 
 
 def test_token_counts_and_cost_default_to_zero_not_none() -> None:
-    """A call that reported no tokens spent no tokens; summing the ledger must not coalesce nulls."""
-    doc = _doc()
+    """A failed call reported no tokens and spent none; summing the ledger must not coalesce nulls."""
+    doc = LLMCallDocument(
+        created_at=datetime(2026, 8, 29, 12, 0, tzinfo=UTC),
+        agent_name="comms_agent",
+        background=False,
+        charge_to_budget=True,
+        model_requested="deepseek/deepseek-v4-flash",
+        cost_source="table",
+        status="error",
+        error_family="timeout",
+    )
 
     assert (doc.input_tokens, doc.cached_tokens, doc.output_tokens, doc.reasoning_tokens) == (
         0,

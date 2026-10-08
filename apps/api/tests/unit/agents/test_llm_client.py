@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
@@ -99,6 +100,7 @@ from app.constants.llm import (
     ReasoningLevel,
 )
 from app.core.lazy_loader import ProviderRegistry
+from app.services.analytics_service import AnalyticsEvents
 from app.services.llm_metering import LLMCallContext
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
@@ -1511,36 +1513,11 @@ class TestRecordAuxiliaryUsage:
         handler.usage_metadata = dict(usage_by_model)
         return handler
 
-    async def test_the_analytics_event_gets_this_call_s_user_model_and_cost(self) -> None:
-        """The only PostHog record of background spend; a null field still leaves the ledger valid."""
-        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
-
-        with (
-            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.25)),
-            patch("app.agents.llm.client.capture_auxiliary_llm_call") as capture,
-        ):
-            await _record_auxiliary_usage(
-                handler,
-                "memory:extract",
-                "u-1",
-                context=_AUX_CONTEXT,
-                facts=ResponseFacts(),
-            )
-
-        kwargs = capture.call_args.kwargs
-        assert kwargs["user_id"] == "u-1"
-        assert kwargs["label"] == "memory:extract"
-        assert kwargs["model_name"] == "gemini"
-        assert kwargs["cost_usd"] == 0.25
-        assert kwargs["usage"] == {
-            "input_tokens": 100,
-            "output_tokens": 20,
-            "cached_tokens": 0,
-            "reasoning_tokens": 0,
-        }
-
-    async def test_the_analytics_event_carries_the_cached_and_reasoning_split(self) -> None:
-        """Cached input is discounted and reasoning is hidden output: dropping either hides cost."""
+    @pytest.mark.regression
+    async def test_a_one_shot_call_emits_exactly_one_completed_event_mirroring_its_ledger_row(
+        self,
+    ) -> None:
+        """The one-shot emitter used to build its own event beside the ledger, without the row's cost_source or generation_id."""
         handler = self._handler(
             gemini={
                 "input_tokens": 100,
@@ -1549,18 +1526,37 @@ class TestRecordAuxiliaryUsage:
                 "output_token_details": {"reasoning": 7},
             }
         )
+        posthog = MagicMock()
+        ledger = AsyncMock(side_effect=lambda doc: doc.model_copy(update={"id": "row-1"}))
 
         with (
-            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)),
-            patch("app.agents.llm.client.capture_auxiliary_llm_call") as capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=posthog),
+            patch("app.services.llm_metering.record_model_call_usage", new=AsyncMock()),
+            patch("app.services.llm_metering.llm_calls_repository.create", new=ledger),
         ):
             await _record_auxiliary_usage(
-                handler, "memory:extract", "u-1", context=_AUX_CONTEXT, facts=ResponseFacts()
+                handler,
+                "memory:extract",
+                str(ObjectId()),
+                context=replace(_AUX_CONTEXT, agent_name="memory:extract"),
+                facts=ResponseFacts(cost=0.0042, generation_id="gen-aux-1"),
+            )
+            await asyncio.gather(
+                *(t for t in asyncio.all_tasks() if t.get_name() == "llm_calls_ledger_insert")
             )
 
-        usage = capture.call_args.kwargs["usage"]
-        assert usage["cached_tokens"] == 40
-        assert usage["reasoning_tokens"] == 7
+        row = ledger.await_args.args[0]
+        completed = [
+            c.kwargs
+            for c in posthog.capture.call_args_list
+            if c.kwargs["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+        ]
+        assert len(completed) == 1
+        props = completed[0]["properties"]
+        assert props["cost_usd"] == row.cost_usd == 0.0042
+        assert props["cost_source"] == row.cost_source == "provider"
+        assert props["generation_id"] == row.generation_id == "gen-aux-1"
+        assert (props["cached_tokens"], props["reasoning_tokens"]) == (40, 7)
 
     async def test_the_llm_call_event_carries_the_generation_id(self) -> None:
         """Structured calls used to lose the generation id (every follow-up/memory event read MISSING); the aux metering path must put it on the wide event."""

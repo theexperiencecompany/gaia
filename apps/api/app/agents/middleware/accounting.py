@@ -36,6 +36,7 @@ from app.config.rate_limits import (
 )
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
+    BUDGET_STOP_METADATA_KEY,
     LANE_FIELD_ID,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
@@ -225,7 +226,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # sets plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
                 self._emit_budget_stop_card(check.stop_reason, check.plan_type)
-            return ModelResponse(result=[AIMessage(content=check.stop_reason)])
+            return ModelResponse(
+                result=[
+                    AIMessage(
+                        content=check.stop_reason,
+                        response_metadata={BUDGET_STOP_METADATA_KEY: True},
+                    )
+                ]
+            )
 
         thread_id = self._thread_id(config)
         if (
@@ -281,6 +289,10 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = current_run_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
+        if ai_msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            # The wall answered instead of a model, so there is no call to meter.
+            self._pop_stamp(self._start_ts, thread_id)
+            return None
         lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
         model_name = (lane.model if lane else None) or UNKNOWN_MODEL_NAME
         provider = lane.provider if lane else UNKNOWN_MODEL_NAME

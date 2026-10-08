@@ -8,6 +8,7 @@ runs for real.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import time
 from typing import Any, ClassVar, cast
@@ -711,6 +712,11 @@ def test_thread_id_is_unknown_without_any_identifier() -> None:
 # --- budget wall / wrap-up notice --------------------------------------------- #
 
 
+def _stop_reply(text: str) -> AIMessage:
+    """Build the reply the budget wall writes in place of a model call."""
+    return AIMessage(content=text, response_metadata={accounting.BUDGET_STOP_METADATA_KEY: True})
+
+
 def _model_request(messages: list[Any] | None = None) -> ModelRequest:
     return ModelRequest(model=cast(Any, None), messages=messages or [HumanMessage(content="hi")])
 
@@ -797,8 +803,33 @@ async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> No
         response = await mw.awrap_model_call(_model_request(), handler)
 
     handler.assert_not_called()
-    assert response.result == [AIMessage(content="You've reached today's usage limit.")]
+    assert response.result == [_stop_reply("You've reached today's usage limit.")]
     assert not any(w.get("msg") == "budget_wrapup_notice" for w in log.get().get("warnings", []))
+
+
+@pytest.mark.regression
+async def test_a_turn_the_budget_wall_stopped_writes_no_ledger_row() -> None:
+    """No model answered, so a row would be the always-zero success that read as 2,492 free "unknown" calls a month."""
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        response = await mw.awrap_model_call(_model_request(), AsyncMock())
+        await mw.aafter_model(_state(response.result[0]), None)
+        await asyncio.gather(
+            *(t for t in asyncio.all_tasks() if t.get_name().startswith("llm_calls_ledger"))
+        )
+
+    ledger.assert_not_awaited()
+    assert "model" not in log.get()
+    assert mw._start_ts == {}
 
 
 async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tree() -> None:
@@ -919,7 +950,7 @@ async def test_a_missing_stream_writer_never_breaks_the_stop() -> None:
     ):
         response = await mw.awrap_model_call(_model_request(), AsyncMock())
 
-    assert response.result == [AIMessage(content="Daily cap reached.")]
+    assert response.result == [_stop_reply("Daily cap reached.")]
 
 
 def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -> None:
