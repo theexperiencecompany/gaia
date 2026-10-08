@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from scripts.analytics_ops.reconcile import (
     EVENT_COUNTS_HOGQL,
     LLM_COST_HOGQL,
+    MAX_WINDOW_DAYS,
     MESSAGES_HOGQL,
     SUBSCRIBED_PERSONS_HOGQL,
     Row,
@@ -57,6 +58,25 @@ def _truth(**overrides: object) -> Signals:
         subscribers_now=14,
     )
     return replace(base, **overrides)
+
+
+class TestWindow:
+    @pytest.mark.parametrize("hour", [0, 12, 23])
+    def test_the_widest_window_starts_inside_processed_webhooks_retention(self, hour: int) -> None:
+        """A start older than the 30-day TTL counts PostHog events whose deliveries already expired."""
+        now = datetime(2026, 10, 8, hour, 59, tzinfo=UTC)
+
+        window = Window.last_days(MAX_WINDOW_DAYS, now)
+
+        assert window.start >= now - timedelta(days=30)
+
+    def test_the_window_is_whole_utc_days_ending_at_today(self) -> None:
+        window = Window.last_days(2, datetime(2026, 10, 8, 15, 0, tzinfo=UTC))
+
+        assert (window.start, window.end) == (
+            datetime(2026, 10, 6, tzinfo=UTC),
+            datetime(2026, 10, 8, tzinfo=UTC),
+        )
 
 
 class TestPostHogSide:

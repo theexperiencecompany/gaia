@@ -31,8 +31,10 @@ from shared.py.analytics.catalog.support import SupportFormSubmitted
 from .mongo import Document
 from .posthog_api import PostHogReader
 
-# processed_webhooks rows expire after 30 days, so a longer window has no truth to compare.
-MAX_WINDOW_DAYS = 30
+# processed_webhooks rows expire 30 days after processed_at (its TTL index).
+WEBHOOK_RETENTION_DAYS = 30
+# Whole days end at today's midnight, so one day less keeps the start inside retention at any hour.
+MAX_WINDOW_DAYS = WEBHOOK_RETENTION_DAYS - 1
 # Provider-reported cost: the ledger and PostHog may round differently per call.
 COST_TOLERANCE = 0.005
 LLM_GENERATION_EVENT = "$ai_generation"

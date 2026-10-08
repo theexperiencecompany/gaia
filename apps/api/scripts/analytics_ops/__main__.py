@@ -136,7 +136,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=range(1, reconcile.MAX_WINDOW_DAYS + 1),
         default=reconcile.MAX_WINDOW_DAYS,
         metavar=f"1..{reconcile.MAX_WINDOW_DAYS}",
-        help="whole UTC days up to today (processed_webhooks keeps 30)",
+        help="whole UTC days up to today (at most 29: processed_webhooks keeps 30)",
     )
     paid = add("backfill-paid-status", cmd_paid_status, backfill_paid_status.__doc__ or "")
     paid.add_argument("--apply", action="store_true", help="send the $set calls")
