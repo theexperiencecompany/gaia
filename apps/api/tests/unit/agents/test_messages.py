@@ -276,7 +276,7 @@ class TestContentPriority:
                 attachments=MessageAttachments(selected_workflow=workflow),
             )
 
-        mock_wf.assert_awaited_once()
+        mock_wf.assert_awaited_once_with(workflow, "uid", None, "run it")
         # result[-1] is the current-time message; the task is second-to-last.
         assert result[-2].content == "WORKFLOW OUTPUT"
 
@@ -468,8 +468,38 @@ class TestFileContext:
 
         # Comms suppresses the processing guide — that lane can't act on files.
         mock_files.assert_called_once_with(files_data, ["f1"], None, include_processing_guide=False)
-        assert "Uploaded Files" in result[-2].content
-        assert result[-2].content.startswith("check this")
+        assert result[-2].content == "check this\n\nUploaded Files:\n- Name: test.txt Id: f1"
+
+    @pytest.mark.asyncio
+    async def test_stored_descriptions_reach_the_files_list_for_this_conversation(self) -> None:
+        files_data = [
+            FileData(fileId="f1", url="https://example.com/f1", filename="a.txt"),
+            FileData(fileId="f2", url="https://example.com/f2", filename="b.txt"),
+        ]
+        p = _patches(_Returns(files_str="FILES"))
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"] as mock_files,
+            patch(
+                "app.agents.core.messages.FileService.get_descriptions",
+                new_callable=AsyncMock,
+                return_value={"f1": "a quarterly report"},
+            ) as get_descriptions,
+        ):
+            await construct_langchain_messages(
+                query="check these",
+                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
+                attachments=MessageAttachments(
+                    files_data=files_data, currently_uploaded_file_ids=["f1", "f2"]
+                ),
+            )
+
+        get_descriptions.assert_awaited_once_with(["f1", "f2"], "uid-1")
+        assert [f.description for f in files_data] == ["a quarterly report", None]
+        mock_files.assert_called_once_with(
+            files_data, ["f1", "f2"], "conv-1", include_processing_guide=False
+        )
 
     @pytest.mark.asyncio
     async def test_no_files_when_ids_empty(self) -> None:
@@ -591,7 +621,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(
-                ValueError, match="No human message, selected tool or uploaded file"
+                ValueError, match=r"^No human message, selected tool or uploaded file$"
             ):
                 await construct_langchain_messages(
                     query="",
