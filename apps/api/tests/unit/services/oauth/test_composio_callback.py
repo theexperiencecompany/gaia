@@ -268,9 +268,12 @@ class TestCompleteComposioConnectionSuccess:
         mock_config.return_value = _integration()
         mock_repo.has_connected_before.side_effect = PyMongoError("mongo down")
 
-        outcome = await complete_composio_connection(
-            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
-        )
+        with patch("app.services.integrations.user_integration_status.log") as status_log:
+            outcome = await complete_composio_connection(
+                "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
+            )
+
+        assert status_log.warning.call_args.kwargs["integration_id"] == "gmail"
 
         assert outcome == ConnectionCompleted(
             user_id=USER_ID, integration_id="gmail", provider="google"
