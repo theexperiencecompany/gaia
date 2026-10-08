@@ -122,11 +122,13 @@ def apply_until_settled(
 
     A billing write that lands between the read and the send sets its newer
     state first; the resend puts it back on top of the older one this run sent.
+    Each send is delivered before the re-read, or a write after it goes unseen.
     """
     sent = {state.user_id.distinct_id: state for state in states}
     pending = states
     for _ in range(SETTLE_ROUNDS):
         apply(sender, pending)
+        sender.flush()
         pending = [
             state
             for state in reread()

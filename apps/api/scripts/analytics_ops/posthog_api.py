@@ -131,6 +131,15 @@ class Sender:
     def __enter__(self) -> Sender:
         return self
 
+    def _failure_message(self) -> str:
+        return f"{len(self.failures)} PostHog upload(s) failed; first: {self.failures[0]!r}"
+
+    def flush(self) -> None:
+        """Block until every queued message is uploaded; exit 1 if any upload failed."""
+        self.client.flush(timeout_seconds=None)
+        if self.failures:
+            raise SystemExit(self._failure_message())
+
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
@@ -145,7 +154,7 @@ class Sender:
         self.client.shutdown()
         if not self.failures:
             return
-        message = f"{len(self.failures)} PostHog upload(s) failed; first: {self.failures[0]!r}"
+        message = self._failure_message()
         if exc is not None:
             print(message, file=sys.stderr)
             return

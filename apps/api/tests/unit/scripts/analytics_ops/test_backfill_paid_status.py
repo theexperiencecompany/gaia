@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 from scripts.analytics_ops.backfill_paid_status import (
     PERSON_STATE_HOGQL,
     SETTLE_ROUNDS,
+    PaidState,
     apply,
     apply_until_settled,
     latest_states,
@@ -153,6 +155,45 @@ class TestSettle:
         apply_until_settled(recording_sender, states, lambda: states)
 
         assert len(sent) == 1
+
+    def test_each_send_is_delivered_before_mongo_is_read_again(
+        self, recording_sender: Sender
+    ) -> None:
+        """A re-read before the queued $set lands misses a billing write that lands after it."""
+        order: list[str] = []
+        states = latest_states([_row(ALICE, "active")])
+
+        def reread() -> list[PaidState]:
+            order.append("reread")
+            return states
+
+        with (
+            patch.object(
+                recording_sender.client, "set", side_effect=lambda **_: order.append("set")
+            ),
+            patch.object(
+                recording_sender.client, "flush", side_effect=lambda **_: order.append("flush")
+            ),
+        ):
+            apply_until_settled(recording_sender, states, reread)
+
+        assert order == ["set", "flush", "reread"]
+
+    def test_a_failed_upload_stops_the_run_before_mongo_is_read_again(
+        self, recording_sender: Sender
+    ) -> None:
+        reread = MagicMock()
+
+        def fail_upload(**_: object) -> None:
+            recording_sender.failures.append(ConnectionError("posthog down"))
+
+        with (
+            patch.object(recording_sender.client, "flush", side_effect=fail_upload),
+            pytest.raises(SystemExit, match="1 PostHog upload\\(s\\) failed"),
+        ):
+            apply_until_settled(recording_sender, latest_states([_row(ALICE, "active")]), reread)
+
+        reread.assert_not_called()
 
     def test_a_state_that_never_settles_stops_the_run(self, recording_sender: Sender) -> None:
         flips = iter(
