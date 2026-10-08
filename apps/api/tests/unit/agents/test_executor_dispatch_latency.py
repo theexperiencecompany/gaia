@@ -696,7 +696,7 @@ class TestResumeForwarding:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "release_resume_dispatch", AsyncMock()),
+            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
             patch("app.services.analytics_service.capture_event"),
         ):
             await run_executor_background(
@@ -707,3 +707,22 @@ class TestResumeForwarding:
             )
 
         assert execute.await_args.args[3] is sentinel
+        # A resume held the conversation's resume slot; finishing frees it.
+        release.assert_awaited_once_with("conv-1")
+
+    async def test_a_fresh_run_frees_no_resume_slot(self) -> None:
+        with (
+            patch.object(
+                er, "_execute_executor", AsyncMock(return_value=_ExecutorResult("done", "final"))
+            ),
+            patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
+            patch.object(er, "release_lock_if_owned", AsyncMock()),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
+            patch("app.services.analytics_service.capture_event"),
+        ):
+            await run_executor_background(
+                run=_run("exec-fresh"), task="do the thing", configurable={}
+            )
+
+        release.assert_not_awaited()
