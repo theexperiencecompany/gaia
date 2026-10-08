@@ -10,6 +10,7 @@ from app.models.agent_config import (
     AgentConfigurableView,
     agent_configurable,
     read_agent_configurable,
+    read_run_metadata,
 )
 
 
@@ -58,3 +59,15 @@ class TestReadAgentConfigurable:
         absent = read_agent_configurable({CONFIGURABLE_KEY: {}})
         assert "session_id" in carried.model_fields_set
         assert "session_id" not in absent.model_fields_set
+
+
+class TestReadRunMetadata:
+    def test_no_config_at_all_reads_as_no_owner(self) -> None:
+        assert read_run_metadata(None).user_id is None
+
+    def test_a_config_without_metadata_reads_as_no_owner(self) -> None:
+        assert read_run_metadata({CONFIGURABLE_KEY: {"user_id": "u1"}}).user_id is None
+
+    def test_the_stamped_owner_is_read_and_langchains_own_keys_are_ignored(self) -> None:
+        metadata = {"user_id": "u1", "ls_provider": "openai"}
+        assert read_run_metadata({"metadata": metadata}).user_id == "u1"
