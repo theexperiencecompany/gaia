@@ -10,9 +10,11 @@ from arq.connections import RedisSettings
 from app.config.settings import settings
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -96,7 +98,9 @@ class BaseSchedulerService(ABC):
         task = await self.get_task(task_id)
         if not task:
             log.error("Task not found", task_id=task_id)
-            return TaskExecutionResult(success=False, message=f"Task {task_id} not found")
+            return TaskExecutionResult(
+                outcome=TaskOutcome.FAILED, message=f"Task {task_id} not found"
+            )
 
         # Claim before executing, never read-then-write: two ARQ jobs for one task
         # is ordinary (startup scan + re-arm to a fresh now+120s), and a
@@ -104,7 +108,7 @@ class BaseSchedulerService(ABC):
         if not await self.claim_task_for_execution(task_id, expected_occurrence):
             log.warning("Task already claimed by another run", task_id=task_id)
             return TaskExecutionResult(
-                success=False, message=f"Task {task_id} is not in scheduled status"
+                outcome=TaskOutcome.FAILED, message=f"Task {task_id} is not in scheduled status"
             )
 
         log.info("Processing task", task_id=task_id)
@@ -118,10 +122,14 @@ class BaseSchedulerService(ABC):
                 "Failed to execute task", task_id=task_id, error=str(e), error_type=type(e).__name__
             )
             execution_result = TaskExecutionResult(
-                success=False, message=f"Task execution failed: {e!s}"
+                outcome=TaskOutcome.FAILED, message=f"Task execution failed: {e!s}"
             )
 
-        if task.repeat:
+        if task.repeat and execution_result.outcome is TaskOutcome.ENTITLEMENT_BLOCKED:
+            # Re-arming a blocked series fires the paywall again every tick, forever.
+            await self.pause_for_reason(task, DeactivationReason.SUBSCRIPTION_LAPSED)
+            log.info("Paused recurring task: owner is not entitled", task_id=task_id)
+        elif task.repeat:
             # Recurring tasks advance to the next occurrence on success AND failure:
             # a transient error must not silently kill the series (mirrors the workflow
             # executor). max_occurrences / stop_after still terminate the series.
@@ -242,35 +250,50 @@ class BaseSchedulerService(ABC):
         for task in await self.find_stale_executing(cutoff):
             if not task.id:
                 continue
-            schedule_tz = Timezone.parse(self._recurrence_timezone(task))
-            # A one-shot has no repeat: return it to SCHEDULED at its original
-            # time so the due-scan picks it up on the next pass, rather than
-            # dropping it for want of a next occurrence.
-            next_run = get_next_run_time(task.repeat, now, schedule_tz) if task.repeat else None
-
-            update_fields: dict[str, Any] = {"scheduled_at": next_run or task.scheduled_at}
-            trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
-            if next_run is not None and trigger_config is not None:
-                update_fields["trigger_config.next_run"] = next_run
-
-            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
-            rearm_at = next_run or task.scheduled_at
-            if rearm_at is not None:
-                await self.reschedule_task(task.id, rearm_at)
-
-            updated_at = getattr(task, "updated_at", None)
-            if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=UTC)
-            log.warning(
-                "Reaped task stuck in EXECUTING; reset to SCHEDULED",
-                task_id=task.id,
-                scheduler_class=self.__class__.__name__,
-                stuck_seconds=int((now - updated_at).total_seconds()) if updated_at else -1,
-                next_run=rearm_at,
-            )
+            try:
+                await self._reap(task.id, task, now)
+            except Exception as e:
+                # One unrecoverable row must not strand every other wedged task behind it.
+                log.error(
+                    "Could not reap task stuck in EXECUTING",
+                    task_id=task.id,
+                    scheduler_class=self.__class__.__name__,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                continue
             reaped += 1
 
         return reaped
+
+    async def _reap(self, task_id: str, task: BaseScheduledTask, now: datetime) -> None:
+        """Return one wedged task to SCHEDULED and re-enqueue it."""
+        schedule_tz = Timezone.parse(self._recurrence_timezone(task))
+        # A one-shot has no repeat: return it to SCHEDULED at its original
+        # time so the due-scan picks it up on the next pass, rather than
+        # dropping it for want of a next occurrence.
+        next_run = get_next_run_time(task.repeat, now, schedule_tz) if task.repeat else None
+
+        update_fields: dict[str, Any] = {"scheduled_at": next_run or task.scheduled_at}
+        trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+        if next_run is not None and trigger_config is not None:
+            update_fields["trigger_config.next_run"] = next_run
+
+        await self.update_task_status(task_id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        rearm_at = next_run or task.scheduled_at
+        if rearm_at is not None:
+            await self.reschedule_task(task_id, rearm_at)
+
+        updated_at = getattr(task, "updated_at", None)
+        if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=UTC)
+        log.warning(
+            "Reaped task stuck in EXECUTING; reset to SCHEDULED",
+            task_id=task_id,
+            scheduler_class=self.__class__.__name__,
+            stuck_seconds=int((now - updated_at).total_seconds()) if updated_at else -1,
+            next_run=rearm_at,
+        )
 
     @staticmethod
     def _should_continue_recurring(
@@ -425,6 +448,10 @@ class BaseSchedulerService(ABC):
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""
+
+    @abstractmethod
+    async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:
+        """Take a task out of rotation with a system reason the matching resume path looks for."""
 
     @abstractmethod
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:

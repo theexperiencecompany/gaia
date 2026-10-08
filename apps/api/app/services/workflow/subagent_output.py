@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import TriggerType
+from app.utils.schedule import RecurringSchedule
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -54,9 +55,11 @@ class FinalizedOutput(BaseModel):
     trigger_type: Literal["manual", "scheduled", "integration"] = Field(
         description="When the workflow runs"
     )
-    cron_expression: str | None = Field(
+    cron_expression: RecurringSchedule | None = Field(
         default=None,
-        description="Cron expression for scheduled triggers (in user's local time)",
+        description=(
+            "5-field cron for scheduled triggers (in user's local time); fires at most once an hour"
+        ),
     )
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"

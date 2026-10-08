@@ -3977,7 +3977,7 @@ export interface paths {
         };
         /**
          * Validate Cron Endpoint
-         * @description Validate a cron expression and preview its next few run times.
+         * @description Check a cron expression against the recurring-schedule rule and preview its next runs.
          */
         get: operations["reminders_validate_cron_endpoint"];
         put?: never;
@@ -7669,7 +7669,7 @@ export interface components {
         CronValidationResponse: {
             /**
              * Error
-             * @description Why the expression could not be evaluated, if it raised
+             * @description Why the expression is not an acceptable schedule
              */
             error?: string | null;
             /**
@@ -7682,9 +7682,11 @@ export interface components {
              * @description ISO timestamps of the next few runs; empty unless the expression is valid
              */
             next_runs?: string[];
+            /** @description Machine-readable reason the expression was refused */
+            reason?: components["schemas"]["ScheduleRejection"] | null;
             /**
              * Valid
-             * @description Whether the expression parses as a valid cron
+             * @description Whether the expression is an acceptable recurring schedule
              */
             valid: boolean;
         };
@@ -7704,12 +7706,13 @@ export interface components {
         };
         /**
          * DeactivationReason
-         * @description Why a workflow was deactivated by the system, so an automatic resume can tell
-         *     its own pauses apart from a workflow the user deliberately switched off. A
-         *     user-initiated deactivation records no reason at all.
+         * @description Why the system paused a reminder or deactivated a workflow.
+         *
+         *     An automatic resume only touches tasks carrying the reason it owns, so a task
+         *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -12338,6 +12341,12 @@ export interface components {
          */
         ScheduledTaskStatus: "scheduled" | "executing" | "completed" | "failed" | "cancelled" | "paused";
         /**
+         * ScheduleRejection
+         * @description Why a recurring schedule was refused; the value is the machine-readable reason code.
+         * @enum {string}
+         */
+        ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
          * SearchIntegrationItem
          * @description Integration item in search results.
          */
@@ -13552,7 +13561,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron expression that fires at most once an hour. Always evaluated in the user's current timezone (user.timezone).
              */
             recurrence?: string | null;
             /**
@@ -15731,6 +15740,7 @@ export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaR
 export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfilesResponse'];
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
+export type ScheduleRejection = components['schemas']['ScheduleRejection'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];

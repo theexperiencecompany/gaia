@@ -49,6 +49,20 @@ ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000
 # it on every retry; two fifths of that cap leaves room for the rest of the prompt.
 CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
 
+# Tracked-todo recurrence shortcuts. Intervals step from now (drift is fine);
+# anchored steps keep the first fire's wall-clock time.
+TODO_INTERVAL_RECURRENCES: Final[dict[str, timedelta]] = {
+    "every_4h": timedelta(hours=4),
+    "every_1h": timedelta(hours=1),
+}
+TODO_ANCHORED_RECURRENCES: Final[dict[str, timedelta]] = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+}
+TODO_RECURRENCE_SHORTCUTS: Final[frozenset[str]] = frozenset(
+    TODO_INTERVAL_RECURRENCES.keys() | TODO_ANCHORED_RECURRENCES.keys()
+)
+
 # How far past its stored scheduled_at a scheduled fire may land and still run.
 # ARQ fires a deferred job at its defer time; a fire outside this window is a
 # job left behind by a reschedule (ARQ cannot cancel it) and is dropped.

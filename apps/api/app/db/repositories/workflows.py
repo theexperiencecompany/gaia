@@ -27,9 +27,8 @@ from app.constants.cache import (
 )
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
-from app.models.scheduler_models import ScheduledTaskStatus
+from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
 from app.models.workflow_models import (
-    DeactivationReason,
     PublicWorkflowRow,
     SystemWorkflowDefinition,
     TriggerType,

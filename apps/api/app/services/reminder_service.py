@@ -15,13 +15,16 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
+from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -120,6 +123,45 @@ class ReminderScheduler(BaseSchedulerService):
 
         return True
 
+    async def resume(self, reminder: ReminderModel) -> bool:
+        """Return a paused reminder to SCHEDULED at its next fire in its own timezone.
+
+        Raises InvalidScheduleError when its stored schedule breaks the rule; only
+        the user can fix that, so it stays paused.
+        """
+        if not reminder.id:
+            raise ValueError("Reminder must have an ID to resume")
+        update = ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
+        if reminder.repeat:
+            validate_recurring_schedule(reminder.repeat)
+            update.scheduled_at = get_next_run_time(
+                reminder.repeat, tz=Timezone.parse(reminder.timezone)
+            )
+        return await self.update_reminder(reminder.id, update, reminder.user_id)
+
+    async def resume_paused_for(self, user_id: str, reason: DeactivationReason) -> int:
+        """Resume every reminder the system paused for reason; return the count resumed.
+
+        One that cannot resume is logged and the rest still run; a broken
+        schedule is re-marked INVALID_SCHEDULE so no later resume retries it.
+        """
+        resumed = 0
+        for reminder in await reminder_repository.find_paused_for_reason(user_id, reason):
+            try:
+                await self.resume(reminder)
+            except InvalidScheduleError as e:
+                await self.pause_for_reason(reminder, DeactivationReason.INVALID_SCHEDULE)
+                log.warning(
+                    "Paused reminder kept paused: its schedule breaks the rule",
+                    reminder_id=reminder.id,
+                    user_id=user_id,
+                    schedule_rejection=e.reason.value,
+                )
+                continue
+            resumed += 1
+        log.set(reminders_resumed=resumed, reminders_resume_reason=reason.value)
+        return resumed
+
     async def list_user_reminders(
         self,
         user_id: str,
@@ -155,15 +197,25 @@ class ReminderScheduler(BaseSchedulerService):
 
             # Ensure task is a ReminderModel
             if not isinstance(task, ReminderModel):
-                return TaskExecutionResult(success=False, message="Task is not a ReminderModel")
+                return TaskExecutionResult(
+                    outcome=TaskOutcome.FAILED, message="Task is not a ReminderModel"
+                )
 
-            await execute_reminder_by_agent(task)
+            outcome = await execute_reminder_by_agent(task)
 
             return TaskExecutionResult(
-                success=True, message=f"Successfully executed reminder {task.id}"
+                outcome=outcome, message=f"Reminder {task.id}: {outcome.value}"
             )
         except Exception as e:
-            return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
+            return TaskExecutionResult(
+                outcome=TaskOutcome.FAILED, message=f"Failed to execute reminder: {e!s}"
+            )
+
+    async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:
+        """Pause the reminder with a system reason, so the resume that owns reason can find it."""
+        if not task.id:
+            raise ValueError("Reminder must have an ID to pause")
+        await reminder_repository.set_status(task.id, ReminderStatus.PAUSED, pause_reason=reason)
 
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
         """Reminders wedged in EXECUTING since before cutoff."""

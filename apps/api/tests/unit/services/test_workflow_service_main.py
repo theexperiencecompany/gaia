@@ -7,11 +7,10 @@ from langchain_core.exceptions import OutputParserException
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.models.scheduler_models import ScheduledTaskStatus
+from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
 from app.models.workflow_models import (
     UNSET,
     CreateWorkflowRequest,
-    DeactivationReason,
     GeneratedPromptOutput,
     GeneratedStep,
     GeneratedWorkflow,

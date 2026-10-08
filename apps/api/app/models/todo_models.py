@@ -2,13 +2,26 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.todos import TODO_RECURRENCE_SHORTCUTS
 from app.db.repositories.base import UserScopedDocument
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
+from app.utils.schedule import validate_recurring_schedule
+
+
+def validate_todo_recurrence(recurrence: str) -> str:
+    """Accept a recurrence shortcut, else hold the value to the recurring-schedule rule."""
+    if recurrence in TODO_RECURRENCE_SHORTCUTS:
+        return recurrence
+    return validate_recurring_schedule(recurrence)
+
+
+#: A todo recurrence on its way in; stored rows stay plain str so a legacy one still loads.
+TodoRecurrence = Annotated[str, AfterValidator(validate_todo_recurrence)]
 
 
 class Priority(str, Enum):
@@ -91,6 +104,14 @@ class TodoBase(BaseModel):
 class TodoModel(TodoBase):
     """Model for creating todos"""
 
+    recurrence: TodoRecurrence | None = Field(
+        default=None,
+        description=(
+            "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron "
+            "expression that fires at most once an hour. Always evaluated in the user's "
+            "current timezone (user.timezone)."
+        ),
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -113,7 +134,7 @@ class TodoUpdateRequest(BaseModel):
     workflow_id: str | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
-    recurrence: str | None = None
+    recurrence: TodoRecurrence | None = None
     expires_at: datetime | None = None
     notify_on_run: bool | None = None
 
@@ -483,7 +504,7 @@ class TodoUpdate(BaseModel):
     workflow_activated: bool | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
-    recurrence: str | None = None
+    recurrence: TodoRecurrence | None = None
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None

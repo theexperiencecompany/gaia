@@ -29,8 +29,11 @@ const scheduleTriggerConfigSchema = z.object({
     .string()
     .trim()
     .min(1, "Cron expression is required")
-    .refine((value) => describeCron(value).isValid, {
-      message: "Invalid cron expression",
+    .superRefine((value, ctx) => {
+      const { isValid, error } = describeCron(value);
+      if (!isValid && error) {
+        ctx.addIssue({ code: "custom", message: error });
+      }
     }),
   timezone: z
     .string()

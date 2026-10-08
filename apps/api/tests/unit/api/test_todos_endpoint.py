@@ -504,6 +504,39 @@ class TestUpdateTodoReschedule:
         schedule.assert_awaited_once_with("todo-1", when)
 
 
+class TestUpdateTodoRecurrence:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("recurrence", "message"),
+        [
+            ("* * * * *", "Schedules can repeat at most once an hour."),
+            ("*/5 * * * *", "Schedules can repeat at most once an hour."),
+            ("0 6 30 * * *", "Use 5 fields: minute hour day month weekday."),
+        ],
+    )
+    async def test_a_refused_schedule_never_reaches_the_todo(
+        self, client: AsyncClient, recurrence: str, message: str
+    ) -> None:
+        update = AsyncMock(return_value=_todo_response())
+        with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": recurrence})
+
+        assert resp.status_code == 422
+        assert message in resp.text
+        update.assert_not_awaited()
+
+    @pytest.mark.parametrize("recurrence", ["0 * * * *", "0 9 * * 1-5", "daily"])
+    async def test_an_hourly_or_slower_schedule_is_saved(
+        self, client: AsyncClient, recurrence: str
+    ) -> None:
+        update = AsyncMock(return_value=_todo_response())
+        with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": recurrence})
+
+        assert resp.status_code == 200
+        assert update.await_args.args[1].recurrence == recurrence
+
+
 class TestUpdateTodoTimeline:
     """A user's change to a tracked todo's schedule lands on its timeline, attributed to them."""
 

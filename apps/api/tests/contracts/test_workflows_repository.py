@@ -17,9 +17,8 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.workflows import WorkflowsRepository
-from app.models.scheduler_models import ScheduledTaskStatus
+from app.models.scheduler_models import DeactivationReason, ScheduledTaskStatus
 from app.models.workflow_models import (
-    DeactivationReason,
     SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,

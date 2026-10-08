@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
+import time_machine
 
+from app.models.reminder_models import ReminderDocument
 from app.services.analytics_service import AnalyticsEvents
 from tests.conftest import FAKE_USER
 
@@ -21,6 +23,7 @@ from tests.conftest import FAKE_USER
 API = "/api/v1/reminders"
 USER_ID = FAKE_USER.user_id
 ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture_context_event"
+REMINDER_REPO = "app.services.reminder_service.reminder_repository"
 
 
 @pytest.fixture(autouse=True)
@@ -484,6 +487,34 @@ class TestResumeReminder:
             resp = await client.post(f"{API}/rem_1/resume")
         assert resp.status_code == 200
 
+    @pytest.mark.regression
+    @time_machine.travel(datetime(2026, 10, 8, 12, 0, tzinfo=UTC), tick=False)
+    async def test_a_recurring_reminder_resumes_at_its_next_fire_in_its_own_zone(
+        self, client: AsyncClient
+    ) -> None:
+        paused = ReminderDocument(
+            id="64b64b64b64b64b64b64b64b",
+            user_id=USER_ID,
+            agent="static",
+            repeat="0 9 * * *",
+            timezone="Asia/Kolkata",
+            status="paused",
+            scheduled_at=datetime(2026, 9, 1, 3, 30, tzinfo=UTC),
+            payload={"title": "Meds", "body": "Take your meds"},
+        )
+        update = AsyncMock(return_value=paused)
+        with (
+            patch(f"{REMINDER_REPO}.get_for_user", AsyncMock(return_value=paused)),
+            patch(f"{REMINDER_REPO}.update_for_user", update),
+            patch("app.api.v1.endpoints.reminders.reminder_scheduler.reschedule_task", AsyncMock()),
+        ):
+            resp = await client.post(f"{API}/{paused.id}/resume")
+
+        assert resp.status_code == 200
+        written = update.await_args.args[2]
+        # 12:00Z is 17:30 IST, so the next 09:00 IST is 03:30Z tomorrow, not 09:00Z.
+        assert written.scheduled_at == datetime(2026, 10, 9, 3, 30, tzinfo=UTC)
+
     async def test_resume_not_paused(self, client: AsyncClient) -> None:
         """Resuming a reminder that isn't paused should fail with 400."""
         active_reminder = _reminder_model("rem_1", status="scheduled")
@@ -518,42 +549,37 @@ class TestResumeReminder:
 
 
 class TestCronValidate:
-    """GET /api/v1/reminders/cron/validate."""
+    """GET /api/v1/reminders/cron/validate gives the same verdict and reason as every entry point."""
 
     async def test_valid_cron_expression(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.reminders.validate_cron_expression",
-            return_value=True,
-        ):
-            with patch(
-                "app.api.v1.endpoints.reminders.calculate_next_occurrences",
-                return_value=[FUTURE],
-            ):
-                resp = await client.get(
-                    f"{API}/cron/validate",
-                    params={"expression": "0 9 * * *"},
-                )
+        resp = await client.get(f"{API}/cron/validate", params={"expression": "0 9 * * *"})
+
         assert resp.status_code == 200
         data = resp.json()
         assert data["expression"] == "0 9 * * *"
         assert data["valid"] is True
-        assert data["next_runs"] == [FUTURE.isoformat()]
+        assert len(data["next_runs"]) == 5
         assert data["error"] is None
 
-    async def test_invalid_cron_expression(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.reminders.validate_cron_expression",
-            return_value=False,
-        ):
-            resp = await client.get(
-                f"{API}/cron/validate",
-                params={"expression": "not-a-cron"},
-            )
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("expression", "reason", "message"),
+        [
+            ("* * * * *", "too_frequent", "Schedules can repeat at most once an hour."),
+            ("0 6 30 * * *", "wrong_field_count", "Use 5 fields: minute hour day month weekday."),
+        ],
+    )
+    async def test_a_refused_schedule_reports_why(
+        self, client: AsyncClient, expression: str, reason: str, message: str
+    ) -> None:
+        resp = await client.get(f"{API}/cron/validate", params={"expression": expression})
+
         assert resp.status_code == 200
         data = resp.json()
-        assert data["expression"] == "not-a-cron"
         assert data["valid"] is False
         assert data["next_runs"] == []
+        assert data["error"] == message
+        assert data["reason"] == reason
 
     async def test_cron_validate_missing_expression(self, client: AsyncClient) -> None:
         resp = await client.get(f"{API}/cron/validate")

@@ -186,23 +186,66 @@ export interface CronValidation {
   error?: string;
 }
 
-// Parse an arbitrary cron expression into a human-readable description,
-// reporting invalid expressions. Handles step/range/list syntax that the
-// simple parser above treats as opaque "custom" expressions.
+// The server's recurring-schedule rule (apps/api/app/utils/schedule.py), mirrored
+// so the form refuses what the API would. The messages match the API's verbatim.
+const CRON_FIELD_COUNT = 5;
+const LAST_MINUTE = 59;
+const SCHEDULE_TOO_FREQUENT = "Schedules can repeat at most once an hour.";
+const SCHEDULE_WRONG_FIELD_COUNT =
+  "Use 5 fields: minute hour day month weekday.";
+
+const isMinute = (value: number): boolean =>
+  Number.isInteger(value) && value >= 0 && value <= LAST_MINUTE;
+
+// The minutes of the hour a cron minute field fires on; null when the field is
+// not plain numeric cron syntax, which cronstrue has already judged.
+const expandMinuteField = (field: string): Set<number> | null => {
+  const minutes = new Set<number>();
+  for (const part of field.split(",")) {
+    const [range, stepText] = part.split("/");
+    const step = stepText === undefined ? 1 : Number(stepText);
+    if (!Number.isInteger(step) || step < 1) return null;
+    const [startText, endText] = range.split("-");
+    const start = range === "*" ? 0 : Number(startText);
+    const end =
+      range === "*" || (endText === undefined && stepText !== undefined)
+        ? LAST_MINUTE
+        : Number(endText ?? startText);
+    if (!isMinute(start) || !isMinute(end) || start > end) return null;
+    for (let minute = start; minute <= end; minute += step) minutes.add(minute);
+  }
+  return minutes;
+};
+
+// Check a cron expression against the recurring-schedule rule and describe it in
+// plain English. cronstrue only describes; it reads a 6th field as seconds first,
+// the reverse of the server, so it never decides validity on its own.
 export const describeCron = (cron: string): CronValidation => {
-  if (!cron.trim()) {
+  const expression = cron.trim();
+  if (!expression) {
     return { isValid: false };
   }
 
+  const fields = expression.split(/\s+/);
+  if (fields.length !== CRON_FIELD_COUNT) {
+    return { isValid: false, error: SCHEDULE_WRONG_FIELD_COUNT };
+  }
+
+  let description: string;
   try {
-    const description = cronstrue.toString(cron, {
+    description = cronstrue.toString(expression, {
       throwExceptionOnParseError: true,
       verbose: false,
     });
-    return { isValid: true, description };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Invalid cron expression";
     return { isValid: false, error: message.replace(/^Error:\s*/, "") };
   }
+
+  const minutes = expandMinuteField(fields[0]);
+  if (minutes !== null && minutes.size !== 1) {
+    return { isValid: false, error: SCHEDULE_TOO_FREQUENT };
+  }
+  return { isValid: true, description };
 };

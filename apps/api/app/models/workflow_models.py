@@ -5,10 +5,11 @@ Clean and lean workflow models for GAIA workflow system.
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 import uuid
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -18,10 +19,15 @@ from pydantic import (
 )
 
 from app.db.repositories.base import MongoDocument
-from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
+from app.models.scheduler_models import (
+    BaseScheduledTask,
+    DeactivationReason,
+    ScheduledTaskStatus,
+)
 from app.models.trigger_configs import TriggerConfigData
 from app.schemas.common import ResponseModel
-from app.utils.cron_utils import get_next_run_time, validate_cron_expression
+from app.utils.cron_utils import get_next_run_time
+from app.utils.schedule import validate_recurring_schedule
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -44,20 +50,6 @@ class TriggerType(str, Enum):
     INTEGRATION = "integration"
     SCHEDULED_TODO = "scheduled_todo"
     TODO_TRIGGER = "todo_trigger"
-
-
-class DeactivationReason(str, Enum):
-    """Why a workflow was deactivated by the system, so an automatic resume can tell
-    its own pauses apart from a workflow the user deliberately switched off. A
-    user-initiated deactivation records no reason at all."""
-
-    USER_DORMANT = "user_dormant"
-    INTEGRATION_EXPIRED = "integration_expired"
-    SUBSCRIPTION_LAPSED = "subscription_lapsed"
-    #: Set only when a run actually tries and finds the integration missing —
-    #: unlike INTEGRATION_EXPIRED (a live connection dying, via Composio
-    #: webhook). Not predicted from declared steps at authoring time.
-    INTEGRATION_NEVER_CONNECTED = "integration_never_connected"
 
 
 class IntegrationRef(BaseModel):
@@ -163,13 +155,17 @@ class TriggerConfig(BaseModel):
         self.next_run = self.calculate_next_run(base_time, user_timezone)
         return old_next_run != self.next_run
 
-    @field_validator("cron_expression")
-    @classmethod
-    def validate_cron_expression(cls, v: str | None) -> str | None:
-        if v is not None:
-            if not validate_cron_expression(v):
-                raise ValueError(f"Invalid cron expression: {v}")
-        return v
+
+def _require_valid_schedule(trigger_config: TriggerConfig) -> TriggerConfig:
+    """Apply the recurring-schedule rule to a trigger config a caller is writing."""
+    if trigger_config.cron_expression is not None:
+        validate_recurring_schedule(trigger_config.cron_expression)
+    return trigger_config
+
+
+#: A trigger config on its way in. Stored configs stay plain TriggerConfig so a
+#: legacy schedule that breaks the rule still loads and can be fixed.
+NewTriggerConfig = Annotated[TriggerConfig, AfterValidator(_require_valid_schedule)]
 
 
 class WorkflowCreator(TypedDict):
@@ -419,7 +415,7 @@ class CreateWorkflowRequest(BaseModel):
         pattern=r"^#[0-9a-fA-F]{6}$",
         description="Hex color for the user-chosen icon",
     )
-    trigger_config: TriggerConfig = Field(description="Trigger configuration")
+    trigger_config: NewTriggerConfig = Field(description="Trigger configuration")
     steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
@@ -494,7 +490,7 @@ class UpdateWorkflowRequest(BaseModel):
     icon: str | None = Field(default=None, max_length=64)
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
-    trigger_config: TriggerConfig | None = Field(default=None)
+    trigger_config: NewTriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)

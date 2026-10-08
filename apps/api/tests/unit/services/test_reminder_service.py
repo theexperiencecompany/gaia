@@ -19,10 +19,13 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
 )
 from app.services.reminder_service import ReminderScheduler
+from app.utils.schedule import InvalidScheduleError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -56,8 +59,13 @@ def mock_repo():
         patch(
             "app.services.reminder_service.reminder_repository.set_status", new_callable=AsyncMock
         ) as m_set_status,
+        patch(
+            "app.services.reminder_service.reminder_repository.find_paused_for_reason",
+            new_callable=AsyncMock,
+        ) as m_find_paused,
     ):
         yield SimpleNamespace(
+            find_paused_for_reason=m_find_paused,
             create=m_create,
             update_for_user=m_update,
             list_for_user=m_list,
@@ -451,11 +459,27 @@ class TestExecuteTask:
         with patch(
             "app.tasks.reminder_tasks.execute_reminder_by_agent",
             new_callable=AsyncMock,
+            return_value=TaskOutcome.EXECUTED,
         ):
             result = await scheduler.execute_task(reminder)
 
         assert isinstance(result, TaskExecutionResult)
         assert result.success is True
+
+    async def test_a_blocked_reminder_reports_the_block_not_a_success(
+        self, scheduler, sample_reminder_doc
+    ):
+        reminder = ReminderModel(**sample_reminder_doc)
+
+        with patch(
+            "app.tasks.reminder_tasks.execute_reminder_by_agent",
+            new_callable=AsyncMock,
+            return_value=TaskOutcome.ENTITLEMENT_BLOCKED,
+        ):
+            result = await scheduler.execute_task(reminder)
+
+        assert result.outcome is TaskOutcome.ENTITLEMENT_BLOCKED
+        assert result.success is False
 
     async def test_returns_failure_for_non_reminder_task(self, scheduler):
         mock_task = MagicMock(spec=BaseScheduledTask)
@@ -521,6 +545,66 @@ class TestUpdateTaskStatus:
         await scheduler.update_task_status(oid, ScheduledTaskStatus.CANCELLED, user_id=FAKE_USER_ID)
 
         assert mock_repo.set_status.call_args.kwargs["user_id"] == FAKE_USER_ID
+
+
+# ---------------------------------------------------------------------------
+# resume / resume_paused_for
+# ---------------------------------------------------------------------------
+
+
+class TestResume:
+    @time_machine.travel(datetime(2026, 10, 8, 12, 0, tzinfo=UTC), tick=False)
+    async def test_a_recurring_reminder_resumes_at_its_next_fire_in_its_own_zone(
+        self, scheduler, mock_repo, mock_scheduler_base
+    ):
+        reminder = _reminder_document(
+            status=ScheduledTaskStatus.PAUSED,
+            repeat="0 9 * * *",
+            timezone="Asia/Kolkata",
+            pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED,
+        )
+        mock_repo.update_for_user.return_value = reminder
+
+        assert await scheduler.resume(reminder) is True
+
+        update = mock_repo.update_for_user.call_args.args[2]
+        next_fire = datetime(2026, 10, 9, 3, 30, tzinfo=UTC)
+        assert update.status is ScheduledTaskStatus.SCHEDULED
+        assert update.scheduled_at == next_fire
+        assert "pause_reason" in update.model_fields_set and update.pause_reason is None
+        mock_scheduler_base[1].assert_awaited_once_with(reminder.id, new_scheduled_at=next_fire)
+
+    async def test_a_broken_schedule_is_refused_and_left_paused(self, scheduler, mock_repo):
+        reminder = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="* * * * *")
+
+        with pytest.raises(InvalidScheduleError):
+            await scheduler.resume(reminder)
+
+        mock_repo.update_for_user.assert_not_awaited()
+
+    async def test_activation_resumes_only_the_reminders_paused_for_the_subscription(
+        self, scheduler, mock_repo, mock_scheduler_base
+    ):
+        good = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="0 9 * * *")
+        broken = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="* * * * *")
+        mock_repo.find_paused_for_reason.return_value = [broken, good]
+        mock_repo.update_for_user.return_value = good
+
+        resumed = await scheduler.resume_paused_for(
+            FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+
+        assert resumed == 1
+        mock_repo.find_paused_for_reason.assert_awaited_once_with(
+            FAKE_USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        assert mock_repo.update_for_user.call_args.args[0] == good.id
+        # The broken one is re-marked so no later resume keeps retrying it.
+        mock_repo.set_status.assert_awaited_once_with(
+            broken.id,
+            ScheduledTaskStatus.PAUSED,
+            pause_reason=DeactivationReason.INVALID_SCHEDULE,
+        )
 
 
 # ---------------------------------------------------------------------------

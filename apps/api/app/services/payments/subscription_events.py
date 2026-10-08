@@ -4,7 +4,7 @@ Every source of a billing change — Dodo's webhooks, the user's own cancel
 request, payment verification reconciling against Dodo when the webhook never
 landed — is reduced to a SubscriptionEvent and applied here. Nothing else
 writes status, billing dates, the plan-cache drop, subscription:* analytics,
-or workflow pause/resume — three call sites each doing their own version is
+or workflow pause/resume and reminder resume — three call sites each doing their own version is
 how a recovered subscription was left lapsed and a replayed webhook
 double-counted an activation.
 
@@ -30,6 +30,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     SubscriptionUpdate,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.webhook_models import DodoSubscriptionData
 from app.services.analytics_service import (
     AnalyticsEvents,
@@ -38,6 +39,7 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
+from app.services.reminder_service import reminder_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
@@ -171,6 +173,20 @@ async def deactivate_workflows_safely(user_id: str) -> None:
             user_id=user_id,
         )
         await _queue_workflow_sync(user_id, SubscriptionWorkflowSync.PAUSE)
+
+
+async def resume_reminders_safely(user_id: str) -> None:
+    """Resume the reminders paused because this user was not paid. Never raises — see reactivate_workflows_safely."""
+    try:
+        await reminder_scheduler.resume_paused_for(user_id, DeactivationReason.SUBSCRIPTION_LAPSED)
+    except Exception as e:
+        # Nothing retries this; the user can still resume each reminder by hand.
+        log.error(
+            f"{LogTag.PAYMENT} Failed to resume reminders for restored subscription",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 async def send_welcome_email_safely(user_id: str) -> None:
@@ -383,6 +399,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
+    await resume_reminders_safely(user_id)
 
     log.info(f"{LogTag.PAYMENT} Subscription activated", subscription_id=data.subscription_id)
     return SubscriptionEventResult(SubscriptionEventOutcome.CREATED, user_id)
@@ -450,6 +467,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     _capture_transition(event, row.user_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
+        await resume_reminders_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
 

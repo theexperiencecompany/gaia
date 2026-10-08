@@ -34,6 +34,8 @@ from app.agents.prompts.todo_prompts import (
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     FAILED_LABEL,
+    TODO_ANCHORED_RECURRENCES,
+    TODO_INTERVAL_RECURRENCES,
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_RETRY_DELAY,
     TODO_SCHEDULE_FIRE_GRACE,
@@ -657,20 +659,12 @@ def _compute_next_run(
 
     now_utc = datetime.now(UTC)
 
-    interval_shortcuts: dict[str, timedelta] = {
-        "every_4h": timedelta(hours=4),
-        "every_1h": timedelta(hours=1),
-    }
-    if recurrence in interval_shortcuts:
+    if recurrence in TODO_INTERVAL_RECURRENCES:
         # Intervals are deltas from "now" — drift is acceptable/expected.
-        return now_utc + interval_shortcuts[recurrence]
+        return now_utc + TODO_INTERVAL_RECURRENCES[recurrence]
 
-    anchored_steps: dict[str, timedelta] = {
-        "daily": timedelta(days=1),
-        "weekly": timedelta(weeks=1),
-    }
-    if recurrence in anchored_steps:
-        step = anchored_steps[recurrence]
+    if recurrence in TODO_ANCHORED_RECURRENCES:
+        step = TODO_ANCHORED_RECURRENCES[recurrence]
         if anchor is None:
             # No anchor available — fall back to a plain delta from now.
             return now_utc + step

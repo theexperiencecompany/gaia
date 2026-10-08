@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.workflow_models import DeactivationReason
+from app.models.scheduler_models import DeactivationReason
 from app.services.workflow.subscription_pause import (
     SubscriptionWorkflowSyncIncomplete,
     deactivate_workflows_for_lapsed_subscription,

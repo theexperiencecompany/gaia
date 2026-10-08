@@ -1369,7 +1369,7 @@ Do NOT ask unnecessary questions:
   • "every Monday at 9am" → 0 9 * * 1
   • "weekdays at 6pm" → 0 18 * * 1-5
   • "every hour" → 0 * * * *
-  • "every 15 minutes" → */15 * * * *
+  • A schedule runs at most once an hour: "every 15 minutes" is refused, so offer hourly instead
   • "first of month at midnight" → 0 0 1 * *
   • "every Sunday at 10am" → 0 10 * * 0
   • "twice daily at 9am and 5pm" → 0 9,17 * * *

@@ -235,6 +235,17 @@ def mock_activation_workflow_reactivation():
 
 
 @pytest.fixture
+def mock_reminder_resume():
+    """Patch the resume of reminders paused for an unpaid subscription; opted into like mock_activation_workflow_reactivation."""
+    with patch(
+        "app.services.payments.subscription_events.reminder_scheduler.resume_paused_for",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        mock_fn.return_value = 0
+        yield mock_fn
+
+
+@pytest.fixture
 def webhook_service():
     """Create a PaymentWebhookService with a mocked webhook verifier."""
     with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:

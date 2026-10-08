@@ -10,16 +10,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
-from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.scheduling import SCHEDULE_REJECTION_SUGGESTION
+from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import read_agent_configurable
 from app.models.integrations.composio_hooks import RunMetadata
-from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.todo_models import (
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+    validate_todo_recurrence,
+)
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
     ConditionMatch,
@@ -43,10 +49,10 @@ from app.services.triggers.subscription_validation import validate_scope
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import CanvasSearchMatch, search_canvas_context
 from app.utils.cron_utils import get_next_run_time
+from app.utils.schedule import InvalidScheduleError
 from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
 
-_RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
 _NOTIFY_ON_RUN_DESC = (
     "Whether a scheduled or triggered run may message the user's chat app when it "
@@ -88,7 +94,7 @@ def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
 
 
 def _is_cron_expression(recurrence: str) -> bool:
-    return recurrence not in _RECURRENCE_SHORTCUTS
+    return recurrence not in TODO_RECURRENCE_SHORTCUTS
 
 
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
@@ -109,18 +115,8 @@ def _resolve_cron_first_fire(
 ) -> tuple[datetime | None, list[str], str | None]:
     """Validate a cron recurrence and compute first fire in the user's timezone."""
     notes: list[str] = []
-    try:
-        _croniter(recurrence)
-    except (ValueError, KeyError):
-        return (
-            None,
-            [],
-            (
-                f"Error: invalid recurrence '{recurrence}'. "
-                f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
-                "or a valid 5-field cron expression."
-            ),
-        )
+    if format_error := _validate_recurrence_format(recurrence):
+        return None, [], format_error
     # Cron is the source of truth; an explicit scheduled_at would be redundant.
     if scheduled_at:
         notes.append(
@@ -295,22 +291,14 @@ def _build_scheduled_at_update(
 
 
 def _validate_recurrence_format(recurrence: str) -> str | None:
-    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut.
-
-    _is_cron_expression is defined as "not a known shortcut", so the two cases
-    are exhaustive: anything that isn't a shortcut is validated as a cron
-    expression here — there is no separate "unknown shortcut-like string"
-    branch to fall through to.
-    """
-    if not _is_cron_expression(recurrence):
-        return None
+    """Return a user-facing error if recurrence is neither a known shortcut nor an acceptable schedule."""
     try:
-        _croniter(recurrence)
-    except (ValueError, KeyError):
+        validate_todo_recurrence(recurrence)
+    except InvalidScheduleError as e:
         return (
-            f"Error: invalid recurrence '{recurrence}'. "
-            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
-            "or a valid 5-field cron expression."
+            f"Error: invalid recurrence '{recurrence}'. {e} "
+            f"Use one of: {', '.join(sorted(TODO_RECURRENCE_SHORTCUTS))}, "
+            f"or a 5-field cron expression. {SCHEDULE_REJECTION_SUGGESTION}"
         )
     return None
 
@@ -552,7 +540,7 @@ async def create_tracked_todo(
     recurrence: Annotated[
         str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
-        "or a 5-field cron expression. "
+        "or a 5-field cron expression that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone: the backend handles "
         "the conversion. Just pass the cron in user-local wall-clock terms. "
         "Example: '0 9,20 * * *' fires at 9 AM and 8 PM in the user's timezone "
@@ -766,7 +754,8 @@ async def update_tracked_todo(
     ] = None,
     recurrence: Annotated[
         str | None,
-        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron. "
+        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron "
+        "that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone. "
         "Example: '0 9,20 * * *' = 9 AM and 8 PM daily in the user's tz. "
         "Set to empty string '' to clear.",

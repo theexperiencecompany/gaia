@@ -26,6 +26,7 @@ from app.templates.docstrings.reminder_tool_docs import (
     SEARCH_REMINDERS,
     UPDATE_REMINDER,
 )
+from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
@@ -42,7 +43,10 @@ async def create_reminder_tool(
     agent: Annotated[
         AgentType, "The agent type creating the reminder (static only)"
     ] = AgentType.STATIC,
-    repeat: Annotated[str | None, "Cron expression for recurring reminders"] = None,
+    repeat: Annotated[
+        str | None,
+        "5-field cron (minute hour day month weekday) for recurring reminders; fires at most once an hour",
+    ] = None,
     delay_seconds: Annotated[
         int | None,
         "Relative delay from NOW in seconds for 'in N minutes/hours/seconds' "
@@ -80,6 +84,8 @@ async def create_reminder_tool(
         user_id = configurable.get("user_id")
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
+        if repeat is not None:
+            validate_recurring_schedule(repeat)
 
         # Create the tool request model which handles all validation and conversion
         tool_request = CreateReminderToolRequest(
@@ -107,6 +113,9 @@ async def create_reminder_tool(
 
         return "Reminder created successfully"
 
+    except InvalidScheduleError as e:
+        log.warning(f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=e.reason.value)
+        return e.as_tool_error()
     except ValueError as e:
         log.error(f"{LogTag.TOOL} Validation error", error_type=type(e).__name__)
         return {"error": str(e)}
@@ -192,6 +201,17 @@ async def delete_reminder_tool(
         return {"error": str(e)}
 
 
+def _parse_tool_stop_after(stop_after: str, offset: str | None) -> datetime:
+    """Parse the agent's stop_after; it stays naive unless the user named an offset."""
+    try:
+        parsed = datetime.fromisoformat(stop_after.replace(" ", "T"))
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
+        ) from e
+    return parsed.replace(tzinfo=Timezone.parse(offset).tzinfo) if offset else parsed
+
+
 # Define update_reminder_tool
 @tool(parse_docstring=True)
 @with_rate_limiting("reminder_operations")
@@ -199,7 +219,10 @@ async def delete_reminder_tool(
 async def update_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder to update"],
-    repeat: Annotated[str | None, "Cron expression for recurring reminders (optional)"] = None,
+    repeat: Annotated[
+        str | None,
+        "5-field cron (minute hour day month weekday) for recurring reminders; fires at most once an hour (optional)",
+    ] = None,
     max_occurrences: Annotated[
         int | None, "Maximum number of times to run the reminder (optional)"
     ] = None,
@@ -227,34 +250,11 @@ async def update_reminder_tool(
         # avoid nulling fields this update never mentions.
         update = ReminderUpdate()
         if repeat is not None:
-            update.repeat = repeat
+            update.repeat = validate_recurring_schedule(repeat)
         if max_occurrences is not None:
             update.max_occurrences = max_occurrences
         if stop_after:
-            try:
-                # Parse the datetime string
-                dt = datetime.fromisoformat(stop_after.replace(" ", "T"))
-
-                # Handle timezone based on the rules
-                if stop_after_timezone_offset:
-                    # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = dt.replace(
-                        tzinfo=Timezone.parse(stop_after_timezone_offset).tzinfo
-                    )
-                else:
-                    # Absolute time with no timezone - no timezone info
-                    processed_stop_after = dt
-
-                update.stop_after = processed_stop_after
-            except ValueError as e:
-                log.error(
-                    f"{LogTag.TOOL} Invalid stop_after format",
-                    stop_after=stop_after,
-                    error_type=type(e).__name__,
-                )
-                return {
-                    "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
-                }
+            update.stop_after = _parse_tool_stop_after(stop_after, stop_after_timezone_offset)
         if payload is not None:
             update.payload = StaticReminderPayload.model_validate(payload)
 
@@ -263,6 +263,9 @@ async def update_reminder_tool(
             return {"status": "updated"}
         log.error(f"{LogTag.TOOL} Failed to update reminder")
         return {"error": "Failed to update reminder"}
+    except InvalidScheduleError as e:
+        log.warning(f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=e.reason.value)
+        return e.as_tool_error()
     except Exception as e:
         log.exception(f"{LogTag.TOOL} Exception occurred while updating reminder")
         return {"error": str(e)}

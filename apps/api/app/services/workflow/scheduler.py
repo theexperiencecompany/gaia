@@ -9,9 +9,11 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
 )
 from app.models.workflow_models import UNSET, TriggerType, Workflow, WorkflowRearm
 from app.services.scheduler_service import BaseSchedulerService
@@ -124,7 +126,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 raise ValueError("Workflow ID is required for execution")
 
             message = await execute_workflow_by_id({}, workflow.id)
-            return TaskExecutionResult(success=True, message=message)
+            return TaskExecutionResult(outcome=TaskOutcome.EXECUTED, message=message)
         except Exception as e:
             log.error(
                 f"{LogTag.WORKFLOW} Error executing workflow",
@@ -132,7 +134,18 @@ class WorkflowScheduler(BaseSchedulerService):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return TaskExecutionResult(success=False, message=f"Workflow execution failed: {e!s}")
+            return TaskExecutionResult(
+                outcome=TaskOutcome.FAILED, message=f"Workflow execution failed: {e!s}"
+            )
+
+    async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:
+        """Deactivate the workflow with reason: a workflow's liveness is activated, not status."""
+        if not task.id:
+            raise ValueError("Workflow ID is required to deactivate")
+        # Deferred import: WorkflowService imports this scheduler at module load.
+        from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- deferred
+
+        await WorkflowService.deactivate_workflow(task.id, task.user_id, reason=reason)
 
     async def update_task_status(
         self,

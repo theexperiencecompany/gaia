@@ -4,6 +4,8 @@ from datetime import timedelta
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.reminder_models import StaticReminderPayload
 
 # ---------------------------------------------------------------------------
@@ -122,7 +124,7 @@ class TestCreateReminderTool:
 
         payload = StaticReminderPayload(title="Test", body="Body")
         result = await create_reminder_tool.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
-            config=_cfg(), payload=payload, repeat="bad-cron"
+            config=_cfg(), payload=payload
         )
         assert "Invalid cron" in result["error"]
 
@@ -376,6 +378,83 @@ class TestUpdateReminderTool:
         )
         assert "body" in result["error"]
         mock_scheduler.update_reminder.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: the recurring-schedule rule at both tool entry points
+# ---------------------------------------------------------------------------
+
+_SCHEDULE_SUGGESTION = (
+    "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+    "or a one-off reminder instead."
+)
+_REFUSED_SCHEDULES = [
+    ("* * * * *", "too_frequent", "Schedules can repeat at most once an hour."),
+    ("*/5 * * * *", "too_frequent", "Schedules can repeat at most once an hour."),
+    ("0 6 30 * * *", "wrong_field_count", "Use 5 fields: minute hour day month weekday."),
+]
+
+
+class TestRecurringScheduleRule:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("repeat", "reason", "message"), _REFUSED_SCHEDULES)
+    @patch(f"{MODULE}.reminder_scheduler")
+    async def test_update_tool_refuses_the_schedule_with_a_structured_error(
+        self, mock_scheduler: MagicMock, repeat: str, reason: str, message: str
+    ) -> None:
+        mock_scheduler.update_reminder = AsyncMock(return_value=True)
+
+        from app.agents.tools.reminder_tool import update_reminder_tool
+
+        result = await cast(Any, update_reminder_tool).coroutine(
+            config=_cfg(), reminder_id="rem-1", repeat=repeat
+        )
+
+        assert result == {
+            "error": message,
+            "error_code": "invalid_schedule",
+            "reason": reason,
+            "suggestion": _SCHEDULE_SUGGESTION,
+        }
+        mock_scheduler.update_reminder.assert_not_called()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("repeat", "reason", "message"), _REFUSED_SCHEDULES)
+    @patch(f"{MODULE}.reminder_scheduler")
+    async def test_create_tool_refuses_the_schedule_with_a_structured_error(
+        self, mock_scheduler: MagicMock, repeat: str, reason: str, message: str
+    ) -> None:
+        mock_scheduler.create_reminder = AsyncMock(return_value="rem-1")
+
+        from app.agents.tools.reminder_tool import create_reminder_tool
+
+        result = await cast(Any, create_reminder_tool).coroutine(
+            config=_cfg(), payload=StaticReminderPayload(title="Stretch", body="Now"), repeat=repeat
+        )
+
+        assert result == {
+            "error": message,
+            "error_code": "invalid_schedule",
+            "reason": reason,
+            "suggestion": _SCHEDULE_SUGGESTION,
+        }
+        mock_scheduler.create_reminder.assert_not_called()
+
+    @patch(f"{MODULE}.reminder_scheduler")
+    async def test_a_one_shot_a_minute_out_is_still_created(
+        self, mock_scheduler: MagicMock
+    ) -> None:
+        mock_scheduler.create_reminder = AsyncMock(return_value="rem-1")
+
+        from app.agents.tools.reminder_tool import create_reminder_tool
+
+        result = await cast(Any, create_reminder_tool).coroutine(
+            config=_cfg(), payload=StaticReminderPayload(title="Tea", body="Now"), delay_seconds=60
+        )
+
+        assert result == "Reminder created successfully"
+        request = mock_scheduler.create_reminder.call_args[0][0]
+        assert request.repeat is None
 
 
 # ---------------------------------------------------------------------------
