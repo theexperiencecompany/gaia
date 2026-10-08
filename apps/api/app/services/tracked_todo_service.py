@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
@@ -307,6 +308,26 @@ class TrackedTodoService:
         except Exception as e:
             log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
             return False
+
+    @staticmethod
+    async def resume_paused_for(user_id: str, reason: DeactivationReason) -> int:
+        """Resume the user's tracked todos the system paused for reason; return the count resumed.
+
+        A run due while paused fires now: a tracked todo treats a missed run as
+        work still owed, the way the safety net does for a lost job.
+        """
+        resumed = 0
+        for todo in await todo_repository.find_paused_for_reason(user_id, reason):
+            await todo_repository.update(
+                todo.id, user_id=user_id, update=TodoUpdate(pause_reason=None)
+            )
+            if todo.scheduled_at is not None:
+                await TrackedTodoService.schedule_execution(
+                    todo.id, max(todo.scheduled_at, datetime.now(UTC))
+                )
+            resumed += 1
+        log.set(tracked_todos_resumed=resumed, tracked_todos_resume_reason=reason.value)
+        return resumed
 
     @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:

@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 import pytest
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.reminder_models import (
     CreateReminderRequest,
     CreateReminderToolRequest,
@@ -45,9 +46,6 @@ ENTRY_POINTS: dict[str, Callable[[str], BaseModel]] = {
         title="Digest", prompt="Summarize", trigger_config=_workflow_trigger(cron)
     ),
     "PUT /workflows": lambda cron: UpdateWorkflowRequest(trigger_config=_workflow_trigger(cron)),
-    "POST /todos": lambda cron: TodoModel(title="Check inbox", recurrence=cron),
-    "PUT /todos": lambda cron: TodoUpdateRequest(recurrence=cron),
-    "tracked todo $set": lambda cron: TodoUpdate(recurrence=cron),
 }
 
 
@@ -79,6 +77,22 @@ def test_a_one_shot_reminder_a_minute_out_is_still_accepted() -> None:
     assert request.to_create_reminder_request().repeat is None
 
 
+@pytest.mark.parametrize("cron", ["* * * * *", "0 6 30 * * *"])
+def test_a_new_tracked_todo_holds_its_recurrence_to_the_rule(cron: str) -> None:
+    with pytest.raises(ValidationError):
+        TodoModel(title="Check inbox", labels=[GAIA_TRACKED_LABEL], recurrence=cron)
+
+
 @pytest.mark.parametrize("shortcut", ["daily", "weekly", "every_4h", "every_1h"])
-def test_todo_recurrence_shortcuts_stay_valid(shortcut: str) -> None:
-    assert TodoUpdateRequest(recurrence=shortcut).recurrence == shortcut
+def test_tracked_todo_recurrence_shortcuts_stay_valid(shortcut: str) -> None:
+    todo = TodoModel(title="Check inbox", labels=[GAIA_TRACKED_LABEL], recurrence=shortcut)
+    assert todo.recurrence == shortcut
+
+
+@pytest.mark.parametrize("model", [TodoModel, TodoUpdateRequest, TodoUpdate])
+def test_a_plain_todos_display_rrule_is_kept_verbatim(model: type[BaseModel]) -> None:
+    rrule = "FREQ=WEEKLY;BYDAY=MO"
+    fields: dict[str, Any] = {"recurrence": rrule}
+    if model is TodoModel:
+        fields["title"] = "Water plants"
+    assert model.model_validate(fields).recurrence == rrule

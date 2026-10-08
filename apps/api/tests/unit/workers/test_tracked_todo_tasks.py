@@ -126,6 +126,13 @@ def _updates(repo: MagicMock) -> list[dict]:
     return [c.kwargs["update"].model_dump(exclude_unset=True) for c in repo.update.call_args_list]
 
 
+@pytest.fixture(autouse=True)
+def paid_owner() -> Iterator[AsyncMock]:
+    """Every todo owner is paid unless a test says otherwise; the gate itself is tested below."""
+    with patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)) as paid:
+        yield paid
+
+
 # ---------------------------------------------------------------------------
 # execute_tracked_todo — the Redis lock
 # ---------------------------------------------------------------------------
@@ -1647,3 +1654,40 @@ class TestResumeTrackedTodo:
         assert run.result == "resume_dropped:todo-1 (lock held)"
         run.enqueue.assert_not_awaited()
         run.log.warning.assert_called_once_with("tracked_todo.resume_lock_held", todo_id="todo-1")
+
+
+# ---------------------------------------------------------------------------
+# _execute_todo_with_retry — the paid-only gate
+# ---------------------------------------------------------------------------
+
+
+class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
+    async def test_one_blocked_fire_pauses_it_and_the_next_fire_is_silent(
+        self, paid_owner: AsyncMock
+    ) -> None:
+        """A recurring tracked todo of an unpaid user ran the agent on every fire, with no gate at all."""
+        paid_owner.return_value = False
+        doc = _doc(recurrence="every_1h")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        execute = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context())),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.capture_event") as capture,
+        ):
+            first = await _execute_todo_with_retry("todo-1", _pool())
+            repo.get_by_id = AsyncMock(
+                return_value=doc.model_copy(update={"pause_reason": "subscription_lapsed"})
+            )
+            second = await _execute_todo_with_retry("todo-1", _pool())
+
+        execute.assert_not_awaited()
+        assert first.startswith("paused:") and second.startswith("paused:")
+        assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
+        repo.update_if_scheduled_at.assert_not_awaited()
+        assert [c.args[1] for c in capture.call_args_list] == ["paywall:blocked"]

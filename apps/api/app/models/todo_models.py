@@ -2,11 +2,12 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
-from app.constants.todos import TODO_RECURRENCE_SHORTCUTS
+from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
 from app.db.repositories.base import UserScopedDocument
+from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
@@ -14,14 +15,14 @@ from app.utils.schedule import validate_recurring_schedule
 
 
 def validate_todo_recurrence(recurrence: str) -> str:
-    """Accept a recurrence shortcut, else hold the value to the recurring-schedule rule."""
+    """Hold a tracked todo's run schedule to the rule: a shortcut, or an acceptable cron.
+
+    Only a tracked todo's recurrence schedules runs; a plain todo's is display-only
+    (mobile stores an RRULE there) and is never validated as a schedule.
+    """
     if recurrence in TODO_RECURRENCE_SHORTCUTS:
         return recurrence
     return validate_recurring_schedule(recurrence)
-
-
-#: A todo recurrence on its way in; stored rows stay plain str so a legacy one still loads.
-TodoRecurrence = Annotated[str, AfterValidator(validate_todo_recurrence)]
 
 
 class Priority(str, Enum):
@@ -76,7 +77,12 @@ class TodoBase(BaseModel):
     )
     recurrence: str | None = Field(
         default=None,
-        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+        description=(
+            "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', "
+            "or a 5-field cron that fires at most once an hour, evaluated in the user's "
+            "current timezone (user.timezone). On a plain todo, display-only recurrence "
+            "(e.g. an RRULE) that nothing runs."
+        ),
     )
     gaia_retry_count: int = Field(
         default=0,
@@ -104,16 +110,15 @@ class TodoBase(BaseModel):
 class TodoModel(TodoBase):
     """Model for creating todos"""
 
-    recurrence: TodoRecurrence | None = Field(
-        default=None,
-        description=(
-            "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron "
-            "expression that fires at most once an hour. Always evaluated in the user's "
-            "current timezone (user.timezone)."
-        ),
-    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def tracked_recurrence_is_a_run_schedule(self) -> "TodoModel":
+        """Validate the recurrence as a run schedule when this todo is tracked."""
+        if self.recurrence and GAIA_TRACKED_LABEL in self.labels:
+            validate_todo_recurrence(self.recurrence)
+        return self
 
 
 # For updating todos - all fields optional
@@ -134,7 +139,7 @@ class TodoUpdateRequest(BaseModel):
     workflow_id: str | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
-    recurrence: TodoRecurrence | None = None
+    recurrence: str | None = None
     expires_at: datetime | None = None
     notify_on_run: bool | None = None
 
@@ -472,6 +477,8 @@ class TodoDocument(UserScopedDocument):
     expires_at: datetime | None = None
     references: list[str] = Field(default_factory=list)
     notify_on_run: bool = True
+    #: Why the system paused this tracked todo's runs; None while it runs normally.
+    pause_reason: DeactivationReason | None = None
     completed_at: datetime | None = None
     # Canvas + activity + log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
@@ -504,11 +511,12 @@ class TodoUpdate(BaseModel):
     workflow_activated: bool | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
-    recurrence: TodoRecurrence | None = None
+    recurrence: str | None = None
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None
     notify_on_run: bool | None = None
+    pause_reason: DeactivationReason | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None

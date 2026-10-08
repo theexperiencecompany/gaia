@@ -28,7 +28,7 @@ from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
 from app.services.analytics_service import AnalyticsEvents
-from app.services.payments.subscription_events import resume_reminders_safely
+from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
 
 pytestmark = pytest.mark.e2e
@@ -207,7 +207,13 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
             # A job already queued for the next tick finds the reminder paused.
             next_tick = await scheduler.process_task_execution(reminder.id)
             rearm.assert_not_awaited()
-            await resume_reminders_safely(USER_ID)
+            stack.enter_context(
+                patch(
+                    "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",
+                    new_callable=AsyncMock,
+                )
+            )
+            await resume_paywall_pauses_safely(USER_ID)
 
         assert blocked.outcome is TaskOutcome.ENTITLEMENT_BLOCKED
         assert next_tick.success is False

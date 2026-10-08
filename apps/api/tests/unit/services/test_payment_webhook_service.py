@@ -54,7 +54,7 @@ def _row(**overrides: object) -> SubscriptionDocument:
 # unit/services test file also uses.
 pytestmark = pytest.mark.usefixtures(
     "mock_activation_workflow_reactivation",
-    "mock_reminder_resume",
+    "mock_paywall_resume",
     "mock_subscription_plan_cache_drop",
 )
 

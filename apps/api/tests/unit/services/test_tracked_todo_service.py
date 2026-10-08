@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
@@ -560,3 +561,29 @@ class TestMigrateLegacyCanvas:
             )
 
         write.assert_awaited_once()
+
+
+class TestResumePausedFor:
+    async def test_activation_clears_the_pause_and_fires_a_missed_run_now(self, mock_repo):
+        missed = datetime.now(UTC) - timedelta(hours=3)
+        paused = _todo_doc(pause_reason="subscription_lapsed", scheduled_at=missed)
+        unscheduled = _todo_doc(id="todo-2", pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused, unscheduled])
+        schedule = AsyncMock(return_value=True)
+        before = datetime.now(UTC)
+        with patch.object(TrackedTodoService, "schedule_execution", schedule):
+            resumed = await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert resumed == 2
+        mock_repo.find_paused_for_reason.assert_awaited_once_with(
+            USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        cleared = [
+            c.kwargs["update"].model_dump(exclude_unset=True)
+            for c in mock_repo.update.call_args_list
+        ]
+        assert cleared == [{"pause_reason": None}, {"pause_reason": None}]
+        ((todo_id, when),) = [c.args for c in schedule.await_args_list]
+        assert todo_id == TODO_ID and when >= before

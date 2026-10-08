@@ -13561,7 +13561,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron expression that fires at most once an hour. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence?: string | null;
             /**
@@ -13678,7 +13678,7 @@ export interface components {
             project_id: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence: string | null;
             /**

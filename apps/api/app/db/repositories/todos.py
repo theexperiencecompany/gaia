@@ -20,6 +20,7 @@ from app.constants.cache import TODO_CACHE_PREFIX
 from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     SearchMode,
     SubTask,
@@ -463,8 +464,17 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 "completed": False,
                 "labels": GAIA_TRACKED_LABEL,
                 "gaia_retry_count": {"$lt": max_retries},
+                "pause_reason": None,
             },
             limit=limit,
+        )
+
+    async def find_paused_for_reason(
+        self, user_id: str, reason: DeactivationReason
+    ) -> list[TodoDocument]:
+        """Return the user's tracked todos the system paused for reason."""
+        return await self._find(
+            {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "pause_reason": reason.value}
         )
 
     # ----------------------------------------------------------------- writes

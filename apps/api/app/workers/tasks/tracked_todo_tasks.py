@@ -43,16 +43,19 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
+from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
@@ -77,6 +80,9 @@ LOCK_TTL_SECONDS = 1800
 LOCK_DEFER_BACKOFF = [timedelta(minutes=1), timedelta(minutes=3), timedelta(minutes=10)]
 
 TRIGGER_TODO_FEATURE_KEY = "trigger_todo_executions"
+
+#: The surface a paywalled tracked-todo run is attributed to in the funnel.
+PAYWALL_FEATURE_TRACKED_TODO = "tracked_todo"
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
@@ -187,6 +193,8 @@ async def _execute_todo_with_retry(
 
     if skipped := await _skip_reason(doc, origin):
         return skipped
+    if not await is_paid(doc.user_id):
+        return await _pause_unpaid(doc)
 
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
@@ -261,6 +269,26 @@ async def _execute_todo_with_retry(
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
+async def _pause_unpaid(doc: TodoDocument) -> str:
+    """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
+    log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
+    capture_event(
+        doc.user_id, AnalyticsEvents.PAYWALL_BLOCKED, {"feature": PAYWALL_FEATURE_TRACKED_TODO}
+    )
+    await todo_repository.update(
+        doc.id,
+        user_id=doc.user_id,
+        update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+    )
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.RUN_SKIPPED,
+        "paused: runs need an active subscription, and resume when it starts",
+    )
+    return f"paused:{doc.id} (subscription required)"
+
+
 async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> bool:
     """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
 
@@ -299,6 +327,10 @@ async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str |
     if doc.completed:
         log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
         return f"completed:{todo_id}"
+
+    if doc.pause_reason is not None:
+        log.info("tracked_todo.execute_paused", todo_id=todo_id, pause_reason=doc.pause_reason)
+        return f"paused:{todo_id}"
 
     # Skip expired todos — let maintenance sweep handle gracefully. Clearing the
     # schedule stops the safety net re-queueing this skip every 30 minutes.

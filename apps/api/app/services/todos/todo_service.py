@@ -32,13 +32,19 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
+    validate_todo_recurrence,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
+from app.services.todos.errors import (
+    TrackedLabelChangeError,
+    TrackedTodoScheduleError,
+    TrackedTodoWorkflowError,
+)
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.errors import AppError
+from app.utils.schedule import InvalidScheduleError
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
     delete_todo_embedding,
@@ -121,15 +127,16 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
     return update
 
 
-async def _refuse_a_tracked_todo_with_a_workflow(
+async def _refuse_what_a_tracked_todo_cannot_take(
     todo_id: str, user_id: str, updates: TodoUpdateRequest
 ) -> None:
-    """Refuse, before any write, an update that changes tracked status or links a tracked todo.
+    """Refuse, before any write, a tracked-status change, a workflow link, or a bad run schedule.
 
     A tracked todo created before workflows were removed may still hold a
-    workflow_id nothing reads; editing it is not refused.
+    workflow_id nothing reads; editing it is not refused. Only a tracked todo's
+    recurrence schedules runs, so a plain todo's display recurrence is never checked.
     """
-    if updates.workflow_id is None and updates.labels is None:
+    if updates.workflow_id is None and updates.labels is None and not updates.recurrence:
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
@@ -139,6 +146,11 @@ async def _refuse_a_tracked_todo_with_a_workflow(
         raise TrackedLabelChangeError()
     if updates.workflow_id and tracked:
         raise TrackedTodoWorkflowError()
+    if updates.recurrence and tracked:
+        try:
+            validate_todo_recurrence(updates.recurrence)
+        except InvalidScheduleError as e:
+            raise TrackedTodoScheduleError(e) from e
 
 
 async def _refuse_a_bulk_tracked_label_change(
@@ -365,7 +377,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
-        await _refuse_a_tracked_todo_with_a_workflow(todo_id, user_id, updates)
+        await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
             project = await project_repository.get(update.project_id, user_id=user_id)

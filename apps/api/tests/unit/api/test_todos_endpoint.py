@@ -506,35 +506,40 @@ class TestUpdateTodoReschedule:
 
 class TestUpdateTodoRecurrence:
     @pytest.mark.regression
-    @pytest.mark.parametrize(
-        ("recurrence", "message"),
-        [
-            ("* * * * *", "Schedules can repeat at most once an hour."),
-            ("*/5 * * * *", "Schedules can repeat at most once an hour."),
-            ("0 6 30 * * *", "Use 5 fields: minute hour day month weekday."),
-        ],
-    )
-    async def test_a_refused_schedule_never_reaches_the_todo(
-        self, client: AsyncClient, recurrence: str, message: str
-    ) -> None:
-        update = AsyncMock(return_value=_todo_response())
+    async def test_a_mobile_rrule_round_trips_unchanged(self, client: AsyncClient) -> None:
+        """The mobile detail sheet sends an RRULE as display-only recurrence on a plain todo."""
+        rrule = "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"
+        stored = _todo_response().model_copy(update={"recurrence": rrule})
+        update = AsyncMock(return_value=stored)
         with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
-            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": recurrence})
-
-        assert resp.status_code == 422
-        assert message in resp.text
-        update.assert_not_awaited()
-
-    @pytest.mark.parametrize("recurrence", ["0 * * * *", "0 9 * * 1-5", "daily"])
-    async def test_an_hourly_or_slower_schedule_is_saved(
-        self, client: AsyncClient, recurrence: str
-    ) -> None:
-        update = AsyncMock(return_value=_todo_response())
-        with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
-            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": recurrence})
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": rrule})
 
         assert resp.status_code == 200
-        assert update.await_args.args[1].recurrence == recurrence
+        assert update.await_args.args[1].recurrence == rrule
+        assert resp.json()["recurrence"] == rrule
+
+    async def test_a_refused_tracked_schedule_is_a_422_with_the_reason(
+        self, client: AsyncClient
+    ) -> None:
+        tracked = TodoDocument.model_validate(
+            {
+                "id": "todo-1",
+                "user_id": "u1",
+                "title": "Check inbox",
+                "labels": [GAIA_TRACKED_LABEL],
+            }
+        )
+        with (
+            patch(
+                "app.services.todos.todo_service.todo_repository.get",
+                new=AsyncMock(return_value=tracked),
+            ),
+            patch("app.services.todos.todo_service.todo_repository.update", new=AsyncMock()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": "* * * * *"})
+
+        assert resp.status_code == 422
+        assert "Schedules can repeat at most once an hour." in resp.text
 
 
 class TestUpdateTodoTimeline:

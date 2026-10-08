@@ -10,7 +10,8 @@ rewritten (the user's intent is ambiguous); the user fixes it and resumes.
 It also backfills stop_after on live recurring reminders that predate the
 default lifetime, so legacy rows end the way new ones do.
 
-Tracked todos have no paused state, so invalid todo recurrences are reported only.
+Invalid tracked-todo recurrences are reported only: a todo paused for its schedule
+would have no path back once the user fixed it.
 
 Run from the api directory (or /app inside the container):
 
@@ -34,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from bson import ObjectId
 
 from app.constants.reminders import REMINDER_DEFAULT_LIFETIME
-from app.constants.todos import TODO_RECURRENCE_SHORTCUTS
+from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.workflows import workflow_repository
@@ -107,7 +108,7 @@ def plan_workflow(doc: dict[str, Any], plan: CleanupPlan) -> None:
 
 
 def plan_todo(doc: dict[str, Any], plan: CleanupPlan) -> None:
-    """Report one todo whose recurrence is neither a shortcut nor an acceptable schedule."""
+    """Report one tracked todo whose recurrence is neither a shortcut nor an acceptable schedule."""
     recurrence = doc["recurrence"]
     if recurrence in TODO_RECURRENCE_SHORTCUTS:
         return
@@ -132,7 +133,10 @@ async def build_plan(now: datetime) -> CleanupPlan:
     )
     async for doc in workflows:
         plan_workflow(doc, plan)
-    todos = get_async_collection("todos").find({"recurrence": {"$nin": [None, ""]}})
+    # Only a tracked todo's recurrence schedules runs; a plain todo's is display-only (an RRULE).
+    todos = get_async_collection("todos").find(
+        {"recurrence": {"$nin": [None, ""]}, "labels": GAIA_TRACKED_LABEL}
+    )
     async for doc in todos:
         plan_todo(doc, plan)
     return plan

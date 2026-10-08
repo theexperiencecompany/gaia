@@ -30,7 +30,7 @@ from app.services.payments.subscription_events import (
     deactivate_workflows_safely,
     reactivate_workflows_safely,
     resolve_subscription_owner,
-    resume_reminders_safely,
+    resume_paywall_pauses_safely,
     send_welcome_email_safely,
 )
 from tests.helpers import captured_wide_event
@@ -44,7 +44,7 @@ from tests.unit.services.conftest import (
 pytestmark = pytest.mark.usefixtures(
     "mock_processed_webhook_repository",
     "mock_activation_workflow_reactivation",
-    "mock_reminder_resume",
+    "mock_paywall_resume",
     "mock_deactivate_workflows",
 )
 
@@ -339,11 +339,12 @@ class TestActivationCreatesTheRow:
         mock_webhook_send_email,
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
-        mock_reminder_resume,
+        mock_paywall_resume,
     ) -> None:
         await _apply(SubscriptionEventKind.ACTIVATED)
 
-        mock_reminder_resume.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
 
     async def test_a_zero_amount_subscription_reports_no_price(
         self,
@@ -428,16 +429,18 @@ class TestTransitionsDriveTheSideEffects:
         mock_webhook_subscription_repository,
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
-        mock_reminder_resume,
+        mock_paywall_resume,
     ) -> None:
         await _apply(SubscriptionEventKind.ON_HOLD)
-        mock_reminder_resume.assert_not_awaited()
+        mock_paywall_resume.reminders.assert_not_awaited()
+        mock_paywall_resume.todos.assert_not_awaited()
 
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(status="on_hold", last_event_at=None)
         )
         await _apply(SubscriptionEventKind.RENEWED)
-        mock_reminder_resume.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
 
     async def test_an_existing_row_recovered_by_activation_is_not_welcomed_again(
         self,
@@ -594,15 +597,16 @@ class TestSideEffectsNeverFailTheEvent:
             user_id=FAKE_USER_ID,
         )
 
-    async def test_a_reminder_resume_failure_is_swallowed_and_logged(
-        self, mock_reminder_resume
+    async def test_a_reminder_resume_failure_still_resumes_the_todos_and_is_logged(
+        self, mock_paywall_resume
     ) -> None:
-        mock_reminder_resume.side_effect = RuntimeError("mongo exploded")
+        mock_paywall_resume.reminders.side_effect = RuntimeError("mongo exploded")
         with patch(f"{EVENTS_MODULE}.log") as mock_log:
-            await resume_reminders_safely(FAKE_USER_ID)
+            await resume_paywall_pauses_safely(FAKE_USER_ID)
 
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
         mock_log.error.assert_called_once_with(
-            "[PAYMENT] Failed to resume reminders for restored subscription",
+            "[PAYMENT] Failed to resume paywall-paused automation",
             error="mongo exploded",
             error_type="RuntimeError",
             user_id=FAKE_USER_ID,
