@@ -15,6 +15,7 @@ MessageFieldLiteral = Literal[
     "id",
     "threadId",
     "from",
+    "from_address",
     "to",
     "cc",
     "bcc",

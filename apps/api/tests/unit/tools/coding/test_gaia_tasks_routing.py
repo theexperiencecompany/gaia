@@ -21,7 +21,9 @@ TODO_ID = "66f838cc8829054e5f10e407"
 FOLDER = f"fix-the-thing-{TODO_ID[-8:]}"
 CANVAS = "# Fix the thing\n\n## Current State\nWaiting on Rahul.\n"
 _FILES = "app.services.gaia_task_files"
-SECTIONS = "\n\n## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+SECTIONS = (
+    "\n\n## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+)
 FULL_CANVAS = "# Fix the thing" + SECTIONS
 
 

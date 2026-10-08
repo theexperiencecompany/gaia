@@ -120,6 +120,20 @@ class TestRequestSlotOrder:
             PromptSlot.TIME,
         )
 
+    def test_openai_puts_every_singleton_slot_ahead_of_the_conversation(self) -> None:
+        """OpenAI reuses only a whole earlier request, so nothing may trail the conversation, the clock included."""
+        assert request_slot_order("openai") == (
+            PromptSlot.STATIC,
+            PromptSlot.DYNAMIC_STABLE,
+            PromptSlot.ONBOARDING,
+            PromptSlot.TODO_CONTEXT,
+            PromptSlot.BACKGROUND_EXECUTOR,
+            PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.MEMORY_RECALL,
+            PromptSlot.TIME,
+            PromptSlot.CONVERSATION,
+        )
+
     def test_gemini_keeps_the_leading_block_layout(self) -> None:
         """A tail slot on Gemini is not a colder cache — it is content the model never sees."""
         assert request_slot_order("gemini") == tuple(PromptSlot)
@@ -131,7 +145,7 @@ class TestRequestSlotOrder:
 
     def test_no_slot_is_lost_or_duplicated_by_the_reorder(self) -> None:
         """A layout that silently dropped a slot would delete that content from the request."""
-        for provider in ("openrouter", "gemini", None):
+        for provider in ("openrouter", "openai", "gemini", None):
             order = request_slot_order(provider)
             assert sorted(order) == sorted(PromptSlot)
 
