@@ -72,7 +72,7 @@ def _patched_seams():
         patch.object(account_settings, "list_voices", new=AsyncMock()) as list_voices,
         patch.object(account_settings, "set_user_voice", new=AsyncMock()) as set_user_voice,
         patch(f"{account_tools.__name__}.schedule_account_sync") as resync,
-        patch("app.agents.tools.core.mutations.capture_context_event") as capture,
+        patch("app.agents.tools.core.mutations.capture_event") as capture,
         patch(f"{account_tools.__name__}.enforce_rate_limit", new=AsyncMock()),
     ):
         yield SimpleNamespace(
@@ -127,7 +127,9 @@ class TestAccountToolsThroughGraph:
         )
         # Analytics only after success.
         _patched_seams.capture.assert_called_once_with(
-            AnalyticsEvents.ACCOUNT_SETTING_CHANGED, {"area": "notifications"}
+            thread_config["configurable"]["user_id"],
+            AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+            {"area": "notifications"},
         )
         # The resync is bound into the tool at import time (factory kwarg), so it
         # can't be observed via a module patch here — proven instead in
