@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from app.constants import triggers as trigger_constants
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
@@ -373,6 +374,45 @@ class TestRegisterSubscription:
         assert [sub.id for sub in h.written_subscriptions] == [competing.id, stored.id]
 
     @pytest.mark.regression
+    async def test_writes_that_leave_the_watches_alone_do_not_use_up_the_retries(self) -> None:
+        """Regression: two desk provisions at once refused a watch after three activity-log writes."""
+        start = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        unrelated = [_todo(updated_at=start + timedelta(seconds=n)) for n in (1, 2, 3)]
+        with _Harness(_todo(updated_at=start), ["new-watch-id"]) as h:
+            reads = [_todo(updated_at=start), *unrelated]
+
+            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
+                return reads.pop(0)
+
+            h.get.side_effect = read_todo
+            last = unrelated[-1].updated_at
+
+            async def compare_and_set(
+                todo_id: str,
+                user_id: str,
+                *,
+                subscriptions: list[TriggerSubscription],
+                expected_updated_at: datetime | None,
+            ) -> TodoDocument | None:
+                if expected_updated_at != last:
+                    return None
+                return unrelated[-1].model_copy(update={"trigger_subscriptions": subscriptions})
+
+            h.set_subscriptions.side_effect = compare_and_set
+
+            stored, _outcome, created = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert created is True
+        assert h.set_subscriptions.await_count == 4
+        assert [sub.id for sub in h.written_subscriptions] == [stored.id]
+
+    @pytest.mark.regression
     async def test_duplicate_cleanup_failure_is_recorded_and_keeps_the_winning_watch(
         self,
     ) -> None:
@@ -425,7 +465,7 @@ class TestRegisterSubscription:
                         action=SubscriptionAction.EXECUTE,
                     )
 
-        assert h.set_subscriptions.await_count == 3
+        assert h.set_subscriptions.await_count == trigger_constants.SUBSCRIPTION_WRITE_MAX_TRIES
         # The instance registered for the watch that never stored is released rather
         # than left orphaned upstream, and the failed release names the todo it
         # belongs to rather than an empty id.

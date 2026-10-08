@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
-from app.constants.triggers import SUBSCRIPTION_WRITE_ATTEMPTS
+from app.constants.triggers import SUBSCRIPTION_WRITE_ATTEMPTS, SUBSCRIPTION_WRITE_MAX_TRIES
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -166,8 +166,7 @@ async def register_subscription(
         await _release_unstored_registration(todo_id, user_id, subscription)
         raise _fail(
             "write_conflict",
-            f"The watches on {todo_id} changed while this one was being added, "
-            f"{SUBSCRIPTION_WRITE_ATTEMPTS} times over. Try again.",
+            f"The watches on {todo_id} changed while this one was being added. Try again.",
         )
     stored, created = appended
     if not created:
@@ -229,10 +228,11 @@ async def _append_subscription(
     """Add the watch compare-and-set on updated_at.
 
     Returns the row now on the todo and whether this call stored it, or None
-    when every attempt lost the race to a concurrent writer.
+    when the watches changed under it SUBSCRIPTION_WRITE_ATTEMPTS times.
     """
     current = todo
-    for _ in range(SUBSCRIPTION_WRITE_ATTEMPTS):
+    lost_races = 0
+    for _ in range(SUBSCRIPTION_WRITE_MAX_TRIES):
         duplicate = next(
             (sub for sub in current.trigger_subscriptions if _same_watch(sub, subscription)),
             None,
@@ -247,9 +247,14 @@ async def _append_subscription(
         )
         if written is not None:
             return subscription, True
-        current = await todo_repository.get(todo_id, user_id=user_id)
-        if current is None:
+        latest = await todo_repository.get(todo_id, user_id=user_id)
+        if latest is None:
             return None
+        if latest.trigger_subscriptions != current.trigger_subscriptions:
+            lost_races += 1
+            if lost_races == SUBSCRIPTION_WRITE_ATTEMPTS:
+                return None
+        current = latest
     return None
 
 

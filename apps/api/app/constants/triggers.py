@@ -18,3 +18,6 @@ PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
 # Retries for a subscription append that loses its compare-and-set: the Inbox desk
 # is provisioned once per Gmail connect, and two connects race on that one append.
 SUBSCRIPTION_WRITE_ATTEMPTS: Final = 3
+# Total tries, counting losses to writes that left the watches alone (an activity
+# line, the schedule): a desk being provisioned twice makes several of those.
+SUBSCRIPTION_WRITE_MAX_TRIES: Final = 10
