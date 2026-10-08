@@ -6,7 +6,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +29,28 @@ vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
   useCurrentUser: () => ({ onboarding: { completed: false } }),
 }));
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
+// The chat bubble's markdown and line choreography are not under test: which text it gets is.
+vi.mock("@/features/onboarding/components/OnboardingBotBubble", () => ({
+  OnboardingBotBubble: ({ text }: { text: string }) => <p>{text}</p>,
+}));
+
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  usePathname: () => "/onboarding",
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+import {
+  Chat,
+  ChatComposer,
+} from "@/features/onboarding/components/stages/Chat";
+import {
+  FINISH_CTA_LABEL,
+  FINISH_FAILED_MESSAGE,
+  FINISH_RETRY_LABEL,
+} from "@/features/onboarding/constants/messages";
 import { useOnboardingSubmission } from "@/features/onboarding/hooks/useOnboardingSubmission";
 import { initialState } from "@/features/onboarding/state/initial";
 import type { OnboardingState } from "@/features/onboarding/state/types";
@@ -94,5 +123,60 @@ describe("onboarding submission", () => {
     await waitFor(() => expect(result.current.status).toBe("success"));
 
     expect(completeOnboarding).toHaveBeenCalledTimes(2);
+  });
+});
+
+/** The chat stage as the page mounts it: the bubble plus the composer button. */
+function ChatStage() {
+  const submission = useOnboardingSubmission(answeredState(), vi.fn());
+  return (
+    <>
+      <Chat status={submission.status} />
+      <ChatComposer submission={submission} />
+    </>
+  );
+}
+
+function renderChatStage() {
+  const queryClient = new QueryClient();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ChatStage />
+    </QueryClientProvider>,
+  );
+}
+
+describe("onboarding chat stage", () => {
+  beforeEach(() => {
+    completeOnboarding.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("offers Start chatting and sends nothing until it is clicked", () => {
+    renderChatStage();
+
+    expect(screen.getByRole("button", { name: FINISH_CTA_LABEL })).toBeTruthy();
+    expect(completeOnboarding).not.toHaveBeenCalled();
+  });
+
+  it("hides the button while pending, then retries once from Try again", async () => {
+    let rejectFirst: (error: Error) => void = () => undefined;
+    completeOnboarding.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectFirst = reject;
+      }),
+    );
+    completeOnboarding.mockReturnValueOnce(new Promise(() => undefined));
+    renderChatStage();
+
+    fireEvent.click(screen.getByRole("button", { name: FINISH_CTA_LABEL }));
+    await waitFor(() => expect(screen.queryByRole("button")).toBeNull());
+
+    await act(async () => rejectFirst(new Error("422")));
+    expect(await screen.findByText(FINISH_FAILED_MESSAGE)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: FINISH_RETRY_LABEL }));
+
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
