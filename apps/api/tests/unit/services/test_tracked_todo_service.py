@@ -565,7 +565,6 @@ class TestMigrateLegacyCanvas:
 
 
 class TestResumePausedFor:
-    @pytest.mark.regression
     async def test_one_todo_that_cannot_resume_does_not_strand_the_rest(self, mock_repo):
         stuck = _todo_doc(pause_reason="subscription_lapsed")
         fine = _todo_doc(id="todo-2", pause_reason="subscription_lapsed")

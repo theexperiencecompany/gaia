@@ -643,7 +643,6 @@ class TestResume:
             pause_reason=DeactivationReason.INVALID_SCHEDULE,
         )
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "limits",
         [
@@ -672,7 +671,6 @@ class TestResume:
         assert "scheduled_at" not in update.model_fields_set
         mock_scheduler_base[1].assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_one_reminder_that_cannot_resume_does_not_strand_the_rest(
         self, scheduler, mock_repo, mock_scheduler_base
     ):

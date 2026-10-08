@@ -159,7 +159,6 @@ class TestSyncWorkflowsForSubscriptionState:
 
 @pytest.mark.unit
 class TestAPaywallResumeThatFailsIsRetriedByTheSameTask:
-    @pytest.mark.regression
     async def test_a_reminder_that_could_not_resume_is_resumed_by_the_retry(self) -> None:
         stuck = _paused_reminder("64b64b64b64b64b64b64b64a")
         fine = _paused_reminder("64b64b64b64b64b64b64b64b")

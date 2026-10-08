@@ -849,7 +849,7 @@ class TestReapStaleExecutingExact:
             "scheduler_class": "ConcreteSchedulerService",
             "error_type": "CronError",
         }
-        assert isinstance(logged["error"], str) and logged["error"]
+        assert logged["error"] == "Invalid cron expression: every minute please"
         assert set(logged) == {"task_id", "scheduler_class", "error", "error_type"}
 
     async def test_the_count_accumulates_across_every_reaped_task(self, service):

@@ -14,6 +14,7 @@ from app.services.workflow.subscription_pause import (
     SubscriptionWorkflowSyncIncomplete,
     deactivate_workflows_for_lapsed_subscription,
     reactivate_workflows_for_restored_subscription,
+    resume_paywall_paused_automation,
 )
 
 MODULE = "app.services.workflow.subscription_pause"
@@ -427,3 +428,24 @@ class TestReactivateWorkflowsForRestoredSubscription:
         assert first_run == 1
         assert second_run == 0
         service.activate_workflow.assert_awaited_once()
+
+
+class TestResumePaywallPausedAutomation:
+    async def test_the_count_is_the_sum_of_both_kinds_resumed(self) -> None:
+        reminders = AsyncMock(return_value=2)
+        todos = AsyncMock(return_value=3)
+        with (
+            patch(f"{MODULE}.reminder_scheduler.resume_paused_for", reminders),
+            patch(f"{MODULE}.tracked_todo_service.resume_paused_for", todos),
+        ):
+            assert await resume_paywall_paused_automation(USER_ID) == 5
+
+        reminders.assert_awaited_once_with(USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED)
+        todos.assert_awaited_once_with(USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED)
+
+    async def test_nothing_paused_resumes_nothing(self) -> None:
+        with (
+            patch(f"{MODULE}.reminder_scheduler.resume_paused_for", AsyncMock(return_value=0)),
+            patch(f"{MODULE}.tracked_todo_service.resume_paused_for", AsyncMock(return_value=0)),
+        ):
+            assert await resume_paywall_paused_automation(USER_ID) == 0

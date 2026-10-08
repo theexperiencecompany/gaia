@@ -40,7 +40,7 @@ from app.agents.tools.tracked_todo_tools import (
     search_todo_context,
     update_tracked_todo,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.models.user_models import UserDocument
 from shared.py.wide_events import spawn_logged_task
@@ -236,8 +236,9 @@ class TestRecurrenceValidation:
         """A typo'd shortcut is neither a known shortcut nor a valid cron — the error must still point the caller at the valid shortcut options, not just say "invalid"."""
         error = _validate_recurrence_format("monthly")
         assert error is not None
-        shortcuts = ", ".join(sorted(TODO_RECURRENCE_SHORTCUTS))
-        assert f"Use one of: {shortcuts}, or a 5-field cron expression." in error
+        assert (
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression." in error
+        )
 
 
 class TestResolveFirstFire:
