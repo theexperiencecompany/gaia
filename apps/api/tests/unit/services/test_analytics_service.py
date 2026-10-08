@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
-from app.models.payment_models import SubscriptionStatus
+from app.models.payment_models import PlanType, SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
     capture,
@@ -21,6 +21,7 @@ from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
     SubscriptionActivated,
     SubscriptionCancelled,
+    SubscriptionExpired,
     SubscriptionRenewed,
 )
 from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked
@@ -142,6 +143,12 @@ class TestCapture:
         props = call_args.kwargs.get("properties")
         assert props["deleted_count"] == 3
         assert "timestamp" in props
+
+    async def test_the_wide_event_names_the_captured_event_and_its_person(self, mock_posthog):
+        async with captured_wide_event() as event:
+            capture(USER_1, MemoryCleared(deleted_count=3))
+
+        assert event["analytics"] == {"user_id": USER_1.value, "event": "memory:cleared"}
 
     def test_a_none_field_is_left_out_not_sent_as_null(self, mock_posthog):
         capture(USER_1, PaymentSucceeded(payment_id="pay_1", currency="USD", amount=None))
@@ -343,9 +350,22 @@ class TestTrackSubscriptionEvent:
     def test_cancelled_event_updates_subscription_status(self, mock_posthog):
         track_subscription_event(USER_1, CANCELLED)
 
-        mock_posthog.set.assert_called_once()
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props == {"subscription_status": SubscriptionStatus.CANCELLED}
+        mock_posthog.set.assert_called_once_with(
+            distinct_id=USER_1.value,
+            properties={"subscription_status": SubscriptionStatus.CANCELLED},
+        )
+
+    def test_an_expiry_drops_the_user_back_to_free(self, mock_posthog):
+        track_subscription_event(USER_1, SubscriptionExpired(subscription_id="sub123"))
+
+        mock_posthog.set.assert_called_once_with(
+            distinct_id=USER_1.value,
+            properties={
+                "plan": PlanType.FREE,
+                "is_subscribed": False,
+                "subscription_status": SubscriptionStatus.EXPIRED,
+            },
+        )
 
     def test_renewed_event_keeps_the_user_subscribed(self, mock_posthog):
         track_subscription_event(
