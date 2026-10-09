@@ -256,7 +256,10 @@ def test_two_journeys_expecting_the_same_event_each_need_their_own() -> None:
     first_created = _index("chat:conversation_created")
     events = [event for i, event in enumerate(CLEAN) if i != first_created]
 
-    assert _judge(events) != []
+    assert _judge(events) == [
+        "onboarding: chat:conversation_created [surface=web, is_system_generated=True, "
+        "system_purpose=None]: arrived 0x, expected 1x"
+    ]
 
 
 def test_a_query_that_fills_the_row_cap_stops_the_run() -> None:

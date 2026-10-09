@@ -274,6 +274,10 @@ def await_execution(
             _expect(api.get(f"/workflows/{workflow_id}/executions"), HTTPStatus.OK).json()
         ).executions
         finished = [run for run in executions if run.status != EXECUTION_RUNNING]
+        if len(finished) > 1:
+            raise JourneyError(
+                f"workflow {workflow_id} executed once but has {len(finished)} finished runs"
+            )
         if finished:
             [run] = finished
             if run.status != EXECUTION_SUCCEEDED:

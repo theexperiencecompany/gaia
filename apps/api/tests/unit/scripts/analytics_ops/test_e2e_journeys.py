@@ -60,3 +60,9 @@ def test_a_run_no_worker_picks_up_fails_at_the_deadline() -> None:
 def test_a_run_still_going_at_the_deadline_fails() -> None:
     with pytest.raises(JourneyError, match="running"):
         await_execution(_api([_execution("running")]), WORKFLOW, timeout_s=0, poll_s=0)
+
+
+def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
+    twice = [_execution("success"), _execution("success")]
+    with pytest.raises(JourneyError, match="2 finished runs"):
+        await_execution(_api(twice), WORKFLOW, timeout_s=5, poll_s=0)
