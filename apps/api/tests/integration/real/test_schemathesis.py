@@ -38,6 +38,7 @@ from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.db.repositories.plans import PlansRepository
 from app.db.repositories.subscriptions import SubscriptionsRepository
+from app.models.payment_models import PlanTier
 from tests.helpers import pick_free_port
 
 pytestmark = [
@@ -131,6 +132,7 @@ def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
     fixtures: dict[str, dict[str, object]] = {
         PlansRepository.collection_name: {
             "name": "Schemathesis Precondition Plan",
+            "plan_type": PlanTier.FREE.value,
             "amount": 0,
             "currency": "USD",
             "duration": "monthly",

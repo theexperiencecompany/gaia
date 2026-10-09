@@ -16,9 +16,49 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+from typing_extensions import TypedDict
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+
+class DodoSubscriptionMetadata(BaseModel):
+    """The metadata GAIA stamps on a subscription at checkout; anything else Dodo carries is kept."""
+
+    model_config = ConfigDict(extra="allow")
+
+    user_id: str | None = None
+
+
+class DodoWebhookCustomerRef(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    customer_id: str | None = None
+
+
+class DodoWebhookLogFields(BaseModel):
+    """The data fields every delivery is logged with, whatever its type.
+
+    Validated, not trusted: a body whose customer or metadata has the wrong
+    shape is a malformed delivery, rejected before any side effect.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    customer: DodoWebhookCustomerRef = Field(default_factory=DodoWebhookCustomerRef)
+    customer_id: str | None = None
+    total_amount: int | None = None
+    currency: str | None = None
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
+
+
+class DodoWebhookPayload(TypedDict, total=False):
+    """A webhook body as decoded from JSON: any value may be any JSON type until DodoWebhookEvent validates it."""
+
+    business_id: JsonValue
+    type: JsonValue
+    timestamp: JsonValue
+    data: JsonValue
 
 
 class DodoWebhookEventType(str, Enum):
@@ -75,17 +115,6 @@ class DodoBillingData(BaseModel):
     zipcode: str | None = None
 
 
-class DodoCheckoutMetadata(BaseModel):
-    """Metadata GAIA stamps on a checkout; other keys are kept verbatim.
-
-    user_id is whatever JSON Dodo echoes back; every reader validates it as a GAIA id.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    user_id: JsonValue = None
-
-
 class DodoPaymentData(BaseModel):
     """Payment data from payment webhook."""
 
@@ -109,7 +138,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: DodoCheckoutMetadata = Field(default_factory=DodoCheckoutMetadata)
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -137,7 +166,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: DodoCheckoutMetadata = Field(default_factory=DodoCheckoutMetadata)
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 

@@ -17,8 +17,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {},
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/useWorkflowSelection", () => ({
