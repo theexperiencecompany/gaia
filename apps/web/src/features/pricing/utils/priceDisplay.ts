@@ -1,8 +1,5 @@
 import { DAYS_PER_BILLING_MONTH, MONTHS_PER_YEAR } from "../constants";
-import {
-  getAnnualSavingsPercent,
-  monthsFreeFromSavings,
-} from "./annualSavings";
+import { getAnnualSavingsPercent, monthsFreeFromPrices } from "./annualSavings";
 import { toMajorUnits } from "./money";
 
 /** Every price figure a pricing card renders, derived from minor units. */
@@ -43,7 +40,7 @@ export function getPriceDisplay(
     yearlyTotalDollars,
     priceSubLine,
     showSavings: !!yearlyTotalDollars && savePercent > 0,
-    monthsFree: monthsFreeFromSavings(savePercent),
+    monthsFree: originalPrice ? monthsFreeFromPrices(originalPrice, price) : 0,
   };
 }
 

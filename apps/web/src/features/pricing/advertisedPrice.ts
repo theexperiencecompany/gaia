@@ -14,5 +14,11 @@ export const ADVERTISED_PRO_MONTHLY_PRICE = toMajorUnits(
   advertised.currency,
 );
 
+/** The same advertised price in minor units with its currency, for figures derived from it. */
+export const ADVERTISED_PRO_MONTHLY = {
+  amount: advertised.amount,
+  currency: advertised.currency,
+} as const;
+
 /** Where marketing data writes GAIA's own monthly price, number only, so each locale keeps its own format. */
 export const PRO_MONTHLY_PRICE_TOKEN = "{{PRO_MONTHLY_PRICE}}";

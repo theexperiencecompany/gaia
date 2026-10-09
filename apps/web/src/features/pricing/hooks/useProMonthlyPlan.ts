@@ -11,8 +11,8 @@ interface ProMonthlyPlan {
 }
 
 /** The Pro monthly row every "per month" and "per day" price is quoted from. */
-export function useProMonthlyPlan(initialPlans?: Plan[]): ProMonthlyPlan {
-  const { plans, plansLoading } = usePricing(initialPlans);
+export function useProMonthlyPlan(): ProMonthlyPlan {
+  const { plans, plansLoading } = usePricing();
   return {
     plan: plans.find((p) => isProPlan(p) && p.duration === "monthly"),
     isLoading: plansLoading,

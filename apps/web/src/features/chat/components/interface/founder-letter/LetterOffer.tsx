@@ -7,8 +7,7 @@ import {
 } from "@icons";
 
 import { RaisedButton } from "@/components/ui/raised-button";
-import { useAnnualSavingsPercent } from "@/features/pricing/hooks/useAnnualSavingsPercent";
-import { monthsFreeFromSavings } from "@/features/pricing/utils/annualSavings";
+import { useAnnualSavings } from "@/features/pricing/hooks/useAnnualSavings";
 
 import {
   DISCOUNT_PERCENT,
@@ -36,11 +35,8 @@ export function LetterOffer({
   onClaim,
 }: LetterOfferProps) {
   // Only said once the live prices are known, so the months are never a guess.
-  const yearlySavings = useAnnualSavingsPercent({
-    offerPercent: DISCOUNT_PERCENT,
-  });
   const monthsFree =
-    yearlySavings === null ? 0 : monthsFreeFromSavings(yearlySavings);
+    useAnnualSavings({ offerPercent: DISCOUNT_PERCENT })?.monthsFree ?? 0;
   const yearlyNote = monthsFree > 0 ? discountYearlyNote(monthsFree) : null;
 
   return (

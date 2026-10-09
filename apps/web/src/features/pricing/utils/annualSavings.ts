@@ -15,9 +15,18 @@ export function getAnnualSavingsPercent(
   return Math.round((1 - discountedPriceCents / fullPriceCents) * 100);
 }
 
-/** A yearly saving as the whole months of the monthly rate it gives back. */
-export function monthsFreeFromSavings(savingsPercent: number): number {
-  return Math.round((savingsPercent / 100) * MONTHS_PER_YEAR);
+/**
+ * The whole months of the monthly rate a yearly price gives back, from the
+ * prices rather than a rounded percentage. Floored: a savings claim may
+ * understate a part month, never round one up into a free one.
+ */
+export function monthsFreeFromPrices(
+  fullPriceCents: number,
+  discountedPriceCents: number,
+): number {
+  if (fullPriceCents <= 0 || discountedPriceCents <= 0) return 0;
+  const savedCents = Math.max(0, fullPriceCents - discountedPriceCents);
+  return Math.floor((savedCents * MONTHS_PER_YEAR) / fullPriceCents);
 }
 
 /**

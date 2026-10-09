@@ -1,34 +1,20 @@
-"use client";
-
-import { Skeleton } from "@heroui/skeleton";
-
-import type { Plan } from "../api/pricingApi";
-import { useProMonthlyPlan } from "../hooks/useProMonthlyPlan";
+import { ADVERTISED_PRO_MONTHLY } from "../advertisedPrice";
 import { formatWholeOrCents } from "../utils/money";
 import { getDailyPrice } from "../utils/priceDisplay";
 
 interface ProDailyPriceHeadingProps {
   /** The words after the per-day price ("a day to never work again."). */
   afterPrice: string;
-  /** The heading when the plans could not be read, so no price is guessed. */
-  withoutPrice: string;
-  initialPlans?: Plan[];
 }
 
-/** A heading led by the Pro monthly price per day ("$1"), from the live catalogue. */
+/**
+ * A heading led by the Pro monthly price per day ("$1"). It quotes the
+ * advertised price payment_setup.py holds Dodo to, not the plans API, so the
+ * server render, the hydrated page and every plans-query state read the same.
+ */
 export function ProDailyPriceHeading({
   afterPrice,
-  withoutPrice,
-  initialPlans,
 }: ProDailyPriceHeadingProps) {
-  const { plan, isLoading } = useProMonthlyPlan(initialPlans);
-  if (plan)
-    return `${formatWholeOrCents(getDailyPrice(plan.amount), plan.currency)} ${afterPrice}`;
-  if (!isLoading) return withoutPrice;
-  return (
-    <>
-      <Skeleton className="inline-block h-[0.8em] w-[1.4em] rounded-lg align-baseline" />{" "}
-      {afterPrice}
-    </>
-  );
+  const dailyPrice = getDailyPrice(ADVERTISED_PRO_MONTHLY.amount);
+  return `${formatWholeOrCents(dailyPrice, ADVERTISED_PRO_MONTHLY.currency)} ${afterPrice}`;
 }

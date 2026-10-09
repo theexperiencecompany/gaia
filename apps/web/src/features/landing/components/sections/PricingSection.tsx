@@ -17,10 +17,7 @@ export default function PricingSection() {
       <LargeHeader
         chipText="Pricing"
         headingText={
-          <ProDailyPriceHeading
-            afterPrice="a day to never work again."
-            withoutPrice="Never work again."
-          />
+          <ProDailyPriceHeading afterPrice="a day to never work again." />
         }
         subHeadingText="The cheapest hire you'll ever make."
         centered

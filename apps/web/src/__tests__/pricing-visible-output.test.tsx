@@ -306,6 +306,15 @@ describe("pricing cards", () => {
     );
   });
 
+  it("never rounds a part month up into the chip", () => {
+    // $271/yr saves $89: 2.97 months of $30, so two months free, not three.
+    mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27100 }];
+    const { container } = render(
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+    );
+    expect(visibleText(container)).toBe("MonthlyYearly2 months free");
+  });
+
   it("discount banners", () => {
     const withPercent = render(<DiscountBanner {...FOUNDER_OFFER} />);
     expect(visibleText(withPercent.container)).toMatchInlineSnapshot(
@@ -357,39 +366,13 @@ describe("sidebar promo", () => {
 });
 
 describe("per-day price heading", () => {
-  const heading = (
-    <ProDailyPriceHeading
-      afterPrice="a day to never work again."
-      withoutPrice="Never work again."
-    />
-  );
-
-  it("spreads the monthly catalogue price over a 30-day month", () => {
-    const { container } = render(heading);
+  it("quotes the advertised price over a 30-day month", () => {
+    const { container } = render(
+      <ProDailyPriceHeading afterPrice="a day to never work again." />,
+    );
     expect(visibleText(container)).toMatchInlineSnapshot(
       `"$1 a day to never work again."`,
     );
-  });
-
-  it("follows the catalogue when the monthly price moves", () => {
-    mockPlans = [{ ...PRO_MONTHLY, amount: 4500 }, PRO_YEARLY];
-    const { container } = render(heading);
-    expect(visibleText(container)).toBe("$1.50 a day to never work again.");
-  });
-
-  it("holds the price as a skeleton while the catalogue loads", () => {
-    mockPlans = [];
-    mockPlansLoading = true;
-    const { container } = render(heading);
-    expect(visibleText(container)).toBe("a day to never work again.");
-    expect(container.querySelector(SKELETON)).not.toBeNull();
-  });
-
-  it("drops the price, not the page, when the catalogue could not be read", () => {
-    mockPlans = [];
-    const { container } = render(heading);
-    expect(visibleText(container)).toBe("Never work again.");
-    expect(container.querySelector(SKELETON)).toBeNull();
   });
 });
 
@@ -533,6 +516,22 @@ describe("founder's letter offer", () => {
     );
     expect(visibleText(container)).toContain(
       "On yearly that's seven months free.",
+    );
+  });
+
+  it("never rounds a part month up into a free one", () => {
+    // $270/yr at 40% off is $162: $198 saved, 6.6 months of $30.
+    mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27000 }];
+    const { container } = render(
+      <LetterOffer
+        discountCode="THANKYOU40"
+        copied={false}
+        onCopyCode={vi.fn()}
+        onClaim={vi.fn()}
+      />,
+    );
+    expect(visibleText(container)).toContain(
+      "On yearly that's six months free.",
     );
   });
 

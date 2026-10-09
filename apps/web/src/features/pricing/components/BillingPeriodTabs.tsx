@@ -3,8 +3,10 @@
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import type { Plan } from "../api/pricingApi";
-import { useAnnualSavingsPercent } from "../hooks/useAnnualSavingsPercent";
-import { monthsFreeFromSavings } from "../utils/annualSavings";
+import {
+  type AnnualSavings,
+  useAnnualSavings,
+} from "../hooks/useAnnualSavings";
 
 interface BillingPeriodTabsProps {
   isYearly: boolean;
@@ -15,9 +17,8 @@ interface BillingPeriodTabsProps {
 
 /** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
  * the percentage only when the discount is too small to be a whole month. */
-function annualSavingsLabel(savingsPercent: number): string {
-  const monthsFree = monthsFreeFromSavings(savingsPercent);
-  if (monthsFree < 1) return `Save ${savingsPercent}%`;
+function annualSavingsLabel({ percent, monthsFree }: AnnualSavings): string {
+  if (monthsFree < 1) return `Save ${percent}%`;
   return monthsFree === 1 ? "1 month free" : `${monthsFree} months free`;
 }
 
@@ -30,7 +31,7 @@ export function BillingPeriodTabs({
   onChange,
   initialPlans,
 }: BillingPeriodTabsProps) {
-  const savingsPercent = useAnnualSavingsPercent({ initialPlans });
+  const savings = useAnnualSavings({ initialPlans });
 
   return (
     <Tabs
@@ -46,9 +47,9 @@ export function BillingPeriodTabs({
         title={
           <div className="flex items-center gap-2">
             Yearly
-            {savingsPercent !== null && (
+            {savings !== null && (
               <Chip color="primary" size="sm" variant="solid">
-                {annualSavingsLabel(savingsPercent)}
+                {annualSavingsLabel(savings)}
               </Chip>
             )}
           </div>
