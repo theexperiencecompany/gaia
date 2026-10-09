@@ -36,6 +36,8 @@ from app.constants.todos import (
     PAUSED_RUN_RECHECK,
     RETRY_BACKOFF,
     RUN_LOCK_KEY,
+    TODO_ANCHORED_RECURRENCES,
+    TODO_INTERVAL_RECURRENCES,
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_RETRY_DELAY,
     TODO_SCHEDULE_FIRE_GRACE,
@@ -51,10 +53,12 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
@@ -64,6 +68,7 @@ from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
     buffer_todo_trigger_event,
     drain_todo_trigger_events,
+    hold_trigger_event_while_paused,
     open_trigger_window,
     reschedule_todo_trigger_drain,
     trigger_window,
@@ -79,6 +84,9 @@ from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from shared.py.wide_events import log
+
+#: The surface a paywalled tracked-todo run is attributed to in the funnel.
+PAYWALL_FEATURE_TRACKED_TODO = "tracked_todo"
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
@@ -258,22 +266,13 @@ async def _execute_todo_with_retry(
 
     if skipped := await _skip_reason(doc, origin, armed_for):
         return skipped
-
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
 
-    # Single user fetch per run: reused for execution and the next-run
-    # computation, so a tz change applies immediately without an extra DB round-trip.
-    try:
-        user_data, user_tz = await _load_user_with_tz(user_id)
-    except OwnerNotFoundError as missing:
-        log.error(
-            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
-        )
-        return await _retire_ownerless_todo(doc)
-
-    if paused_result := await _paused_result(doc, user_tz, origin, coalesced):
-        return paused_result
+    owner = await _owner_ready_to_run(doc, origin, coalesced)
+    if isinstance(owner, str):
+        return owner
+    user_data, user_tz = owner
 
     # Cost wall before any LLM work: a trigger fire is not a user action. The
     # window opens first, so a walled run still counts as its window's one run.
@@ -362,6 +361,80 @@ async def _schedule_retry(
     return f"retry:{doc.id} (attempt {attempt})"
 
 
+async def _owner_ready_to_run(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> tuple[AuthenticatedUser, Timezone] | str:
+    """Return the owner and their timezone for a fire that runs, or the result of one that does not.
+
+    One user fetch per run, reused for the next-run computation so a timezone change
+    applies at once. The owner check comes first: a todo with no owner is retired,
+    not paused for a plan nobody holds.
+    """
+    try:
+        user_data, user_tz = await _load_user_with_tz(doc.user_id)
+    except OwnerNotFoundError as missing:
+        log.error(
+            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
+        )
+        return await _retire_ownerless_todo(doc)
+    if withheld := await _withheld_result(doc, origin, coalesced):
+        return withheld
+    if paused := await _paused_result(doc, user_tz, origin, coalesced):
+        return paused
+    return user_data, user_tz
+
+
+async def _withheld_result(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> str | None:
+    """Return the result of a fire the todo's pause or its owner's lapsed plan withholds, or None."""
+    if doc.pause_reason is not None:
+        log.info("tracked_todo.execute_paused", todo_id=doc.id, pause_reason=doc.pause_reason)
+        await _hold_events_while_paused(doc.id, origin, coalesced)
+        return f"paused:{doc.id}"
+    if not await is_paid(doc.user_id):
+        return await _pause_unpaid(doc, origin, coalesced)
+    return None
+
+
+async def _hold_events_while_paused(
+    todo_id: str, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> None:
+    """Keep a paused todo's trigger events for the resume to replay; a scheduled fire carries none."""
+    events = [origin, *coalesced] if origin is not None else list(coalesced)
+    for event in events:
+        if not await hold_trigger_event_while_paused(todo_id, event):
+            log.error(
+                "tracked_todo.trigger_event_lost_paused",
+                todo_id=todo_id,
+                trigger_name=event.trigger_name,
+                subscription_id=event.subscription_id,
+            )
+
+
+async def _pause_unpaid(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> str:
+    """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
+    log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
+    capture_event(
+        doc.user_id, AnalyticsEvents.PAYWALL_BLOCKED, {"feature": PAYWALL_FEATURE_TRACKED_TODO}
+    )
+    await todo_repository.update(
+        doc.id,
+        user_id=doc.user_id,
+        update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+    )
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.RUN_SKIPPED,
+        "paused: runs need an active subscription, and resume when it starts",
+    )
+    await _hold_events_while_paused(doc.id, origin, coalesced)
+    return f"paused:{doc.id} (subscription required)"
+
+
 async def _give_up_occurrence(
     doc: TodoDocument, user_tz: str, origin: TriggerOrigin | None
 ) -> None:
@@ -431,9 +504,7 @@ _GMAIL_REF_SOURCES = frozenset({ExternalRefSource.INBOX_DESK, ExternalRefSource.
 
 
 async def _paused_reason(doc: TodoDocument) -> str | None:
-    """Say why the todo cannot run right now (no active plan, or Gmail work without Gmail)."""
-    if not await is_paid(doc.user_id):
-        return "skipped: the user's plan is not active"
+    """Say why the todo cannot run right now: Gmail work without Gmail connected."""
     needs_gmail = doc.external_ref is not None and doc.external_ref.source in _GMAIL_REF_SOURCES
     if needs_gmail and GMAIL_INTEGRATION_ID not in await get_connected_integration_ids(doc.user_id):
         return "skipped: Gmail is not connected"
@@ -751,20 +822,12 @@ def _compute_next_run(
 
     now_utc = datetime.now(UTC)
 
-    interval_shortcuts: dict[str, timedelta] = {
-        "every_4h": timedelta(hours=4),
-        "every_1h": timedelta(hours=1),
-    }
-    if recurrence in interval_shortcuts:
+    if recurrence in TODO_INTERVAL_RECURRENCES:
         # Intervals are deltas from "now" — drift is acceptable/expected.
-        return now_utc + interval_shortcuts[recurrence]
+        return now_utc + TODO_INTERVAL_RECURRENCES[recurrence]
 
-    anchored_steps: dict[str, timedelta] = {
-        "daily": timedelta(days=1),
-        "weekly": timedelta(weeks=1),
-    }
-    if recurrence in anchored_steps:
-        step = anchored_steps[recurrence]
+    if recurrence in TODO_ANCHORED_RECURRENCES:
+        step = TODO_ANCHORED_RECURRENCES[recurrence]
         if anchor is None:
             # No anchor available — fall back to a plain delta from now.
             return now_utc + step

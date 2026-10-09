@@ -251,8 +251,16 @@ class TestHitsToEpisodePayloads:
                 EpisodeHit(date=day, text="evening", time="18:00"),
             ]
         )
-        assert len(payloads) == 1
-        assert [entry["text"] for entry in payloads[0]["entries"]] == ["morning", "evening"]
+        assert payloads == [
+            {
+                "date": "2026-03-12",
+                "entries": [
+                    {"time": "09:30", "text": "morning", "source": None},
+                    {"time": "18:00", "text": "evening", "source": None},
+                ],
+                "summary": None,
+            }
+        ]
 
     def test_a_timeless_hit_becomes_the_day_summary(self) -> None:
         day = date_type(2026, 3, 12)

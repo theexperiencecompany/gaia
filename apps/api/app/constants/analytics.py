@@ -8,3 +8,6 @@ POSTHOG_PROVIDER_KEY = "posthog"
 #: Person property carrying a user's choice for a user-facing flag, suffixed
 #: with the lowercased flag key (feature_browser_obscura), so any metric splits by it.
 FEATURE_CHOICE_PERSON_PROPERTY_PREFIX = "feature_"
+
+#: agent:run_failed reason for a run cancelled mid-flight (shutdown, a stopped turn).
+AGENT_RUN_CANCELLED_REASON = "cancelled"

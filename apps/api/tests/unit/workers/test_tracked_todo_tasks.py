@@ -72,6 +72,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -89,6 +90,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.analytics_service import AnalyticsEvents
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
@@ -101,6 +103,7 @@ from app.workers.task_envelope import arq_task
 from app.workers.tasks.todo_run_context import collect_reference_learnings, collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from app.workers.tasks.tracked_todo_tasks import (
+    PAYWALL_FEATURE_TRACKED_TODO,
     _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
@@ -824,40 +827,6 @@ class TestARunWaitsForItsAccount:
             result = await _execute_todo_with_retry("todo-1")
         return result, repo, via_agent
 
-    async def test_a_lapsed_plan_skips_the_run_and_keeps_the_schedule(self, account, activity):
-        account.paid.return_value = False
-
-        async with captured_wide_event() as event:
-            result, repo, via_agent = await self._run(
-                _doc(recurrence="0 9 * * *"), tz="Asia/Kolkata"
-            )
-
-        assert result == "paused:todo-1"
-        via_agent.assert_not_awaited()
-        account.paid.assert_awaited_once_with("user-1")
-        [(_expected, written)] = _schedule_writes(repo)
-        assert written["scheduled_at"].astimezone(KOLKATA).hour == 9
-        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
-            _recorded(activity)
-        )
-        assert event["tracked_todo"] == {"paused": "skipped: the user's plan is not active"}
-
-    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(
-        self, account, activity
-    ):
-        account.paid.return_value = False
-        before = datetime.now(UTC)
-
-        result, repo, _via_agent = await self._run(_doc())
-
-        assert result == "paused:todo-1"
-        rerun_at = repo.update_if_scheduled_at.await_args.kwargs["update"].scheduled_at
-        recheck = todo_constants.PAUSED_RUN_RECHECK
-        assert before + recheck <= rerun_at <= datetime.now(UTC) + recheck
-        assert (TodoActivityEvent.SCHEDULED, f"next run {rerun_at.isoformat()} (once)") in (
-            _recorded(activity)
-        )
-
     @pytest.mark.parametrize(
         "ref",
         [
@@ -885,56 +854,6 @@ class TestARunWaitsForItsAccount:
 
         assert result == "success:todo-1"
         via_agent.assert_awaited_once()
-
-    async def test_a_paused_trigger_run_holds_its_events_for_the_catch_up_drain(
-        self, account, activity
-    ):
-        """Drained events are held, not dropped, while the account is ineligible."""
-        account.paid.return_value = False
-        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
-        rest = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_new_message")
-        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
-        repo = MagicMock()
-        repo.get_by_id = AsyncMock(return_value=doc)
-        with (
-            patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
-            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
-            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=True)) as held,
-            _serving(_pool()),
-        ):
-            result = await _execute_todo_with_retry("todo-1", first, coalesced=[rest])
-
-        assert result == "paused:todo-1"
-        assert [c.args[1] for c in held.await_args_list] == [first, rest]
-        assert {c.args[0] for c in held.await_args_list} == {"todo-1"}
-        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
-            _recorded(activity)
-        )
-
-    async def test_an_unholdable_event_is_logged_not_silently_dropped(self, account, activity):
-        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
-        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
-        repo = MagicMock()
-        repo.get_by_id = AsyncMock(return_value=doc)
-        with (
-            patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
-            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
-            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.log") as mock_log,
-            _serving(_pool()),
-        ):
-            account.paid.return_value = False
-            result = await _execute_todo_with_retry("todo-1", first)
-
-        assert result == "paused:todo-1"
-        mock_log.error.assert_called_once_with(
-            "tracked_todo.trigger_event_lost_paused",
-            todo_id="todo-1",
-            trigger_name="gmail_new_message",
-            subscription_id="sub-1",
-        )
 
 
 class TestExecuteTodoWithRetryEarlyExits:
@@ -1063,6 +982,18 @@ class TestATodoWhoseOwnerIsNotAUser:
             user_id=owner,
             error="The owner is not a GAIA user",
         )
+
+    async def test_an_ownerless_todo_is_retired_not_paused_by_the_paywall(self, account):
+        """No owner means no plan either; pausing it would keep a fabricated owner's todo for a resume that never comes."""
+        account.paid.return_value = False
+        result, repo, _pool_, executor, archive, _log = await self._run(
+            _doc(user_id=SYSTEM_USER_ID, recurrence="every_1h")
+        )
+
+        assert result == "no_owner:todo-1"
+        executor.assert_not_awaited()
+        archive.assert_awaited_once()
+        account.paid.assert_not_awaited()
 
     async def test_a_failed_archive_raises_and_keeps_the_schedule_for_a_retry(self):
         doc = _doc(user_id=SYSTEM_USER_ID, recurrence="every_1h")
@@ -2186,6 +2117,49 @@ class TestOneRunPerOccurrence:
         ):
             yield run
 
+    async def test_a_todo_resumed_after_resubscribing_runs_its_missed_occurrence_once(
+        self, queue, account
+    ):
+        due = datetime.now(UTC) - timedelta(hours=3)
+        row = _TodoRow(_doc(scheduled_at=due))
+        row.find_paused_for_reason = AsyncMock(side_effect=lambda *_: [row.doc])
+        await tracked_todo_service.schedule_execution("todo-1", due)
+        (blocked,) = await _queued(queue)
+        account.paid.return_value = False
+
+        with (
+            self._worker(row) as run,
+            patch(f"{MODULE}.capture_event"),
+            patch("app.services.tracked_todo_service.todo_repository", row),
+        ):
+            assert await _fire(queue, blocked) == "paused:todo-1 (subscription required)"
+            account.paid.return_value = True
+            resumed = await tracked_todo_service.resume_paused_for(
+                "user-1", DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+            results = [await _fire(queue, job) for job in await _queued(queue)]
+
+        assert resumed == 1
+        assert results == ["success:todo-1"]
+        run.assert_awaited_once()
+
+    async def test_a_resume_while_the_occurrence_is_still_queued_adds_no_second_run(
+        self, queue, account
+    ):
+        later = datetime.now(UTC) + timedelta(hours=1)
+        row = _TodoRow(_doc(scheduled_at=later, pause_reason="subscription_lapsed"))
+        row.find_paused_for_reason = AsyncMock(side_effect=lambda *_: [row.doc])
+        await tracked_todo_service.schedule_execution("todo-1", later)
+
+        with patch("app.services.tracked_todo_service.todo_repository", row):
+            resumed = await tracked_todo_service.resume_paused_for(
+                "user-1", DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert resumed == 1
+        assert row.doc.pause_reason is None
+        assert len(await _queued(queue)) == 1
+
     async def test_a_job_left_behind_by_a_reschedule_does_not_run(self, queue):
         armed = datetime.now(UTC)
         row = _TodoRow(_doc(scheduled_at=armed))
@@ -3231,6 +3205,176 @@ class TestResumeTrackedTodo:
         assert run.result == "resume_dropped:todo-1 (lock held)"
         run.enqueue.assert_not_awaited()
         run.log.warning.assert_called_once_with("tracked_todo.resume_lock_held", todo_id="todo-1")
+
+
+# ---------------------------------------------------------------------------
+# _execute_todo_with_retry — the paid-only gate
+# ---------------------------------------------------------------------------
+
+
+class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
+    @pytest.fixture(autouse=True)
+    def _owner_is_a_user(self) -> Iterator[None]:
+        """Make each todo's owner a real user, since the owner check runs before the paywall."""
+        with patch(LOAD_USER, AsyncMock(side_effect=_user_context())):
+            yield
+
+    async def test_one_blocked_fire_pauses_it_and_the_next_fire_is_silent(
+        self, account: SimpleNamespace
+    ) -> None:
+        """A recurring tracked todo of an unpaid user ran the agent on every fire, with no gate at all."""
+        account.paid.return_value = False
+        doc = _doc(recurrence="every_1h")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        execute = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.capture_event") as capture,
+            _serving(_pool()),
+        ):
+            first = await _execute_todo_with_retry("todo-1")
+            repo.get_by_id = AsyncMock(
+                return_value=doc.model_copy(update={"pause_reason": "subscription_lapsed"})
+            )
+            second = await _execute_todo_with_retry("todo-1")
+
+        execute.assert_not_awaited()
+        assert first.startswith("paused:") and second.startswith("paused:")
+        assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
+        repo.update_if_scheduled_at.assert_not_awaited()
+        assert [c.args[1] for c in capture.call_args_list] == ["paywall:blocked"]
+
+    async def test_the_pause_is_recorded_against_the_owner_and_the_todo(
+        self, account: SimpleNamespace
+    ) -> None:
+        account.paid.return_value = False
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(recurrence="every_1h"))
+        repo.update = AsyncMock()
+        record = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.log") as log,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (subscription required)"
+        account.paid.assert_awaited_once_with("user-1")
+        log.warning.assert_called_once_with(
+            "tracked_todo.paused_subscription_required", todo_id="todo-1", user_id="user-1"
+        )
+        capture.assert_called_once_with(
+            "user-1", AnalyticsEvents.PAYWALL_BLOCKED, {"feature": PAYWALL_FEATURE_TRACKED_TODO}
+        )
+        assert [(c.args, c.kwargs["user_id"]) for c in repo.update.call_args_list] == [
+            (("todo-1",), "user-1")
+        ]
+        record.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            TodoActivityEvent.RUN_SKIPPED,
+            "paused: runs need an active subscription, and resume when it starts",
+        )
+
+    async def test_a_lapsed_one_time_run_keeps_its_time_for_the_resume(
+        self, account: SimpleNamespace
+    ) -> None:
+        """The resume re-arms it at once; moving it a day on would delay a paying user's run."""
+        account.paid.return_value = False
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.capture_event"),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (subscription required)"
+        assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
+        repo.update_if_scheduled_at.assert_not_awaited()
+
+    async def test_the_first_unpaid_trigger_fire_holds_its_events_for_the_resume(
+        self, account: SimpleNamespace
+    ) -> None:
+        account.paid.return_value = False
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        rest = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        execute = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.capture_event"),
+            patch(
+                f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
+            ) as hold,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1", first, coalesced=[rest])
+
+        assert result == "paused:todo-1 (subscription required)"
+        execute.assert_not_awaited()
+        assert [c.args for c in hold.await_args_list] == [("todo-1", first), ("todo-1", rest)]
+
+    async def test_a_trigger_fire_on_a_lapsed_todo_is_held_not_dropped(
+        self, account: SimpleNamespace
+    ) -> None:
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(pause_reason="subscription_lapsed"))
+        repo.update = AsyncMock()
+        execute = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.capture_event") as capture,
+            patch(
+                f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
+            ) as hold,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1", first)
+
+        assert result == "paused:todo-1"
+        execute.assert_not_awaited()
+        capture.assert_not_called()
+        repo.update.assert_not_awaited()
+        hold.assert_awaited_once_with("todo-1", first)
+
+    async def test_an_event_that_cannot_be_held_while_paused_is_logged(
+        self, account: SimpleNamespace
+    ) -> None:
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(pause_reason="subscription_lapsed"))
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=False)),
+            patch(f"{MODULE}.log") as mock_log,
+            _serving(_pool()),
+        ):
+            await _execute_todo_with_retry("todo-1", first)
+
+        mock_log.error.assert_called_once_with(
+            "tracked_todo.trigger_event_lost_paused",
+            todo_id="todo-1",
+            trigger_name="gmail_new_message",
+            subscription_id="sub-1",
+        )
 
 
 class TestCollectRunContext:

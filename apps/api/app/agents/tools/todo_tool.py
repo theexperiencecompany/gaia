@@ -66,6 +66,7 @@ from app.templates.docstrings.todo_tool_docs import (
     UPDATE_PROJECT,
     UPDATE_TODO,
 )
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 # A TodoResponse / ProjectResponse / TodoStats serialized with
@@ -420,7 +421,7 @@ async def search_todos(
 
     try:
         log.set(tool={"name": "search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=query)
+        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=user_text_shape(query))
 
         results = await search_todos_service(query, user_id)
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -463,7 +464,7 @@ async def semantic_search_todos(
 
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=query)
+        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=user_text_shape(query))
 
         # Ensure limit is reasonable
         limit = min(limit, 50)

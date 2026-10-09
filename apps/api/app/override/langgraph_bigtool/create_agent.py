@@ -309,12 +309,9 @@ def _log_message_preview(state: State) -> None:
         preview = []
         for msg in recent_messages:
             role = msg.__class__.__name__
-            # extract_text_content, not the raw content: a tool result carrying
-            # inline media holds megabytes of base64 that must never reach a log.
+            # The text's length, not the raw content's: inline media is megabytes of base64.
             content = extract_text_content(getattr(msg, "content", ""))
-            if len(content) > 200:
-                content = content[:197] + "..."
-            preview.append({"role": role, "content": content})
+            preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
         log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
@@ -368,6 +365,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             options=LLMInvokeOptions(
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
@@ -411,6 +409,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             options=LLMInvokeOptions(
                 meter_auxiliary=False,
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )

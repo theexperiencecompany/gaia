@@ -100,20 +100,20 @@ def test_an_operator_valued_id_targets_no_single_doc() -> None:
 
 
 @pytest.mark.parametrize(
-    ("doc_id", "valid"),
-    [("64abc123def4567890abcdef", True), ("system", False), ("", False)],
+    ("overrides", "doc_id", "valid"),
+    [
+        ({"uses_object_id": True}, "6812f0b3c9a14e2b7d5a91cc", True),
+        ({"uses_object_id": True}, "user-1", False),
+        ({"uses_object_id": True, "identity_field": "conversation_id"}, "user-1", True),
+        ({"uses_object_id": False}, "user-1", True),
+        ({"uses_object_id": False}, "", False),
+    ],
+    ids=["object-id", "not-an-object-id", "business-key", "string-id", "empty"],
 )
-def test_an_object_id_identity_accepts_only_a_well_formed_object_id(
-    doc_id: str, valid: bool
+def test_an_id_is_valid_by_the_collections_own_identity(
+    overrides: dict[str, Any], doc_id: str, valid: bool
 ) -> None:
-    assert _concrete(uses_object_id=True)().is_valid_id(doc_id) is valid
-
-
-def test_a_string_identity_accepts_any_non_empty_id() -> None:
-    repo = _concrete()()
-
-    assert repo.is_valid_id("wf_dccaf3effd38") is True
-    assert repo.is_valid_id("") is False
+    assert _concrete(**overrides)().is_valid_id(doc_id) is valid
 
 
 async def _set_written(repo: _BaseRepository, *, touch: bool = True) -> dict[str, object]:

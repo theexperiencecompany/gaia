@@ -74,6 +74,13 @@ _FUTURE_ISO = _FUTURE.isoformat()
 _PAST_ISO = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
 
+_REFUSED_RECURRENCES = [
+    ("* * * * *", "Schedules can repeat at most once an hour."),
+    ("*/5 * * * *", "Schedules can repeat at most once an hour."),
+    ("0 6 30 * * *", "Use 5 fields: minute hour day month weekday."),
+]
+
+
 @pytest.fixture(autouse=True)
 def recorded_changes() -> Iterator[AsyncMock]:
     """Capture the scheduling changes the tools put on a todo's timeline."""
@@ -256,9 +263,10 @@ class TestRecurrenceValidation:
 
     def test_invalid_cron_is_rejected(self):
         assert validate_recurrence_format("not a cron") == (
-            "Error: invalid recurrence 'not a cron'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+            "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
     def test_valid_shortcut_passes_format_validation(self):
@@ -268,10 +276,8 @@ class TestRecurrenceValidation:
         """A typo'd shortcut is neither a known shortcut nor a valid cron — the error must still point the caller at the valid shortcut options, not just say "invalid"."""
         error = validate_recurrence_format("monthly")
         assert error is not None
-        assert error == (
-            "Error: invalid recurrence 'monthly'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+        assert (
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression." in error
         )
 
 
@@ -330,9 +336,10 @@ class TestResolveFirstFire:
         parsed, notes, error = resolve_first_fire("not a cron", None, "UTC")
         assert parsed is None
         assert error == (
-            "Error: invalid recurrence 'not a cron'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+            "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
 
@@ -546,6 +553,15 @@ class TestUpdateTrackedTodoValidation:
         )
         assert "invalid recurrence" in result
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
+    async def test_a_refused_schedule_is_explained_in_plain_words(self, recurrence, message):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", recurrence=recurrence
+        )
+        assert message in result
+        assert "'0 * * * *'" in result
+
     async def test_invalid_expires_at_error_propagates_through_the_tool(self):
         result = await update_tracked_todo.coroutine(
             config=_config(), todo_id="t1", expires_at="garbage"
@@ -630,6 +646,27 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
 
         assert create.await_args.kwargs["notify_on_run"] is False
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
+    async def test_a_refused_schedule_is_explained_in_plain_words(self, recurrence, message):
+        create = AsyncMock()
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_tz",
+                new_callable=AsyncMock,
+                return_value="UTC",
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                create,
+            ),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", recurrence=recurrence
+            )
+        assert message in result
+        create.assert_not_awaited()
 
     async def test_shortcut_recurrence_without_scheduled_at_returns_error(self):
         result = await create_tracked_todo.coroutine(

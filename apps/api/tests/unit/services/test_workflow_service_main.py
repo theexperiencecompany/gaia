@@ -8,11 +8,14 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.vfs import SYSTEM_USER_ID
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     UNSET,
-    CreateWorkflowRequest,
     DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+)
+from app.models.workflow_models import (
+    CreateWorkflowRequest,
     GeneratedPromptOutput,
     GeneratedStep,
     GeneratedWorkflow,
@@ -2039,29 +2042,6 @@ class TestWorkflowScheduler:
         assert result is False
 
     @patch("app.services.workflow.scheduler.workflow_repository")
-    async def test_update_task_status_threads_all_rearm_fields(self, mock_repo):
-        mock_repo.set_status = AsyncMock(return_value=True)
-        scheduled_at = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
-        next_run = datetime(2026, 1, 2, 4, 4, tzinfo=UTC)
-
-        await WorkflowScheduler().update_task_status(
-            WORKFLOW_ID,
-            ScheduledTaskStatus.COMPLETED,
-            update_data={
-                "scheduled_at": scheduled_at,
-                "occurrence_count": 5,
-                "repeat": "0 9 * * *",
-                "trigger_config.next_run": next_run,
-            },
-        )
-
-        rearm = mock_repo.set_status.call_args.kwargs["rearm"]
-        assert rearm.scheduled_at == scheduled_at
-        assert rearm.occurrence_count == 5
-        assert rearm.repeat == "0 9 * * *"
-        assert rearm.next_run == next_run
-
-    @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_omits_absent_rearm_fields_with_unset(self, mock_repo):
         mock_repo.set_status = AsyncMock(return_value=True)
 
@@ -2123,6 +2103,11 @@ class TestWorkflowScheduler:
         new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time, repeat="0 10 * * *")
         assert result is True
+        scheduler.update_task_status.assert_awaited_once_with(
+            WORKFLOW_ID,
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=new_time, repeat="0 10 * * *"),
+        )
 
     async def test_reschedule_workflow_db_failure(self):
         scheduler = WorkflowScheduler()

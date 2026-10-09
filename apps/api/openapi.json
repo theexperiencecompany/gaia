@@ -4428,7 +4428,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why the expression could not be evaluated, if it raised",
+            "description": "Why the expression is not an acceptable schedule",
             "title": "Error"
           },
           "expression": {
@@ -4444,8 +4444,19 @@
             "title": "Next Runs",
             "type": "array"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleRejection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine-readable reason the expression was refused"
+          },
           "valid": {
-            "description": "Whether the expression parses as a valid cron",
+            "description": "Whether the expression is an acceptable recurring schedule",
             "title": "Valid",
             "type": "boolean"
           }
@@ -4510,12 +4521,13 @@
         "type": "object"
       },
       "DeactivationReason": {
-        "description": "Why a workflow was deactivated by the system, so an automatic resume can tell\nits own pauses apart from a workflow the user deliberately switched off. A\nuser-initiated deactivation records no reason at all.",
+        "description": "Why the system paused a reminder or deactivated a workflow.\n\nAn automatic resume only touches tasks carrying the reason it owns, so a task\nthe user switched off themselves (no reason) is never silently re-enabled.",
         "enum": [
           "user_dormant",
           "integration_expired",
           "subscription_lapsed",
           "integration_never_connected",
+          "invalid_schedule",
           "owner_not_found"
         ],
         "title": "DeactivationReason",
@@ -14136,6 +14148,17 @@
         "title": "SaveWritingStyleResponse",
         "type": "object"
       },
+      "ScheduleRejection": {
+        "description": "Why a recurring schedule was refused; the value is the machine-readable reason code.",
+        "enum": [
+          "wrong_field_count",
+          "unparseable",
+          "too_frequent",
+          "never_fires"
+        ],
+        "title": "ScheduleRejection",
+        "type": "string"
+      },
       "ScheduledTaskStatus": {
         "description": "Base status enum for scheduled tasks.",
         "enum": [
@@ -16434,7 +16457,7 @@
                 "type": "null"
               }
             ],
-            "description": "Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+            "description": "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.",
             "title": "Recurrence"
           },
           "references": {
@@ -16664,7 +16687,7 @@
                 "type": "null"
               }
             ],
-            "description": "Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+            "description": "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.",
             "title": "Recurrence"
           },
           "references": {
@@ -33870,7 +33893,7 @@
     },
     "/api/v1/reminders/cron/validate": {
       "get": {
-        "description": "Validate a cron expression and preview its next few run times.",
+        "description": "Check a cron expression against the recurring-schedule rule and preview its next runs.",
         "operationId": "reminders_validate_cron_endpoint",
         "parameters": [
           {
