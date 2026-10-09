@@ -785,6 +785,14 @@ class TestResolveSubscriptionOwner:
         assert owner == FAKE_USER_ID
         mock_webhook_users_collection.get_by_email.assert_not_awaited()
 
+    async def test_an_empty_stamped_owner_falls_back_to_the_customer_email(
+        self, mock_webhook_users_collection
+    ) -> None:
+        owner = await resolve_subscription_owner(_sub_data(metadata={"user_id": ""}))
+
+        assert owner == FAKE_USER_ID
+        mock_webhook_users_collection.get_by_email.assert_awaited_once()
+
     async def test_an_unknown_customer_email_belongs_to_nobody(
         self, mock_webhook_users_collection
     ) -> None:
