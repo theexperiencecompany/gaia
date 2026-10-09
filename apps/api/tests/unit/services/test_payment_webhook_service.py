@@ -18,6 +18,7 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
+    WebhookProcessingStatus,
 )
 from app.services.analytics_service import AnalyticsEvents
 from app.services.payments.payment_webhook_service import PaymentWebhookService
@@ -54,7 +55,9 @@ def _row(**overrides: object) -> SubscriptionDocument:
 # in here rather than made autouse in the shared conftest, which every other
 # unit/services test file also uses.
 pytestmark = pytest.mark.usefixtures(
-    "mock_activation_workflow_reactivation", "mock_subscription_plan_cache_drop"
+    "mock_activation_workflow_reactivation",
+    "mock_subscription_plan_cache_drop",
+    "mock_queue_inbox_desk",
 )
 
 
@@ -199,6 +202,21 @@ class TestProcessWebhookIdempotency:
         assert result.event_type == "unknown"
         mock_processed_webhook_repository.claim.assert_awaited_once_with(
             "wh_typeless", event_type="unknown"
+        )
+
+    async def test_a_delivery_with_a_non_string_type_is_abandoned_not_crashed(
+        self, webhook_service, mock_processed_webhook_repository
+    ):
+        mock_processed_webhook_repository.claim = AsyncMock(return_value=True)
+
+        result = await webhook_service.process_webhook(
+            {"business_id": "biz", "type": 123, "timestamp": "2026-10-09T00:00:00Z", "data": {}},
+            "wh_numeric_type",
+        )
+
+        assert (result.event_type, result.status) == ("123", WebhookProcessingStatus.ABANDONED)
+        mock_processed_webhook_repository.claim.assert_awaited_once_with(
+            "wh_numeric_type", event_type="123"
         )
 
     async def test_a_replayed_cancellation_deactivates_workflows_only_once(

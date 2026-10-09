@@ -149,7 +149,7 @@ class PaymentWebhookService:
         the side effects. A handler failure releases the claim so Dodo's
         retry is a clean run; only a processed or ignored delivery keeps it.
         """
-        event_type_raw = webhook_data.get("type", "unknown")
+        event_type_raw = str(webhook_data.get("type", "unknown"))
         if not await processed_webhook_repository.claim(webhook_id, event_type=event_type_raw):
             log.info(f"{LogTag.PAYMENT} Webhook already processed, skipping", webhook_id=webhook_id)
             return DodoWebhookProcessingResult(

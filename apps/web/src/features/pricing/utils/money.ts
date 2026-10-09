@@ -38,7 +38,10 @@ export function isWellFormedCurrency(code: string): boolean {
 /** Digits after the decimal point in the currency's major unit. */
 export function currencyExponent(code: string): number {
   if (!isWellFormedCurrency(code)) return ISO_4217_DEFAULT_EXPONENT;
-  return moneyFormatter(code).resolvedOptions().maximumFractionDigits ?? 0;
+  return (
+    moneyFormatter(code).resolvedOptions().maximumFractionDigits ??
+    ISO_4217_DEFAULT_EXPONENT
+  );
 }
 
 /** A minor-unit amount in the currency's major unit (3000 USD cents -> 30). */

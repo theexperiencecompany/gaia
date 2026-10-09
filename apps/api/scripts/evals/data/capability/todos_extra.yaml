@@ -13,7 +13,7 @@
     communicate: ["guest list"]
     tool_calls:
       - {tool: create_todo}
-      - {tool: add_subtask, min_calls: 3}
+      - {tool: add_checklist_item, min_calls: 3}
     end_state:
       todos: [{title_contains: "dinner party", completed: false, subtask_count: 3, subtasks_completed: 0}]
     score: {gates: [communicate, end_state, tool_calls]}
@@ -35,8 +35,8 @@
     communicate: ["van"]
     tool_calls:
       - {tool: create_todo}
-      - {tool: add_subtask, min_calls: 3}
-      - {tool: update_subtask}
+      - {tool: add_checklist_item, min_calls: 3}
+      - {tool: update_checklist_item}
     end_state:
       todos: [{title_contains: "move flat", completed: false, subtask_count: 3, subtasks_completed: 1}]
     score: {gates: [communicate, end_state, tool_calls]}
