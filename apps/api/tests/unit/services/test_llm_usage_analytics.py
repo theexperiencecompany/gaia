@@ -293,7 +293,7 @@ def test_a_mapped_label_logs_no_error(posthog: Any) -> None:
 
 
 def test_the_event_carries_no_message_content(posthog: Any) -> None:
-    """Counts, flags and ids only: the ledger row holds no text, so neither does its event."""
+    """Counts, flags and ids only, and a None field is left out rather than sent as null."""
     capture_llm_call(_row())
     assert set(_captured(posthog)["properties"]) == {
         "feature",
@@ -303,7 +303,6 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "charge_to_budget",
         "model",
         "model_served",
-        "provider",
         "input_tokens",
         "output_tokens",
         "cached_tokens",
@@ -312,13 +311,8 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "cost_usd",
         "cost_source",
         "status",
-        "error_family",
-        "finish_reason",
-        "duration_ms",
         "channel",
         "generation_id",
-        "conversation_id",
-        "workflow_id",
         "llm_call_id",
         "timestamp",
     }

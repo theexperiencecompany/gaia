@@ -3142,7 +3142,9 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         assert first.startswith("paused:") and second.startswith("paused:")
         assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
         repo.update_if_scheduled_at.assert_not_awaited()
-        assert [c.args[1] for c in capture.call_args_list] == ["paywall:blocked"]
+        assert [c.args[1] for c in capture.call_args_list] == [
+            PaywallBlocked(feature=PAYWALL_FEATURE_TRACKED_TODO)
+        ]
 
     async def test_the_pause_is_recorded_against_the_owner_and_the_todo(
         self, account: SimpleNamespace

@@ -184,7 +184,7 @@ async def test_a_blocked_one_shot_is_recorded_failed_not_completed() -> None:
         patch(f"{SCHEDULER}.reminder_repository.get", AsyncMock(return_value=_reminder())),
         patch(f"{SCHEDULER}.reminder_repository.claim_for_execution", AsyncMock(return_value=True)),
         patch(f"{SCHEDULER}.reminder_repository.set_status", set_status),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         await reminder_scheduler.process_task_execution("rem-1")
 
