@@ -21,7 +21,6 @@ from app.models.payment_models import (
 )
 from app.models.webhook_models import (
     DodoWebhookAckResponse,
-    DodoWebhookPayload,
     WebhookProcessingStatus,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
@@ -266,7 +265,7 @@ async def handle_dodo_webhook(
         # Raw provider payload: process_webhook validates it into DodoWebhookEvent
         # and answers with a processing result rather than raising, so the reply
         # below is driven by what GAIA managed to do with the event.
-        webhook_data: DodoWebhookPayload = json.loads(payload)
+        webhook_data: dict[str, object] = json.loads(payload)
 
         log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
 

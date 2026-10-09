@@ -43,15 +43,6 @@ class DodoWebhookLogFields(BaseModel):
     metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
 
 
-class DodoWebhookPayload(TypedDict, total=False):
-    """A webhook body as decoded from JSON, before it is validated into DodoWebhookEvent."""
-
-    business_id: str
-    type: str
-    timestamp: str
-    data: dict[str, object]
-
-
 class DodoWebhookEventType(str, Enum):
     """Dodo Payments webhook event types."""
 
