@@ -1136,22 +1136,19 @@ class TestBindSessionId:
         llm.bind.assert_not_called()
         assert bound is llm
 
-    @pytest.mark.parametrize(
-        ("provider", "binds"),
-        [(LLMProviderName.OPENROUTER, True), (LLMProviderName.CUSTOM, False)],
-    )
-    def test_only_openrouter_gets_the_sticky_key(
-        self, provider: LLMProviderName, binds: bool
-    ) -> None:
-        # session_id is an OpenRouter-only routing hint; CUSTOM runs ChatOpenAI where
-        # it is unsupported, so it never binds even on an OpenRouter-wire runnable.
-        llm = _openrouter_wire_runnable()
-        _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
+    def test_only_an_openrouter_client_gets_the_sticky_key(self, provider: LLMProviderName) -> None:
+        """session_id is unsupported on ChatOpenAI's AsyncCompletions.create, whatever lane name the run carries."""
+        openrouter = _openrouter_wire_runnable()
+        _bind_session_id(openrouter, {"provider": provider, "session_id": "conv-1"})
+        openai_compatible = ChatOpenAI(
+            model="m", api_key=SecretStr("sk-test"), base_url="https://inference.example/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(openai_compatible, {"provider": provider, "session_id": "conv-1"})
 
-        if binds:
-            llm.bind.assert_called_once_with(session_id="conv-1")
-        else:
-            llm.bind.assert_not_called()
+        openrouter.bind.assert_called_once_with(session_id="conv-1")
+        assert isinstance(bound, RunnableBinding)
+        assert "session_id" not in bound.kwargs
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("agent", ["comms_agent", "executor_agent"])
@@ -1253,6 +1250,31 @@ class TestBindSessionId:
 
         assert isinstance(bound, RunnableBinding)
         assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
+        assert "session_id" not in bound.kwargs
+
+    def test_a_custom_lane_aimed_at_openai_gets_the_prompt_cache_key(self) -> None:
+        """DEV_LLM_* may point the custom lane at OpenAI's own API; the client, not the provider name, decides."""
+        llm = ChatOpenAI(
+            model="gpt-x", api_key=SecretStr("sk-test"), base_url="https://api.openai.com/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.CUSTOM, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
+        assert "session_id" not in bound.kwargs
+
+    def test_a_custom_lane_on_another_endpoint_gets_no_key(self) -> None:
+        llm = ChatOpenAI(
+            model="m", api_key=SecretStr("sk-test"), base_url="https://inference.example/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.CUSTOM, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert "prompt_cache_key" not in bound.kwargs
         assert "session_id" not in bound.kwargs
 
     def test_the_sim_stub_serving_the_openai_lane_gets_no_prompt_cache_key(self) -> None:
@@ -1409,12 +1431,13 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         assert _agent_sticky_key(configurable, "comms_agent") == "conv-1-comms_agent"
         assert _agent_sticky_key(configurable, None) == "conv-1"
 
-    def test_a_non_sticky_provider_has_no_key_to_carry(self) -> None:
+    def test_a_gemini_primary_still_hands_its_fallback_the_agent_key(self) -> None:
+        """Gemini binds nothing itself, but its OpenRouter fallback must not drop back to the bare, shared session."""
         gemini = cast(
             AgentConfigurable, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"}
         )
 
-        assert _agent_sticky_key(gemini, "comms_agent") is None
+        assert _agent_sticky_key(gemini, "comms_agent") == "conv-1-comms_agent"
 
     @pytest.mark.asyncio
     async def test_the_model_node_hands_that_key_to_the_fallback(self) -> None:

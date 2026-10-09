@@ -59,9 +59,7 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
-    PROMPT_CACHE_KEY_PROVIDERS,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
-    STICKY_ROUTING_PROVIDERS,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -179,14 +177,9 @@ def _agent_sticky_key(
     """Compute this agent's sticky-routing key, shared by the primary bind and the fallback.
 
     Deriving it separately used to leave the fallback on the bare session id,
-    dropping every agent back into one shared chain. None when the provider
-    has no stickiness to pin (Gemini) or no session_id is configured.
+    dropping every agent back into one shared chain. None when no session_id is
+    configured; whether a client may receive it is judged by its wire, not here.
     """
-    if (
-        model_configurations.get("provider")
-        not in STICKY_ROUTING_PROVIDERS | PROMPT_CACHE_KEY_PROVIDERS
-    ):
-        return None
     session_id = model_configurations.get("session_id")
     if not session_id:
         return None
