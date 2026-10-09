@@ -188,7 +188,6 @@ class _Db:
         return getattr(self, name)
 
 
-@pytest.mark.regression
 def test_an_owners_activation_already_matched_by_id_does_not_cover_an_older_subscription() -> None:
     """The owner fallback counted sub_1's own activation as proof for sub_2, so sub_2 was never sent."""
     activations_on_alice = [(ALICE, "sub_1")]
