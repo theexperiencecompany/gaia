@@ -273,7 +273,7 @@ class AnalyticsEvents(StrEnum):
     FEATURE_FLAG_EVALUATED = "feature_flag:evaluated"
     # A user switched a user-facing flag in Settings. Props: {flag, enabled}.
     FEATURE_TOGGLED = "feature:toggled"
-    # Background spend only; agent-graph calls are covered by $ai_generation.
+    # One per llm_calls ledger row: every model call, graph or one-shot.
     AI_LLM_CALL_COMPLETED = "ai:llm_call_completed"
 
 
@@ -346,6 +346,7 @@ class AIFeature(StrEnum):
     RESEARCH = "research", ("research_queries",)
     TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     MODERATION = "moderation", ("profanity",)
+    BROWSER = "browser", ("browser_task",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
