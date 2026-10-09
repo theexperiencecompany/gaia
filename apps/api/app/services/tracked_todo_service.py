@@ -324,10 +324,16 @@ class TrackedTodoService:
                 await todo_repository.update(
                     todo.id, user_id=user_id, update=TodoUpdate(pause_reason=None)
                 )
-                if todo.scheduled_at is not None:
+                if todo.scheduled_at is not None and not (
                     await TrackedTodoService.schedule_execution(
                         todo.id, max(todo.scheduled_at, datetime.now(UTC))
                     )
+                ):
+                    # Re-paused so the resume retry, which finds todos by this reason, re-arms it.
+                    await todo_repository.update(
+                        todo.id, user_id=user_id, update=TodoUpdate(pause_reason=reason)
+                    )
+                    raise RuntimeError(f"tracked todo {todo.id} could not be enqueued")
             except Exception as e:  # the rest of the user's todos must still resume
                 log.warning(
                     "tracked_todo.resume_failed",

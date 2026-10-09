@@ -623,3 +623,25 @@ class TestResumePausedFor:
         assert cleared == [{"pause_reason": None}, {"pause_reason": None}]
         ((todo_id, when),) = [c.args for c in schedule.await_args_list]
         assert todo_id == TODO_ID and when >= before
+
+    async def test_a_run_that_cannot_be_enqueued_stays_paused_for_the_retry(self, mock_repo):
+        paused = _todo_doc(
+            pause_reason="subscription_lapsed", scheduled_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused])
+        with (
+            patch.object(TrackedTodoService, "schedule_execution", AsyncMock(return_value=False)),
+            pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
+        ):
+            await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        writes = [
+            c.kwargs["update"].model_dump(exclude_unset=True)
+            for c in mock_repo.update.call_args_list
+        ]
+        assert writes == [
+            {"pause_reason": None},
+            {"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED},
+        ]
