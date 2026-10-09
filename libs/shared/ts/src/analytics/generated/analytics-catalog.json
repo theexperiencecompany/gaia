@@ -323,7 +323,7 @@
       "domain": "ai",
       "description": "A background model call outside an agent graph finished; graph calls are covered by $ai_generation.",
       "previous_names": [],
-      "budget_per_user_day": 500,
+      "budget_per_user_day": 2500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
