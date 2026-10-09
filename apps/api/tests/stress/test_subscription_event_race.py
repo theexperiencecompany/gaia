@@ -109,6 +109,12 @@ class _RacingSubscriptionRepository:
             await self._both_read.wait()
         return self.row.model_copy(deep=True)
 
+    async def get_active_for_user(self, user_id: str) -> SubscriptionDocument | None:
+        """Return the raced row while it is active: the user has no other subscription."""
+        if self.row.user_id == user_id and self.row.status == "active":
+            return self.row.model_copy(deep=True)
+        return None
+
     async def apply_update_by_dodo_id(
         self,
         dodo_subscription_id: str,
