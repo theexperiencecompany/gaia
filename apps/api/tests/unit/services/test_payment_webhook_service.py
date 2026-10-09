@@ -28,6 +28,7 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     SubscriptionEventResult,
 )
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
     FAKE_EMAIL,
@@ -492,7 +493,86 @@ class TestHandlePaymentSucceeded:
             payment_id="pay_001",
             amount=PAYMENT_DATA_PAYLOAD["total_amount"] / 100,
             currency=PAYMENT_DATA_PAYLOAD["currency"],
+            properties={
+                "amount_charged_pre_tax": 9.99,
+                "currency_charged": "USD",
+                "amount_usd_pre_tax": 9.99,
+            },
         )
+
+    async def test_a_localised_taxed_charge_reports_pre_tax_local_and_usd(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        """ZAR summed as dollars read ~3x real revenue; the USD settlement is comparable."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "currency": "ZAR",
+            "total_amount": 59244,
+            "tax": 7727,
+            "settlement_currency": "USD",
+            "settlement_amount": 3450,
+            "settlement_tax": 450,
+        }
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_zar"
+        )
+
+        kwargs = mock_track_payment.call_args.kwargs
+        assert (kwargs["amount"], kwargs["currency"]) == (592.44, "ZAR")
+        assert kwargs["properties"] == {
+            "amount_charged_pre_tax": 515.17,
+            "currency_charged": "ZAR",
+            "amount_usd_pre_tax": 30.0,
+        }
+
+    async def test_a_fully_discounted_charge_reports_zero_not_nothing(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        """Regression: two INR discount-code charges reached PostHog with a null amount."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "currency": "INR",
+            "total_amount": 0,
+            "settlement_amount": 0,
+        }
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_inr"
+        )
+
+        kwargs = mock_track_payment.call_args.kwargs
+        assert kwargs["amount"] == 0
+        assert kwargs["properties"]["amount_usd_pre_tax"] == 0
+
+    async def test_a_non_usd_settlement_sends_no_usd_amount_and_says_so(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        log.reset()
+        payload = {**PAYMENT_DATA_PAYLOAD, "settlement_currency": "INR"}
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_inr_settle"
+        )
+
+        assert "amount_usd_pre_tax" not in mock_track_payment.call_args.kwargs["properties"]
+        assert log.get()["errors"] == [
+            {
+                "msg": "[PAYMENT] Payment settled in a currency other than USD; "
+                "amount_usd_pre_tax not sent",
+                "payment_id": "pay_001",
+                "settlement_currency": "INR",
+            }
+        ]
 
     async def test_analytics_uses_metadata_user_id_without_db_lookup(
         self,

@@ -23,6 +23,7 @@ from app.models.webhook_models import (
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, track_payment_event
+from app.services.payments.revenue_properties import payment_revenue_properties
 from app.services.payments.subscription_events import (
     SubscriptionEvent,
     SubscriptionEventKind,
@@ -295,10 +296,9 @@ class PaymentWebhookService:
             user_id=user_id,
             event_type=event_type,
             payment_id=payment_data.payment_id,
-            amount=float(to_major_units(payment_data.total_amount, payment_data.currency))
-            if payment_data.total_amount
-            else None,
+            amount=float(to_major_units(payment_data.total_amount, payment_data.currency)),
             currency=payment_data.currency,
+            properties=payment_revenue_properties(payment_data),
         )
 
     # Payment event handlers

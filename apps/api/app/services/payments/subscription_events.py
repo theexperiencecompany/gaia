@@ -38,6 +38,7 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
+from app.services.payments.revenue_properties import subscription_revenue_properties
 from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
@@ -331,9 +332,7 @@ def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
 def _plan_of(data: DodoSubscriptionData) -> SubscriptionPlan:
     return SubscriptionPlan(
         name="Pro",
-        amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency))
-        if data.recurring_pre_tax_amount
-        else None,
+        amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency)),
         currency=data.currency,
     )
 
@@ -355,6 +354,7 @@ def _capture_transition(
                 event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
                 subscription_id=data.subscription_id,
                 plan=_plan_of(data),
+                properties=subscription_revenue_properties(data),
             )
         case SubscriptionEventKind.RENEWED:
             track_subscription_event(
@@ -362,6 +362,7 @@ def _capture_transition(
                 event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
                 subscription_id=data.subscription_id,
                 plan=SubscriptionPlan(currency=data.currency),
+                properties=subscription_revenue_properties(data),
             )
         case SubscriptionEventKind.CANCELLED if (
             changes.cancel_at_next_billing_date is True
