@@ -74,15 +74,13 @@ Two consequences follow and are requirements, not details:
 
 *Alternative*: run through workflow queueing — rejected; wrong execution record surface and mislabeled analytics.
 
-### A locked todo defers its event, it does not drop it
-`execute_tracked_todo` returns `skipped:{id} (lock held)` when the Redis lock is taken (`:85-87`) and nothing re-queues. For scheduled runs that is correct — the next scan picks it up. For a trigger it is data loss in the exact window self-wiring creates: GAIA sends the email, the run is still finishing, the reply lands, the event vanishes.
+### A locked todo holds its event, it does not drop it
+`execute_tracked_todo` returns `skipped:{id} (lock held)` when the Redis lock is taken and nothing re-queues. For scheduled runs that is correct — the next scan picks it up. For a trigger it is data loss in the exact window self-wiring creates: GAIA sends the email, the run is still finishing, the reply lands, the event vanishes.
 
-An `execute` action that finds the lock held re-enqueues itself on a bounded backoff (1m, 3m, 10m) instead of returning, then gives up with an error-level log. A single retry was the original plan and is not enough: the lock TTL is 30 minutes, so one short defer would routinely land on the same held lock and drop the event anyway — the exact failure the rule exists to stop. Three attempts covers a normal agent run without ever looping.
+A trigger fire that finds the lock held puts its event in the todo's trigger buffer (below) and returns; every run ends by scheduling a drain run for events that landed meanwhile. An earlier bounded re-enqueue ladder (1m, 3m, 10m) was replaced because it still dropped the event after its last step.
 
-The cooldown key is written only when the action actually runs, so a deferred event is not suppressed as a repeat.
-
-### Fan-out is not batched, so cooldown is mandatory
-Workflows coalesce burst events from poll-based triggers via `coalesce_window_seconds` / `buffer_trigger_event` (`base.py:441-445`), keyed on `workflow.trigger_config`. The todo tap sits before that loop and has no equivalent config, so one poll returning 50 items reaches 50 subscription evaluations. Per-subscription cooldown is the only bound, which is why it is required rather than optional. Extending the coalesce buffer to subscriptions is deferred until a real poll-trigger subscription exists.
+### Fan-out coalesces per todo: one run per window
+Workflows coalesce burst events via `app/services/triggers/batching.py`. Todo subscriptions reuse the same buffer mechanics with their own list, `trigger_batch:todo:{todo_id}`, shared by all of a todo's subscriptions (`app/services/triggers/todo_trigger_window.py`). An `execute` event that finds no open window opens one (the longest `cooldown_seconds` among the todo's execute subscriptions) and runs at once; an event inside the window is buffered, and one drain run at the window's end delivers every held event in a single untrusted fence and opens the next window. So a poll returning 50 items costs at most one run per window, and no event is dropped. `notify`, `complete` and `unblock` keep the per-subscription cooldown.
 
 ### Teardown: refcount summed in `TriggerService`, across every terminal path
 `get_triggers_safe_to_delete` counts workflows only today; Composio upserts identical configs onto shared trigger IDs across both consumers, so deleting a workflow could kill a live todo subscription.

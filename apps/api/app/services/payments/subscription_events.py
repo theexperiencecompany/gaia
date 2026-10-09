@@ -129,6 +129,28 @@ async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> 
         )
 
 
+async def queue_inbox_desk_safely(user_id: str) -> None:
+    """Queue the Inbox desk for a newly paying user; the worker retries it until it holds.
+
+    Never raises, for the same reason as reactivate_workflows_safely.
+    """
+    # Deferred import: the same app.decorators cycle as reactivate_workflows_safely.
+    from app.services.todos.inbox_desk import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+        queue_inbox_desk_provision,
+    )
+
+    try:
+        await queue_inbox_desk_provision(user_id)
+    except Exception as e:
+        # Nothing retries an unqueued job: scripts/provision_inbox_desks.py opens the desk.
+        log.error(
+            f"{LogTag.PAYMENT} Inbox desk provisioning could not be queued",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+
+
 async def reactivate_workflows_safely(user_id: str) -> None:
     """Turn a user's paused automation back on once they're paid again.
 
@@ -206,9 +228,9 @@ async def resolve_subscription_owner(sub_data: DodoSubscriptionData) -> str | No
     Callers acting on a client-supplied subscription id must compare this
     against the authenticated user before activating anything.
     """
-    metadata_user_id = sub_data.metadata.user_id
-    if metadata_user_id:
-        return str(metadata_user_id)
+    stamped_owner = sub_data.metadata.user_id
+    if isinstance(stamped_owner, str) and stamped_owner:
+        return stamped_owner
 
     user = await user_repository.get_by_email(sub_data.customer.email)
     return str(user.id) if user else None
@@ -272,7 +294,7 @@ DESIRED_STATE: dict[SubscriptionEventKind, Callable[[DodoSubscriptionData], Subs
 
 
 def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> SubscriptionUpdate:
-    """Return desired narrowed to the fields whose value differs from the row's."""
+    """Return the desired fields whose value differs from the row's, as the only fields set."""
     return SubscriptionUpdate.model_validate(
         {
             field: value
@@ -376,6 +398,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
+    await queue_inbox_desk_safely(user_id)
 
     log.info(f"{LogTag.PAYMENT} Subscription activated", subscription_id=data.subscription_id)
     return SubscriptionEventResult(SubscriptionEventOutcome.CREATED, user_id)
@@ -427,7 +450,9 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     # Matching on the id alone would let this older patch land on top of it.
     if not await subscription_repository.apply_update_by_dodo_id(
         data.subscription_id,
-        changes.model_copy(update={"last_event_at": event.occurred_at}),
+        SubscriptionUpdate.model_validate(
+            {**changes.model_dump(exclude_unset=True), "last_event_at": event.occurred_at}
+        ),
         if_not_newer_than=event.occurred_at,
     ):
         log.warning(
@@ -443,6 +468,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     _capture_transition(event, row.user_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
+        await queue_inbox_desk_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
 
@@ -450,6 +476,6 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         f"{LogTag.PAYMENT} Subscription event applied",
         event_kind=event.kind.value,
         subscription_id=data.subscription_id,
-        changed_fields=sorted(changes),
+        changed_fields=sorted(changes.model_fields_set),
     )
     return SubscriptionEventResult(SubscriptionEventOutcome.APPLIED, row.user_id)

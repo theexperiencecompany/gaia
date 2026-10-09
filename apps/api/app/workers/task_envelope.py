@@ -40,6 +40,9 @@ T = TypeVar("T")
 #: payload, so its parameters are the task's own business; its result is typed.
 ArqTask = Callable[..., Coroutine[object, object, T]]
 
+# A retrying task defers try n by its base delay times this to the power n-1.
+RETRY_BACKOFF_BASE = 2
+
 
 class ArqJobContext(TypedDict, total=False):
     """The ARQ job context, narrowed to the key a retrying task reads.
