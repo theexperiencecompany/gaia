@@ -147,10 +147,15 @@ async def _refuse_what_a_tracked_todo_cannot_take(
     if updates.workflow_id and tracked:
         raise TrackedTodoWorkflowError()
     if updates.recurrence and tracked:
-        try:
-            validate_todo_recurrence(updates.recurrence)
-        except InvalidScheduleError as e:
-            raise TrackedTodoScheduleError(e) from e
+        _refuse_a_bad_run_schedule(updates.recurrence)
+
+
+def _refuse_a_bad_run_schedule(recurrence: str) -> None:
+    """Hold a tracked todo's recurrence, which schedules its runs, to the recurring-schedule rule."""
+    try:
+        validate_todo_recurrence(recurrence)
+    except InvalidScheduleError as e:
+        raise TrackedTodoScheduleError(e) from e
 
 
 async def _refuse_a_bulk_tracked_label_change(
@@ -161,6 +166,15 @@ async def _refuse_a_bulk_tracked_label_change(
     todos = await todo_repository.find_by_ids(user_id, todo_ids)
     if any((GAIA_TRACKED_LABEL in todo.labels) != tracking for todo in todos):
         raise TrackedLabelChangeError()
+
+
+async def _refuse_a_bulk_bad_run_schedule(
+    user_id: str, todo_ids: list[str], recurrence: str
+) -> None:
+    """Refuse a bulk recurrence write that would give a selected tracked todo a bad run schedule."""
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
+    if any(GAIA_TRACKED_LABEL in todo.labels for todo in todos):
+        _refuse_a_bad_run_schedule(recurrence)
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -501,6 +515,10 @@ class TodoService:
         if request.updates.labels is not None:
             await _refuse_a_bulk_tracked_label_change(
                 user_id, request.todo_ids, request.updates.labels
+            )
+        if request.updates.recurrence:
+            await _refuse_a_bulk_bad_run_schedule(
+                user_id, request.todo_ids, request.updates.recurrence
             )
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
