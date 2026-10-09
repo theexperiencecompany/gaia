@@ -17,12 +17,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import hashlib
-import importlib.util
 import json
-from pathlib import Path
 import re
-import sys
-from types import ModuleType
 from typing import Any
 
 from starlette.applications import Starlette
@@ -30,26 +26,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from tests.helpers import pick_free_port
+from tests.helpers import load_llm_stub_module, pick_free_port
 from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
-_LLM_STUB_DIR = Path(__file__).resolve().parents[7] / "tools" / "llm-stub"
-
-
-def _load_stub_module(name: str) -> ModuleType:
-    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
-    spec = importlib.util.spec_from_file_location(name, _LLM_STUB_DIR / f"{name}.py")
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 # wire imports directives by its bare name, so directives is registered first.
-_directives = _load_stub_module("directives")
-_wire = _load_stub_module("wire")
+_directives = load_llm_stub_module("directives")
+_wire = load_llm_stub_module("wire")
 
 #: The Browser-Use structured-output name both of its callers use.
 _AGENT_OUTPUT = "agent_output"

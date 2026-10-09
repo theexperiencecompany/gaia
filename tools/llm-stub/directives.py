@@ -85,11 +85,42 @@ USER_INTERJECTION_TAG = "user_interjection"
 _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
 
 
+# compose_executor_brief opens the executor's brief with the user's request under
+# this header, then the task. The front door forwards that request as the task word
+# for word, so the quote is a second copy of the script the task already carries.
+VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+_SECTION_BREAK = "\n\n"
+
+
 def _strip_echoed_payloads(text: str) -> str:
-    """Remove every internal-tag block except ``<user_interjection>``."""
-    return _ECHO_BLOCK_RE.sub(
+    """Remove every internal-tag block except ``<user_interjection>``, and a restated request quote."""
+    stripped = _ECHO_BLOCK_RE.sub(
         lambda m: m.group(0) if m.group(1) == USER_INTERJECTION_TAG else "", text
     )
+    return _strip_restated_request(stripped)
+
+
+def _strip_restated_request(text: str) -> str:
+    """Drop the brief's request quote when the task right after it restates it.
+
+    The quote ends at the latest section break whose following text starts with
+    the quote again; a quote nothing restates is the script's only copy and stays.
+    """
+    header_at = text.find(VERBATIM_REQUEST_HEADER)
+    if header_at < 0:
+        return text
+    body_at = header_at + len(VERBATIM_REQUEST_HEADER)
+    body = text[body_at:].lstrip()
+    restated_at = None
+    cut = body.find(_SECTION_BREAK)
+    while cut > 0:
+        quote = body[:cut].strip()
+        if quote and body[cut:].lstrip().startswith(quote):
+            restated_at = cut
+        cut = body.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
+    if restated_at is None:
+        return text
+    return text[:header_at] + body[restated_at:].lstrip()
 
 
 def _is_interjection(text: str) -> bool:

@@ -15,6 +15,7 @@ import pytest
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import DONE_EVIDENCE_RULE
+from tests.helpers import load_llm_stub_module
 
 
 class TestComposeTaskBrief:
@@ -209,6 +210,37 @@ class TestPreviousRunReachesTheExecutor:
 
         mock_last_run.assert_not_awaited()
         assert "last_run" not in dispatched_task
+
+
+class TestTheSimStubRunsABriefsScriptOnce:
+    """Under --sim the brief carries the script twice (quote, then task); one turn once made two reminders."""
+
+    def test_a_brief_quoting_the_request_yields_one_tool_call(self) -> None:
+        stub = load_llm_stub_module("directives")
+        script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+        brief = compose_executor_brief(script, ["done"], verbatim_request=script)
+        tools = frozenset({"create_reminder"})
+        turn = [{"role": "user", "content": brief}]
+        after_one = [
+            *turn,
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "create_reminder", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+        ]
+
+        assert stub.resolve_response(turn, tools) == stub.ToolCallResponse(
+            name="create_reminder", args={"title": "stretch"}
+        )
+        assert stub.resolve_response(after_one, tools) == stub.SayResponse(text="Reminder set!")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     SCRIPTED_CRITERIA,
+    VERBATIM_REQUEST_HEADER,
     DirectiveError,
     SayDirective,
     SayResponse,
@@ -624,3 +625,43 @@ def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
 def test_a_malformed_directive_still_fails_loud():
     with pytest.raises(DirectiveError):
         parse_directives("[[tool:create_todo {bad}]]")
+
+
+# --------------------------------------------------------------------------- #
+# The executor brief quotes the user's request ahead of the task
+# (compose_executor_brief). That quote is an echo of the script the task already
+# carries, so its directives must not run a second time.
+# --------------------------------------------------------------------------- #
+
+
+def _executor_brief(request: str, task: str) -> str:
+    return (
+        f"{VERBATIM_REQUEST_HEADER}\n{request}\n\n{task}\n\n"
+        "Definition of done (every item must be true before you finish):\n"
+        "- scripted directives executed"
+    )
+
+
+def test_a_brief_quoting_the_request_runs_its_script_once():
+    script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "stretch"}
+    )
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_multi_paragraph_request_quote_is_skipped_whole():
+    script = '[[tool:web_search {"q": "x"}]]\n\n[[tool:create_reminder {"title": "y"}]] [[say:ok]]'
+    brief = _user(_executor_brief(script, script))
+    emitted = [
+        brief,
+        _assistant_tool_call("web_search"),
+        _tool_result("web_search"),
+        _assistant_tool_call("create_reminder"),
+        _tool_result("create_reminder"),
+    ]
+
+    assert resolve_response(emitted, EXECUTOR_TOOLS) == SayResponse(text="ok")
