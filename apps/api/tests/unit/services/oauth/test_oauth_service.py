@@ -97,6 +97,15 @@ def mock_provision_system_workflows():
         yield mock_fn
 
 
+@pytest.fixture
+def mock_queue_inbox_desk():
+    with patch(
+        "app.services.oauth.oauth_service.queue_inbox_desk_provision",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        yield mock_fn
+
+
 @pytest.fixture(autouse=True)
 def bypass_cacheable():
     """Bypass the @Cacheable decorator so tests call the real function.
@@ -832,15 +841,15 @@ class TestHandleOAuthConnection:
             func_name = getattr(func_called, "__name__", str(func_called))
             assert "fetch_and_store_provider_metadata" not in func_name
 
-    async def test_gmail_provisions_system_workflows(
+    async def test_gmail_provisions_the_inbox_desk_and_no_system_workflow(
         self,
         mock_user_repo,
         mock_update_user_integration_status,
         mock_provision_system_workflows,
+        mock_queue_inbox_desk,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
-        """Gmail connection should provision system workflows."""
         mock_user_repo.get.return_value = UserDocument(onboarding={"completed": False})
         config = make_integration_config(integration_id="gmail", name="Gmail")
         background_tasks = MagicMock()
@@ -851,12 +860,9 @@ class TestHandleOAuthConnection:
             background_tasks=background_tasks,
         )
 
-        background_tasks.add_task.assert_any_call(
-            mock_provision_system_workflows,
-            user_id="user123",
-            integration_id="gmail",
-            integration_display_name="Gmail",
-        )
+        background_tasks.add_task.assert_any_call(mock_queue_inbox_desk, "user123")
+        queued = [call.args[0] for call in background_tasks.add_task.call_args_list]
+        assert mock_provision_system_workflows not in queued
 
     async def test_googlecalendar_provisions_system_workflows(
         self,
