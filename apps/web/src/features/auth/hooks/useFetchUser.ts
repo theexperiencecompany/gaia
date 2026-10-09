@@ -29,6 +29,7 @@ const useFetchUser = () => {
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
   const hasClearedOnError = useRef(false);
+  const hasResetOnUnauthorized = useRef(false);
 
   // The one place the current-user query is driven — the cache *is* the
   // state, nothing is copied out. Persisted for instant paint, so this
@@ -103,20 +104,27 @@ const useFetchUser = () => {
     }
   }
 
-  // Clear user state on auth failure, dropping it from the persisted cache too.
+  // Clear user state on a failed /me, dropping it from the persisted cache too.
   // Guarded by a ref: removing the query makes this observer refetch, so an
   // unguarded effect would remove it again on the next failure, in a loop.
   useEffect(() => {
     if (!error || hasClearedOnError.current) return;
     hasClearedOnError.current = true;
     console.error("Error fetching user info:", error);
-    // A 5xx is not a sign-out. resetUser leaves an anonymous visitor's 401 alone.
-    const unauthorized =
-      error instanceof ApiError && error.status === HTTP_UNAUTHORIZED;
     clearCurrentUser(queryClient);
-    if (unauthorized) resetUser();
     hasIdentified.current = false;
   }, [error, queryClient]);
+
+  // Only a 401 ends the identified session, so it is guarded on its own: a 5xx
+  // that cleared the cache first must not swallow the 401 a refetch then returns.
+  useEffect(() => {
+    if (hasResetOnUnauthorized.current) return;
+    if (!(error instanceof ApiError && error.status === HTTP_UNAUTHORIZED))
+      return;
+    hasResetOnUnauthorized.current = true;
+    // resetUser leaves an anonymous visitor's 401 alone.
+    resetUser();
+  }, [error]);
 };
 
 export default useFetchUser;
