@@ -21,7 +21,7 @@ from uuid import uuid4
 
 from pymongo.database import Database
 
-from shared.py.analytics import UserId
+from shared.py.analytics import UserId, is_user_id
 
 from .mongo import Document
 from .posthog_api import REPO_ROOT, PostHogReader, Sender, hogql_complete
@@ -97,14 +97,6 @@ class MergePlan:
         )
 
 
-def _is_user_id(distinct_id: str) -> bool:
-    try:
-        UserId(distinct_id)
-    except ValueError:
-        return False
-    return True
-
-
 def normalise_email(email: str) -> str:
     """Return the form two spellings of one address share: trimmed and case-folded."""
     return email.strip().casefold()
@@ -145,7 +137,7 @@ def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> Mer
     """Sort each email person into merge, already merged, unmatched or ambiguous; merges oldest first."""
     result = MergePlan([], [], [], [], [], set())
     for person in persons:
-        if any(_is_user_id(d) for d in person.distinct_ids):
+        if any(is_user_id(d) for d in person.distinct_ids):
             result.already_merged.append(person.person_id)
             continue
         owners_per_email = [

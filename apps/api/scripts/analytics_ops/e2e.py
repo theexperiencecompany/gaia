@@ -27,6 +27,7 @@ from app.config.settings import settings
 from app.constants.chat import ConversationSource
 from app.models.chat_models import SystemPurpose
 from app.workers.config.worker_settings import WorkerSettings
+from shared.py.analytics import is_user_id
 from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -59,7 +60,8 @@ from .posthog_api import (
 )
 
 DEFAULT_EMAIL = "analytics-e2e@gaia.local"
-DEFAULT_TIMEOUT_S = 300
+# gaia-test receives each event within ~10s, but a query saw it only 6-10 min later (2026-10-09 runs).
+DEFAULT_TIMEOUT_S = 900
 POLL_INTERVAL_S = 10
 SDK_PREFIX = "$"
 # user:active is stamped at the start of the IST day, up to a day before the run.
@@ -294,6 +296,11 @@ def assign(
     return assigned, unexpected
 
 
+def _asserted(received: list[Received]) -> frozenset[str]:
+    """Return the uuids the verdict reads; SDK events keep arriving after the run and are never judged."""
+    return frozenset(event.uuid for event in received if not event.event.startswith(SDK_PREFIX))
+
+
 def poll(
     read: PostHogReader,
     stack: journeys.Stack,
@@ -301,20 +308,34 @@ def poll(
     expects: list[Expect],
     timeout_s: int,
 ) -> list[Received]:
-    """Poll until every expectation has arrived and two polls in a row return the same events."""
+    """Poll until every expectation has arrived and two polls in a row read the same catalog events.
+
+    A read the query API times out is one failed poll, retried until the deadline.
+    """
     deadline = time.monotonic() + timeout_s
-    previous: set[str] | None = None
+    previous: frozenset[str] | None = None
+    received: list[Received] = []
     while True:
-        received = fetch(read, stack, since)
-        assigned, _ = assign(expects, received)
-        complete = all(len(assigned[expect]) >= expect.count for expect in expects)
-        uuids = {event.uuid for event in received}
-        if complete and uuids == previous:
-            return received
+        try:
+            received = fetch(read, stack, since)
+        except TimeoutError as error:
+            print(f"PostHog read timed out ({error}); retrying until the {timeout_s}s deadline")
+        else:
+            assigned, _ = assign(expects, received)
+            missing = [expect.label() for expect in expects if len(assigned[expect]) < expect.count]
+            asserted = _asserted(received)
+            if not missing and asserted == previous:
+                return received
+            previous = asserted if not missing else None
+            print(
+                f"poll: {len(asserted)} catalog events, {len(missing)} expectations still missing"
+            )
         if time.monotonic() >= deadline:
-            print(f"ingestion timeout after {timeout_s}s; asserting what arrived")
+            print(
+                f"ingestion timeout after {timeout_s}s: PostHog had not made every event queryable; "
+                "asserting what arrived (raise --timeout if the misses below are only late)"
+            )
             return received
-        previous = uuids if complete else None
         time.sleep(POLL_INTERVAL_S)
 
 
@@ -376,10 +397,20 @@ def judge(
             for problem in problems:
                 print(f"       {problem}")
                 verdict.fail(f"{journey.name}: {expect.label()}: {problem}")
-    for event in unexpected:
-        verdict.fail(f"unexpected {event.event} at {event.timestamp} on {event.distinct_id}")
-    for name, distinct_id, count in strays:
-        verdict.fail(f"unexpected {name} x{count} on another distinct_id {distinct_id!r}")
+    stray_failures = [
+        f"unexpected {event.event} at {event.timestamp} on {event.distinct_id}"
+        for event in unexpected
+    ] + [
+        f"unexpected {name} x{count} on another distinct_id {distinct_id!r}"
+        for name, distinct_id, count in strays
+        # Another user's own work on a shared stack (a queued reminder, a workflow) is attributed right.
+        if not is_user_id(str(distinct_id))
+    ]
+    if stray_failures:
+        print("\nunexpected events")
+    for failure in stray_failures:
+        print(f"  XX {failure}")
+        verdict.fail(failure)
     sdk = sum(1 for event in received if event.event.startswith(SDK_PREFIX))
     print(f"\n{sdk} SDK/person-operation events ($set, $ai_*, ...) seen and not asserted")
 

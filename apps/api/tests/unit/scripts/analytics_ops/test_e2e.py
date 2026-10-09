@@ -7,6 +7,8 @@ them the way a real regression would.
 
 from __future__ import annotations
 
+import itertools
+import json
 from pathlib import Path
 
 import fakeredis
@@ -240,12 +242,14 @@ def test_an_unexpected_catalog_event_on_the_user_fails() -> None:
     assert failures == [f"unexpected todo:created at t{len(CLEAN)} on {USER}"]
 
 
-def test_a_stray_event_on_another_distinct_id_fails() -> None:
+def test_a_stray_event_on_another_distinct_id_fails_and_is_printed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     failures = _judge(CLEAN, strays=[["chat:message_submitted", "telegram:dev-1", 1]])
 
-    assert failures == [
-        "unexpected chat:message_submitted x1 on another distinct_id 'telegram:dev-1'"
-    ]
+    message = "unexpected chat:message_submitted x1 on another distinct_id 'telegram:dev-1'"
+    assert failures == [message]
+    assert f"  XX {message}" in capsys.readouterr().out.splitlines()
 
 
 def test_sdk_person_operations_are_not_judged() -> None:
@@ -297,3 +301,57 @@ class TestWaitForWorker:
     def test_no_worker_refuses_to_drive_the_journeys(self) -> None:
         with pytest.raises(SystemExit, match=WorkerSettings.health_check_key):
             e2e.wait_for_worker(fakeredis.FakeRedis(), timeout_s=0)
+
+
+def test_another_users_work_on_a_shared_stack_is_not_a_stray() -> None:
+    """A reminder another session queued fires on its own owner: correctly attributed, not this run's."""
+    other_user = "6ac90c08c6a0326b0c4385c9"
+
+    assert _judge(CLEAN, strays=[["reminder:completed", other_user, 1]]) == []
+
+
+def _rows(events: list[tuple[str, dict[str, object]]], uuid_prefix: str) -> list[list[object]]:
+    return [
+        [f"{uuid_prefix}{i}", name, USER, f"t{i}", json.dumps(props)]
+        for i, (name, props) in enumerate(events)
+    ]
+
+
+def _poll(reader: FakeReader, monkeypatch: pytest.MonkeyPatch) -> list[e2e.Received]:
+    monkeypatch.setattr(e2e, "POLL_INTERVAL_S", 0)
+    stack = Stack(api_url="http://unused", email="e", session_id=SESSION, user_id=UserId(USER))
+    expects = [x for journey in e2e.build_journeys(Path("/dev/null")) for x in journey.expects]
+    return e2e.poll(reader, stack, e2e.datetime.now(e2e.UTC), expects, timeout_s=5)
+
+
+def test_sdk_events_still_arriving_do_not_hold_the_poll_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: every poll saw a new $ai_span, so the asserted set never counted as stable."""
+    polls = itertools.count()
+
+    def answer(_values: object) -> list[list[object]]:
+        n = next(polls)
+        return [*_rows(CLEAN, "c"), *_rows([("$ai_span", {})] * (n + 1), f"sdk{n}-")]
+
+    reader = FakeReader({e2e.RUN_EVENTS_HOGQL: answer})
+
+    _poll(reader, monkeypatch)
+
+    assert len(reader.queries) == 2
+
+
+def test_a_read_the_query_api_timed_out_is_retried_within_the_deadline(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = itertools.count()
+
+    def answer(_values: object) -> list[list[object]]:
+        if next(calls) == 0:
+            raise TimeoutError("The read operation timed out")
+        return _rows(CLEAN, "c")
+
+    received = _poll(FakeReader({e2e.RUN_EVENTS_HOGQL: answer}), monkeypatch)
+
+    assert len(received) == len(CLEAN)
+    assert "PostHog read timed out" in capsys.readouterr().out
