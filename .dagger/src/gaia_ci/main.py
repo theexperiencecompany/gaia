@@ -224,10 +224,11 @@ class GaiaCi:
 
     @function
     async def test(self, source: Source) -> str:
-        """Run all tests (Python + TypeScript). Local convenience wrapper."""
-        py_task = self.test_python(source)
-        ts_task = self.test_typescript(source)
-        results = await asyncio.gather(py_task, ts_task)
+        """Run all tests with a small local worker budget, Python before TypeScript."""
+        results = [
+            await self.test_python(source, worker_limit=2),
+            await self.test_typescript(source, parallelism=1),
+        ]
         labels = ["PYTHON TESTS", "TYPESCRIPT TESTS"]
         sections = []
         for label, output in zip(labels, results):
@@ -264,6 +265,9 @@ class GaiaCi:
         slice_name: Annotated[
             str, Doc("A slice in scripts/ci/lib/test-slices.json; empty runs all in turn")
         ] = "",
+        worker_limit: Annotated[
+            int, Doc("Optional local cap for xdist workers per Python test slice; 0 uses CI settings")
+        ] = 0,
     ) -> str:
         """Run the test-python slices exactly as main.yml does: same file, same runner script.
 
@@ -279,7 +283,7 @@ class GaiaCi:
         if not chosen:
             names = ", ".join(s["name"] for s in slices)
             raise ValueError(f"unknown slice {slice_name!r}; {_SLICES_FILE} defines: {names}")
-        outputs = [await self._run_slice(source, s) for s in chosen]
+        outputs = [await self._run_slice(source, s, worker_limit=worker_limit) for s in chosen]
         left_out = [s["name"] for s in slices if s not in chosen and not slice_name]
         if left_out:
             outputs.append(f"not run (needs real browser engines; run by name): {', '.join(left_out)}")
@@ -303,7 +307,9 @@ class GaiaCi:
             .with_env_variable("CHROMIUM_BIN", "/usr/bin/chromium")
         )
 
-    async def _run_slice(self, source: Source, spec: dict[str, Any]) -> str:
+    async def _run_slice(
+        self, source: Source, spec: dict[str, Any], *, worker_limit: int = 0
+    ) -> str:
         """Run one slice through scripts/ci/pytest.sh slice, with services if it needs them."""
         needs_services = spec["services"] == "true"
         container = (
@@ -331,7 +337,13 @@ class GaiaCi:
                 " bash scripts/ci/embedding-sidecar.sh start)"
                 " && set -a && . /tmp/sidecar.env && set +a && "
             )
-        workers = "0" if spec["serial"] == "true" else spec["workers"]
+        workers = (
+            "0"
+            if spec["serial"] == "true"
+            else str(min(int(spec["workers"]), worker_limit))
+            if worker_limit
+            else spec["workers"]
+        )
         runs = " && ".join(
             f"bash /app/scripts/ci/pytest.sh {step}" for step in ["slice", *spec["after"]]
         )
@@ -373,12 +385,23 @@ class GaiaCi:
         return output
 
     @function
-    async def test_typescript(self, source: Source, projects: str = "") -> str:
-        """Run JS/TS tests via Nx. Pass projects= to scope to specific projects."""
-        cmd = ["npx", "nx", "run-many", "-t", "test", "--parallel=3"]
+    async def test_typescript(
+        self, source: Source, projects: str = "", parallelism: int = 3
+    ) -> str:
+        """Run JS/TS tests via Nx, preserving diagnostics when the suite fails."""
+        cmd = ["npx", "nx", "run-many", "-t", "test", f"--parallel={parallelism}"]
         if projects:
             cmd.extend(["-p", projects])
-        return await self.ci_env(source).with_env_variable("ENV", "test").with_exec(cmd).stdout()
+        execution = (
+            self.ci_env(source)
+            .with_env_variable("ENV", "test")
+            .with_exec(cmd, expect=dagger.ReturnType.ANY)
+        )
+        output = await execution.stdout()
+        exit_code = await execution.exit_code()
+        if exit_code:
+            raise RuntimeError(f"TypeScript tests failed with exit code {exit_code}.\n\n{output}")
+        return output
 
     @function
     async def dead_code(self, source: Source) -> str:
@@ -658,18 +681,21 @@ class GaiaCi:
 
     @function
     async def quality_checks(self, source: Source) -> str:
-        """Run the full quality gate in parallel. Local convenience — mirrors what CI runs."""
+        """Run the full quality gate with bounded local CPU use.
+
+        CI schedules these checks across separate runners. A local Mac runs them one at a
+        time, with Nx at one job and Python tests capped at two workers, so the gate does
+        not saturate the machine.
+        """
         env = self.ci_env(source)
 
-        # Run all checks concurrently. Dagger deduplicates the shared ci_env
-        # container automatically -- each branch forks from the cached base.
-        lint_task = env.with_exec(["npx", "nx", "run-many", "-t", "lint", "--parallel=3"]).stdout()
+        lint_task = env.with_exec(["npx", "nx", "run-many", "-t", "lint", "--parallel=1"]).stdout()
 
         type_check_task = (
             env.with_workdir("/app/apps/api")
             .with_exec(["uv", "run", "mypy", "app", "--ignore-missing-imports"])
             .with_workdir("/app")
-            .with_exec(["npx", "nx", "run-many", "-t", "type-check", "--parallel=3"])
+            .with_exec(["npx", "nx", "run-many", "-t", "type-check", "--parallel=1"])
             .stdout()
         )
 
@@ -677,12 +703,13 @@ class GaiaCi:
             env.with_env_variable(
                 "NEXT_PUBLIC_API_BASE_URL", "http://fake-api-for-build.example.com"
             )
-            .with_exec(["npx", "nx", "run-many", "-t", "build", "--parallel=3"])
+            .with_env_variable("GAIA_BUILD_WORKERS", "2")
+            .with_exec(["npx", "nx", "run-many", "-t", "build", "--parallel=1"])
             .stdout()
         )
 
-        test_python_task = self.test_python(source)
-        test_typescript_task = self.test_typescript(source)
+        test_python_task = self.test_python(source, worker_limit=2)
+        test_typescript_task = self.test_typescript(source, parallelism=1)
 
         dead_code_task = (
             env.with_exec(["uv", "tool", "install", "vulture"])
@@ -720,7 +747,7 @@ class GaiaCi:
             .stdout()
         )
 
-        results = await asyncio.gather(
+        tasks = (
             lint_task,
             type_check_task,
             build_task,
@@ -741,8 +768,21 @@ class GaiaCi:
             "RELEASE-VALIDATION",
             "TRIVY-SCAN",
         ]
+        results: list[str] = []
+        failures: list[str] = []
+        for label, task in zip(labels, tasks):
+            try:
+                results.append(await task)
+            except Exception as exc:
+                failures.append(f"{label}: {exc}")
+                results.append(f"FAILED: {exc}")
+
         sections = []
         for label, output in zip(labels, results):
             sections.append(f"{'=' * 60}\n {label}\n{'=' * 60}\n{output}")
 
-        return "\n\n".join(sections)
+        report = "\n\n".join(sections)
+        if failures:
+            failure_summary = "\n".join(failures)
+            raise RuntimeError(f"Quality checks failed:\n{failure_summary}\n\n{report}")
+        return report
