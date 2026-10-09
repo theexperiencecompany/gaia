@@ -36,7 +36,7 @@ BASE_ENV = "GAIA_PR_BASE"
 
 # Jobs that legitimately never scope a diff: runner routing, the resolver
 # itself, the engine build, the gate that only reads results, and the
-# master-only publish path.
+# master-only publish and deploy path.
 UNSCOPED = {
     "obscura-bin",
     "select-runner",
@@ -48,6 +48,7 @@ UNSCOPED = {
     "quality-gate",
     "build-images",
     "trigger-build",
+    "deploy-unwedge",
 }
 
 
