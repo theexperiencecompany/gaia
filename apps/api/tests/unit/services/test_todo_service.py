@@ -21,6 +21,7 @@ import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -73,6 +74,7 @@ from app.services.todos.todo_service import (
     update_project,
 )
 from app.services.triggers.subscription_service import SubscriptionError
+from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.utils.todo_vector_utils import TodoSearchFilters
 from shared.py.analytics import UserId
@@ -82,7 +84,7 @@ from shared.py.analytics.catalog.todos import (
     TodosToggled,
     TodosUpdated,
 )
-from tests.helpers import captured_wide_event
+from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, users_get
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
@@ -105,6 +107,13 @@ def _no_analytics():
         patch("app.services.todos.todo_service.capture"),
         patch("app.services.todos.todo_bulk_service.capture"),
     ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
         yield
 
 
@@ -326,6 +335,17 @@ class TestCreateTodo:
         assert created_doc.project_id == FAKE_INBOX_ID
         assert isinstance(result, TodoResponse)
         assert result.sub_todo_count == 0
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("owner", [SYSTEM_USER_ID, UNKNOWN_USER_ID])
+    async def test_an_owner_that_is_not_a_user_is_refused_before_the_write(
+        self, owner, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: create_todo saved whatever owner it was handed, "system" included."""
+        with pytest.raises(auth_utils.OwnerNotFoundError):
+            await TodoService.create_todo(TodoModel(title="Buy milk"), owner)
+
+        mock_todo_repo.create.assert_not_awaited()
 
     async def test_validates_explicit_project(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue

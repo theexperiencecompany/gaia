@@ -44,10 +44,9 @@ from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable, get_user_id
 from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
-from app.models.integrations.composio_hooks import RunMetadata
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
@@ -952,6 +951,10 @@ def get_retrieve_tools_function(
         exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         configurable: AgentConfigurable = agent_configurable(config)
+        user_id = get_user_id(config)
+        # Later readers of the live bag see the user even when only metadata named it.
+        # Indexed, not via agent_configurable: an empty bag reads back as a throwaway copy.
+        config["configurable"]["user_id"] = user_id
         # No user is present to connect anything, so an unconnected integration is reported.
         background = configurable.get("execution_mode") == "background"
         log.info(
@@ -960,8 +963,7 @@ def get_retrieve_tools_function(
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
-            user_id=configurable.get("user_id")
-            or RunMetadata.model_validate(config.get("metadata", {})).user_id,
+            user_id=user_id,
         )
         if not query and not exact_tool_names:
             # A no-usable-argument call (e.g. exact_tool_names=[]) must NOT crash
@@ -992,20 +994,6 @@ def get_retrieve_tools_function(
         desktop_enabled = (
             conversation_source is ConversationSource.DESKTOP and tool_space == "general"
         )
-
-        # Get user_id from config (try configurable first, then metadata as fallback)
-        user_id = configurable.get("user_id")
-        if not user_id:
-            # Fallback to metadata
-            user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-            if user_id and "configurable" in config:
-                # Update configurable with user_id for consistency
-                config["configurable"]["user_id"] = user_id
-
-        if not user_id:
-            log.warning(
-                f"{LogTag.TOOL} retrieve_tools called with NO user_id (not in configurable or metadata)"
-            )
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:

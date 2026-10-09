@@ -10,9 +10,8 @@ from datetime import UTC, datetime
 
 from app.agents.skills.models import Skill, SkillUpdate
 from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.base import MongoRepository
-
-SYSTEM_USER_ID = "system"
 
 
 class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
