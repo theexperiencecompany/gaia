@@ -1,7 +1,9 @@
 """Type-safe server-side PostHog event tracking with consistent naming conventions."""
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+import asyncio
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TypeAlias
@@ -9,7 +11,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.analytics import AGENT_RUN_CANCELLED_REASON, POSTHOG_PROVIDER_KEY
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
 from app.models.payment_models import PlanType, SubscriptionStatus
@@ -252,9 +254,8 @@ class AnalyticsEvents(StrEnum):
     HIL_REVOKED = "hil:revoked"
     HIL_RESUMED = "hil:resumed"
 
-    # Worker / agent lifecycle. AGENT_RUN_COMPLETED/FAILED carry executor
-    # timing props when measured: queue_wait_ms, executor_ttft_ms,
-    # executor_active_ms, queued. Absent on runs dispatched before the stamp.
+    # Agent lifecycle, emitted only by agent_run_lifecycle. FAILED carries reason;
+    # comms runs add trigger_type/source, executor terminals add queued + timings.
     AGENT_RUN_STARTED = "agent:run_started"
     AGENT_RUN_COMPLETED = "agent:run_completed"
     AGENT_RUN_FAILED = "agent:run_failed"
@@ -343,6 +344,7 @@ class AIFeature(StrEnum):
     FILE_EXTRACTION = "file_extraction", ("file_image_summary", "file_text_summary")
     FOLLOW_UPS = "follow_ups", ("follow_up_actions",)
     RESEARCH = "research", ("research_queries",)
+    TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     MODERATION = "moderation", ("profanity",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
     # A caller whose label no member claims.
@@ -467,6 +469,66 @@ def capture_event(
             error=str(e),
             error_type=type(e).__name__,
             user_id=user_id,
+        )
+
+
+@dataclass
+class AgentRunOutcome:
+    """A run's terminal outcome when its body reports one instead of raising."""
+
+    failure_reason: str | None = None
+    paused: bool = False
+    terminal_properties: dict[str, object] = field(default_factory=dict)
+
+
+@contextmanager
+def agent_run_lifecycle(
+    user_id: str | None,
+    properties: AnalyticsProperties,
+    dedupe_key: str | None = None,
+) -> Iterator[AgentRunOutcome]:
+    """Emit run_started on entry, then exactly one of run_completed or run_failed.
+
+    A raised exception fails the run with its type as reason, a cancellation with
+    "cancelled"; a body that handles its own failure sets failure_reason, and a
+    paused run emits no terminal event.
+    dedupe_key keys the terminal event. No user id, no events.
+    """
+    outcome = AgentRunOutcome()
+    if not user_id:
+        yield outcome
+        return
+    capture_event(user_id, AnalyticsEvents.AGENT_RUN_STARTED, properties)
+    try:
+        yield outcome
+    except asyncio.CancelledError:
+        outcome.failure_reason = AGENT_RUN_CANCELLED_REASON
+        _capture_run_terminal(user_id, properties, outcome, dedupe_key)
+        raise
+    except Exception as exc:
+        outcome.failure_reason = type(exc).__name__
+        _capture_run_terminal(user_id, properties, outcome, dedupe_key)
+        raise
+    if not outcome.paused:
+        _capture_run_terminal(user_id, properties, outcome, dedupe_key)
+
+
+def _capture_run_terminal(
+    user_id: str,
+    properties: AnalyticsProperties,
+    outcome: AgentRunOutcome,
+    dedupe_key: str | None,
+) -> None:
+    """Emit run_failed with its reason when the outcome failed, else run_completed."""
+    terminal = {**properties, **outcome.terminal_properties}
+    if outcome.failure_reason is None:
+        capture_event(user_id, AnalyticsEvents.AGENT_RUN_COMPLETED, terminal, dedupe_key=dedupe_key)
+    else:
+        capture_event(
+            user_id,
+            AnalyticsEvents.AGENT_RUN_FAILED,
+            {**terminal, "reason": outcome.failure_reason},
+            dedupe_key=dedupe_key,
         )
 
 
