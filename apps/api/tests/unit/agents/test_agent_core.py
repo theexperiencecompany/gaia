@@ -747,7 +747,7 @@ class TestCallAgent:
             raise RuntimeError("graph exploded")
 
         actors: list[Actor] = []
-        _no_real_analytics.side_effect = lambda *_: actors.append(
+        _no_real_analytics.side_effect = lambda *_, **__: actors.append(
             current_analytics_context().attribution.actor
         )
         users_turn = AnalyticsContext(
@@ -768,11 +768,10 @@ class TestCallAgent:
                 return_value=_failing_stream(),
             ),
         ):
-            gen = await call_agent(
-                request=_make_request(), conversation_id="conv-1", user=_make_user()
-            )
             with pytest.raises(RuntimeError, match="graph exploded"):
-                _ = [chunk async for chunk in gen]
+                await _drain(
+                    call_agent(request=_make_request(), conversation_id="conv-1", user=_make_user())
+                )
             assert current_analytics_context() == users_turn
 
         assert actors == [Actor.AGENT, Actor.AGENT]

@@ -211,14 +211,14 @@ def test_the_event_carries_the_rows_tokens_cost_and_attribution(posthog: Any) ->
     assert props["charge_to_budget"] is False
 
 
-def test_the_surface_is_the_channel_the_call_came_from(posthog: Any) -> None:
+def test_the_channel_is_the_surface_the_call_came_from(posthog: Any) -> None:
     capture_llm_call(_row(channel="discord"))
-    assert _captured(posthog)["properties"]["surface"] == "bot"
+    assert _captured(posthog)["properties"]["channel"] == "discord"
 
 
-def test_a_call_with_no_channel_reports_background(posthog: Any) -> None:
+def test_a_call_with_no_channel_sends_no_channel(posthog: Any) -> None:
     capture_llm_call(_row(channel=None))
-    assert _captured(posthog)["properties"]["surface"] == "bg"
+    assert "channel" not in _captured(posthog)["properties"]
 
 
 def test_a_graph_row_is_charged_chat_spend(posthog: Any) -> None:
@@ -316,7 +316,7 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "channel",
         "generation_id",
         "llm_call_id",
-        "timestamp",
+        "$ignore_sent_at",
     }
 
 
