@@ -578,7 +578,9 @@ class TestAWorkflowWhoseOwnerIsNotAUser:
 
     @pytest.mark.regression
     @pytest.mark.parametrize("owner", [SYSTEM_USER_ID, UNKNOWN_USER_ID])
-    async def test_it_is_deactivated_and_never_run(self, owner: str, _no_real_analytics):
+    async def test_it_is_deactivated_and_never_run(
+        self, owner: str, _no_real_analytics: MagicMock
+    ) -> None:
         workflow = _make_workflow(user_id=owner)
         _, p_scheduler = _patch_scheduler(workflow)
         execute_chat = AsyncMock(return_value=("conv_1", []))
@@ -613,7 +615,7 @@ class TestAWorkflowWhoseOwnerIsNotAUser:
             workflow.id, owner, reason=DeactivationReason.OWNER_NOT_FOUND
         )
 
-    async def test_a_real_owner_still_runs(self):
+    async def test_a_real_owner_still_runs(self) -> None:
         workflow = _make_workflow(user_id="64abc123def4567890abcdef")
         _, p_scheduler = _patch_scheduler(workflow)
         execute_chat = AsyncMock(return_value=("conv_1", []))
