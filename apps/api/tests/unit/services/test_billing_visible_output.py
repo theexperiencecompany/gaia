@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fakeredis.aioredis import FakeRedis
 import pytest
 
 from app.agents.tools.subscription_tool import create_upgrade_link, get_subscription_details
@@ -19,6 +20,7 @@ from app.models.payment_models import (
     CreateSubscriptionResponse,
     PlanDocument,
     PlanDuration,
+    PlanResponse,
     SubscriptionDocument,
 )
 from app.services.payments.payment_service import DodoPaymentService
@@ -151,6 +153,26 @@ def _catalogue(active_only: bool) -> list[PlanDocument]:
     return [PlanDocument.model_validate(row) for row in rows if row["is_active"] or not active_only]
 
 
+SERVED_CATALOGUE = [
+    (
+        "Enterprise",
+        "For teams ready to roll GAIA out to every employee.",
+        0,
+        "USD",
+        "monthly",
+        CATALOGUE_ROWS[0]["features"],
+    ),
+    ("Pro", "Everything GAIA does, in one plan.", 3000, "USD", "monthly", PRO_FEATURES),
+    ("Pro", "Everything GAIA does, in one plan.", 30000, "USD", "yearly", PRO_FEATURES),
+]
+
+
+def _visible(plans: list[PlanResponse]) -> list[tuple[object, ...]]:
+    return [
+        (p.name, p.description, p.amount, p.currency, p.duration.value, p.features) for p in plans
+    ]
+
+
 @pytest.fixture
 def payment_service() -> DodoPaymentService:
     """Build a fresh service; the suite-wide paywall fence stubs the shared one."""
@@ -198,21 +220,22 @@ class TestServedCatalogue:
     ) -> None:
         plans = await payment_service.get_plans(active_only=False)
 
-        assert [
-            (p.name, p.description, p.amount, p.currency, p.duration.value, p.features)
-            for p in plans
-        ] == [
-            (
-                "Enterprise",
-                "For teams ready to roll GAIA out to every employee.",
-                0,
-                "USD",
-                "monthly",
-                CATALOGUE_ROWS[0]["features"],
-            ),
-            ("Pro", "Everything GAIA does, in one plan.", 3000, "USD", "monthly", PRO_FEATURES),
-            ("Pro", "Everything GAIA does, in one plan.", 30000, "USD", "yearly", PRO_FEATURES),
-        ]
+        assert _visible(plans) == SERVED_CATALOGUE
+
+    async def test_a_cache_hit_serves_the_same_rows_without_the_free_row(
+        self, fake_redis: FakeRedis, payment_service: DodoPaymentService
+    ) -> None:
+        repository = MagicMock()
+        repository.list_plans = AsyncMock(
+            side_effect=lambda active_only=True: _catalogue(active_only)
+        )
+
+        with patch(f"{SERVICE}.plan_repository", repository):
+            await payment_service.get_plans(active_only=False)
+            cached = await payment_service.get_plans(active_only=False)
+
+        assert repository.list_plans.await_count == 1
+        assert _visible(cached) == SERVED_CATALOGUE
 
 
 class TestSubscriptionStatus:
