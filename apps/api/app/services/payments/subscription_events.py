@@ -376,12 +376,15 @@ def _set_paid_person_properties(
 
 
 async def sync_paid_person_properties(user_id: str, dodo_subscription_id: str) -> None:
-    """Set the person's paid state from the subscription row as it stands now.
+    """Set the person's paid state as it stands now: the user's active subscription, else the changed row.
 
-    Raises PyMongoError when the row cannot be read, for the caller to retry; a
-    row that is gone is logged, since no retry brings it back.
+    The person is the user, so another subscription still active outranks the
+    one this change lapsed. Raises PyMongoError when a read fails, for the
+    caller to retry; a changed row that is gone is logged, since no retry brings it back.
     """
-    current = await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    current = await subscription_repository.get_active_for_user(
+        user_id
+    ) or await subscription_repository.get_by_dodo_id(dodo_subscription_id)
     if current is None:
         log.error(
             f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",

@@ -1005,6 +1005,30 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
 
         assert _person_properties(posthog_client)["is_subscribed"] is True
 
+    @pytest.mark.regression
+    async def test_a_lapse_of_an_old_subscription_keeps_a_user_with_a_replacement_subscribed(
+        self, mock_webhook_subscription_repository: MagicMock, posthog_client: MagicMock
+    ) -> None:
+        """The person is the user, not the subscription the delivery named."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[
+                _row(status="on_hold", last_event_at=None),
+                _row(status="failed", last_event_at=NOW),
+            ]
+        )
+        mock_webhook_subscription_repository.get_active_for_user = AsyncMock(
+            return_value=_row(dodo_subscription_id="sub_replacement", last_event_at=NOW)
+        )
+
+        await _apply(SubscriptionEventKind.FAILED)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": False,
+        }
+
     async def test_a_recovery_from_hold_resubscribes_the_person(
         self, mock_webhook_subscription_repository, posthog_client
     ) -> None:
