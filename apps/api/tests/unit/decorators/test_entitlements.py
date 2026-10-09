@@ -255,7 +255,7 @@ class TestOneBlockIsCountedPerRouteWindow:
             "/api/v1/notifications",
         ]
 
-    async def test_the_window_ends_so_a_later_block_counts_again(self, fake_redis) -> None:
+    async def test_a_blocks_dedupe_key_expires_with_its_window(self, fake_redis) -> None:
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
