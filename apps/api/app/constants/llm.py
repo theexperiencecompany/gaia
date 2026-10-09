@@ -258,12 +258,6 @@ LLM_LABEL_METADATA_KEY: Final = "llm_label"
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
-# Sticky routing (the session_id hint pinning a chain to one upstream) is
-# OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
-# ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
-STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
-# OpenAI's equivalent: prompt_cache_key routes a chain to the machine holding its cached prefix.
-PROMPT_CACHE_KEY_PROVIDERS = frozenset({LLMProviderName.OPENAI})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"
