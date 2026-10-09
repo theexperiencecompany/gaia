@@ -3,12 +3,15 @@
 import { RaisedButton } from "@/components/ui/raised-button";
 
 import type { CheckoutSource } from "../api/pricingApi";
-import { type PlanTier, usePricingCardCta } from "../hooks/usePricingCardCta";
+import {
+  type PricingCardTier,
+  usePricingCardCta,
+} from "../hooks/usePricingCardCta";
 import type { PlanViewerState } from "../types";
 import { CheckoutConfirming } from "./CheckoutConfirming";
 
 interface PricingCardCtaProps {
-  planTier: PlanTier;
+  planTier: PricingCardTier;
   price: number;
   durationIsMonth: boolean;
   planId?: string;

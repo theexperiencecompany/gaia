@@ -15,10 +15,11 @@ import type { PlanViewerState } from "../types";
 import { useDodoPayments } from "./useDodoPayments";
 
 /** The tier a pricing card sells; the card's display title is copy, this is the analytics value. */
-export type PlanTier = EventProperties["pricing:plan_selected"]["plan_tier"];
+export type PricingCardTier =
+  EventProperties["pricing:plan_selected"]["plan_tier"];
 
 interface PricingCardCtaInput {
-  planTier: PlanTier;
+  planTier: PricingCardTier;
   /** Where this checkout is started from; rides to the server for funnel
    * attribution and decides where Dodo sends the browser afterwards. */
   checkoutSource?: CheckoutSource;
