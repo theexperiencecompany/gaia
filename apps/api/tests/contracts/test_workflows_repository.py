@@ -140,6 +140,22 @@ class TestWorkflowsOwnedCrud:
         assert plain.blocked_on_integrations == ["github", "slack"]
         assert await repo.deactivate(created.id, "attacker") is None
 
+    async def test_live_system_workflows_are_the_running_and_the_system_paused(self, repo):
+        key = _uid("sys")
+        running, paused, switched_off, other_key = [
+            await repo.create(
+                _workflow(is_system_workflow=True, system_workflow_key=k, activated=True)
+            )
+            for k in (key, key, key, _uid("sys"))
+        ]
+        await repo.deactivate(paused.id, paused.user_id, reason=DeactivationReason.USER_DORMANT)
+        await repo.deactivate(switched_off.id, switched_off.user_id)
+
+        live = await repo.find_live_system_workflows(key)
+
+        assert {w.id for w in live} == {running.id, paused.id}
+        assert other_key.id not in {w.id for w in live}
+
     async def test_delete_for_user_scoped(self, repo):
         created = await repo.create(_workflow(user_id="owner"))
         assert await repo.delete_for_user(created.id, "attacker") is False

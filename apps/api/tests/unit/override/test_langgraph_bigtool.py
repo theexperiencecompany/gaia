@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import replace
 from inspect import iscoroutinefunction
+import math
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -11,27 +12,26 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langchain_openrouter import ChatOpenRouter
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
-from langgraph.types import Command
 import pytest
 
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
-from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
+    EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
-    LOOP_GUARD_STOP_REPEAT,
-    LOOP_GUARD_WARN_REPEAT,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
+    SUBAGENT_RECURSION_LIMIT,
     LLMProviderName,
 )
 from app.models.agent_models import AgentConfigurable
-from app.override.langgraph_bigtool import create_agent as create_agent_module
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
@@ -74,6 +74,9 @@ from app.override.langgraph_bigtool.utils import State
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+#: LangGraph's default limit, which a node always finds in its config.
+_RECURSION_LIMIT = 25
 
 
 @tool
@@ -139,7 +142,8 @@ def _make_openrouter_wire_llm() -> MagicMock:
 
 
 def _make_config(**configurable: Any) -> RunnableConfig:
-    return {"configurable": configurable}
+    """Return a node's config as the runtime hands it over, recursion_limit always set."""
+    return {"configurable": configurable, "recursion_limit": _RECURSION_LIMIT}
 
 
 class _ModelNode(Protocol):
@@ -164,13 +168,12 @@ def _make_state(
     messages: Sequence[AnyMessage] | None = None,
     selected_tool_ids: Sequence[str] | None = None,
     todos: Sequence[dict[str, Any]] | None = None,
-    remaining_steps: int = RECURSION_WRAPUP_THRESHOLD_STEPS + 1,
+    remaining_steps: int = _RECURSION_LIMIT,
 ) -> State:
     """Build a complete State — every channel the node's signature promises.
 
-    remaining_steps defaults just clear of the wrap-up threshold so the
-    recursion notice stays out of these tests; pass a lower value to exercise
-    it.
+    remaining_steps defaults to a fresh run's full budget so the recursion
+    notice stays out of these tests; pass a lower value to exercise it.
     """
     # cast, like _maybe_inject_wrapup in the module under test: langgraph_bigtool
     # ships no py.typed, so its State base resolves to Any and mypy sees an
@@ -923,182 +926,6 @@ class TestSelectTools:
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
 
-class TestSelectToolsLoopGuard:
-    """retrieve_tools runs in the select_tools node, outside the tool node's middleware chain.
-
-    Live, an executor issued the same retrieve_tools query 14 times in one run and
-    the loop guard never saw one of them, since only the tool node consulted it.
-    """
-
-    @staticmethod
-    def _node(executed: list[str]) -> Any:
-        async def retrieve(query: str) -> dict:
-            """Retrieve tools."""
-            executed.append(query)
-            return {
-                "tools_to_bind": ["dummy_tool_a"],
-                "response": ["dummy_tool_a"],
-                "response_text": "found dummy_tool_a",
-            }
-
-        builder = create_agent(
-            _make_llm(),
-            _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
-            agent_config=AgentConfig(middleware=[LoopGuardMiddleware()]),
-        )  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
-        return builder.nodes["select_tools"].runnable
-
-    @pytest.mark.regression
-    async def test_a_repeated_query_is_warned_in_an_interactive_run(self) -> None:
-        executed: list[str] = []
-        node = self._node(executed)
-        config = _make_config(thread_id="t1", execution_mode="interactive")
-
-        results = [
-            await node.afunc(
-                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
-            )
-            for i in range(LOOP_GUARD_WARN_REPEAT)
-        ]
-
-        assert len(executed) == LOOP_GUARD_WARN_REPEAT
-        assert "[Loop guard:" not in results[0]["messages"][0].content
-        last = results[-1]["messages"][0]
-        assert last.content.startswith("found dummy_tool_a")
-        assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in last.content
-        assert last.tool_call_id == f"tc{LOOP_GUARD_WARN_REPEAT - 1}"
-        assert results[-1]["selected_tool_ids"] == ["dummy_tool_a"]
-
-    @pytest.mark.regression
-    async def test_a_repeated_query_is_blocked_in_a_background_run(self) -> None:
-        executed: list[str] = []
-        node = self._node(executed)
-        config = _make_config(thread_id="t1", execution_mode="background")
-
-        results = [
-            await node.afunc(
-                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
-            )
-            for i in range(LOOP_GUARD_STOP_REPEAT)
-        ]
-
-        assert len(executed) == LOOP_GUARD_STOP_REPEAT - 1  # the last never ran
-        blocked = results[-1]["messages"][0]
-        assert blocked.additional_kwargs["loop_guard_stopped"] is True
-        assert blocked.tool_call_id == f"tc{LOOP_GUARD_STOP_REPEAT - 1}"
-        assert results[-1]["selected_tool_ids"] == []
-
-    async def test_without_a_loop_guard_every_call_runs(self) -> None:
-        executed: list[str] = []
-
-        async def retrieve(query: str) -> list:
-            """Retrieve tools."""
-            executed.append(query)
-            return ["dummy_tool_a"]
-
-        builder = create_agent(
-            _make_llm(),
-            _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
-        )
-        node = builder.nodes["select_tools"].runnable
-        config = _make_config(thread_id="t1", execution_mode="background")
-
-        for i in range(LOOP_GUARD_STOP_REPEAT):
-            await node.afunc(
-                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
-            )
-
-        assert len(executed) == LOOP_GUARD_STOP_REPEAT
-
-
-class TestRetrievalThroughTheLoopGuard:
-    """select_tools hands the loop guard the request the tool node would, and renders only ToolMessages."""
-
-    @staticmethod
-    def _retrieve_tools() -> BaseTool:
-        retrieve_tools = MagicMock(spec=BaseTool)
-        retrieve_tools.name = "retrieve_tools"
-        return retrieve_tools
-
-    def test_the_request_carries_the_call_the_tool_and_the_graph_context(self) -> None:
-        retrieve_tools = self._retrieve_tools()
-        store = MagicMock()
-        config = _make_config(thread_id="t1")
-
-        request = create_agent_module._retrieval_request(
-            {"id": "c1", "args": {"query": "calendar"}}, retrieve_tools, config, store
-        )
-
-        assert request.tool_call == {
-            "name": "retrieve_tools",
-            "args": {"query": "calendar"},
-            "id": "c1",
-        }
-        assert request.tool is retrieve_tools
-        assert request.state == {}
-        assert request.runtime.config is config
-        assert request.runtime.store is store
-        assert request.runtime.tool_name == "retrieve_tools"
-
-    async def test_without_a_guard_the_call_runs_directly(self) -> None:
-        request = create_agent_module._retrieval_request(
-            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
-        )
-        answer = ToolMessage(content="found", tool_call_id="c1")
-        retrieve = AsyncMock(return_value=answer)
-
-        assert await create_agent_module._through_loop_guard(None, request, retrieve) is answer
-        retrieve.assert_awaited_once_with(request)
-
-    async def test_the_guard_wraps_the_call(self) -> None:
-        request = create_agent_module._retrieval_request(
-            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
-        )
-        guarded = ToolMessage(content="warned", tool_call_id="c1")
-        guard = MagicMock(spec=LoopGuardMiddleware)
-        guard.awrap_tool_call = AsyncMock(return_value=guarded)
-        retrieve = AsyncMock()
-
-        assert await create_agent_module._through_loop_guard(guard, request, retrieve) is guarded
-        guard.awrap_tool_call.assert_awaited_once_with(request, retrieve)
-
-    async def test_a_guard_answer_that_is_not_a_tool_message_is_refused(self) -> None:
-        request = create_agent_module._retrieval_request(
-            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
-        )
-        guard = MagicMock(spec=LoopGuardMiddleware)
-        guard.awrap_tool_call = AsyncMock(return_value=Command(update={}))
-
-        with pytest.raises(TypeError) as raised:
-            await create_agent_module._through_loop_guard(guard, request, AsyncMock())
-
-        assert str(raised.value) == (
-            "loop guard returned Command for retrieve_tools call c1; "
-            "select_tools only renders ToolMessages"
-        )
-
-    async def test_a_retrieve_tools_call_without_an_id_is_refused(self) -> None:
-        async def retrieve(query: str) -> list:
-            """Retrieve tools."""
-            return ["dummy_tool_a"]
-
-        builder = create_agent(
-            _make_llm(),
-            _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
-        )
-        node = builder.nodes["select_tools"].runnable
-
-        with pytest.raises(ValueError) as raised:
-            await node.afunc(
-                [{"id": None, "args": {"query": "calendar"}}], _make_config(), store=MagicMock()
-            )
-
-        assert str(raised.value) == "retrieve_tools call carries no id to answer it under"
-
-
 class TestBindSessionId:
     """The OpenRouter sticky-routing key, bound onto the tool-bound runnable.
 
@@ -1577,11 +1404,24 @@ def _make_deps(
     )
 
 
+def _limited(recursion_limit: int) -> RunnableConfig:
+    return {"configurable": {}, "recursion_limit": recursion_limit}
+
+
 class TestMaybeInjectWrapupDirect:
+    def test_a_config_without_a_limit_runs_on_langgraph_s_default(self) -> None:
+        """LangGraph strips a limit equal to its default from a node's config; reading it must not raise."""
+        window = math.ceil(DEFAULT_RECURSION_LIMIT * RECURSION_WRAPUP_REMAINING_FRACTION)
+        inside = _maybe_inject_wrapup(_make_state(remaining_steps=window), {"configurable": {}})
+        outside = _make_state(remaining_steps=window + 1)
+
+        assert "almost out of steps" in inside["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, {"configurable": {}}) is outside
+
     def test_low_budget_appends_the_notice_as_a_trailing_human_message(self) -> None:
         state = _make_state(messages=[HumanMessage("keep going")], remaining_steps=3)
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         notice = result["messages"][-1]
         assert isinstance(notice, HumanMessage)
@@ -1590,35 +1430,46 @@ class TestMaybeInjectWrapupDirect:
         # Original messages are preserved, not replaced.
         assert result["messages"][:-1] == list(state["messages"])
 
-    def test_budget_exactly_at_the_threshold_still_gets_the_notice(self) -> None:
-        """The notice must fire on <=; an off-by-one silently lets runs die with a GraphRecursionError the model never saw."""
-        state = _make_state(
-            messages=[HumanMessage("keep going")], remaining_steps=RECURSION_WRAPUP_THRESHOLD_STEPS
+    def test_the_window_is_a_fraction_of_a_long_run_s_limit(self) -> None:
+        """Regression: a fixed 6 steps gave the executor ~3 of its 50 turns, and a looping model ignored all 3."""
+        window = math.ceil(EXECUTOR_RECURSION_LIMIT * RECURSION_WRAPUP_REMAINING_FRACTION)
+        assert window > RECURSION_WRAPUP_MIN_STEPS, "the floor, not the fraction, would decide"
+
+        at_edge = _maybe_inject_wrapup(
+            _make_state(remaining_steps=window), _limited(EXECUTOR_RECURSION_LIMIT)
         )
+        outside = _make_state(remaining_steps=window + 1)
 
-        result = _maybe_inject_wrapup(state)
+        assert "almost out of steps" in at_edge["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, _limited(EXECUTOR_RECURSION_LIMIT)) is outside
 
-        # The state already ends in a HumanMessage, so "last message is human"
-        # holds either way — the notice's own text is the only real assertion.
-        assert len(result["messages"]) == len(state["messages"]) + 1
-        assert "almost out of steps" in result["messages"][-1].content
+    def test_a_short_run_keeps_the_floor(self) -> None:
+        """A fraction of a 15-step subagent is one model turn — too few to answer in."""
+        at_floor = _maybe_inject_wrapup(
+            _make_state(remaining_steps=RECURSION_WRAPUP_MIN_STEPS),
+            _limited(SUBAGENT_RECURSION_LIMIT),
+        )
+        outside = _make_state(remaining_steps=RECURSION_WRAPUP_MIN_STEPS + 1)
+
+        assert "almost out of steps" in at_floor["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, _limited(SUBAGENT_RECURSION_LIMIT)) is outside
 
     def test_the_notice_text_is_pinned_verbatim(self) -> None:
         state = _make_state(remaining_steps=2)
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         notice = result["messages"][-1]
         assert notice.content == (
             "[System notice: you are almost out of steps for this run "
-            "(~2 left). Stop exploring now. Summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            "(~2 left). Stop calling tools and give your final answer now. "
+            "Summarize what you did, what you found and what remains to be done.]"
         )
 
     def test_a_state_without_a_messages_channel_still_gets_the_notice(self) -> None:
         state = cast("State", {"remaining_steps": 1})
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         (notice,) = result["messages"]
         assert isinstance(notice, HumanMessage)
@@ -1626,12 +1477,12 @@ class TestMaybeInjectWrapupDirect:
     def test_budget_above_threshold_returns_state_untouched(self) -> None:
         state = _make_state()
 
-        assert _maybe_inject_wrapup(state) is state
+        assert _maybe_inject_wrapup(state, _make_config()) is state
 
     def test_non_integer_budget_returns_state_untouched(self) -> None:
         state = cast("State", {**_make_state(), "remaining_steps": "many"})
 
-        assert _maybe_inject_wrapup(state) is state
+        assert _maybe_inject_wrapup(state, _make_config()) is state
 
 
 class TestToolsToBindOrdering:
@@ -2079,22 +1930,6 @@ class TestSelectToolsTwinWiring:
             {"query": "calendar", "store": store}, config=config
         )
 
-    async def test_async_twin_builds_each_guard_request_from_the_graph_store(self) -> None:
-        retrieve_tools = MagicMock(name="retrieve_tools")
-        retrieve_tools.ainvoke = AsyncMock(return_value=["dummy_tool_a"])
-        node = _select_tools_node(_make_branch_deps(retrieve_tools=retrieve_tools))
-        tool_call = {"id": "c1", "args": {"query": "calendar"}}
-        config = _make_config()
-        store = MagicMock()
-
-        with patch(
-            f"{_CREATE_AGENT_MODULE}._retrieval_request",
-            wraps=create_agent_module._retrieval_request,
-        ) as build_request:
-            await node.afunc([tool_call], config, store=store)
-
-        build_request.assert_called_once_with(tool_call, retrieve_tools, config, store)
-
     @patch(f"{_CREATE_AGENT_MODULE}._retrieval_call_kwargs")
     async def test_async_twin_passes_call_store_arg_store_and_config(
         self, mock_call_kwargs: MagicMock
@@ -2110,10 +1945,8 @@ class TestSelectToolsTwinWiring:
 
         await node.afunc([tool_call], config, store=store)
 
-        # The async twin normalizes the call into the ToolCall its loop-guard
-        # request carries; the args and id flowing down are the model's own.
         mock_call_kwargs.assert_called_once_with(
-            {"name": retrieve_tools.name, "args": {"query": "calendar"}, "id": "c1"},
+            {"name": retrieve_tools.name, "id": "c1", "args": {"query": "calendar"}},
             "store",
             store,
             config,
@@ -2418,7 +2251,8 @@ _EXPECTED_FALLBACK_CONFIG = {
         "session_id": "conv-1",
         "provider": LLMProviderName.GEMINI,
         "model": "gemini-x",
-    }
+    },
+    "recursion_limit": _RECURSION_LIMIT,
 }
 
 

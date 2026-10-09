@@ -42,7 +42,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
-from app.services.todos.todo_service import ProjectService, TodoService
+from app.services.todos.todo_service import ProjectService, TodoService, todo_responses
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
@@ -636,7 +636,8 @@ async def create_subtask(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
         capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
-        return TodoResponse.from_document(updated_todo)
+        (response,) = await todo_responses(user.user_id, [updated_todo])
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -677,7 +678,8 @@ async def update_subtask(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
-        return TodoResponse.from_document(updated_todo)
+        (response,) = await todo_responses(user.user_id, [updated_todo])
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -711,7 +713,8 @@ async def delete_subtask(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
-        return TodoResponse.from_document(updated_todo)
+        (response,) = await todo_responses(user.user_id, [updated_todo])
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -758,7 +761,8 @@ async def toggle_subtask_completion(
             AnalyticsEvents.TODO_TOGGLED,
             {"is_subtask": True, "completed": not subtask.completed},
         )
-        return TodoResponse.from_document(updated_todo)
+        (response,) = await todo_responses(user.user_id, [updated_todo])
+        return response
     except HTTPException:
         raise
     except Exception as e:
