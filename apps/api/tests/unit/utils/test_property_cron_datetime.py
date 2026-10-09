@@ -24,8 +24,8 @@ from app.utils.cron_utils import (
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
-    validate_cron_expression,
 )
+from app.utils.schedule import schedule_rejection
 from app.utils.timezone import Timezone
 
 ZONE_NAMES = ["UTC", "Asia/Kolkata", "America/New_York", "Europe/London", "+05:30"]
@@ -124,20 +124,16 @@ class TestGetNextRunTime:
             get_next_run_time("0 9 31 2 *", datetime(2026, 1, 1, tzinfo=UTC))
 
 
-class TestValidateCronExpression:
+class TestScheduleRejection:
     @settings(deadline=None)
     @given(s=st.text())
-    def test_never_raises_and_agrees_with_get_next_run_time(self, s: str) -> None:
+    def test_never_raises_and_an_accepted_schedule_always_has_a_next_run(self, s: str) -> None:
         try:
-            valid = validate_cron_expression(s)
+            rejection = schedule_rejection(s)
         except Exception as e:  # pragma: no cover - a raised exception IS the bug
-            raise AssertionError(f"validate_cron_expression raised on {s!r}: {e!r}") from e
-        base = datetime(2026, 1, 1, tzinfo=UTC)
-        if valid:
-            assert get_next_run_time(s, base).tzinfo is UTC
-        else:
-            with pytest.raises(CronError):
-                get_next_run_time(s, base)
+            raise AssertionError(f"schedule_rejection raised on {s!r}: {e!r}") from e
+        if rejection is None:
+            assert get_next_run_time(s, datetime(2026, 1, 1, tzinfo=UTC)).tzinfo is UTC
 
 
 class TestCalculateNextOccurrences:

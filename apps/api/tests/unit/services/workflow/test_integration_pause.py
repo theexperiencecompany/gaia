@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.workflow_models import DeactivationReason, IntegrationRef
+from app.models.scheduler_models import DeactivationReason
+from app.models.workflow_models import IntegrationRef
 from app.services.workflow.integration_pause import (
     PauseOutcome,
     pause_workflow_before_fire,

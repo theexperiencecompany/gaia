@@ -68,6 +68,32 @@
             "default": null,
             "title": "Task Id"
           },
+          "trigger_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Type"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          },
           "queued": {
             "anyOf": [
               {
@@ -127,12 +153,12 @@
       "class": "AgentRunFailed",
       "owner": "server",
       "domain": "agent",
-      "description": "An agent run ended in an error.",
+      "description": "An agent run ended in an error; reason is the exception type, error type or \"cancelled\".",
       "previous_names": [],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
-        "description": "An agent run ended in an error.",
+        "description": "An agent run ended in an error; reason is the exception type, error type or \"cancelled\".",
         "properties": {
           "agent": {
             "enum": ["comms", "executor"],
@@ -161,6 +187,32 @@
             ],
             "default": null,
             "title": "Task Id"
+          },
+          "trigger_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Type"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
           },
           "queued": {
             "anyOf": [
@@ -209,9 +261,14 @@
             ],
             "default": null,
             "title": "Executor Active Ms"
+          },
+          "reason": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Reason",
+            "type": "string"
           }
         },
-        "required": ["agent", "mode", "conversation_id"],
+        "required": ["agent", "mode", "conversation_id", "reason"],
         "title": "AgentRunFailed",
         "type": "object"
       }
@@ -255,6 +312,32 @@
             ],
             "default": null,
             "title": "Task Id"
+          },
+          "trigger_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Type"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
           }
         },
         "required": ["agent", "mode", "conversation_id"],
@@ -267,27 +350,66 @@
       "class": "AiLlmCallCompleted",
       "owner": "server",
       "domain": "ai",
-      "description": "A background model call outside an agent graph finished; graph calls are covered by $ai_generation.",
+      "description": "One llm_calls ledger row: every priced model call, graph or one-shot, success or error.",
       "previous_names": [],
       "budget_per_user_day": null,
       "properties": {
         "additionalProperties": false,
-        "description": "A background model call outside an agent graph finished; graph calls are covered by $ai_generation.",
+        "description": "One llm_calls ledger row: every priced model call, graph or one-shot, success or error.",
         "properties": {
           "feature": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Feature",
             "type": "string"
           },
-          "label": {
+          "surface": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Label",
+            "title": "Surface",
             "type": "string"
+          },
+          "agent_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "background": {
+            "title": "Background",
+            "type": "boolean"
+          },
+          "charge_to_budget": {
+            "title": "Charge To Budget",
+            "type": "boolean"
           },
           "model": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Model",
             "type": "string"
+          },
+          "model_served": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Served"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
           },
           "input_tokens": {
             "title": "Input Tokens",
@@ -313,23 +435,118 @@
             "title": "Cost Usd",
             "type": "number"
           },
-          "charged": {
-            "title": "Charged",
-            "type": "boolean"
+          "cost_source": {
+            "enum": ["provider", "table"],
+            "title": "Cost Source",
+            "type": "string"
           },
-          "cost_estimated": {
-            "title": "Cost Estimated",
-            "type": "boolean"
+          "status": {
+            "enum": ["ok", "error"],
+            "title": "Status",
+            "type": "string"
           },
-          "surface": {
+          "error_family": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Family"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finish Reason"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Ms"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Channel"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Generation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Conversation Id"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workflow Id"
+          },
+          "llm_call_id": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Surface",
+            "title": "Llm Call Id",
             "type": "string"
           }
         },
         "required": [
           "feature",
-          "label",
+          "surface",
+          "agent_name",
+          "background",
+          "charge_to_budget",
           "model",
           "input_tokens",
           "output_tokens",
@@ -337,9 +554,9 @@
           "reasoning_tokens",
           "total_tokens",
           "cost_usd",
-          "charged",
-          "cost_estimated",
-          "surface"
+          "cost_source",
+          "status",
+          "llm_call_id"
         ],
         "title": "AiLlmCallCompleted",
         "type": "object"

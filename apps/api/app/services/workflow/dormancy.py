@@ -23,7 +23,8 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.usage_daily import usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.workflow_models import DeactivationReason, WorkflowDocument
+from app.models.scheduler_models import DeactivationReason
+from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 

@@ -62,6 +62,9 @@ from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
+    EXECUTOR_ERROR_APPROVAL_LOST,
+    EXECUTOR_ERROR_MALFORMED_APPROVAL,
+    EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
@@ -73,7 +76,7 @@ from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
+from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
@@ -87,8 +90,7 @@ from app.services.latency_metrics import (
 )
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
@@ -148,60 +150,63 @@ async def run_executor_background(
         ttft_ms: float | None = None
         active_ms: float | None = None
 
-        # One lifecycle event per run segment; a resumed run re-enters here.
-        executor_user_id = run.user.user_id
-        run_props = _run_props(run)
-        if executor_user_id:
-            capture(UserId(executor_user_id), run_props)
-
-        alive = await keep_alive(
-            run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
-        )
-        try:
-            with span() as elapsed_active:
-                result = await _execute_executor(task, configurable, run, resume)
-            active_ms = round(elapsed_active() * 1000.0, 2)
-            result_text, result_type, run_ctx = result.text, result.type, result.ctx
-            ttft_ms = _executor_ttft_ms(run, run_start)
-            if ttft_ms is not None:
-                observe_executor_ttft(ttft_ms / 1000.0, queued=queued)
-            timing_fields = _timing_fields(queue_wait_ms, ttft_ms, active_ms)
-            log.set(executor={"queued": queued, **timing_fields})
-            if result.paused_on and not await _record_pause(
-                run, task, configurable, result.paused_on
-            ):
-                # Recording failed, so no decision can ever resume this thread; finalizing
-                # as paused would hold the busy lock for its full TTL waiting for a resume
-                # that can't come. Fail instead: the lock releases and the sweep closes it.
-                result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
-            # Cancellation and the pause-record outcome are only known here, so
-            # read both after the pause decision: the span must carry the same
-            # status finalize records, not the pre-pause guess.
-            run_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
-            observe_executor_active(
-                active_ms / 1000.0, status=_active_status(result_type, run_cancelled)
+        # One lifecycle per run segment; a resumed run re-enters here. Opened before
+        # keep_alive so a lost liveness write is a failed run, not an untracked one.
+        with agent_run_lifecycle(
+            run.user.user_id, _run_props(run), dedupe_key=run.task_id or run.stream_id
+        ) as lifecycle:
+            alive = await keep_alive(
+                run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
             )
-            log.info(
-                f"{LogTag.AGENT} Background executor finished",
-                result_type=result_type,
-                task_id=run.task_id,
-                stream_id=run.stream_id,
-            )
-            _capture_executor_terminal(
-                run,
-                run_props=run_props,
-                queued=queued,
-                timing_fields=timing_fields,
-                result_type=result_type,
-            )
-        finally:
-            alive.cancel()
-            await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
-            if resume is not None:
-                # This run held the conversation's resume slot (claimed at dispatch).
-                # Freeing it AFTER finalize means the next decision can dispatch only
-                # once this run's pause/completion bookkeeping is fully written.
-                await release_resume_dispatch(run.conversation_id)
+            try:
+                with span() as elapsed_active:
+                    result = await _execute_executor(task, configurable, run, resume)
+                active_ms = round(elapsed_active() * 1000.0, 2)
+                result_text, result_type, run_ctx = result.text, result.type, result.ctx
+                error_type = result.error_type
+                ttft_ms = _executor_ttft_ms(run, run_start)
+                if ttft_ms is not None:
+                    observe_executor_ttft(ttft_ms / 1000.0, queued=queued)
+                timing_fields = _timing_fields(queue_wait_ms, ttft_ms, active_ms)
+                log.set(executor={"queued": queued, **timing_fields})
+                if result.paused_on and not await _record_pause(
+                    run, task, configurable, result.paused_on
+                ):
+                    # Recording failed, so no decision can ever resume this thread; finalizing
+                    # as paused would hold the busy lock for its full TTL waiting for a resume
+                    # that can't come. Fail instead: the lock releases and the sweep closes it.
+                    result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
+                    error_type = EXECUTOR_ERROR_APPROVAL_LOST
+                # Cancellation and the pause-record outcome are only known here, so
+                # read both after the pause decision: the span must carry the same
+                # status finalize records, not the pre-pause guess.
+                run_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(
+                    run.stream_id
+                )
+                observe_executor_active(
+                    active_ms / 1000.0, status=_active_status(result_type, run_cancelled)
+                )
+                log.info(
+                    f"{LogTag.AGENT} Background executor finished",
+                    result_type=result_type,
+                    task_id=run.task_id,
+                    stream_id=run.stream_id,
+                )
+                lifecycle.queued = queued
+                lifecycle.queue_wait_ms = queue_wait_ms
+                lifecycle.executor_ttft_ms = ttft_ms
+                lifecycle.executor_active_ms = active_ms
+                lifecycle.paused = result_type == EXECUTOR_PAUSED
+                if result_type == "error":
+                    lifecycle.failure_reason = error_type
+            finally:
+                alive.cancel()
+                await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
+                if resume is not None:
+                    # This run held the conversation's resume slot (claimed at dispatch).
+                    # Freeing it AFTER finalize means the next decision can dispatch only
+                    # once this run's pause/completion bookkeeping is fully written.
+                    await release_resume_dispatch(run.conversation_id)
 
 
 def _run_props(run: ExecutorRun) -> AgentRunStarted:
@@ -256,26 +261,6 @@ def _active_status(result_type: str, cancelled: bool) -> str:
     if result_type == EXECUTOR_PAUSED:
         return "paused"
     return "cancelled" if cancelled else "success"
-
-
-def _capture_executor_terminal(
-    run: ExecutorRun,
-    *,
-    run_props: AgentRunStarted,
-    queued: bool,
-    timing_fields: dict[str, float],
-    result_type: str,
-) -> None:
-    """Emit the run's terminal lifecycle event with its measured timings."""
-    user_id = run.user.user_id
-    if not user_id or result_type not in ("final", "error"):
-        return
-    event_type = AgentRunCompleted if result_type == "final" else AgentRunFailed
-    capture(
-        UserId(user_id),
-        event_type.model_validate({**run_props.model_dump(), "queued": queued, **timing_fields}),
-        dedupe_key=run.task_id or run.stream_id,
-    )
 
 
 async def _record_pause(
@@ -333,13 +318,15 @@ class _ExecutorResult(NamedTuple):
     paused_on holds the approval id(s) when the run stopped on a HIL interrupt
     instead of finishing. ctx is the prepared execution context, kept so finalize
     can read the thread this run wrote; None when preparation itself failed, in
-    which case no model call happened and nothing was committed.
+    which case no model call happened and nothing was committed. error_type is
+    the cause of an error result, reported as the run's failure reason.
     """
 
     text: str
     type: str
     paused_on: tuple[str, ...] = ()
     ctx: SubagentExecutionContext | None = None
+    error_type: str | None = None
 
 
 async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
@@ -391,7 +378,11 @@ async def _execute_executor(
         log.set(executor={"prep_ms": round(elapsed_prep() * 1000.0, 2)})
         if error or ctx is None:
             log.error(f"{LogTag.AGENT} Executor prep failed", error=error)
-            return _ExecutorResult(error or "Executor agent not available", "error")
+            return _ExecutorResult(
+                error or "Executor agent not available",
+                "error",
+                error_type=EXECUTOR_ERROR_PREP_FAILED,
+            )
         # Equivalent under mutation: build_agent_config always sets "configurable".
         run_configurable = ctx.config.setdefault("configurable", {})  # pragma: no mutate
         if resume is not None:
@@ -411,7 +402,12 @@ async def _execute_executor(
                 # Unresumable: nothing can ever re-dispatch this thread. Fail the
                 # run loudly rather than leave the conversation's lock held.
                 log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
-                return _ExecutorResult("Approval request was malformed", "error", ctx=ctx)
+                return _ExecutorResult(
+                    "Approval request was malformed",
+                    "error",
+                    ctx=ctx,
+                    error_type=EXECUTOR_ERROR_MALFORMED_APPROVAL,
+                )
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
         return _ExecutorResult(outcome.text, "final", ctx=ctx)
     except GraphRecursionError as e:
@@ -424,14 +420,18 @@ async def _execute_executor(
             error=str(e),
         )
         await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
-        return _ExecutorResult(EXECUTOR_STEP_LIMIT_MESSAGE, "error", ctx=ctx)
+        return _ExecutorResult(
+            EXECUTOR_STEP_LIMIT_MESSAGE, "error", ctx=ctx, error_type=type(e).__name__
+        )
     except Exception as e:
         # The raw exception is for the log, never for comms: a bare string (often
         # empty) is not a story, so comms invented one and offered to re-run work
         # that may have half-landed. Say what happened and ask instead.
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
         await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
-        return _ExecutorResult(EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx)
+        return _ExecutorResult(
+            EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx, error_type=type(e).__name__
+        )
 
 
 async def _finalize_executor_run(

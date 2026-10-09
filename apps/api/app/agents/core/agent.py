@@ -1,6 +1,6 @@
 """Agent execution: streaming and silent modes.
 
-- call_agent() returns an AsyncGenerator for SSE streaming (interactive chat).
+- call_agent() is an AsyncGenerator of SSE frames (interactive chat).
 - call_agent_silent() returns a results tuple (workflows, background tasks).
 
 Both share _core_agent_logic() for common setup (messages, graph, config).
@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -62,11 +62,10 @@ from app.models.agent_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
+from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.utils.user_preferences_utils import onboarding_preferences
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
 
 
@@ -81,6 +80,7 @@ class _AgentTriggerContext(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    trigger_type: str | None = None
     active_todo_id: str | None = None
     todo_id: str | None = None
     todo_title: str | None = None
@@ -162,7 +162,6 @@ async def _core_agent_logic(
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
         construct_langchain_messages(
-            messages=request.messages,
             query=request.message,
             scope=MessageScope(
                 user_id=user_id,
@@ -276,6 +275,20 @@ async def _core_agent_logic(
     return graph, initial_state, config
 
 
+def _run_started(
+    conversation_id: str, mode: Literal["interactive", "background"], options: AgentRunOptions
+) -> AgentRunStarted:
+    """Build a comms run's start event, naming the caller that fired it when known."""
+    return AgentRunStarted(
+        agent="comms",
+        mode=mode,
+        conversation_id=conversation_id,
+        trigger_type=_AgentTriggerContext.model_validate(options.trigger_context or {}).trigger_type
+        or None,
+        source=options.source or None,
+    )
+
+
 async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
@@ -283,105 +296,61 @@ async def call_agent(
     options: AgentRunOptions | None = None,
     ids: StreamMessageIds | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Execute agent in streaming mode for interactive chat.
+    """Execute agent in streaming mode for interactive chat, yielding SSE frames.
 
-    ids.bot_message_id seeds the Langfuse trace_id so
-    /messages/{id}/feedback can re-derive it to attach scores. Returns an
-    AsyncGenerator yielding SSE-formatted streaming data.
+    ids.bot_message_id seeds the Langfuse trace_id so /messages/{id}/feedback
+    can re-derive it to attach scores. A setup failure streams as one error
+    frame and [DONE]; a failure mid-stream propagates.
     """
     options = options or AgentRunOptions()
     ids = ids or StreamMessageIds()
-    usage_metadata_callback, source = options.usage_metadata_callback, options.source
-    stream_id, user_message_id, bot_message_id = (
-        ids.stream_id,
-        ids.user_message_id,
-        ids.bot_message_id,
-    )
-
-    user_id = user.user_id
-    try:
-        langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
-
-        graph, initial_state, config = await _core_agent_logic(
-            request,
-            conversation_id,
-            user,
-            AgentRunOptions(
-                usage_metadata_callback=usage_metadata_callback,
-                source=source,
-                langfuse_trace_id=langfuse_trace_id,
-                langfuse_tags=["comms_agent", settings.ENV],
-            ),
-        )
+    with agent_run_lifecycle(
+        user.user_id, _run_started(conversation_id, "interactive", options)
+    ) as run:
+        try:
+            graph, initial_state, config = await _core_agent_logic(
+                request,
+                conversation_id,
+                user,
+                AgentRunOptions(
+                    usage_metadata_callback=options.usage_metadata_callback,
+                    source=options.source,
+                    langfuse_trace_id=(
+                        trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
+                    ),
+                    langfuse_tags=["comms_agent", settings.ENV],
+                ),
+            )
+        except Exception as exc:
+            log.error(
+                f"{LogTag.AGENT} Error when calling agent",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            run.failure_reason = type(exc).__name__
+            yield f"data: {json.dumps({'error': f'Error when calling agent: {exc!s}'})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         # The live bag (see the same cast in _core_agent_logic) — mutated, so
         # indexed rather than read through agent_configurable.
         configurable = cast(AgentConfigurable, config[CONF])
 
         # Add stream_id to config for cancellation checking
-        if stream_id:
-            configurable["stream_id"] = stream_id
+        if ids.stream_id:
+            configurable["stream_id"] = ids.stream_id
 
         # Add user_message_id so executor can link notifications back
-        if user_message_id:
-            configurable["user_message_id"] = user_message_id
+        if ids.user_message_id:
+            configurable["user_message_id"] = ids.user_message_id
 
         # Add bot_message_id so a HIL pause on this turn's executor can later
         # resume onto this SAME message instead of minting a rival one.
-        if bot_message_id:
-            configurable["bot_message_id"] = bot_message_id
+        if ids.bot_message_id:
+            configurable["bot_message_id"] = ids.bot_message_id
 
-        stream = execute_graph_streaming(graph, initial_state, config)
-        if not user_id:
-            return stream
-
-        capture(
-            UserId(user_id),
-            AgentRunStarted(agent="comms", mode="interactive", conversation_id=conversation_id),
-        )
-
-        async def _tracked_stream() -> AsyncGenerator[str, None]:
-            """Yield the comms SSE stream, capturing the run's terminal outcome."""
-            try:
-                async for chunk in stream:
-                    yield chunk
-            except Exception:
-                capture(
-                    UserId(user_id),
-                    AgentRunFailed(
-                        agent="comms", mode="interactive", conversation_id=conversation_id
-                    ),
-                )
-                raise
-            capture(
-                UserId(user_id),
-                AgentRunCompleted(
-                    agent="comms", mode="interactive", conversation_id=conversation_id
-                ),
-            )
-
-        return _tracked_stream()
-
-    except Exception as exc:
-        log.error(
-            f"{LogTag.AGENT} Error when calling agent",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        if user_id:
-            capture(
-                UserId(user_id),
-                AgentRunFailed(agent="comms", mode="interactive", conversation_id=conversation_id),
-            )
-        error_message = f"Error when calling agent: {exc!s}"
-
-        async def error_generator() -> AsyncGenerator[str, None]:
-            """Yield the agent error as one SSE frame followed by [DONE]."""
-            error_dict = {"error": error_message}
-            yield f"data: {json.dumps(error_dict)}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return error_generator()
+        async for chunk in execute_graph_streaming(graph, initial_state, config):
+            yield chunk
 
 
 async def call_agent_silent(
@@ -398,66 +367,52 @@ async def call_agent_silent(
     """
     options = options or AgentRunOptions()
     usage_metadata_callback = options.usage_metadata_callback
-    trigger_context = options.trigger_context
-    source = options.source
 
     stream_id = str(uuid4())
-    user_id = user.user_id
     try:
-        graph, initial_state, config = await _core_agent_logic(
-            request,
-            conversation_id,
-            user,
-            AgentRunOptions(
-                usage_metadata_callback=usage_metadata_callback,
-                trigger_context=trigger_context,
-                source=source,
-            ),
-        )
-
-        # Mirror the live-chat path: wait for the detached executor and fold
-        # its tool_data onto this message. Bind stream_id + register the
-        # collector before the graph runs so tool events are captured.
-        cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
-        register_executor_capture(stream_id)
-
-        if user_id:
-            capture(
-                UserId(user_id),
-                AgentRunStarted(agent="comms", mode="background", conversation_id=conversation_id),
-            )
-
-        complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
-
-        # Wait for the detached executor (if one was spawned) and fold its
-        # reconstructed tool_data into this message's tool_data.
-        await await_executor_done(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
-        executor_tool_data = drain_executor_tool_data(stream_id)
-        if executor_tool_data:
-            tool_data = [*tool_data, *executor_tool_data]
-
-        if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
-            totals = aggregate_usage_metadata(usage_metadata_callback.usage_metadata or {})
-            total_input, total_output = totals.input_tokens, totals.output_tokens
-            log.set(
-                agent={"model": read_agent_configurable(config).model},
-                token_input=total_input,
-                token_output=total_output,
-                token_total=total_input + total_output,
-            )
-
-        if user_id:
-            capture(
-                UserId(user_id),
-                AgentRunCompleted(
-                    agent="comms", mode="background", conversation_id=conversation_id
+        with agent_run_lifecycle(
+            user.user_id, _run_started(conversation_id, "background", options)
+        ):
+            graph, initial_state, config = await _core_agent_logic(
+                request,
+                conversation_id,
+                user,
+                AgentRunOptions(
+                    usage_metadata_callback=usage_metadata_callback,
+                    trigger_context=options.trigger_context,
+                    source=options.source,
                 ),
             )
 
-        return SilentRunResult(
-            message=complete_message,
-            tool_data=tool_data,
-        )
+            # Mirror the live-chat path: wait for the detached executor and fold
+            # its tool_data onto this message. Bind stream_id + register the
+            # collector before the graph runs so tool events are captured.
+            cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
+            register_executor_capture(stream_id)
+
+            complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
+
+            # Wait for the detached executor (if one was spawned) and fold its
+            # reconstructed tool_data into this message's tool_data.
+            await await_executor_done(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
+            executor_tool_data = drain_executor_tool_data(stream_id)
+            if executor_tool_data:
+                tool_data = [*tool_data, *executor_tool_data]
+
+            if usage_metadata_callback:
+                totals = aggregate_usage_metadata(usage_metadata_callback.usage_metadata or {})
+                total_input, total_output = totals.input_tokens, totals.output_tokens
+                log.set(
+                    agent={"model": read_agent_configurable(config).model},
+                    token_input=total_input,
+                    token_output=total_output,
+                    token_total=total_input + total_output,
+                )
+
+            return SilentRunResult(
+                message=complete_message,
+                tool_data=tool_data,
+            )
 
     except Exception as exc:
         log.error(
@@ -465,11 +420,6 @@ async def call_agent_silent(
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        if user_id:
-            capture(
-                UserId(user_id),
-                AgentRunFailed(agent="comms", mode="background", conversation_id=conversation_id),
-            )
         raise
     finally:
         teardown_executor_capture(stream_id)

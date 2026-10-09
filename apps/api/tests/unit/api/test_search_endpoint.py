@@ -11,6 +11,7 @@ import pytest
 
 from app.models.chat_models import MessageModel
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResultItem, WebSearchResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.search import SearchPerformed
@@ -130,6 +131,45 @@ class TestSearchAnalytics:
         mock_search.side_effect = Exception("Search engine down")
         response = await client.get(f"{SEARCH_BASE}/search", params={"query": "test"})
         assert response.status_code == 500
+
+
+class TestSearchLogsNoUserText:
+    @patch("app.api.v1.endpoints.search.search_messages", new_callable=AsyncMock)
+    async def test_message_search_logs_the_query_shape(
+        self, mock_search: AsyncMock, client: AsyncClient
+    ):
+        mock_search.return_value = SearchResultsResponse(messages=[], conversations=[], notes=[])
+        with patch("app.api.v1.endpoints.search.log") as log:
+            await client.get(f"{SEARCH_BASE}/search", params={"query": "my divorce papers"})
+
+        [search] = [c.kwargs["search"] for c in log.set.call_args_list if "search" in c.kwargs]
+        assert search == {
+            "query": user_text_shape("my divorce papers"),
+            "mode": "keyword",
+            "scope": ["messages", "conversations", "notes"],
+        }
+
+    @patch("app.api.v1.endpoints.search.perform_search", new_callable=AsyncMock)
+    async def test_email_search_logs_the_query_shape(
+        self, mock_perform: AsyncMock, client: AsyncClient
+    ):
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/contact",
+                    title="Contact",
+                    content="a@example.com b@example.com a@example.com",
+                )
+            ],
+            query="my divorce papers",
+        )
+        with patch("app.api.v1.endpoints.search.log") as log:
+            await client.get(f"{SEARCH_BASE}/search/email", params={"query": "my divorce papers"})
+
+        assert [c.kwargs["search"] for c in log.set.call_args_list] == [
+            {"query": user_text_shape("my divorce papers"), "mode": "web", "scope": ["emails"]},
+            {"result_count": 2},
+        ]
 
 
 class TestSearchEmail:

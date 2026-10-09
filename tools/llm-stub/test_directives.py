@@ -396,7 +396,7 @@ def test_message_text_flattens_content_blocks():
 
 def test_build_chat_completion_tool_call_shape():
     payload = build_chat_completion(
-        "m", ToolCallResponse(name="create_reminder", args={"title": "x"})
+        "m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50
     )
     assert payload["object"] == "chat.completion"
     assert "system_fingerprint" in payload
@@ -409,36 +409,52 @@ def test_build_chat_completion_tool_call_shape():
 
 
 def test_build_chat_completion_say_shape():
-    payload = build_chat_completion("m", SayResponse(text="hi"))
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
     choice = payload["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["message"]["content"] == "hi"
 
 
 def test_stream_chunks_tool_call_assembly():
-    chunks = list(stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"})))
+    chunks = list(
+        stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50)
+    )
     assert all(c["object"] == "chat.completion.chunk" for c in chunks)
     assert chunks[0]["choices"][0]["delta"] == {"role": "assistant"}
     # Reassemble tool call from the streamed deltas.
     name = None
     args = ""
-    for c in chunks:
+    choice_chunks = [c for c in chunks if c["choices"]]
+    for c in choice_chunks:
         for call in c["choices"][0]["delta"].get("tool_calls", []):
             fn = call.get("function", {})
             name = fn.get("name") or name
             args += fn.get("arguments", "")
     assert name == "create_reminder"
     assert json.loads(args) == {"title": "x"}
-    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_stream_chunks_content_assembly():
-    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!")))
-    text = "".join(c["choices"][0]["delta"].get("content", "") for c in chunks)
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    choice_chunks = [c for c in chunks if c["choices"]]
+    text = "".join(c["choices"][0]["delta"].get("content", "") for c in choice_chunks)
     assert text == "Reminder set successfully!"
-    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
-    assert all("finish_reason" in c["choices"][0] for c in chunks)
+    assert all("finish_reason" in c["choices"][0] for c in choice_chunks)
+
+
+def test_a_streamed_reply_ends_with_the_usage_a_real_provider_reports():
+    """GAIA refuses a success with no usage, so a zero-usage stub would make every sim call a metering error."""
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    assert chunks[-1]["choices"] == []
+    assert chunks[-1]["usage"] == {"prompt_tokens": 50, "completion_tokens": 6, "total_tokens": 56}
+
+
+def test_a_non_streamed_reply_reports_non_zero_usage():
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
+    assert payload["usage"] == {"prompt_tokens": 50, "completion_tokens": 1, "total_tokens": 51}
 
 
 # --------------------------------------------------------------------------- #

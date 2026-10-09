@@ -58,7 +58,7 @@ class TestCallAgentReal:
                         new=AsyncMock(return_value=graph),
                     ),
                 ):
-                    gen = await call_agent(
+                    gen = call_agent(
                         request=body,
                         conversation_id="call-agent-conv-1",
                         user=make_authenticated_user(
@@ -92,7 +92,7 @@ class TestCallAgentReal:
                 new=AsyncMock(return_value=[]),
             ),
         ):
-            gen = await call_agent(
+            gen = call_agent(
                 request=body,
                 conversation_id="call-agent-conv-2",
                 user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9102"),
