@@ -6,21 +6,34 @@ Calls each integration's CUSTOM_GATHER_CONTEXT tool in parallel via Composio.
 import asyncio
 from datetime import UTC, datetime
 import time
-from typing import Annotated, Any
+from typing import Annotated, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
+from app.models.agent_models import get_user_id
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
     tool_namespace,
 )
 from app.templates.docstrings.context_tool_docs import GATHER_CONTEXT_DOC
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.context_utils import fetch_all_providers, resolve_providers
 from shared.py.wide_events import log
+
+
+class _ContextPerformance(TypedDict):
+    total_time_seconds: float
+    providers_attempted: int
+    providers_succeeded: int
+
+
+class GatherContextResult(TypedDict):
+    date: str
+    providers_queried: list[str]
+    context: dict[str, object]
+    _performance: _ContextPerformance
 
 
 @tool
@@ -35,13 +48,11 @@ async def gather_context(
         str | None,
         "Target date in YYYY-MM-DD format. Defaults to today.",
     ] = None,
-) -> dict[str, Any]:
+) -> GatherContextResult:
     """Gather context from all connected providers in parallel."""
     log.set(tool={"name": "gather_context", "action": "gather"})
     start_time = time.time()
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return {"error": "User authentication required", "data": None}
+    user_id = get_user_id(config)
 
     date_str = date or datetime.now(UTC).strftime("%Y-%m-%d")
 

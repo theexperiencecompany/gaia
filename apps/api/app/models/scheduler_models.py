@@ -39,6 +39,8 @@ class DeactivationReason(str, Enum):
     INTEGRATION_NEVER_CONNECTED = "integration_never_connected"
     #: A stored schedule that breaks the recurring-schedule rule; only the user can fix it.
     INVALID_SCHEDULE = "invalid_schedule"
+    #: The owner is no user (the template owner, or a deleted account): it never resumes.
+    OWNER_NOT_FOUND = "owner_not_found"
 
 
 class TaskOutcome(str, Enum):
