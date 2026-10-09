@@ -58,6 +58,12 @@ from shared.py.wide_events import log
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]]
 
+MIDDLEWARE_FAILURE_TEMPLATE = (
+    "`{tool}` was NOT run: a safety check that runs before every tool call failed "
+    "with an internal error. Tell the user a system error prevented the action and "
+    "they can retry."
+)
+
 
 def _tool_metric_name(tool_name: str, tool: BaseTool | None) -> str:
     """Return the Prometheus label for a tool call.
@@ -342,11 +348,29 @@ class MiddlewareExecutor:
         # A ToolCall is a plain dict at runtime; create_tool_call_request re-normalizes it.
         request = create_tool_call_request(cast(dict[str, object], tool_call), tool, state, runtime)
 
-        # Set once the tool has run, so the fallback below retries only a middleware
-        # that failed *before* the tool. tool_attempted covers the third case: the
-        # tool raised, so tool_result is still None but a retry re-fires side effects.
+        # Where the chain broke decides the outcome below: before the tool (refuse),
+        # in the tool (tool_attempted with no result: propagate), or after it (ship
+        # the result). failed_middleware names the innermost hook that raised.
         tool_result: ToolMessage | Command[str] | None = None
         tool_attempted = False
+        failed_middleware: str | None = None
+
+        def blame_on_failure(middleware: AgentMiddleware, link: ToolCallHandler) -> ToolCallHandler:
+            """Record this middleware as the failure's source unless an inner link or the tool raised it."""
+
+            async def guarded(req: ToolCallRequest) -> ToolMessage | Command[str]:
+                nonlocal failed_middleware
+                try:
+                    return await link(req)
+                except GraphBubbleUp:
+                    raise
+                except Exception:
+                    tool_raised = tool_attempted and tool_result is None
+                    if failed_middleware is None and not tool_raised:
+                        failed_middleware = type(middleware).__name__
+                    raise
+
+            return guarded
 
         # Build the handler chain from inside out
         async def final_handler(req: ToolCallRequest) -> ToolMessage | Command[str]:
@@ -383,7 +407,7 @@ class MiddlewareExecutor:
 
                     return wrapped
 
-                current_handler = make_wrapper(mw, current_handler)
+                current_handler = blame_on_failure(mw, make_wrapper(mw, current_handler))
             elif _has_override(mw, "wrap_tool_call"):
 
                 def make_sync_wrapper(
@@ -404,7 +428,7 @@ class MiddlewareExecutor:
 
                     return wrapped
 
-                current_handler = make_sync_wrapper(mw, current_handler)
+                current_handler = blame_on_failure(mw, make_sync_wrapper(mw, current_handler))
 
         # Execute the chain
         metric_name = _tool_metric_name(tool_name, tool)
@@ -412,8 +436,8 @@ class MiddlewareExecutor:
         try:
             result = await current_handler(request)
         except GraphBubbleUp:
-            # A GraphInterrupt is control flow, not a failure — it MUST
-            # propagate, or the fallback below runs a gated action unapproved.
+            # A GraphInterrupt is control flow, not a failure: it MUST propagate
+            # so the run pauses for approval instead of returning a refusal.
             raise
         except asyncio.CancelledError:
             raise
@@ -421,6 +445,7 @@ class MiddlewareExecutor:
             log.error(
                 f"{LogTag.AGENT} Middleware wrap_tool_call chain failed",
                 tool_name=tool_name,
+                middleware=failed_middleware,
                 error_type=type(e).__name__,
             )
             # The tool already ran and succeeded: re-invoking would repeat its side
@@ -428,23 +453,21 @@ class MiddlewareExecutor:
             # and record a success, since the status label is the tool's outcome.
             if tool_result is not None:
                 result = tool_result
-            elif tool_attempted:
-                # The tool itself raised: retrying would run its side effects
-                # again, so record the error and let the failure propagate.
+            else:
                 observe_tool_call(
                     time.perf_counter() - chain_start, tool_name=metric_name, status="error"
                 )
-                raise
-            else:
-                # Nothing ran yet: a pre-tool middleware broke, so invoke the
-                # tool directly. Its own outcome is the call's real status.
-                try:
-                    result = await invoke_fn(tool_call)
-                except Exception:
-                    observe_tool_call(
-                        time.perf_counter() - chain_start, tool_name=metric_name, status="error"
-                    )
+                if tool_attempted:
+                    # The tool itself raised: retrying would run its side effects again.
                     raise
+                # A pre-tool middleware broke, and it may be the approval gate: fail
+                # closed. The tool never runs on a check that did not complete.
+                return ToolMessage(
+                    content=MIDDLEWARE_FAILURE_TEMPLATE.format(tool=tool_name),
+                    tool_call_id=tool_call.get("id") or "",
+                    name=tool_name,
+                    status="error",
+                )
         observe_tool_call(
             time.perf_counter() - chain_start, tool_name=metric_name, status="success"
         )
