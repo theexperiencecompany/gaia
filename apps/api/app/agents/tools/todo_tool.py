@@ -9,6 +9,7 @@ from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import get_user_id
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
@@ -65,7 +66,6 @@ from app.templates.docstrings.todo_tool_docs import (
     UPDATE_PROJECT,
     UPDATE_TODO,
 )
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
@@ -207,13 +207,11 @@ async def create_todo(
     priority: Annotated[Priority | None, "Priority level"] = None,
     project_id: Annotated[str | None, "Project ID to assign the todo to"] = None,
 ) -> TodoResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "create_todo", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Creating todo", title=title)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todo": None}
 
         priority_enum = priority or Priority.NONE
 
@@ -266,13 +264,11 @@ async def list_todos(
     skip: Annotated[int, "Number of records to skip for pagination"] = 0,
     limit: Annotated[int, "Maximum number of records to return"] = 50,
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "list_todos", "action": "list"})
         log.info(f"{LogTag.TOOL} Todo Tool: Listing todos with filters")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         # Ensure limit is reasonable
         limit = min(limit, 100)
@@ -328,13 +324,11 @@ async def update_todo(
     project_id: Annotated[str | None, "Move to different project"] = None,
     completed: Annotated[bool | None, "Mark as complete/incomplete"] = None,
 ) -> TodoResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "update_todo", "action": "update"})
         log.info(f"{LogTag.TOOL} Todo Tool: Updating todo", todo_id=todo_id)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todo": None}
 
         # Build update data with only provided fields
         update_request = TodoUpdateRequest(
@@ -381,13 +375,11 @@ async def delete_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the todo to delete (required)"],
 ) -> SuccessResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "delete_todo", "action": "delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Deleting todo", todo_id=todo_id)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
 
         # Get the todo first to show what was deleted
         todo = await get_todo_service(todo_id, user_id)
@@ -425,13 +417,11 @@ async def search_todos(
     config: RunnableConfig,
     query: Annotated[str, "Search query to match against todos (required)"],
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "search_todos", "action": "search"})
         log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=user_text_shape(query))
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         results = await search_todos_service(query, user_id)
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -470,13 +460,11 @@ async def semantic_search_todos(
     completed: Annotated[bool | None, "Filter by completion status"] = None,
     priority: Annotated[Priority | None, "Filter by priority"] = None,
 ) -> SemanticSearchResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
         log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=user_text_shape(query))
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         # Ensure limit is reasonable
         limit = min(limit, 50)
@@ -524,13 +512,11 @@ async def semantic_search_todos(
 @tool
 @with_doc(GET_TODO_STATS)
 async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_todo_statistics", "action": "stats"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todo statistics")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "stats": None}
 
         stats = (await get_todo_stats_service(user_id)).model_dump(mode="json")
 
@@ -561,13 +547,11 @@ async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
 @tool
 @with_doc(GET_TODAY_TODOS)
 async def get_today_todos(config: RunnableConfig) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_today_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting today's todos")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         now = datetime.now(UTC)
         today_start = datetime.combine(now, time.min)
@@ -610,13 +594,11 @@ async def get_upcoming_todos(
     config: RunnableConfig,
     days: Annotated[int, "Number of days to look ahead"] = 7,
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_upcoming_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos", days=days)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         start_date = datetime.now(UTC)
         end_date = start_date + timedelta(days=days)
@@ -661,13 +643,11 @@ async def create_project(
     description: Annotated[str | None, "Project description"] = None,
     color: Annotated[str | None, "Hex color code (e.g., #FF5733)"] = None,
 ) -> ProjectResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "create_project", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Creating project", project_name=name)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "project": None}
 
         project_data = ProjectCreate(
             name=name,
@@ -705,13 +685,11 @@ async def create_project(
 @tool
 @with_doc(LIST_PROJECTS)
 async def list_projects(config: RunnableConfig) -> ProjectListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "list_projects", "action": "list"})
         log.info(f"{LogTag.TOOL} Todo Tool: Listing all projects")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "projects": []}
 
         results = await get_all_projects_service(user_id)
         projects_data = [project.model_dump(mode="json") for project in results]
@@ -749,13 +727,11 @@ async def update_project(
     description: Annotated[str | None, "New project description"] = None,
     color: Annotated[str | None, "New hex color code"] = None,
 ) -> ProjectResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "update_project", "action": "update"})
         log.info(f"{LogTag.TOOL} Todo Tool: Updating project", project_id=project_id)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "project": None}
 
         update_request = UpdateProjectRequest(name=name, description=description, color=color)
         result = await update_project_service(project_id, update_request, user_id)
@@ -792,13 +768,11 @@ async def delete_project(
     config: RunnableConfig,
     project_id: Annotated[str, "ID of the project to delete (required)"],
 ) -> SuccessResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "delete_project", "action": "delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Deleting project", project_id=project_id)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
 
         # Get all projects and find the one being deleted
         all_projects = await get_all_projects_service(user_id)
@@ -837,13 +811,11 @@ async def get_todos_by_label(
     config: RunnableConfig,
     label: Annotated[str, "The label to filter by (required)"],
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_todos_by_label", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todos by label", label=label)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         results = await get_todos_by_label_service(user_id, label)
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -880,13 +852,11 @@ async def get_todos_by_label(
 @tool
 @with_doc(GET_ALL_LABELS)
 async def get_all_labels(config: RunnableConfig) -> LabelListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_all_labels", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting all labels")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "labels": []}
 
         results = await get_all_labels_service(user_id)
         return {"labels": [label.model_dump() for label in results], "error": None}
@@ -907,13 +877,11 @@ async def bulk_complete_todos(
     config: RunnableConfig,
     todo_ids: Annotated[list[str], "List of todo IDs to mark as complete (required)"],
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "bulk_complete_todos", "action": "bulk_complete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk completing todos", todo_count=len(todo_ids))
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         completion = await bulk_complete_service(todo_ids, user_id)
         results = completion.todos
@@ -959,6 +927,8 @@ async def bulk_move_todos(
     todo_ids: Annotated[list[str], "List of todo IDs to move (required)"],
     project_id: Annotated[str, "Target project ID (required)"],
 ) -> TodoListResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "bulk_move_todos", "action": "bulk_move"})
         log.info(
@@ -966,10 +936,6 @@ async def bulk_move_todos(
             todo_count=len(todo_ids),
             project_id=project_id,
         )
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todos": []}
 
         results = await bulk_move_service(todo_ids, project_id, user_id)
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -1010,13 +976,11 @@ async def bulk_delete_todos(
     config: RunnableConfig,
     todo_ids: Annotated[list[str], "List of todo IDs to delete (required)"],
 ) -> SuccessResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "bulk_delete_todos", "action": "bulk_delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk deleting todos", todo_count=len(todo_ids))
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
 
         await bulk_delete_service(todo_ids, user_id)
 
@@ -1051,13 +1015,11 @@ async def add_checklist_item(
     todo_id: Annotated[str, "Parent todo ID (required)"],
     title: Annotated[str, "Checklist item title (required)"],
 ) -> TodoResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "add_checklist_item", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Adding checklist item", todo_id=todo_id)
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todo": None}
 
         todo = await get_todo_service(todo_id, user_id)
 
@@ -1102,15 +1064,13 @@ async def update_checklist_item(
     title: Annotated[str | None, "New checklist item title"] = None,
     completed: Annotated[bool | None, "Checklist item completion status"] = None,
 ) -> TodoResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "update_checklist_item", "action": "update"})
         log.info(
             f"{LogTag.TOOL} Todo Tool: Updating checklist item", item_id=item_id, todo_id=todo_id
         )
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todo": None}
 
         # Get the todo first
         todo = await get_todo_service(todo_id, user_id)
@@ -1168,15 +1128,13 @@ async def delete_checklist_item(
     todo_id: Annotated[str, "Parent todo ID (required)"],
     item_id: Annotated[str, "Checklist item ID to delete (required)"],
 ) -> TodoResult:
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "delete_checklist_item", "action": "delete"})
         log.info(
             f"{LogTag.TOOL} Todo Tool: Deleting checklist item", item_id=item_id, todo_id=todo_id
         )
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "todo": None}
 
         # Get the todo first
         todo = await get_todo_service(todo_id, user_id)
@@ -1223,13 +1181,11 @@ async def delete_checklist_item(
 async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
     """Get a comprehensive summary of the user's todos in a single call."""
 
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_todos_summary", "action": "summary"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting comprehensive todos summary")
-        user_id = get_user_id_from_config(config)
-
-        if not user_id:
-            return {"error": "User authentication required", "summary": None}
 
         def get_date_ranges() -> tuple[datetime, datetime, datetime, datetime, datetime]:
             """Calculate all needed date ranges."""
