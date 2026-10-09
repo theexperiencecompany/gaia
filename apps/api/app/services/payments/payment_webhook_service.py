@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
 
 from pydantic import ValidationError
 from standardwebhooks.webhooks import Webhook
@@ -16,18 +15,21 @@ from app.models.webhook_models import (
     DodoPaymentData,
     DodoWebhookEvent,
     DodoWebhookEventType,
+    DodoWebhookLogFields,
+    DodoWebhookPayload,
     DodoWebhookProcessingResult,
     WebhookProcessingStatus,
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.payments.revenue_properties import payment_revenue_properties
 from app.services.payments.subscription_events import (
-    CENTS_PER_UNIT,
     SubscriptionEvent,
     SubscriptionEventKind,
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from app.utils.money import to_major_units
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
@@ -139,7 +141,7 @@ class PaymentWebhookService:
             return False
 
     async def process_webhook(
-        self, webhook_data: dict[str, Any], webhook_id: str
+        self, webhook_data: DodoWebhookPayload, webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """Process a Dodo payment webhook exactly once.
 
@@ -157,28 +159,19 @@ class PaymentWebhookService:
                 message="Webhook already processed",
             )
         try:
-            # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data: dict[str, Any] = webhook_data.get("data", webhook_data)
-            customer_field = payload_data.get("customer")
-            customer_id = (
-                customer_field.get("customer_id")
-                if isinstance(customer_field, dict)
-                else payload_data.get("customer_id")
-            )
+            payload_data = DodoWebhookLogFields.model_validate(webhook_data.get("data", {}))
             log.set(
                 payment={
                     "event_type": event_type_raw,
                     "status": "processing",
                     "webhook_id": webhook_id,
-                    "customer_id": customer_id,
-                    "amount_cents": payload_data.get("amount")
-                    or payload_data.get("amount_paid")
-                    or payload_data.get("total_amount", 0),
-                    "currency": payload_data.get("currency", "usd"),
+                    "customer_id": payload_data.customer.customer_id or payload_data.customer_id,
+                    "amount_cents": payload_data.total_amount,
+                    "currency": payload_data.currency,
                 }
             )
 
-            event = DodoWebhookEvent(**webhook_data)
+            event = DodoWebhookEvent.model_validate(webhook_data)
 
             handler = self._handler_for(event.type, webhook_id)
             if not handler:
@@ -223,9 +216,8 @@ class PaymentWebhookService:
             # Keep the workspace's account/subscription projection honest after
             # any billing state change.
             if result.status == WebhookProcessingStatus.PROCESSED:
-                metadata = payload_data.get("metadata")
-                webhook_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
-                if isinstance(webhook_user_id, str) and webhook_user_id:
+                webhook_user_id = payload_data.metadata.user_id
+                if webhook_user_id:
                     schedule_account_sync(webhook_user_id)
 
             await processed_webhook_repository.record_outcome(webhook_id, _outcome_of(result))
@@ -298,14 +290,16 @@ class PaymentWebhookService:
             )
             return
 
+        revenue = payment_revenue_properties(payment_data)
         capture(
             user_id,
             event_type(
                 payment_id=payment_data.payment_id,
-                amount=payment_data.total_amount / CENTS_PER_UNIT
-                if payment_data.total_amount
-                else None,
+                amount=float(to_major_units(payment_data.total_amount, payment_data.currency)),
                 currency=payment_data.currency,
+                amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                currency_charged=revenue.currency_charged,
+                amount_usd_pre_tax=revenue.amount_usd_pre_tax,
             ),
         )
 

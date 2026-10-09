@@ -798,23 +798,23 @@ export interface EventProperties {
     "surface": "dashboard" | "widget";
   };
   "founder_letter:code_copied": {
-    "discount_code": string;
+    "discount_code"?: string;
   };
   "founder_letter:discount_cta_clicked": {
     "discount_code": string;
     "discount_percent": number;
   };
   "founder_letter:dismissed": {
-    "discount_code": string;
+    "discount_code"?: string;
   };
   "founder_letter:meeting_clicked": Record<string, never>;
   "founder_letter:opened": {
     "first_open": boolean;
-    "discount_code": string;
+    "discount_code"?: string;
     "discount_percent": number;
   };
   "founder_letter:shown": {
-    "discount_code": string;
+    "discount_code"?: string;
   };
   "hil:card_shown": {
     "actor": "user" | "agent";

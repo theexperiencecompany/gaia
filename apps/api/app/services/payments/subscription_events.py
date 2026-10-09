@@ -34,6 +34,8 @@ from app.models.webhook_models import DodoSubscriptionData
 from app.services.analytics_service import track_subscription_event
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
+from app.services.payments.revenue_properties import subscription_revenue_properties
+from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
@@ -46,7 +48,6 @@ from shared.py.analytics.catalog.billing import (
 )
 from shared.py.wide_events import log
 
-CENTS_PER_UNIT = 100
 EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 LAPSED_STATUSES = frozenset(
@@ -250,9 +251,8 @@ async def resolve_subscription_owner(sub_data: DodoSubscriptionData) -> str | No
     Callers acting on a client-supplied subscription id must compare this
     against the authenticated user before activating anything.
     """
-    stamped_owner = sub_data.metadata.user_id
-    if isinstance(stamped_owner, str) and stamped_owner:
-        return stamped_owner
+    if sub_data.metadata.user_id:
+        return sub_data.metadata.user_id
 
     user = await user_repository.get_by_email(sub_data.customer.email)
     return str(user.id) if user else None
@@ -316,7 +316,7 @@ DESIRED_STATE: dict[SubscriptionEventKind, Callable[[DodoSubscriptionData], Subs
 
 
 def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> SubscriptionUpdate:
-    """Return the desired fields whose value differs from the row's, as the only fields set."""
+    """Return the desired fields whose value differs from the row's, as the only set fields."""
     return SubscriptionUpdate.model_validate(
         {
             field: value
@@ -344,21 +344,28 @@ def _capture_transition(
     data = event.data
     match event.kind:
         case SubscriptionEventKind.ACTIVATED if changes.status == SubscriptionStatus.ACTIVE.value:
+            revenue = subscription_revenue_properties(data)
             track_subscription_event(
                 UserId(user_id),
                 SubscriptionActivated(
                     subscription_id=data.subscription_id,
                     plan_name="Pro",
-                    amount=data.recurring_pre_tax_amount / CENTS_PER_UNIT
-                    if data.recurring_pre_tax_amount
-                    else None,
+                    amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency)),
                     currency=data.currency,
+                    amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                    currency_charged=revenue.currency_charged,
                 ),
             )
         case SubscriptionEventKind.RENEWED:
+            revenue = subscription_revenue_properties(data)
             track_subscription_event(
                 UserId(user_id),
-                SubscriptionRenewed(subscription_id=data.subscription_id, currency=data.currency),
+                SubscriptionRenewed(
+                    subscription_id=data.subscription_id,
+                    currency=data.currency,
+                    amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                    currency_charged=revenue.currency_charged,
+                ),
             )
         case SubscriptionEventKind.CANCELLED if (
             changes.cancel_at_next_billing_date is True

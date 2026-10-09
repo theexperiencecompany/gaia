@@ -14,7 +14,9 @@ import { PricingCardPrice } from "./PricingCardPrice";
 
 interface PricingCardProps {
   title: string;
+  /** Minor units of `currency`. */
   price: number;
+  currency: string;
   originalPrice?: number;
   description?: string;
   features?: string[];
@@ -39,6 +41,7 @@ interface PricingCardProps {
 export function PricingCard({
   title,
   price,
+  currency,
   originalPrice,
   description,
   features,
@@ -55,6 +58,7 @@ export function PricingCard({
     price,
     originalPrice,
     durationIsMonth,
+    currency,
   });
 
   useEffect(() => {
@@ -90,7 +94,7 @@ export function PricingCard({
           isCurrentPlan={planViewerState === "current"}
         />
       )}
-      <PricingCardPrice list={list} offer={offer} />
+      <PricingCardPrice list={list} offer={offer} currency={currency} />
       <PricingCardCta
         planTier={isPro ? "pro" : "free"}
         price={price}
