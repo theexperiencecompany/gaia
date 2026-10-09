@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 import re
 import shutil
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from _typeshed import ExcInfo
@@ -50,6 +50,21 @@ SLUG_MAX_LEN = 40
 SHORTID_LEN = 8
 _SLUG_INVALID_RE = re.compile(r"[^a-z0-9]+")
 _UNTITLED = "untitled"
+
+
+class TodoProjectionMeta(TypedDict):
+    """The meta.json fields every todo projection carries, as its Mongo glue builds them from a TodoDocument."""
+
+    title: str
+    completed: bool
+    completed_at: datetime | None
+    priority: str
+    due_date: datetime | None
+    due_date_timezone: str | None
+    labels: list[str]
+    project_id: str | None
+    created_at: datetime | None
+    updated_at: datetime | None
 
 
 # ====================================================================
@@ -87,13 +102,13 @@ def folder_name(doc_id: str, title: str | None) -> str:
 # ====================================================================
 
 
-def hash_meta_only(meta: dict[str, Any]) -> str:
+def hash_meta_only(meta: TodoProjectionMeta) -> str:
     """sha256 of the canonical JSON encoding of meta."""
     payload = json.dumps(meta, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
-def hash_body_with_meta(*bodies: str, meta: dict[str, Any]) -> str:
+def hash_body_with_meta(*bodies: str, meta: TodoProjectionMeta) -> str:
     """sha256 of each body then meta, NUL-separated.
 
     Used by materializers that project a body bigger than just the
@@ -153,7 +168,7 @@ def prune_per_doc_markers(per_doc_dir: Path, active_ids: set[str]) -> None:
 # ====================================================================
 
 
-def _force_remove(func: Callable[..., Any], path: str, _exc_info: ExcInfo) -> None:
+def _force_remove(func: Callable[[str], object], path: str, _exc_info: ExcInfo) -> None:
     """shutil.rmtree onerror hook: chmod target writable then retry.
 
     POSIX requires write permission on the file itself (not just the
@@ -226,7 +241,7 @@ def write_rw_body(target: Path, content: str) -> None:
     target.chmod(RW_MODE)
 
 
-def meta_body(meta: dict[str, Any]) -> str:
+def meta_body(meta: TodoProjectionMeta) -> str:
     """Serialize meta to canonical JSON for on-disk storage."""
     return json.dumps(meta, sort_keys=True, default=str, indent=2) + "\n"
 
@@ -236,7 +251,7 @@ def meta_body(meta: dict[str, Any]) -> str:
 # ====================================================================
 
 
-def updated_at_key(meta: dict[str, Any]) -> str:
+def updated_at_key(meta: TodoProjectionMeta) -> str:
     """Sort key for index.md — updated_at, then created_at, then ""."""
     v = meta.get("updated_at") or meta.get("created_at") or ""
     return v.isoformat() if isinstance(v, datetime) else str(v)
