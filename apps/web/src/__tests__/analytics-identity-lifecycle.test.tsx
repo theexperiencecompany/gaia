@@ -10,7 +10,7 @@
 
 import { ApiError } from "@shared/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import type { InternalAxiosRequestConfig } from "axios";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -112,16 +112,16 @@ describe("useFetchUser identity reset", () => {
       .mockRejectedValueOnce(new ApiError("down", 503))
       .mockRejectedValue(new ApiError("expired", 401));
     posthogMock._isIdentified.mockReturnValue(true);
+    posthogMock.__loaded = true;
 
     const { rerender } = renderFetchUser(SIGNED_IN_USER);
     await waitFor(() => expect(console.error).toHaveBeenCalled());
+    expect(posthogMock.reset).not.toHaveBeenCalled();
     // The next render re-reads the cleared query, so /me is asked again.
     rerender();
-    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(2));
-    await act(async () => undefined);
-    posthogMock.__loaded = true;
-    flushPendingAnalytics();
 
+    await waitFor(() => expect(posthogMock.reset).toHaveBeenCalledTimes(1));
+    rerender();
     expect(posthogMock.reset).toHaveBeenCalledTimes(1);
   });
 
