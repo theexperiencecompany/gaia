@@ -11,6 +11,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
+from app.constants.scheduling import SCHEDULE_REJECTION_MESSAGES
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -24,11 +25,8 @@ from app.models.reminder_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.reminder_service import reminder_scheduler
-from app.utils.cron_utils import (
-    calculate_next_occurrences,
-    get_next_run_time,
-    validate_cron_expression,
-)
+from app.utils.cron_utils import calculate_next_occurrences
+from app.utils.schedule import InvalidScheduleError, schedule_rejection
 from shared.py.wide_events import ReminderContext, log
 
 _CRON_PREVIEW_RUNS = 5
@@ -478,16 +476,12 @@ async def resume_reminder_endpoint(
                 detail=f"Reminder {reminder_id} is not paused (current status: {existing_reminder.status})",
             )
 
-        # Update status to scheduled and reschedule if needed
-        update = ReminderUpdate(status=ReminderStatus.SCHEDULED)
+        try:
+            resumed = await reminder_scheduler.resume(existing_reminder)
+        except InvalidScheduleError as e:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-        # If it's a recurring reminder, calculate next run time
-        if existing_reminder.repeat:
-            update.scheduled_at = get_next_run_time(existing_reminder.repeat)
-
-        success = await reminder_scheduler.update_reminder(reminder_id, update, user_id=user_id)
-
-        if not success:
+        if not resumed:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to resume reminder",
@@ -523,25 +517,20 @@ async def resume_reminder_endpoint(
 async def validate_cron_endpoint(
     expression: str = Query(..., description="Cron expression to validate"),
 ) -> CronValidationResponse:
-    """Validate a cron expression and preview its next few run times."""
+    """Check a cron expression against the recurring-schedule rule and preview its next runs."""
     log.set(reminder=ReminderContext(operation="validate_cron"))
-    try:
-        is_valid = validate_cron_expression(expression)
-        if not is_valid:
-            return CronValidationResponse(expression=expression, valid=False)
-
-        next_runs = calculate_next_occurrences(expression, _CRON_PREVIEW_RUNS)
+    rejection = schedule_rejection(expression)
+    if rejection is not None:
         return CronValidationResponse(
             expression=expression,
-            valid=True,
-            next_runs=[run.isoformat() for run in next_runs],
+            valid=False,
+            error=SCHEDULE_REJECTION_MESSAGES[rejection],
+            reason=rejection,
         )
 
-    except Exception as e:
-        log.error(
-            f"{LogTag.API} Error validating cron expression",
-            expression=expression,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        return CronValidationResponse(expression=expression, valid=False, error=str(e))
+    next_runs = calculate_next_occurrences(expression, _CRON_PREVIEW_RUNS)
+    return CronValidationResponse(
+        expression=expression,
+        valid=True,
+        next_runs=[run.isoformat() for run in next_runs],
+    )
