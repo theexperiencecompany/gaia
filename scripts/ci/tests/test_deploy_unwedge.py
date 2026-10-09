@@ -13,6 +13,7 @@ force-cancel decision all run for real.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import datetime
 import json
 import os
@@ -46,16 +47,34 @@ def waiting_job(started: str) -> dict:
     }
 
 
-def run_unwedge(
-    tmp_path: Path, runs: dict[int, tuple[list[dict], list[dict]]]
-) -> tuple[subprocess.CompletedProcess[str], list[str], str]:
-    """Run unwedge against `runs` ({run id: (pending deployments, jobs)})."""
+@dataclass
+class Scenario:
+    """What the stubbed GitHub API reports; None in place of data makes that request fail."""
+
+    runs: dict[int, tuple[list[dict] | None, list[dict]]]
+    # Run ids returned by each successive listing call; the last entry repeats.
+    listings: list[list[int] | None] | None = None
+    limit: int = LIMIT_SECS
+
+
+@dataclass
+class Outcome:
+    proc: subprocess.CompletedProcess[str]
+    posted: list[str]
+    reaped: str | None
+
+
+def run_unwedge(tmp_path: Path, scenario: Scenario) -> Outcome:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    listing = {"workflow_runs": [{"id": run_id} for run_id in runs]}
-    (tmp_path / "runs.json").write_text(json.dumps(listing))
-    for run_id, (pending, jobs) in runs.items():
-        (tmp_path / f"pending-{run_id}.json").write_text(json.dumps(pending))
+    listings = scenario.listings if scenario.listings is not None else [list(scenario.runs)]
+    for index, ids in enumerate(listings):
+        if ids is not None:
+            listing = {"workflow_runs": [{"id": run_id} for run_id in ids]}
+            (tmp_path / f"runs-{index}.json").write_text(json.dumps(listing))
+    for run_id, (pending, jobs) in scenario.runs.items():
+        if pending is not None:
+            (tmp_path / f"pending-{run_id}.json").write_text(json.dumps(pending))
         (tmp_path / f"jobs-{run_id}.json").write_text(json.dumps({"jobs": jobs}))
 
     stub = textwrap.dedent(
@@ -80,9 +99,15 @@ def run_unwedge(
         case "$url" in
           */pending_deployments) src="{tmp_path}/pending-$id.json" ;;
           */jobs*) src="{tmp_path}/jobs-$id.json" ;;
-          *actions/runs\\?*) src="{tmp_path}/runs.json" ;;
+          *actions/runs\\?*)
+            n=$(cat "{tmp_path}/listed" 2>/dev/null || echo 0)
+            echo $((n + 1)) > "{tmp_path}/listed"
+            (( n > {len(listings) - 1} )) && n={len(listings) - 1}
+            src="{tmp_path}/runs-$n.json"
+            ;;
           *) echo "unexpected gh api $url" >&2; exit 1 ;;
         esac
+        [[ -f "$src" ]] || {{ echo "HTTP 502: $url" >&2; exit 1; }}
         jq -r "${{jq_filter:-.}}" < "$src"
         """
     )
@@ -98,7 +123,7 @@ def run_unwedge(
         "GITHUB_REPOSITORY": "theexperiencecompany/gaia",
         "GITHUB_RUN_ID": str(OWN_RUN),
         "GITHUB_OUTPUT": str(output),
-        "STUCK_LIMIT_SECS": str(LIMIT_SECS),
+        "STUCK_LIMIT_SECS": str(scenario.limit),
     }
     proc = subprocess.run(
         ["bash", str(SCRIPT), "unwedge"],
@@ -110,63 +135,98 @@ def run_unwedge(
     )
     posted_file = tmp_path / "posted"
     posted = posted_file.read_text().split() if posted_file.exists() else []
-    return proc, posted, output.read_text()
+    reaped = [
+        line.removeprefix("reaped=")
+        for line in output.read_text().splitlines()
+        if line.startswith("reaped=")
+    ]
+    return Outcome(proc, posted, reaped[-1] if reaped else None)
+
+
+def cancel_url(run_id: int) -> str:
+    return f"repos/theexperiencecompany/gaia/actions/runs/{run_id}/force-cancel"
 
 
 def test_unreleasable_gate_past_limit_is_force_cancelled(tmp_path: Path) -> None:
-    proc, posted, output = run_unwedge(
-        tmp_path, {37507260357: ([gate()], [waiting_job(ago(3 * 86400))])}
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert posted == ["repos/theexperiencecompany/gaia/actions/runs/37507260357/force-cancel"]
-    assert "reaped=37507260357" in output
-    assert "::warning::" in proc.stderr
+    out = run_unwedge(tmp_path, Scenario({37507260357: ([gate()], [waiting_job(ago(3 * 86400))])}))
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == [cancel_url(37507260357)]
+    assert out.reaped == "37507260357"
+    assert "::warning::" in out.proc.stderr
 
 
 def test_gate_with_reviewers_is_a_real_approval_and_left_alone(tmp_path: Path) -> None:
-    proc, posted, output = run_unwedge(
-        tmp_path, {42: ([gate(reviewers=1)], [waiting_job(ago(3 * 86400))])}
+    out = run_unwedge(
+        tmp_path, Scenario({42: ([gate(reviewers=1)], [waiting_job(ago(3 * 86400))])})
     )
-    assert proc.returncode == 0, proc.stderr
-    assert posted == []
-    assert "reaped=\n" in output
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == []
+    assert out.reaped == ""
 
 
 def test_gate_with_wait_timer_is_left_alone(tmp_path: Path) -> None:
-    proc, posted, _ = run_unwedge(
-        tmp_path, {42: ([gate(wait_timer=30)], [waiting_job(ago(3 * 86400))])}
+    out = run_unwedge(
+        tmp_path, Scenario({42: ([gate(wait_timer=30)], [waiting_job(ago(3 * 86400))])})
     )
-    assert proc.returncode == 0, proc.stderr
-    assert posted == []
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == []
 
 
-def test_gate_inside_limit_is_given_time(tmp_path: Path) -> None:
-    proc, posted, _ = run_unwedge(tmp_path, {42: ([gate()], [waiting_job(ago(LIMIT_SECS - 60))])})
-    assert proc.returncode == 0, proc.stderr
-    assert posted == []
+def test_young_wedge_is_reaped_once_it_crosses_the_limit(tmp_path: Path) -> None:
+    # A push that lands 10 min into a wedge must not exit and leave its own deploy queued behind it.
+    out = run_unwedge(tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}, limit=3))
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == [cancel_url(42)]
+    assert out.reaped == "42"
+
+
+def test_young_gate_that_clears_while_waiting_is_not_reaped(tmp_path: Path) -> None:
+    out = run_unwedge(
+        tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}, listings=[[42], []], limit=3)
+    )
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == []
+    assert out.reaped == ""
+
+
+def test_failed_listing_fails_loud(tmp_path: Path) -> None:
+    out = run_unwedge(tmp_path, Scenario({}, listings=[None]))
+    assert out.proc.returncode != 0
+    assert "OK" not in out.proc.stdout
+
+
+def test_reap_is_reported_even_when_a_later_request_fails(tmp_path: Path) -> None:
+    out = run_unwedge(
+        tmp_path,
+        Scenario({8: ([gate()], [waiting_job(ago(86400))]), 9: (None, [waiting_job(ago(86400))])}),
+    )
+    assert out.proc.returncode != 0
+    assert out.posted == [cancel_url(8)]
+    assert out.reaped == "8"
 
 
 def test_own_run_is_never_reaped(tmp_path: Path) -> None:
-    proc, posted, _ = run_unwedge(tmp_path, {OWN_RUN: ([gate()], [waiting_job(ago(3 * 86400))])})
-    assert proc.returncode == 0, proc.stderr
-    assert posted == []
+    out = run_unwedge(tmp_path, Scenario({OWN_RUN: ([gate()], [waiting_job(ago(3 * 86400))])}))
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == []
 
 
 def test_waiting_run_without_a_deployment_gate_is_left_alone(tmp_path: Path) -> None:
-    proc, posted, _ = run_unwedge(tmp_path, {42: ([], [waiting_job(ago(3 * 86400))])})
-    assert proc.returncode == 0, proc.stderr
-    assert posted == []
+    out = run_unwedge(tmp_path, Scenario({42: ([], [waiting_job(ago(3 * 86400))])}))
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == []
 
 
 def test_only_the_wedged_run_is_reaped_among_several(tmp_path: Path) -> None:
-    proc, posted, output = run_unwedge(
+    out = run_unwedge(
         tmp_path,
-        {
-            7: ([gate(reviewers=2)], [waiting_job(ago(86400))]),
-            8: ([gate()], [waiting_job(ago(86400))]),
-            9: ([gate()], [waiting_job(ago(30))]),
-        },
+        Scenario(
+            {
+                7: ([gate(reviewers=2)], [waiting_job(ago(86400))]),
+                8: ([gate()], [waiting_job(ago(86400))]),
+            }
+        ),
     )
-    assert proc.returncode == 0, proc.stderr
-    assert posted == ["repos/theexperiencecompany/gaia/actions/runs/8/force-cancel"]
-    assert "reaped=8" in output
+    assert out.proc.returncode == 0, out.proc.stderr
+    assert out.posted == [cancel_url(8)]
+    assert out.reaped == "8"
