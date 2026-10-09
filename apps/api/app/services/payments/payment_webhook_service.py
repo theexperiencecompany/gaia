@@ -12,8 +12,8 @@ from app.constants.payments import WEBHOOK_ROW_WAIT_MAX
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.models.payment_models import ProcessedWebhookUpdate
 from app.models.webhook_models import (
-    DodoCheckoutMetadata,
     DodoPaymentData,
+    DodoSubscriptionMetadata,
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookLogFields,
@@ -214,8 +214,7 @@ class PaymentWebhookService:
             # Keep the workspace's account/subscription projection honest after
             # any billing state change.
             if result.status == WebhookProcessingStatus.PROCESSED:
-                metadata: DodoCheckoutMetadata = payload_data.metadata
-                webhook_user_id = metadata.get("user_id")
+                webhook_user_id = payload_data.metadata.user_id
                 if webhook_user_id:
                     schedule_account_sync(webhook_user_id)
 
@@ -268,9 +267,9 @@ class PaymentWebhookService:
             return None
         return self.handlers.get(known)
 
-    async def _get_user_id_from_metadata(self, metadata: DodoCheckoutMetadata) -> str | None:
+    async def _get_user_id_from_metadata(self, metadata: DodoSubscriptionMetadata) -> str | None:
         """Get the stable application user ID from payment metadata."""
-        return metadata.get("user_id") or None
+        return metadata.user_id or None
 
     async def _capture_payment(
         self, event_type: AnalyticsEvents, payment_data: DodoPaymentData

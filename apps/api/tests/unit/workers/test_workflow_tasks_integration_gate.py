@@ -19,8 +19,9 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
-from app.models.workflow_models import DeactivationReason, IntegrationRef
+from app.models.workflow_models import IntegrationRef
 from app.workers.tasks.workflow_tasks import (
     _notify_workflow_failed,
     _notify_workflow_paused_for_integrations,

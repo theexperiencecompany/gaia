@@ -58,6 +58,7 @@ from app.services.oauth.oauth_service import (
     check_multiple_integrations_status,
     get_all_integrations_status,
 )
+from app.utils.log_identifiers import user_text_shape
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -955,7 +956,7 @@ def get_retrieve_tools_function(
         background = configurable.get("execution_mode") == "background"
         log.info(
             f"{LogTag.TOOL} retrieve_tools called",
-            query=query,
+            query=user_text_shape(query) if query else None,
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
@@ -1247,7 +1248,7 @@ def get_retrieve_tools_function(
         log.set(
             tool_retrieval={
                 "mode": "discovery",
-                "query": query,
+                "query": user_text_shape(query),
                 "tool_space": tool_space,
                 "user_id": user_id,
                 "namespaces_searched": sorted(user_namespaces),

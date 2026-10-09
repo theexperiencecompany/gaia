@@ -41,6 +41,7 @@ from app.models.memory_models import (
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
@@ -96,7 +97,10 @@ async def search_memories(
     memories anywhere, not just on the currently loaded page.
     """
     user_id = _require_user_id(user)
-    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="recall", query=q))
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="recall", query=user_text_shape(q)),
+    )
 
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
 

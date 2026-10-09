@@ -6,6 +6,7 @@ failed refresh, invalidation), and the loading seams — from the vector math up
 """
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -23,7 +24,9 @@ from app.services.gaia_knowledge_service import (
     _Snapshot,
     gaia_knowledge_service,
 )
-from tests.helpers import captured_wide_event
+from app.utils.log_identifiers import user_text_shape
+from shared.py.wide_events import wide_task
+from tests.helpers import WideEventRecorder, captured_wide_event
 
 _MOD = "app.services.gaia_knowledge_service"
 
@@ -320,6 +323,22 @@ class TestSearchKnowledge:
         chroma.collection.get.side_effect = RuntimeError("chroma down")
 
         assert await gaia_knowledge_service.search_knowledge("anything") == []
+
+
+class TestSearchLogsNoUserText:
+    async def test_the_chat_turn_event_records_the_query_shape_and_never_its_words(
+        self, chroma, embeddings
+    ):
+        """Knowledge search runs inside the chat turn's boundary on the user's own message."""
+        _corpus(chroma, embeddings, ["Doc"], [[1.0, 0.0]])
+        query = "can you read my divorce papers"
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            async with wide_task("chat_stream"):
+                await gaia_knowledge_service.search_knowledge(query)
+
+        assert "divorce" not in json.dumps(recorder.events, default=str)
+        assert recorder.event("chat_stream")["knowledge_query"] == user_text_shape(query)
 
 
 class TestLoadSnapshot:
