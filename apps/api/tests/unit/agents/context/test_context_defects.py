@@ -19,6 +19,7 @@ from tests._harness.context_chain import (
     AgentTier,
     ContextSeed,
     HarnessUser,
+    bound_for,
     effective_context,
     message_in_slot,
     seed_only,
@@ -129,7 +130,7 @@ class TestSeedOrderIsAlreadyCanonical:
                 tier,
                 ContextSeed(
                     sources=VOLATILE_SOURCES,
-                    configurable_overrides={"provider": LLMProviderName.GEMINI},
+                    configurable_overrides=bound_for(LLMProviderName.GEMINI),
                 ),
             )
         )

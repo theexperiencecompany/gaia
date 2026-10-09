@@ -6418,6 +6418,19 @@
         "title": "GmailDraftsResponse",
         "type": "object"
       },
+      "GmailEmailSentConfig": {
+        "description": "Config for the gmail sent-mail trigger; account-level, so nothing to scope.",
+        "properties": {
+          "trigger_name": {
+            "const": "gmail_email_sent",
+            "default": "gmail_email_sent",
+            "title": "Trigger Name",
+            "type": "string"
+          }
+        },
+        "title": "GmailEmailSentConfig",
+        "type": "object"
+      },
       "GmailLabelResource": {
         "additionalProperties": true,
         "description": "A Gmail ``labels`` resource, forwarded to the client verbatim.\n\nNo field is declared on purpose: Gmail owns this schema, so ``extra=\"allow\"``\npasses the payload through untouched instead of guessing at a structure that\nwould silently drop provider fields. Mirrors ``GoogleCalendarEventResource``.",
@@ -16601,6 +16614,18 @@
             "title": "Notify On Run",
             "type": "boolean"
           },
+          "parent_todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Read-only; the tracked todo this one is a sub-todo of, set by GAIA",
+            "title": "Parent Todo Id"
+          },
           "pending_approval": {
             "anyOf": [
               {
@@ -16661,6 +16686,12 @@
             ],
             "description": "When GAIA should execute this tracked todo",
             "title": "Scheduled At"
+          },
+          "sub_todo_count": {
+            "default": 0,
+            "description": "Open sub-todos of this tracked todo",
+            "title": "Sub Todo Count",
+            "type": "integer"
           },
           "subtasks": {
             "description": "List of subtasks",
@@ -16755,7 +16786,9 @@
           "completed_at",
           "workflow_categories",
           "trigger_subscriptions",
-          "pending_approval"
+          "pending_approval",
+          "parent_todo_id",
+          "sub_todo_count"
         ],
         "title": "TodoResponse",
         "type": "object"
@@ -17484,6 +17517,7 @@
                     "github_issue_added": "#/components/schemas/GitHubIssueAddedConfig",
                     "github_pr_event": "#/components/schemas/GitHubPrEventConfig",
                     "github_star_added": "#/components/schemas/GitHubStarAddedConfig",
+                    "gmail_email_sent": "#/components/schemas/GmailEmailSentConfig",
                     "gmail_new_message": "#/components/schemas/GmailNewMessageConfig",
                     "gmail_poll_inbox": "#/components/schemas/GmailPollInboxConfig",
                     "google_docs_document_deleted": "#/components/schemas/GoogleDocsDocumentDeletedConfig",
@@ -17513,6 +17547,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/GmailNewMessageConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailEmailSentConfig"
                   },
                   {
                     "$ref": "#/components/schemas/GmailPollInboxConfig"
@@ -36104,6 +36141,22 @@
                 }
               ],
               "title": "Overdue"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parent_todo_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Todo Id"
             }
           },
           {
