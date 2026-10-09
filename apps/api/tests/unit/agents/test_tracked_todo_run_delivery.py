@@ -50,6 +50,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
+from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
@@ -137,7 +138,7 @@ def _seams(
         patch.object(
             trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock(return_value=seams.pool))
         ),
-        patch.object(tracked_todo_tasks, "load_user_context", seams.load_user),
+        patch.object(auth_utils, "load_user_context", seams.load_user),
     ):
         yield seams
     sess._sessions.clear()

@@ -34,8 +34,7 @@ from app.constants.todos import (
     LIST_TRACKED_TODOS_LIMIT,
 )
 from app.db.repositories.todos import todo_repository
-from app.models.agent_models import read_agent_configurable
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -81,7 +80,6 @@ _PARENT_TODO_DESC = (
     "of messaging the user, and is completed or deleted with its parent. One level "
     "deep: a sub-todo cannot have sub-todos."
 )
-_ERR_NO_USER_ID = "Error: user_id not found in config"
 # Nobody gave a background run's sub-todo rules, and its parent's Standing rules already bind it.
 SUB_TODO_STANDING_RULES_REFUSAL = (
     "Not created: a sub-todo opened by a background run starts with an empty Standing rules "
@@ -266,9 +264,7 @@ async def create_tracked_todo(
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
                 usable creates nothing and says why.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
     # conversation_id lives in `configurable`, not `metadata` (matching
     # reminder_tool). None for a non-chat root (onboarding/REST).
     source_conversation_id = read_agent_configurable(config).conversation_id
@@ -341,9 +337,7 @@ async def search_todo_context(
     Use to find relevant context from existing tracked todos before
     creating a new one or to recall details from past work.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     matches = await search_canvas_context(
         query=query,
@@ -377,9 +371,7 @@ async def complete_tracked_todo(
     standing schedule. To stop one entirely, clear its recurrence (and
     scheduled_at) with update_tracked_todo first, then complete it.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if doc is None:
@@ -512,9 +504,7 @@ async def update_tracked_todo(
         notify_on_run: Turn this todo's run-result delivery on or off.
         parent_todo_id: Make this todo a sub-todo of that parent.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
@@ -593,9 +583,7 @@ async def list_tracked_todos(
     one state by label (e.g. every thread waiting on a reply), the todo for one
     thread, or the sub-todos of one todo.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     docs = await todo_repository.list_active_tracked(
         user_id,
@@ -693,9 +681,7 @@ async def subscribe_todo_to_trigger(
     Without it the trigger registers against nothing and never fires;
     list_trigger_fields shows the scope each trigger needs.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     parsed_action = parse_action(action)
     if parsed_action is None:
@@ -755,9 +741,7 @@ async def unsubscribe_todo_from_trigger(
     still open. Completing a todo tears its watches down on its own, so you do not
     need to call this first.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     removed = await unregister_subscription(todo_id, user_id, subscription_id)
     if not removed:

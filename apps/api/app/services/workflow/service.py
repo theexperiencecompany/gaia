@@ -33,6 +33,7 @@ from app.services.workflow.integration_requirements import (
     compute_required_integrations,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.auth_utils import require_owner
 from app.utils.creator import (
     SYSTEM_CREATOR_NAME,
     format_creator,
@@ -186,6 +187,9 @@ class WorkflowService:
         """
         workflow_id: str | None = None
         trigger_ids: list[str] = []
+
+        # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
+        await require_owner(user_id)
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
