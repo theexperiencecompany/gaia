@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 import pytest
 
@@ -31,15 +32,18 @@ from directives import (
 )
 from wire import build_chat_completion, stream_chunks
 
+#: One chat-completions message, as the stub reads it off the wire.
+Message = dict[str, Any]
+
 EXECUTOR_TOOLS = frozenset({"create_reminder", "web_search"})
 COMMS_TOOLS = frozenset({CALL_EXECUTOR_TOOL, "add_memory", "search_memory"})
 
 
-def _user(text: str) -> dict:
+def _user(text: str) -> Message:
     return {"role": "user", "content": text}
 
 
-def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
+def _assistant_tool_call(name: str, args: dict[str, Any] | None = None) -> Message:
     return {
         "role": "assistant",
         "content": None,
@@ -53,7 +57,7 @@ def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
     }
 
 
-def _tool_result(name: str) -> dict:
+def _tool_result(name: str) -> Message:
     return {"role": "tool", "tool_call_id": f"call_{name}", "content": "ok"}
 
 
@@ -128,7 +132,7 @@ def test_parse_tool_missing_name_raises():
 # --------------------------------------------------------------------------- #
 
 
-def _tool_directive(name: str, args: dict) -> str:
+def _tool_directive(name: str, args: dict[str, Any]) -> str:
     """Render a directive the way a test author would: JSON-encoded args."""
     return f"[[tool:{name} {json.dumps(args)}]]"
 
@@ -452,11 +456,11 @@ def test_stream_chunks_content_assembly():
 WORK_TOOLS = frozenset({"create_todo"})
 
 
-def _interjection(text: str) -> dict:
+def _interjection(text: str) -> Message:
     return {"role": "user", "content": f"<user_interjection>\n{text}\n</user_interjection>"}
 
 
-def _cancelled_record(quoted_task: str) -> dict:
+def _cancelled_record(quoted_task: str) -> Message:
     return {
         "role": "user",
         "content": (
@@ -667,8 +671,8 @@ def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
     assert resolve_response(emitted, EXECUTOR_TOOLS) == SayResponse(text="ok")
 
 
-def _after(brief: dict, *names: str) -> list[dict]:
-    turns = [brief]
+def _after(brief: Message, *names: str) -> list[Message]:
+    turns: list[Message] = [brief]
     for name in names:
         turns += [_assistant_tool_call(name), _tool_result(name)]
     return turns

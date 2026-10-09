@@ -8,13 +8,15 @@ holds the executor to. The user's verbatim request rides along separately.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
-from app.constants.agents import DONE_EVIDENCE_RULE
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
 from tests.helpers import load_llm_stub_module
 
 
@@ -212,16 +214,41 @@ class TestPreviousRunReachesTheExecutor:
         assert "last_run" not in dispatched_task
 
 
+_SCRIPT = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+_LAST_RUN = wrap_agent_payload(AgentTag.LAST_RUN, "status: completed\ncreate_reminder({})")
+_FALLBACK_NOTE = wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, "Replay stopped at step 2.")
+
+
 class TestTheSimStubRunsABriefsScriptOnce:
     """Under --sim the brief carries the script twice (quote, then task); one turn once made two reminders."""
 
-    def test_a_brief_quoting_the_request_yields_one_tool_call(self) -> None:
+    @pytest.mark.parametrize(
+        "sections",
+        [
+            {"acceptance_criteria": ["done"]},
+            {"acceptance_criteria": ["done"], "last_run": _LAST_RUN},
+            {"acceptance_criteria": [], "last_run": _LAST_RUN},
+            {
+                "acceptance_criteria": [],
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+            {
+                "acceptance_criteria": ["done"],
+                "last_run": _LAST_RUN,
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+        ],
+        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+    )
+    def test_a_brief_quoting_the_request_yields_one_tool_call(
+        self, sections: dict[str, Any]
+    ) -> None:
         stub = load_llm_stub_module("directives")
-        script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
-        brief = compose_executor_brief(script, ["done"], verbatim_request=script)
+        criteria = sections.pop("acceptance_criteria")
+        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
         tools = frozenset({"create_reminder"})
-        turn = [{"role": "user", "content": brief}]
-        after_one = [
+        turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
+        after_one: list[dict[str, object]] = [
             *turn,
             {
                 "role": "assistant",

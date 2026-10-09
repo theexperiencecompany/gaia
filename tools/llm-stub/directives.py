@@ -105,9 +105,9 @@ def _strip_echoed_payloads(text: str) -> str:
 def _strip_restated_request(text: str) -> str:
     """Drop the brief's request quote when the task section is that same request.
 
-    Quote and task fill the span from the header to the definition of done, so
-    the quote is restated only when that span is one text twice; a request that
-    merely repeats a paragraph of its own never splits that way and stays whole.
+    Quote and task fill the span from the header to the definition of done (the
+    last_run and playbook sections are tag blocks, gone before this runs), so the
+    quote is restated only when that span is one text twice.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
