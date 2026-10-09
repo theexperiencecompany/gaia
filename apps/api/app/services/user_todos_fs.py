@@ -21,6 +21,7 @@ from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hash
 from app.services.storage.metrics import FsOps
 from app.services.storage.user_todos_vfs import (
     UserTodoProjection,
+    UserTodoSubtask,
     materialize_user_todos,
     per_doc_signature,
     user_todos_marker_path,
@@ -67,7 +68,9 @@ async def _fetch_active_projections(user_id: str) -> list[UserTodoProjection]:
 
 def _project(doc: TodoDocument) -> UserTodoProjection:
     """TodoDocument → UserTodoProjection (no canvas/log here)."""
-    subtasks = [{"id": s.id, "title": s.title, "completed": s.completed} for s in doc.subtasks]
+    subtasks: list[UserTodoSubtask] = [
+        {"id": s.id, "title": s.title, "completed": s.completed} for s in doc.subtasks
+    ]
     return {
         "id": doc.id,
         "meta": {
