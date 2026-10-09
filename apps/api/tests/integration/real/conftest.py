@@ -34,8 +34,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
-from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
-from app.db.redis import redis_cache
+from app.constants.cache import (
+    REPO_GLOBAL_SCOPE,
+    SUBSCRIPTION_PLAN_CACHE_PREFIX,
+    SUBSCRIPTION_PLAN_CACHE_TTL,
+)
+from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
+from app.db.redis import delete_cache, redis_cache
+from app.db.repositories.users import user_repository
 from app.models.payment_models import PlanType
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
@@ -292,3 +298,20 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
     dir_root = Path(__file__).resolve().parent
     skip_items_without_real_services([item for item in items if item.path.is_relative_to(dir_root)])
+
+
+@pytest.fixture
+async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
+    """Seed a todo owner as a real users row, as require_owner demands, and remove its rows after."""
+    await mongo_db["todos"].create_index(
+        TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+    )
+    owner = ObjectId()
+    await mongo_db["users"].insert_one(
+        {"_id": owner, "email": f"{owner}@gaia.local", "name": "Real Infra", "timezone": "UTC"}
+    )
+    yield str(owner)
+    await mongo_db["todos"].delete_many({"user_id": str(owner)})
+    await mongo_db["projects"].delete_many({"user_id": str(owner)})
+    await mongo_db["users"].delete_many({"_id": owner})
+    await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))

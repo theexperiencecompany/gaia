@@ -3,6 +3,9 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.models.agent_models import RunUserMissingError
 from app.models.user_models import UserDocument
 
 # ---------------------------------------------------------------------------
@@ -106,27 +109,27 @@ class TestCreateSupportTicket:
         assert ticket["type"] == "feature"
         assert result.startswith("Drafted a feature request for you."), result
 
-    async def test_no_user_id(self) -> None:
+    async def test_no_user_id_is_refused(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
 
-        result = await create_support_ticket.coroutine(
-            config=_cfg_no_user(),
-            ticket_type="support",
-            title="Test",
-            description="A test description for the ticket.",
-        )
-        assert "authentication required" in result.lower()
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config=_cfg_no_user(),
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
 
-    async def test_config_without_metadata_asks_for_authentication(self) -> None:
+    async def test_config_without_metadata_is_refused(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
 
-        result = await create_support_ticket.coroutine(
-            config={},
-            ticket_type="support",
-            title="Test",
-            description="A test description for the ticket.",
-        )
-        assert result == "User authentication required to create support ticket."
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config={},
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
 
     @patch(f"{MODULE}.user_service")
     async def test_user_not_found(self, mock_user_svc: MagicMock) -> None:
