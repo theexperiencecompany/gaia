@@ -7,10 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  ANNUAL_PRICE_RETENTION,
-  MONTHS_PER_YEAR,
-} from "@/features/pricing/constants";
+import { MONTHS_PER_YEAR } from "@/features/pricing/constants";
 import { getAnnualSavingsPercent } from "@/features/pricing/utils/annualSavings";
 
 // The live GAIA Pro lineup, in cents: $30/month, $300/year.
@@ -31,13 +28,6 @@ describe("getAnnualSavingsPercent", () => {
       YEARLY_CENTS,
     );
     expect(Math.round((percent / 100) * MONTHS_PER_YEAR)).toBe(2);
-  });
-
-  it("matches the annual retention constant the cards price against", () => {
-    const fullYear = MONTHLY_CENTS * MONTHS_PER_YEAR;
-    expect(
-      getAnnualSavingsPercent(fullYear, fullYear * ANNUAL_PRICE_RETENTION),
-    ).toBe(17);
   });
 
   it("reports no saving when there is nothing to compare", () => {

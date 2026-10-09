@@ -60,6 +60,8 @@ const PRO_PLAN: Plan = {
   updated_at: "",
 };
 
+const PRO_PLAN_MONTHLY_30: Plan = { ...PRO_PLAN, amount: 3000 };
+
 const ENTERPRISE_PLAN: Plan = {
   id: "plan_enterprise",
   dodo_product_id: "",
@@ -152,6 +154,25 @@ describe("PricingCards paid-only rendering", () => {
   });
 });
 
+describe("PricingCards yearly savings", () => {
+  it("compares the yearly row against twelve of the live monthly row", () => {
+    // $30/month vs $270/year is 25% off, three months free; a fixed 1/6
+    // annual discount would have kept saying two.
+    mockPlans = [
+      PRO_PLAN_MONTHLY_30,
+      {
+        ...PRO_PLAN_MONTHLY_30,
+        id: "plan_pro_yearly",
+        duration: "yearly",
+        amount: 27000,
+      },
+    ];
+    render(<PricingCards hideEnterprise />);
+
+    expect(screen.getByText("3 months free")).not.toBeNull();
+  });
+});
+
 const EUR_PRO_MONTHLY: Plan = { ...PRO_PLAN, amount: 3000, currency: "EUR" };
 const EUR_PRO_YEARLY: Plan = {
   ...EUR_PRO_MONTHLY,
@@ -177,6 +198,14 @@ describe("a non-USD catalogue", () => {
 describe("a monthly and a yearly row in different currencies", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("the yearly card claims no months free", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    expect(container.textContent).not.toMatch(/months? free/);
   });
 
   it("claims no yearly saving, and says why", () => {
