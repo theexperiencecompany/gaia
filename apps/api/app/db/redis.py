@@ -149,10 +149,10 @@ class AsyncRedisCommands(Protocol):
         self,
         first_list: str,
         second_list: str,
-        src: Literal["LEFT", "RIGHT"],
-        dest: Literal["LEFT", "RIGHT"],
+        src: Literal["LEFT", "RIGHT"] = "LEFT",
+        dest: Literal["LEFT", "RIGHT"] = "RIGHT",
     ) -> str | None:
-        """LMOVE — atomically pop from one end of first_list onto second_list; None when it is empty."""
+        """LMOVE — atomically move first_list's oldest element to second_list's end; None when empty."""
         ...
 
     async def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:

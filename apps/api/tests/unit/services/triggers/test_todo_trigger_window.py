@@ -21,6 +21,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
+from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.todo_trigger_window import (
     TriggerWindow,
     buffer_todo_trigger_event,
@@ -267,3 +268,35 @@ class TestEventsHeldWhilePaused:
 
         with pytest.raises(RuntimeError, match=f"events held for {TODO_ID} cannot replay"):
             await release_trigger_events_held_while_paused(TODO_ID)
+
+    async def test_a_full_hold_keeps_the_newest_events(self, fake_redis, pool) -> None:
+        for n in range(MAX_TRIGGER_BATCH_EVENTS + 1):
+            await hold_trigger_event_while_paused(TODO_ID, _event(f"m-{n}"))
+
+        held = [
+            TriggerOrigin.model_validate_json(e) for e in await fake_redis.lrange(HOLD_KEY, 0, -1)
+        ]
+        assert len(held) == MAX_TRIGGER_BATCH_EVENTS
+        assert (held[0], held[-1]) == (_event("m-1"), _event(f"m-{MAX_TRIGGER_BATCH_EVENTS}"))
+
+    async def test_without_redis_an_event_is_not_held_and_says_so(self, monkeypatch) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+
+        async with captured_wide_event() as event:
+            assert await hold_trigger_event_while_paused(TODO_ID, _event()) is False
+
+        assert event["warnings"] == [{"msg": "todo_trigger.hold_unavailable", "todo_id": TODO_ID}]
+
+    async def test_a_failed_hold_write_is_reported_not_raised(self, fake_redis) -> None:
+        with patch.object(fake_redis, "rpush", AsyncMock(side_effect=RedisError("reset"))):
+            async with captured_wide_event() as event:
+                assert await hold_trigger_event_while_paused(TODO_ID, _event()) is False
+
+        assert event["warnings"] == [
+            {
+                "msg": "todo_trigger.hold_unavailable",
+                "todo_id": TODO_ID,
+                "error": "reset",
+                "error_type": "RedisError",
+            }
+        ]

@@ -48,7 +48,6 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants import todos as todo_constants
-from app.constants.scheduling import SCHEDULE_REJECTION_SUGGESTION
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     ExternalRef,
@@ -261,7 +260,8 @@ class TestRecurrenceValidation:
         assert validate_recurrence_format("not a cron") == (
             "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
             "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
-            f"{SCHEDULE_REJECTION_SUGGESTION}"
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
     def test_valid_shortcut_passes_format_validation(self):
@@ -333,7 +333,8 @@ class TestResolveFirstFire:
         assert error == (
             "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
             "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
-            f"{SCHEDULE_REJECTION_SUGGESTION}"
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
 

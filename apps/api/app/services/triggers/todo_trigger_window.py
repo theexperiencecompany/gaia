@@ -183,7 +183,7 @@ async def release_trigger_events_held_while_paused(todo_id: str) -> int:
     hold_key = TODO_TRIGGER_HOLD_KEY.format(todo_id=todo_id)
     batch_key = TODO_TRIGGER_BATCH_KEY.format(todo_id=todo_id)
     moved = 0
-    while await client.lmove(hold_key, batch_key, "LEFT", "RIGHT") is not None:
+    while await client.lmove(hold_key, batch_key) is not None:
         moved += 1
     await reschedule_todo_trigger_drain(todo_id)
     return moved

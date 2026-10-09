@@ -1415,6 +1415,7 @@ class TestBulkOps:
             await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert refused.value.status_code == 422
         assert refused.value.message == "Schedules can repeat at most once an hour."
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
         mock_todo_repo.bulk_update.assert_not_called()
 
     async def test_bulk_update_stores_plain_todos_display_recurrence_as_sent(

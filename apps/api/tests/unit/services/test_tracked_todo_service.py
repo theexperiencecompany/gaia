@@ -1318,6 +1318,10 @@ class TestResumePausedFor:
             {"pause_reason": None},
             {"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED},
         ]
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            ((TODO_ID,), USER_ID),
+        ]
 
     async def test_a_run_that_cannot_be_enqueued_stays_paused_for_the_retry(self, mock_repo):
         paused = _todo_doc(
@@ -1343,4 +1347,8 @@ class TestResumePausedFor:
         assert writes == [
             {"pause_reason": None},
             {"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED},
+        ]
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            ((TODO_ID,), USER_ID),
         ]
