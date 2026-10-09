@@ -36,6 +36,9 @@ from app.config.rate_limits import (
 )
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
+    BUDGET_STOP_METADATA_KEY,
+    FALLBACK_MODEL_METADATA_KEY,
+    FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
@@ -70,6 +73,17 @@ def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
         if isinstance(msg, AIMessage):
             return msg
     return None
+
+
+def _serving_model(ai_msg: AIMessage, lane: ModelLane | None) -> str:
+    """Return the model that served this reply: the fallback's when one answered, else the lane's.
+
+    Pricing the lane's model on a fallback reply bills the model that had just failed.
+    """
+    fallback_model = ai_msg.response_metadata.get(FALLBACK_MODEL_METADATA_KEY)
+    if ai_msg.response_metadata.get(FELL_BACK_METADATA_KEY) and fallback_model:
+        return str(fallback_model)
+    return (lane.model if lane else None) or UNKNOWN_MODEL_NAME
 
 
 class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
@@ -225,7 +239,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # sets plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
                 self._emit_budget_stop_card(check.stop_reason, check.plan_type)
-            return ModelResponse(result=[AIMessage(content=check.stop_reason)])
+            return ModelResponse(
+                result=[
+                    AIMessage(
+                        content=check.stop_reason,
+                        response_metadata={BUDGET_STOP_METADATA_KEY: True},
+                    )
+                ]
+            )
 
         thread_id = self._thread_id(config)
         if (
@@ -281,8 +302,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = current_run_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
+        if ai_msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            # The wall answered instead of a model, so there is no call to meter.
+            self._pop_stamp(self._start_ts, thread_id)
+            return None
         lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
-        model_name = (lane.model if lane else None) or UNKNOWN_MODEL_NAME
+        model_name = _serving_model(ai_msg, lane)
         provider = lane.provider if lane else UNKNOWN_MODEL_NAME
         if lane is None:
             # Priced as "unknown", which undercharges the budget — loud

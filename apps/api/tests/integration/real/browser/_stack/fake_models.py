@@ -265,17 +265,17 @@ class FakeModels:
             return self._agent_tier(body)
         if (response_format.get("json_schema") or {}).get("name") == _AGENT_OUTPUT:
             if properties == {"memory", "action"}:
-                return self._json_content(self._agent_step(messages, schema))
+                return self._json_content(self._agent_step(messages, schema), messages)
             if properties == {"text"}:
-                return self._json_content(self._text_value(messages))
+                return self._json_content(self._text_value(messages), messages)
         if system.startswith(_EXTRACT_SYSTEM):
-            return self._plain(self._extract(messages))
+            return self._plain(self._extract(messages), messages)
         if system.startswith(_COMPACTION_SYSTEM):
             self.calls.append(ModelCall("compaction", None))
-            return self._plain("The run so far, compacted.")
+            return self._plain("The run so far, compacted.", messages)
         if system.startswith(_KEY_TERMS_PROMPT):
             self.calls.append(ModelCall("key_terms", None))
-            return self._plain("page text")
+            return self._plain("page text", messages)
         self._fail(f"a model request nothing here answers: {json.dumps(body)[:400]}")
         return JSONResponse(status_code=500, content={"error": {"message": "unscripted request"}})
 
@@ -290,7 +290,11 @@ class FakeModels:
             args=_emptiest(parameters, parameters.get("$defs") or {}),
         )
         return JSONResponse(
-            content=_wire.build_chat_completion(body.get("model") or "fake", response)
+            content=_wire.build_chat_completion(
+                body.get("model") or "fake",
+                response,
+                _wire.prompt_tokens(body.get("messages") or []),
+            )
         )
 
     # --- comms and executor ------------------------------------------------
@@ -305,9 +309,14 @@ class FakeModels:
             self.tool_calls.append(response.name)
         if parsed.stream:
             return StreamingResponse(
-                _wire.sse_lines(parsed.model, response), media_type="text/event-stream"
+                _wire.sse_lines(parsed.model, response, _wire.prompt_tokens(parsed.messages)),
+                media_type="text/event-stream",
             )
-        return JSONResponse(content=_wire.build_chat_completion(parsed.model, response))
+        return JSONResponse(
+            content=_wire.build_chat_completion(
+                parsed.model, response, _wire.prompt_tokens(parsed.messages)
+            )
+        )
 
     def _result_echo(self, messages: list[dict[str, Any]]) -> Any:
         """Re-voice a result handed to this tier after its script, word for word."""
@@ -500,13 +509,15 @@ class FakeModels:
     # --- wire ---------------------------------------------------------------
 
     @staticmethod
-    def _json_content(content: dict[str, Any]) -> JSONResponse:
-        return FakeModels._plain(json.dumps(content))
+    def _json_content(content: dict[str, Any], messages: list[dict[str, Any]]) -> JSONResponse:
+        return FakeModels._plain(json.dumps(content), messages)
 
     @staticmethod
-    def _plain(text: str) -> JSONResponse:
+    def _plain(text: str, messages: list[dict[str, Any]]) -> JSONResponse:
         return JSONResponse(
-            content=_wire.build_chat_completion("fake", _directives.SayResponse(text))
+            content=_wire.build_chat_completion(
+                "fake", _directives.SayResponse(text), _wire.prompt_tokens(messages)
+            )
         )
 
 

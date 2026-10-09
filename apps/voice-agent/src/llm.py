@@ -376,7 +376,6 @@ class _VoiceTurn:
         log.info(
             f"{LogTag.LLM} chat turn start",
             phase="chat_turn_start",
-            user_msg=self.user_message,
             user_msg_len=len(self.user_message),
         )
 
@@ -386,7 +385,6 @@ class _VoiceTurn:
             phase="backend_request",
             elapsed_ms=ms_since(self.turn_start),
             conversation_id=self.llm.conversation_id,
-            user_message=self.user_message,
             history_turns=len(self.messages),
         )
 
@@ -577,7 +575,7 @@ class _VoiceTurn:
             f"{LogTag.LLM} backend event",
             phase="backend_event",
             event_keys=list(event_keys),
-            event_data=data[:300],
+            event_len=len(data),
             is_plumbing=is_plumbing,
             elapsed_ms=ms_since(self.turn_start),
         )
