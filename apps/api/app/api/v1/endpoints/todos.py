@@ -46,6 +46,7 @@ from app.services.todos.todo_service import ProjectService, TodoService, todo_re
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
+from app.utils.log_identifiers import user_text_shape
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import (
     ProjectsCreated,
@@ -54,7 +55,7 @@ from shared.py.analytics.catalog.todos import (
     TodosToggled,
     TodosUpdated,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import TodoContext, log
 
 router = APIRouter()
 
@@ -116,18 +117,18 @@ async def list_todos(
     - Pagination with metadata
     - Optional statistics
     """
-    log.set(
-        user={"id": user.user_id},
-        todo={
-            "operation": "list",
-            "search_mode": params.mode.value,
-            "query": params.q,
-            "page": params.page,
-            "per_page": params.per_page,
-            "filters_applied": params.filters_applied,
-            "project_id": params.project_id,
-        },
+    todo_context = TodoContext(
+        operation="list",
+        search_mode=params.mode.value,
+        page=params.page,
+        per_page=params.per_page,
+        filters_applied=params.filters_applied,
     )
+    if params.q:
+        todo_context["query"] = user_text_shape(params.q)
+    if params.project_id:
+        todo_context["project_id"] = params.project_id
+    log.set(user={"id": user.user_id}, todo=todo_context)
 
     try:
         result = await TodoService.list_todos(user.user_id, params.to_search_params())

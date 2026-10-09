@@ -910,6 +910,58 @@ class TestUpdateTodo:
                 FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
 
+    async def test_a_plain_todos_display_recurrence_is_stored_exactly_as_sent(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Mobile sends an RRULE for a plain todo; nothing runs it, so it is stored verbatim."""
+        rrule = "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE"
+        plain = _make_todo_doc(todo_id=FAKE_TODO_ID)
+        mock_todo_repo.get = AsyncMock(return_value=plain)
+        mock_todo_repo.update = AsyncMock(return_value=plain)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(recurrence=rrule), FAKE_USER_ID
+        )
+
+        assert mock_todo_repo.update.await_args.kwargs["update"].recurrence == rrule
+
+    @pytest.mark.parametrize(
+        ("recurrence", "message"),
+        [
+            ("* * * * *", "Schedules can repeat at most once an hour."),
+            ("FREQ=DAILY", "Use 5 fields: minute hour day month weekday."),
+        ],
+    )
+    async def test_a_tracked_todos_recurrence_is_a_run_schedule_and_is_held_to_the_rule(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, recurrence, message
+    ):
+        tracked = _make_todo_doc(
+            todo_id=FAKE_TODO_ID, labels=[GAIA_TRACKED_LABEL], vfs_path="/workspace/t"
+        )
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+
+        with pytest.raises(AppError) as refused:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(recurrence=recurrence), FAKE_USER_ID
+            )
+
+        assert refused.value.status_code == 422
+        assert refused.value.message == message
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_tracked_todo_accepts_an_hourly_or_shortcut_schedule(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, labels=[GAIA_TRACKED_LABEL])
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+        mock_todo_repo.update = AsyncMock(return_value=tracked)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(recurrence="every_1h"), FAKE_USER_ID
+        )
+
+        assert mock_todo_repo.update.await_args.kwargs["update"].recurrence == "every_1h"
+
     async def test_updates_and_returns(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1349,6 +1401,35 @@ class TestBulkOps:
         req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(labels=labels))
         await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert mock_todo_repo.bulk_update.await_args.args[2].labels == labels
+
+    async def test_bulk_update_holds_a_selected_tracked_todos_schedule_to_the_rule(
+        self, mock_todo_repo, mock_project_repo
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _make_todo_doc(todo_id="a"),
+                _make_todo_doc(todo_id="b", labels=[GAIA_TRACKED_LABEL]),
+            ]
+        )
+        req = BulkUpdateRequest(
+            todo_ids=["a", "b"], updates=TodoUpdateRequest(recurrence="* * * * *")
+        )
+        with pytest.raises(AppError) as refused:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert refused.value.status_code == 422
+        assert refused.value.message == "Schedules can repeat at most once an hour."
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
+        mock_todo_repo.bulk_update.assert_not_called()
+
+    async def test_bulk_update_stores_plain_todos_display_recurrence_as_sent(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        rrule = "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE"
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(recurrence=rrule))
+        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert mock_todo_repo.bulk_update.await_args.args[2].recurrence == rrule
 
     async def test_bulk_update_may_set_other_labels(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

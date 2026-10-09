@@ -387,7 +387,6 @@ unfixable = [
 "apps/api/app/core/lifespan.py" = ["TID251"]  # shuts the client down; emits nothing
 "apps/api/app/api/v1/middleware/auth.py" = ["TID251"]  # binds the request session for capture
 "apps/api/app/services/feature_flags.py" = ["TID251"]  # flag evaluation is a separate PostHog product
-"apps/api/app/helpers/agent_helpers.py" = ["TID251"]  # LLM-generation tracing is a separate PostHog product
 "apps/api/tests/**" = ["TID251"]  # tests assert against the SDK's own context and handler types
 # Docstrings in these trees are runtime data, not documentation: route handler
 # docstrings are the OpenAPI descriptions (apps/api/openapi.json is generated

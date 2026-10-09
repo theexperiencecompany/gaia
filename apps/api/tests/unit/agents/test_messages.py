@@ -103,7 +103,7 @@ class TestConstructLangchainMessages:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Hi there"}],
+                query="Hi there",
             )
 
         assert len(result) == 4
@@ -126,7 +126,7 @@ class TestConstructLangchainMessages:
         p = _patches(_Returns(memory_recall_msg=recall))
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Hi there"}],
+                query="Hi there",
             )
 
         assert len(result) == 5
@@ -141,7 +141,7 @@ class TestConstructLangchainMessages:
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Hello"}],
+                query="Hello",
                 scope=MessageScope(agent_type="executor", source="web"),
             )
         mock_sys.assert_called_once()
@@ -161,7 +161,6 @@ class TestConstructLangchainMessages:
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -194,7 +193,6 @@ class TestConstructLangchainMessages:
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -217,7 +215,7 @@ class TestConstructLangchainMessages:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1", user_dict=AuthenticatedUser(user_id="uid-1")),
             )
 
@@ -231,7 +229,7 @@ class TestConstructLangchainMessages:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_dict=None),
             )
 
@@ -246,7 +244,7 @@ class TestConstructLangchainMessages:
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(agent_type="comms", source="telegram"),
             )
         assert mock_sys.call_args.kwargs["source"] == "telegram"
@@ -273,7 +271,7 @@ class TestContentPriority:
             p["format_files"],
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "run it"}],
+                query="run it",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow),
             )
@@ -300,7 +298,7 @@ class TestContentPriority:
             p["format_files"],
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "what about this"}],
+                query="what about this",
                 attachments=MessageAttachments(selected_calendar_event=cal_event),
             )
 
@@ -317,7 +315,7 @@ class TestContentPriority:
             p["format_files"],
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "use this tool"}],
+                query="use this tool",
                 attachments=MessageAttachments(selected_tool="web_search"),
             )
 
@@ -334,7 +332,7 @@ class TestContentPriority:
             p["format_files"],
         ):
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "search"}],
+                query="search",
                 attachments=MessageAttachments(selected_tool="web_search", tool_category="search"),
             )
 
@@ -347,7 +345,7 @@ class TestContentPriority:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "plain text"}],
+                query="plain text",
             )
 
         assert result[-2].content == "plain text"
@@ -357,27 +355,21 @@ class TestUserContentExtraction:
     """User content edge cases."""
 
     @pytest.mark.asyncio
-    async def test_last_message_not_user_gives_empty_content(self) -> None:
+    @pytest.mark.regression
+    async def test_a_turn_with_no_history_still_reaches_the_model(self) -> None:
+        """Regression: the maintenance sweep sends its prompt with no history, and every run raised."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(
-                    messages=[{"role": "assistant", "content": "Hi"}],
-                )
+            result = await construct_langchain_messages(query="Is this tracked todo still alive?")
+
+        assert result[2] == HumanMessage(content="Is this tracked todo still alive?")
 
     @pytest.mark.asyncio
-    async def test_empty_messages_list_raises(self) -> None:
+    async def test_an_empty_turn_raises(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(messages=[])
-
-    @pytest.mark.asyncio
-    async def test_user_turn_without_content_raises(self) -> None:
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"]:
-            with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(messages=[{"role": "user"}])
+                await construct_langchain_messages(query="")
 
     @pytest.mark.asyncio
     async def test_whitespace_only_content_raises(self) -> None:
@@ -385,7 +377,7 @@ class TestUserContentExtraction:
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(
-                    messages=[{"role": "user", "content": "   "}],
+                    query="   ",
                 )
 
 
@@ -401,7 +393,7 @@ class TestReplyContext:
             p["format_files"],
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "user content"}],
+                query="user content",
                 attachments=MessageAttachments(reply_to_message=reply),
             )
 
@@ -418,7 +410,7 @@ class TestReplyContext:
             p["format_files"],
         ):
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
+                query="hello",
             )
 
         mock_reply.assert_not_called()
@@ -437,7 +429,7 @@ class TestFileContext:
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "check this"}],
+                query="check this",
                 attachments=MessageAttachments(
                     files_data=files_data, currently_uploaded_file_ids=["f1"]
                 ),
@@ -457,7 +449,7 @@ class TestFileContext:
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
+                query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=[]),
             )
 
@@ -473,7 +465,7 @@ class TestFileContext:
             p["format_files"],
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
+                query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
 
@@ -488,7 +480,7 @@ class TestFileContext:
             p["format_files"] as mock_files,
         ):
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
+                query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=None),
             )
 
@@ -513,7 +505,7 @@ class TestTriggerContext:
             p["format_files"],
         ):
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "run"}],
+                query="run",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow, trigger_context=trigger),
             )
@@ -538,19 +530,14 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
             await construct_langchain_messages(
-                messages=[
-                    {"role": "user", "content": "an earlier question"},
-                    {"role": "assistant", "content": "an earlier answer"},
-                    {"role": "user", "content": "  what can you do?  "},
-                ],
+                query="  what can you do?  ",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
             )
 
         probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
 
     @pytest.mark.asyncio
-    async def test_a_thread_ending_on_the_assistant_carries_no_user_message(self) -> None:
-        """A trailing assistant turn means the user has not spoken; passing its text would classify on GAIA's own words."""
+    async def test_a_tool_only_turn_carries_no_user_message(self) -> None:
         p = _patches()
         with (
             p["create_system"],
@@ -560,28 +547,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
             self._probe() as probe,
         ):
             await construct_langchain_messages(
-                messages=[
-                    {"role": "user", "content": "hello"},
-                    {"role": "assistant", "content": "hi there"},
-                ],
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(selected_tool="gmail"),
-            )
-
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
-
-    @pytest.mark.asyncio
-    async def test_an_empty_thread_carries_no_user_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            p["format_tool"],
-            self._probe() as probe,
-        ):
-            await construct_langchain_messages(
-                messages=[],
+                query="",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
                 attachments=MessageAttachments(selected_tool="gmail"),
             )
@@ -595,7 +561,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message or selected tool"):
                 await construct_langchain_messages(
-                    messages=[],
+                    query="",
                     scope=MessageScope(user_id="uid-1"),
                 )
 
@@ -605,7 +571,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1"),
             )
 
@@ -633,7 +599,7 @@ class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
             return await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
             )
 
@@ -681,7 +647,7 @@ class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
             ),
         ):
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
             )
 
@@ -703,7 +669,7 @@ class TestTheClockIsRenderedInTheUsersTimezone:
             ) as clock,
         ):
             await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(
                     user_dict=AuthenticatedUser(user_id="", timezone="Asia/Kolkata")
                 ),
@@ -720,7 +686,7 @@ class TestOpenuiVariantReachesTheModel:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1", source="web"),
             )
 
@@ -731,7 +697,7 @@ class TestOpenuiVariantReachesTheModel:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hi"}],
+                query="hi",
                 scope=MessageScope(user_id="uid-1", source="whatsapp"),
             )
 

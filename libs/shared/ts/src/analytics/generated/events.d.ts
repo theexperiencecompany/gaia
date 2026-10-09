@@ -249,6 +249,8 @@ export interface EventProperties {
     "mode": "interactive" | "background";
     "conversation_id": string;
     "task_id"?: string;
+    "trigger_type"?: string;
+    "source"?: string;
     "queued"?: boolean;
     "queue_wait_ms"?: number;
     "executor_ttft_ms"?: number;
@@ -262,10 +264,13 @@ export interface EventProperties {
     "mode": "interactive" | "background";
     "conversation_id": string;
     "task_id"?: string;
+    "trigger_type"?: string;
+    "source"?: string;
     "queued"?: boolean;
     "queue_wait_ms"?: number;
     "executor_ttft_ms"?: number;
     "executor_active_ms"?: number;
+    "reason": string;
   };
   "agent:run_started": {
     "actor": "user" | "agent";
@@ -275,22 +280,36 @@ export interface EventProperties {
     "mode": "interactive" | "background";
     "conversation_id": string;
     "task_id"?: string;
+    "trigger_type"?: string;
+    "source"?: string;
   };
   "ai:llm_call_completed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "feature": string;
-    "label": string;
+    "agent_name": string;
+    "background": boolean;
+    "charge_to_budget": boolean;
     "model": string;
+    "model_served"?: string;
+    "provider"?: string;
     "input_tokens": number;
     "output_tokens": number;
     "cached_tokens": number;
     "reasoning_tokens": number;
     "total_tokens": number;
     "cost_usd": number;
-    "charged": boolean;
-    "cost_estimated": boolean;
+    "cost_source": "provider" | "table";
+    "status": "ok" | "error";
+    "error_family"?: string;
+    "finish_reason"?: string;
+    "duration_ms"?: number;
+    "channel"?: string;
+    "generation_id"?: string;
+    "conversation_id"?: string;
+    "workflow_id"?: string;
+    "llm_call_id": string;
   };
   "api:chunk_recovered": {
     "error_type": "chunk_load";

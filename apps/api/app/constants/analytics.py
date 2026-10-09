@@ -23,3 +23,6 @@ AT_MOST_ONCE_KEY_PREFIX = "analytics:once:"
 
 #: Task name of a gated at-most-once send, so its outcome can be awaited by name.
 AT_MOST_ONCE_TASK_NAME = "analytics_send_once"
+
+#: agent:run_failed reason for a run cancelled mid-flight (shutdown, a stopped turn).
+AGENT_RUN_CANCELLED_REASON = "cancelled"

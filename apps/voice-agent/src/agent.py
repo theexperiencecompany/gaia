@@ -168,7 +168,7 @@ def _register_session_logging(
             log.info(
                 f"{LogTag.AGENT} STT final",
                 phase="stt_final",
-                transcript=ev.transcript,
+                transcript_length=len(ev.transcript),
                 language=ev.language,
                 stt_latency_ms=stt_latency_ms,
                 **identity,
@@ -177,7 +177,7 @@ def _register_session_logging(
             log.debug(
                 f"{LogTag.AGENT} STT interim",
                 phase="stt_interim",
-                transcript=ev.transcript,
+                transcript_length=len(ev.transcript),
                 **identity,
             )
 

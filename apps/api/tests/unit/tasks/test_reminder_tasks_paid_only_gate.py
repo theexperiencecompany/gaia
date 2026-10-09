@@ -5,13 +5,10 @@ a reminder created while subscribed would keep firing (and keep spending) after
 the subscription lapsed. execute_reminder_by_agent is the single choke point
 every fire passes through, so the gate lives there.
 
-The gate only SKIPS. It used to write PAUSED as well, which was invisible:
-BaseSchedulerService.process_task_execution writes the reminder's status
-again the moment the fire returns — SCHEDULED for a recurring reminder,
-COMPLETED for a one-off — so the pause was overwritten every time and no
-subscription-restore path had anything to resume from. Skipping instead lets
-the scheduler's own re-arm bring a recurring reminder back by itself, which is
-what the workflow gate does for the same reason.
+A blocked fire is its own outcome, not a success: the scheduler pauses a
+blocked recurring reminder instead of re-arming it, so one abandoned
+every-minute reminder cannot emit paywall:blocked 1,440 times a day, and the
+subscription-restore path has a pause to resume from.
 """
 
 from datetime import UTC, datetime
@@ -156,26 +153,39 @@ async def test_the_gate_asks_about_the_reminders_own_owner() -> None:
     is_active.assert_awaited_once_with(USER_ID)
 
 
+@pytest.mark.regression
 @pytest.mark.usefixtures("lapsed_user")
-async def test_a_recurring_reminder_the_gate_skipped_is_left_armed_for_its_next_occurrence() -> (
-    None
-):
-    """Driven through process_task_execution (the real ARQ path) because testing the gate alone misses the scheduler's second status write that overwrote the pause in production."""
+async def test_a_blocked_recurring_reminder_runs_one_tick_then_pauses() -> None:
+    """Driven through process_task_execution (the real ARQ path): the gate alone cannot show the scheduler's re-arm."""
     set_status = AsyncMock(return_value=True)
     with (
         patch(
-            f"{SCHEDULER}.reminder_repository.get", AsyncMock(return_value=_reminder("0 9 * * *"))
+            f"{SCHEDULER}.reminder_repository.get", AsyncMock(return_value=_reminder("* * * * *"))
         ),
         patch(f"{SCHEDULER}.reminder_repository.claim_for_execution", AsyncMock(return_value=True)),
         patch(f"{SCHEDULER}.reminder_repository.set_status", set_status),
+        patch.object(reminder_scheduler, "reschedule_task", AsyncMock()) as rearm,
+        patch(f"{MODULE}.capture") as capture,
     ):
         await reminder_scheduler.process_task_execution(REMINDER_ID)
 
-    written = [call.args[1] for call in set_status.await_args_list]
-    assert ReminderStatus.PAUSED not in written, (
-        f"the gate wrote PAUSED, which the scheduler then overwrote: {written}"
-    )
-    assert written[-1] is ReminderStatus.SCHEDULED, (
-        "a skipped recurring reminder must stay armed so it resumes on its own "
-        f"once the user pays again, got {written}"
-    )
+    last = set_status.await_args_list[-1]
+    assert last.args[1] is ReminderStatus.PAUSED
+    assert last.kwargs["pause_reason"] == "subscription_lapsed"
+    rearm.assert_not_awaited()
+    blocked = [c for c in capture.call_args_list if isinstance(c.args[1], PaywallBlocked)]
+    assert len(blocked) == 1
+
+
+@pytest.mark.usefixtures("lapsed_user")
+async def test_a_blocked_one_shot_is_recorded_failed_not_completed() -> None:
+    set_status = AsyncMock(return_value=True)
+    with (
+        patch(f"{SCHEDULER}.reminder_repository.get", AsyncMock(return_value=_reminder())),
+        patch(f"{SCHEDULER}.reminder_repository.claim_for_execution", AsyncMock(return_value=True)),
+        patch(f"{SCHEDULER}.reminder_repository.set_status", set_status),
+        patch(f"{MODULE}.capture"),
+    ):
+        await reminder_scheduler.process_task_execution("rem-1")
+
+    assert set_status.await_args_list[-1].args[1] is ReminderStatus.FAILED
