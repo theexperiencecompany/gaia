@@ -1,7 +1,7 @@
 """Helper functions for LangGraph bigtool tool selection formatting and type definitions."""
 
 from collections.abc import Sequence
-from typing import Annotated, NotRequired, TypedDict, cast
+from typing import Annotated, Final, NotRequired, TypedDict, cast
 
 from langchain_core.messages import (
     AnyMessage,
@@ -85,6 +85,11 @@ class State(_BigtoolState):
     # limit. acall_model reads it to warn the model to wrap up before the
     # hard GraphRecursionError.
     remaining_steps: RemainingSteps
+
+
+#: State's managed countdown: LangGraph injects it into node input but it is no
+#: channel, so a node update must never write it back.
+REMAINING_STEPS_KEY: Final = "remaining_steps"
 
 
 # In-memory relay from `manage_system_prompts_node` to the model node, which

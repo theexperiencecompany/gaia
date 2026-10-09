@@ -13,6 +13,7 @@ failure injection; these functions take a Path and touch no network or DB.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ def task(
     *,
     canvas: str = "# canvas\n",
     activity: str = "- 2026-01-01T00:00:00+00:00 started\n",
+    observations: str = "## Senders\n",
     log: str = "- did a thing\n",
     **meta: Any,
 ) -> GaiaTaskProjection:
@@ -55,6 +57,7 @@ def task(
         "id": doc_id,
         "canvas": canvas,
         "activity": activity,
+        "observations": observations,
         "log": log,
         "meta": {"title": title, **meta},
     }
@@ -147,7 +150,7 @@ def test_a_task_is_projected_as_canvas_activity_log_and_meta_in_a_slug_shortid_f
 ) -> None:
     materialize_gaia_tasks(
         tmp_path,
-        [task(ID_A, "Ship the release", canvas="C", activity="A", log="L")],
+        [task(ID_A, "Ship the release", canvas="C", activity="A", observations="O", log="L")],
         GUIDE,
     )
 
@@ -155,6 +158,7 @@ def test_a_task_is_projected_as_canvas_activity_log_and_meta_in_a_slug_shortid_f
     assert folder.is_dir()
     assert folder.joinpath("canvas.md").read_text() == "C"
     assert folder.joinpath("activity.md").read_text() == "A"
+    assert folder.joinpath("observations.md").read_text() == "O"
     assert folder.joinpath("log.md").read_text() == "L"
     assert '"title": "Ship the release"' in folder.joinpath("meta.json").read_text()
 
@@ -170,6 +174,10 @@ def test_projected_bodies_are_read_only_so_a_raw_edit_cannot_silently_desync_the
 
 
 def test_the_task_folder_is_read_only_so_sed_i_cannot_replace_a_body(tmp_path: Path) -> None:
+    if os.geteuid() == 0:
+        pytest.skip(
+            "root bypasses directory mode bits; run this permission check as an unprivileged user"
+        )
     # sed -i and rename-based writes never open the 0444 file — they only need
     # write permission on the directory. Seen on the dockered stack: sed -i on
     # canvas.md exited 0 and left a 0644 file the hash gate would never repaint.
@@ -345,6 +353,7 @@ def test_re_running_a_sync_with_unchanged_tasks_rewrites_nothing(tmp_path: Path)
     [
         ("canvas", "# rewritten\n"),
         ("activity", "- 2026-01-02T00:00:00+00:00 finished\n"),
+        ("observations", "## Senders\n### a@example.com\n"),
         ("log", "- newer entry\n"),
     ],
 )
