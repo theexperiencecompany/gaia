@@ -320,6 +320,37 @@ def test_the_probe_passes_otherwise(filtered: int, unfiltered: int) -> None:
     assert analytics.probe_failure(filtered=filtered, unfiltered=unfiltered) is None
 
 
+@pytest.mark.parametrize("filter_test_accounts", [True, False])
+def test_the_probe_asks_a_trends_query_the_way_a_tile_does(
+    monkeypatch: pytest.MonkeyPatch, filter_test_accounts: bool
+) -> None:
+    """A HogQL {filters} placeholder next to values is rejected live: "Global variable not found: filters"."""
+    client = analytics.PostHog("https://us.posthog.com", 1, "phx_test")
+    sent: list[tuple[str, str, Any]] = []
+
+    def request(method: str, path: str, body: Any = None) -> dict[str, Any]:
+        sent.append((method, path, body))
+        return {"results": [{"count": 54.0, "data": [10, 44]}]}
+
+    monkeypatch.setattr(client, "_request", request)
+
+    assert client.probe(filter_test_accounts=filter_test_accounts) == 54
+    assert sent == [
+        (
+            "POST",
+            "/api/projects/1/query/",
+            {
+                "query": {
+                    "kind": "TrendsQuery",
+                    "series": [{"kind": "EventsNode", "event": "user:signed_up", "math": "total"}],
+                    "dateRange": {"date_from": "-7d"},
+                    "filterTestAccounts": filter_test_accounts,
+                }
+            },
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # (d) canonical actions: live equals the file, and renames are covered
 
