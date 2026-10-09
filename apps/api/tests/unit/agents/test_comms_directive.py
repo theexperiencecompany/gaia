@@ -25,6 +25,12 @@ EMOJI_DIRECTIVE_CASES: list[tuple[str, str | None]] = [
     ("<EMOJI> </EMOJI><NEW_MESSAGE_BREAK>", None),
     # A reaction must be an emoji: a word in the tag is not one, so the bubble stays text.
     ("<EMOJI>ok</EMOJI>", None),
+    # Keycaps are an ASCII digit, #, or * plus U+FE0F U+20E3; still one emoji.
+    ("<EMOJI>1\ufe0f\u20e3</EMOJI>", "1\ufe0f\u20e3"),
+    ("<EMOJI>#\ufe0f\u20e3</EMOJI>", "#\ufe0f\u20e3"),
+    ("<EMOJI>*\u20e3</EMOJI>", "*\u20e3"),
+    ("<EMOJI>1</EMOJI>", None),
+    ("<EMOJI>12\u20e3</EMOJI>", None),
     ("<EMOJI>thumbs up</EMOJI>", None),
     ("<EMOJI>👍 nice</EMOJI>", None),
     ("<EMOJI>👍</SILENCE>", None),
