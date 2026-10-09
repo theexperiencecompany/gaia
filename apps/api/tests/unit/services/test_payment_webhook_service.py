@@ -15,6 +15,7 @@ from app.constants.log_tags import LogTag
 from app.constants.payments import WEBHOOK_ROW_WAIT_MAX
 from app.models.payment_models import ProcessedWebhookUpdate, SubscriptionDocument
 from app.models.webhook_models import (
+    DodoSubscriptionMetadata,
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
@@ -55,6 +56,7 @@ def _row(**overrides: object) -> SubscriptionDocument:
 # unit/services test file also uses.
 pytestmark = pytest.mark.usefixtures(
     "mock_activation_workflow_reactivation",
+    "mock_paywall_resume",
     "mock_subscription_plan_cache_drop",
     "mock_queue_inbox_desk",
 )
@@ -1187,11 +1189,13 @@ class TestGetUserIdFromMetadata:
     """Tests for _get_user_id_from_metadata."""
 
     async def test_returns_user_id_when_present(self, webhook_service):
-        user_id = await webhook_service._get_user_id_from_metadata({"user_id": FAKE_USER_ID})
+        user_id = await webhook_service._get_user_id_from_metadata(
+            DodoSubscriptionMetadata(user_id=FAKE_USER_ID)
+        )
         assert user_id == FAKE_USER_ID
 
     async def test_returns_none_when_no_user_id(self, webhook_service):
-        user_id = await webhook_service._get_user_id_from_metadata({})
+        user_id = await webhook_service._get_user_id_from_metadata(DodoSubscriptionMetadata())
         assert user_id is None
 
 
