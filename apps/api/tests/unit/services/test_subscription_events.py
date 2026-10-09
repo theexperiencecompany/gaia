@@ -1073,6 +1073,9 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
 
         await _apply(SubscriptionEventKind.FAILED)
 
+        mock_webhook_subscription_repository.get_active_for_user.assert_awaited_once_with(
+            FAKE_USER_ID
+        )
         assert _person_properties(posthog_client) == {
             "plan": "pro",
             "is_subscribed": True,
