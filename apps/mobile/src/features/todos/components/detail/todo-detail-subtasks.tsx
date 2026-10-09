@@ -56,7 +56,7 @@ export function TodoDetailSubtasks({
     <View className="gap-2">
       <View className="flex-row items-center justify-between">
         <Text className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-          Subtasks
+          Checklist
         </Text>
         {subtasks.length > 0 ? (
           <Text className="text-[11px] text-zinc-500">
@@ -68,7 +68,7 @@ export function TodoDetailSubtasks({
       <View className="rounded-2xl bg-zinc-800/30 p-3 gap-2">
         {subtasks.length === 0 ? (
           <Text className="text-[13px] italic text-zinc-500">
-            No subtasks yet
+            No checklist items yet
           </Text>
         ) : (
           subtasks.map((subtask) => (
@@ -135,7 +135,7 @@ export function TodoDetailSubtasks({
           ))
         )}
 
-        {/* Add subtask row */}
+        {/* Add checklist item row */}
         <View
           className="flex-row items-center gap-3 mt-1"
           style={{ paddingLeft: 4 }}
@@ -164,7 +164,7 @@ export function TodoDetailSubtasks({
           <BottomSheetTextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Add subtask…"
+            placeholder="Add checklist item…"
             placeholderTextColor="#52525b"
             style={{
               flex: 1,

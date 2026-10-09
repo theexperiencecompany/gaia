@@ -6,10 +6,13 @@ marker and the agent mines the file with query_json (structured JSON/JSONL
 querying) or grep (free text) instead of reading the whole thing back.
 """
 
+from typing import Final
+
 # Marker keys: OFFLOAD_KEY on a ToolMessage's `additional_kwargs`; OFFLOAD_RESULT_KEY
 # on a self-offloading tool's dict result (lifted into the marker by the tool node).
 OFFLOAD_KEY = "offload"
-OFFLOAD_RESULT_KEY = "__offload__"
+# Final so mypy reads it as the literal key a result TypedDict declares.
+OFFLOAD_RESULT_KEY: Final = "__offload__"
 
 # Mining tools surfaced when an offload occurs, chosen by the offload's `fmt`.
 # query_json for structured records, grep for free text.
