@@ -847,6 +847,32 @@ class TestARunWaitsForItsAccount:
             _recorded(activity)
         )
 
+    async def test_a_trigger_run_waiting_for_gmail_holds_every_event_for_the_catch_up_drain(
+        self, account, activity
+    ):
+        account.connected.return_value = set()
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        rest = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_new_message")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(
+            return_value=_doc(
+                external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1")
+            )
+        )
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()) as via_agent,
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=True)) as held,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1", first, coalesced=[rest])
+
+        assert result == "paused:todo-1"
+        via_agent.assert_not_awaited()
+        assert [c.args for c in held.await_args_list] == [("todo-1", first), ("todo-1", rest)]
+        repo.update_if_scheduled_at.assert_not_called()
+
     async def test_a_todo_that_reads_no_gmail_runs_without_it(self, account):
         account.connected.return_value = set()
 
