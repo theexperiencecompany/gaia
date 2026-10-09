@@ -145,14 +145,8 @@ class AsyncRedisCommands(Protocol):
         """RPUSH — returns the list length after the push."""
         ...
 
-    async def lmove(
-        self,
-        first_list: str,
-        second_list: str,
-        src: Literal["LEFT", "RIGHT"] = "LEFT",
-        dest: Literal["LEFT", "RIGHT"] = "RIGHT",
-    ) -> str | None:
-        """LMOVE — atomically move first_list's oldest element to second_list's end; None when empty."""
+    async def lmove(self, first_list: str, second_list: str) -> str | None:
+        """LMOVE LEFT RIGHT — atomically move first_list's oldest element to second_list's end; None when empty."""
         ...
 
     async def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
