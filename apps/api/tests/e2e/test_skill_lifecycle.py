@@ -42,7 +42,7 @@ from app.agents.skills.registry import (
 from app.agents.skills.utils import GITHUB_API_BASE
 from app.config.settings import settings
 from app.constants.cache import SKILLS_TEXT_CACHE_KEY, USER_SKILLS_CACHE_KEY
-from app.db.repositories.skills import SYSTEM_USER_ID
+from app.constants.vfs import SYSTEM_USER_ID
 from app.services.storage import JuiceFSUnavailable
 from app.utils.errors import AppError
 

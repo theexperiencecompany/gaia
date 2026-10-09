@@ -5,6 +5,7 @@ from functools import cache
 import math
 import time
 from typing import Any, TypedDict, TypeVar, cast
+from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -705,11 +706,14 @@ _WIRE_WALK_MAX_HOPS = 6
 
 
 def _wire_client(runnable: Runnable) -> object:
-    """Return the client runnable ultimately calls, through bind/bind_tools and structured-output wrappers."""
-    node: Any = runnable
-    # Bounded, through the two wrappers LangChain builds: ``bind_tools``/``bind``
-    # yield a RunnableBinding, ``with_structured_output`` a RunnableSequence.
-    # Walking arbitrary attributes could hang on an object that generates them.
+    """Return the chat model runnable ultimately calls, or None when the walk finds none.
+
+    A tool-bound or structured runnable arrives wrapped, so the two wrappers
+    LangChain builds are walked rather than type-checked: bind_tools/bind yield
+    a RunnableBinding, with_structured_output a RunnableSequence. Bounded,
+    since walking arbitrary attributes could hang on an object that generates them.
+    """
+    node: object = runnable
     for _ in range(_WIRE_WALK_MAX_HOPS):
         if isinstance(node, RunnableBinding):
             node = node.bound
@@ -717,23 +721,31 @@ def _wire_client(runnable: Runnable) -> object:
             node = node.first
         else:
             return node
-    return node
+    return None
+
+
+def _is_default_or_host(base: object, host: str) -> bool:
+    """Whether a client's base URL is unset (the SDK default) or points at exactly host."""
+    return base is None or urlparse(str(base)).hostname == host
 
 
 def _is_openrouter_wire(runnable: Runnable) -> bool:
-    """Whether runnable ultimately calls OpenRouter's own service, the only one that understands session_id."""
+    """Whether runnable calls OpenRouter's own service, the only one that understands session_id."""
     client = _wire_client(runnable)
     if not isinstance(client, ChatOpenRouter):
         return False
-    # A ChatOpenRouter aimed at another OpenAI-compatible endpoint (e.g. the sim
-    # stub) rejects session_id, so only OpenRouter's own base (or none) counts.
+    # A ChatOpenRouter aimed at another OpenAI-compatible endpoint (the sim stub) rejects it.
     base = client.openrouter_api_base
-    return base is None or "openrouter.ai" in str(base)
+    return _is_default_or_host(base, "openrouter.ai")
 
 
 def _is_openai_wire(runnable: Runnable) -> bool:
-    """Whether runnable ultimately calls the direct OpenAI client, the only one that accepts prompt_cache_key."""
-    return isinstance(_wire_client(runnable), ChatOpenAI)
+    """Whether runnable calls OpenAI's own API, the only one that understands prompt_cache_key."""
+    client = _wire_client(runnable)
+    if not isinstance(client, ChatOpenAI):
+        return False
+    base = client.openai_api_base
+    return _is_default_or_host(base, "api.openai.com")
 
 
 def _resolve_fallback(

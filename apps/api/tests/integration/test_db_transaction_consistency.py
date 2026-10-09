@@ -48,13 +48,21 @@ from app.services.conversation_service import (
 )
 from app.services.todos.todo_service import TodoService
 from app.utils.errors import AppError
+from tests.helpers import users_get
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+USER_ID = "64abc123def4567890abcde1"
 FAKE_USER = AuthenticatedUser(user_id=USER_ID)
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        yield
 
 
 def _stored_todo(document: TodoDocument, **overrides: Any) -> TodoDocument:

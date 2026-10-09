@@ -27,7 +27,7 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, get_user_id
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -41,7 +41,6 @@ from app.utils.workflow_utils import (
     create_workflow_directly,
     error_response,
     get_thread_id,
-    get_user_id,
     success_response,
 )
 from shared.py.wide_events import log

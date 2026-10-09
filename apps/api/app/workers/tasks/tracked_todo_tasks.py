@@ -73,7 +73,7 @@ from app.services.triggers.todo_trigger_window import (
     trigger_window,
     trigger_window_end,
 )
-from app.utils.auth_utils import load_user_context
+from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -91,22 +91,28 @@ PAYWALL_FEATURE_TRACKED_TODO = "tracked_todo"
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
-    """Fetch user record once and resolve their home timezone.
+    """Fetch the owner once and resolve their home timezone; OwnerNotFoundError when there is no owner.
 
-    Returns (user_data with user_id populated, Timezone). Uses the canonical
-    Timezone value object so a stored ±HH:MM offset doesn't crash ZoneInfo;
-    falls back to UTC if the user record or timezone is missing.
+    Timezone.parse keeps a stored ±HH:MM offset from crashing ZoneInfo and reads
+    an unset zone as UTC.
     """
-    try:
-        # The full context: narrowing to the fields read here would drop
-        # onboarding, which construct_langchain_messages needs.
-        user_data = await load_user_context(user_id)
-        if user_data is not None:
-            return user_data, Timezone.parse(user_data.timezone)
-        return AuthenticatedUser(user_id=user_id), Timezone.utc()
-    except Exception as e:
-        log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
-        return AuthenticatedUser(user_id=user_id), Timezone.utc()
+    # The full context: narrowing to the fields read here would drop
+    # onboarding, which construct_langchain_messages needs.
+    user_data = await require_owner(user_id)
+    return user_data, Timezone.parse(user_data.timezone)
+
+
+async def _retire_ownerless_todo(doc: TodoDocument) -> str:
+    """Archive a todo whose owner is not a user, then clear its schedule so it never fires again.
+
+    A failed archive raises with the schedule kept, so the next fire retries the retirement.
+    """
+    if not await tracked_todo_service.archive_tracked_todo(
+        doc.id, doc.user_id, reason="its owner is not a GAIA user"
+    ):
+        raise RuntimeError(f"Could not archive todo {doc.id}, whose owner is not a GAIA user")
+    await todo_repository.update(doc.id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None))
+    return f"no_owner:{doc.id}"
 
 
 async def execute_tracked_todo(
@@ -265,19 +271,13 @@ async def _execute_todo_with_retry(
 
     if skipped := await _skip_reason(doc, origin, armed_for):
         return skipped
-    if withheld := await _withheld_result(doc, origin, coalesced):
-        return withheld
-
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
 
-    # Single user fetch per run (matches workflow_tasks.py:416-427): reused for
-    # execution and the next-run computation, so a tz change applies immediately
-    # without an extra DB round-trip.
-    user_data, user_tz = await _load_user_with_tz(user_id)
-
-    if paused_result := await _paused_result(doc, user_tz, origin, coalesced):
-        return paused_result
+    owner = await _owner_ready_to_run(doc, origin, coalesced)
+    if isinstance(owner, str):
+        return owner
+    user_data, user_tz = owner
 
     # Cost wall before any LLM work: a trigger fire is not a user action. The
     # window opens first, so a walled run still counts as its window's one run.
@@ -364,6 +364,29 @@ async def _schedule_retry(
         max_attempts=MAX_RETRY_ATTEMPTS,
     )
     return f"retry:{doc.id} (attempt {attempt})"
+
+
+async def _owner_ready_to_run(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> tuple[AuthenticatedUser, Timezone] | str:
+    """Return the owner and their timezone for a fire that runs, or the result of one that does not.
+
+    One user fetch per run, reused for the next-run computation so a timezone change
+    applies at once. The owner check comes first: a todo with no owner is retired,
+    not paused for a plan nobody holds.
+    """
+    try:
+        user_data, user_tz = await _load_user_with_tz(doc.user_id)
+    except OwnerNotFoundError as missing:
+        log.error(
+            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
+        )
+        return await _retire_ownerless_todo(doc)
+    if withheld := await _withheld_result(doc, origin, coalesced):
+        return withheld
+    if paused := await _paused_result(doc, user_tz, origin, coalesced):
+        return paused
+    return user_data, user_tz
 
 
 async def _withheld_result(
@@ -541,10 +564,6 @@ async def _skip_reason(
             f"(now scheduled: {scheduled or 'nothing'})",
         )
         return f"stale_occurrence:{todo_id}"
-
-    if not doc.user_id:
-        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
-        return f"error:{todo_id} (missing user_id)"
     return None
 
 
@@ -679,12 +698,16 @@ async def _resume_holding_lock(
         return f"not_found:{todo_id}"
     if doc.completed:
         return f"completed:{todo_id}"
+    try:
+        user_data, _ = await _load_user_with_tz(doc.user_id)
+    except OwnerNotFoundError as missing:
+        log.error(
+            "tracked_todo.owner_not_a_user", todo_id=doc.id, user_id=doc.user_id, error=str(missing)
+        )
+        return await _retire_ownerless_todo(doc)
     user_id = doc.user_id
-    if not user_id:
-        return f"error:{todo_id} (missing user_id)"
 
     try:
-        user_data, _ = await _load_user_with_tz(user_id)
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
         await record_activity(

@@ -121,7 +121,7 @@ from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
-from app.utils.auth_utils import load_user_context
+from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
@@ -768,9 +768,7 @@ class _Fire:
     reservation: str
 
 
-async def _run_workflow(
-    workflow: Workflow, workflow_id: str, context: dict[str, object], reservation: str
-) -> tuple[str, list[RecordedCall], str]:
+async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
     """Run the fire on whichever path can carry it, returning conversation, trace, and summary.
 
     A playbook replays only while its workflow_hash still matches the
@@ -781,9 +779,9 @@ async def _run_workflow(
     # ONE charge per fire regardless of path: a fallback to the agent must not
     # bill twice, and charging up front stops an over-quota user before any
     # side effect. Real consumption is metered separately by enforce_daily_cost_budget.
+    workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
+    reservation = fire.reservation
     await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
-
-    user = AuthenticatedUser(user_id=workflow.user_id)
 
     # A playbook is an optimisation, never a precondition: if this read fails
     # the workflow must still run, so the failure costs only the replay —
@@ -874,13 +872,7 @@ async def _run_workflow(
     # the next fire reads an empty record and repeats every side effect.
     try:
         return await _finish_after_replay(
-            _Fire(
-                workflow=workflow,
-                workflow_id=workflow_id,
-                context=context,
-                user=user,
-                reservation=reservation,
-            ),
+            fire,
             playbook,
             conversation_id,
             result,
@@ -1251,25 +1243,17 @@ async def _drain_trigger_events(
     return merged, None
 
 
-async def _run_and_record_success(
-    workflow: Workflow,
-    workflow_id: str,
-    trigger_type: str,
-    context: dict[str, object] | None,
-    execution_id: str,
-    reservation: str,
-) -> str:
+async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:
     # Stamps the execution id onto the wide event before any model call: the
     # llm_calls ledger reads it to attribute cost (it exists only here, never
     # in config.configurable). Applies to replay-fallback runs too.
+    workflow, workflow_id = fire.workflow, fire.workflow_id
     log.set(workflow=WorkflowContext(id=workflow_id, execution_id=execution_id))
 
     # Replay the playbook when it still describes this workflow, else run the
     # agent (a partial replay hands the rest over, carrying what it did). Agent
     # path delivers from the background path; a replay via _finish_after_replay.
-    conversation_id, trace, summary = await _run_workflow(
-        workflow, workflow_id, context or {}, reservation
-    )
+    conversation_id, trace, summary = await _run_workflow(fire)
 
     # Track successful execution
     await WorkflowService.increment_execution_count(
@@ -1436,6 +1420,14 @@ async def _record_timed_out_fire(
     await _rearm_quietly(workflow_scheduler, workflow, trigger_type, workflow_id)
 
 
+async def _retire_ownerless_workflow(workflow: Workflow, workflow_id: str) -> str:
+    """Deactivate a workflow whose owner is not a user, so its schedule and triggers stop firing."""
+    await WorkflowService.deactivate_workflow(
+        workflow_id, workflow.user_id, reason=DeactivationReason.OWNER_NOT_FOUND
+    )
+    return f"Workflow {workflow_id} retired: its owner is not a user"
+
+
 async def _skip_unpaid_fire(
     scheduler: WorkflowScheduler,
     workflow: Workflow,
@@ -1516,6 +1508,19 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
         if not workflow:
             return f"Workflow {workflow_id} not found"
 
+        # Before every gate: a paywall or onboarding check on a non-user is
+        # itself a run as that non-user (the paywall even emits for it).
+        try:
+            owner = await require_owner(workflow.user_id)
+        except OwnerNotFoundError as missing:
+            log.error(
+                f"{LogTag.WORKER} Workflow owner is not a user; deactivating it",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+                error=str(missing),
+            )
+            return await _retire_ownerless_workflow(workflow, workflow_id)
+
         # Coalesced trigger events live in Redis keyed by batch_key, not the job
         # payload, so concurrent enqueues dedup to one job. Drained only after the
         # gates below, so a rejected run leaves the buffer intact for a later one.
@@ -1564,14 +1569,14 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
         )
         execution_id = execution.execution_id
 
-        return await _run_and_record_success(
-            workflow,
-            workflow_id,
-            trigger_type,
-            context,
-            execution_id,
-            build_lock_value(None, lock_task_id),
+        fire = _Fire(
+            workflow=workflow,
+            workflow_id=workflow_id,
+            context=context or {},
+            user=owner,
+            reservation=build_lock_value(None, lock_task_id),
         )
+        return await _run_and_record_success(fire, trigger_type, execution_id)
 
     except WorkflowFireOverlapped as never_ran:
         # Recorded on the wide event from the block that caught it; the helper
@@ -1613,45 +1618,32 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
         await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)
 
 
-async def _resolve_workflow_user(workflow: Workflow, user_id: str) -> AuthenticatedUser:
-    """Resolve the user bag a workflow run executes as, with its home zone resolved.
+def _in_run_timezone(workflow: Workflow, owner: AuthenticatedUser) -> AuthenticatedUser:
+    """Return the owner carrying the zone a workflow run executes in.
 
     No request header here (ARQ worker): prefer the real profile zone, then
     the workflow's own schedule zone, then UTC, so a missing or poisoned
     profile doesn't silently run hours off. Both run paths read the zone off
     user_data.timezone.
     """
-    try:
-        user_data = await load_user_context(user_id) or AuthenticatedUser(user_id=user_id)
-
-        profile_tz = (user_data.timezone or "").strip()
-        # trigger_config always declares timezone, so read it directly. Unset
-        # or blank becomes None (not a literal UTC) since Timezone.parse
-        # already answers UTC for None, and a literal here is unreachable.
-        stored_schedule_tz = workflow.trigger_config.timezone
-        schedule_tz = stored_schedule_tz.strip() if stored_schedule_tz else None
-        resolved_tz = Timezone.parse(
-            profile_tz if profile_tz and profile_tz.upper() != "UTC" else (schedule_tz or None)
-        )
-        if resolved_tz.is_utc:
-            log.warning(
-                f"{LogTag.WORKER} Workflow agent time falling back to UTC; "
-                "no real user/schedule timezone",
-                workflow_id=workflow.id,
-                user_id=user_id,
-            )
-        log.set(workflow_agent_timezone=resolved_tz.value)
-        user_data = user_data.with_timezone(resolved_tz.value)
-    except Exception as e:
+    profile_tz = (owner.timezone or "").strip()
+    # trigger_config always declares timezone, so read it directly. Unset
+    # or blank becomes None (not a literal UTC) since Timezone.parse
+    # already answers UTC for None, and a literal here is unreachable.
+    stored_schedule_tz = workflow.trigger_config.timezone
+    schedule_tz = stored_schedule_tz.strip() if stored_schedule_tz else None
+    resolved_tz = Timezone.parse(
+        profile_tz if profile_tz and profile_tz.upper() != "UTC" else (schedule_tz or None)
+    )
+    if resolved_tz.is_utc:
         log.warning(
-            f"{LogTag.WORKER} Could not resolve workflow timezone",
-            user_id=user_id,
+            f"{LogTag.WORKER} Workflow agent time falling back to UTC; "
+            "no real user/schedule timezone",
             workflow_id=workflow.id,
-            error_type=type(e).__name__,
-            error=str(e),
+            user_id=owner.user_id,
         )
-        user_data = AuthenticatedUser(user_id=user_id)
-    return user_data
+    log.set(workflow_agent_timezone=resolved_tz.value)
+    return owner.with_timezone(resolved_tz.value)
 
 
 # Deliberately NOT decorated with tiered_rate_limit: a replay that falls back
@@ -1671,7 +1663,7 @@ async def execute_workflow_as_playbook(
     the same busy lock call_executor takes, so replays never overlap.
     """
     user_id = user.user_id
-    user_data = await _resolve_workflow_user(workflow, user_id)
+    user_data = _in_run_timezone(workflow, user)
     conversation_id = await get_or_create_workflow_conversation(
         workflow_id=workflow.id,
         user_id=user_id,
@@ -1722,7 +1714,7 @@ async def execute_workflow_as_chat(
             user_id=user_id,
         )
 
-        user_data = await _resolve_workflow_user(workflow, user_id)
+        user_data = _in_run_timezone(workflow, user)
 
         # Get or create the workflow conversation for thread context
         conversation_id = await get_or_create_workflow_conversation(

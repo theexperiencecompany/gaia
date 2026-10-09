@@ -54,6 +54,7 @@ from app.services.todos.errors import (
 from app.services.todos.external_ref_watch import release_watches, watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
+from app.utils.auth_utils import require_owner
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.errors import AppError
 from app.utils.schedule import InvalidScheduleError
@@ -450,6 +451,8 @@ class TodoService:
         )
         if GAIA_TRACKED_LABEL in todo.labels and todo.workflow_id:
             raise TrackedTodoWorkflowError()
+        # Every creator (route, tool, worker) lands here, so none can save a todo for a non-user.
+        await require_owner(user_id)
         # Whether the caller filed the todo into a project themselves — read
         # before the Inbox default below makes project_id unconditionally set.
         project_chosen = todo.project_id is not None
