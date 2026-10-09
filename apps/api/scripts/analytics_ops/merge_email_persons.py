@@ -137,13 +137,19 @@ def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> Mer
     """Sort each email person into merge, already merged, unmatched or ambiguous; merges oldest first."""
     result = MergePlan([], [], [], [], [], set())
     for person in persons:
-        if any(is_user_id(d) for d in person.distinct_ids):
-            result.already_merged.append(person.person_id)
-            continue
         owners_per_email = [
             owners.get(normalise_email(d), set()) for d in person.distinct_ids if "@" in d
         ]
         matches = set().union(*owners_per_email)
+        merged_into = {d for d in person.distinct_ids if is_user_id(d)}
+        if merged_into:
+            if matches <= merged_into:
+                result.already_merged.append(person.person_id)
+            else:
+                # Another user's email on a merged person: that user's history sits here too.
+                result.ambiguous.append(person.person_id)
+                result.held_users.update(matches | merged_into)
+            continue
         if not matches:
             result.unmatched.append(person.person_id)
         elif len(matches) > 1:

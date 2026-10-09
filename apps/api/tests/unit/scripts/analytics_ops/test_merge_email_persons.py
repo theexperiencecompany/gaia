@@ -286,6 +286,19 @@ class TestEveryAliasMustBeOwned:
 
         assert (plan.merges, plan.unowned_aliases) == ([], ["p1"])
 
+    def test_a_merged_person_holding_another_users_email_is_a_conflict_held_for_review(
+        self,
+    ) -> None:
+        """Bob's person carrying Alice's email keeps Alice's old events, out of the history plan's reach."""
+        plan = match([_person("p1", BOB, "alice@x.com")], _owners((ALICE, "alice@x.com")))
+
+        assert (plan.already_merged, plan.ambiguous, plan.held_users) == ([], ["p1"], {ALICE, BOB})
+
+    def test_a_person_merged_into_the_owner_of_its_email_is_already_merged(self) -> None:
+        plan = match([_person("p1", ALICE, "alice@x.com")], _owners((ALICE, "alice@x.com")))
+
+        assert (plan.already_merged, plan.held_users) == (["p1"], set())
+
     def test_a_user_with_history_on_an_unmerged_person_is_held_out_of_the_history_backfill(
         self,
     ) -> None:
