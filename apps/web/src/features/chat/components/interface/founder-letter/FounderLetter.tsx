@@ -233,7 +233,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     firstName,
     dismissed,
     hasOpened,
-    offerLive,
+    liveOfferCode,
     copied,
     isOpen,
     reduceMotion,
@@ -316,8 +316,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 ))}
               </div>
 
-              {offerLive && (
+              {liveOfferCode !== null && (
                 <LetterOffer
+                  discountCode={liveOfferCode}
                   copied={copied}
                   onCopyCode={copyCode}
                   onClaim={claimOffer}

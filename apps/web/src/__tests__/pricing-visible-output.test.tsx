@@ -72,11 +72,13 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
 }));
 
 let mockPlans: Plan[] = [];
+let mockPlansLoading = false;
 let mockStatus: UserSubscriptionStatus | undefined;
 
 vi.mock("@/features/pricing/hooks/usePricing", () => ({
   usePricing: () => ({
     plans: mockPlans,
+    plansLoading: mockPlansLoading,
     isLoading: false,
     error: null,
     subscriptionStatus: mockStatus,
@@ -92,6 +94,7 @@ import { LetterOffer } from "@/features/chat/components/interface/founder-letter
 import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PostPaymentReceipt } from "@/features/pricing/components/PostPaymentReceipt";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { ProDailyPriceHeading } from "@/features/pricing/components/ProDailyPriceHeading";
 import { DiscountBanner } from "@/features/pricing/components/UpgradeModal";
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
@@ -209,6 +212,9 @@ function subscribed(
   };
 }
 
+/** HeroUI's Skeleton base class: what a loading price renders instead of a figure. */
+const SKELETON = ".bg-content3";
+
 /** What a reader sees: the rendered text, minus injected styles, whitespace collapsed. */
 function visibleText(container: HTMLElement): string {
   const copy = container.cloneNode(true) as HTMLElement;
@@ -239,6 +245,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
   mockPlans = LIVE_CATALOGUE;
+  mockPlansLoading = false;
   mockStatus = undefined;
   Object.assign(paidState, {
     isPaid: false,
@@ -299,6 +306,15 @@ describe("pricing cards", () => {
     );
   });
 
+  it("never rounds a part month up into the chip", () => {
+    // $271/yr saves $89: 2.97 months of $30, so two months free, not three.
+    mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27100 }];
+    const { container } = render(
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+    );
+    expect(visibleText(container)).toBe("MonthlyYearly2 months free");
+  });
+
   it("discount banners", () => {
     const withPercent = render(<DiscountBanner {...FOUNDER_OFFER} />);
     expect(visibleText(withPercent.container)).toMatchInlineSnapshot(
@@ -329,11 +345,33 @@ describe("sidebar promo", () => {
     );
   });
 
-  it("falls back to its own price while the catalogue is empty", () => {
+  it("holds the price as a skeleton while the catalogue loads", () => {
+    mockPlans = [];
+    mockPlansLoading = true;
+    const { container } = render(<SidebarTopButtons />);
+    expect(visibleText(container)).toMatchInlineSnapshot(
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+    );
+    expect(container.querySelector(SKELETON)).not.toBeNull();
+  });
+
+  it("names no price when the catalogue could not be read", () => {
     mockPlans = [];
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlyGAIA is paid only right now. $15 a month gets you all of it.SubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+    );
+    expect(container.querySelector(SKELETON)).toBeNull();
+  });
+});
+
+describe("per-day price heading", () => {
+  it("quotes the advertised price over a 30-day month", () => {
+    const { container } = render(
+      <ProDailyPriceHeading afterPrice="a day to never work again." />,
+    );
+    expect(visibleText(container)).toMatchInlineSnapshot(
+      `"$1 a day to never work again."`,
     );
   });
 });
@@ -454,11 +492,60 @@ describe("receipts", () => {
 describe("founder's letter offer", () => {
   it("the offer copy", () => {
     const { container } = render(
-      <LetterOffer copied={false} onCopyCode={vi.fn()} onClaim={vi.fn()} />,
+      <LetterOffer
+        discountCode="THANKYOU40"
+        copied={false}
+        onCopyCode={vi.fn()}
+        onClaim={vi.fn()}
+      />,
     );
     expect(visibleText(container)).toMatchInlineSnapshot(
       `"No strings here. Take 40% off with THANKYOU40at checkout. On yearly that's six months free.Claim 40% offCovers your first payment: one month on monthly, a full year on yearly. While it lasts."`,
     );
+  });
+
+  it("counts the months it saves from the live yearly price", () => {
+    mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 24000 }];
+    const { container } = render(
+      <LetterOffer
+        discountCode="THANKYOU40"
+        copied={false}
+        onCopyCode={vi.fn()}
+        onClaim={vi.fn()}
+      />,
+    );
+    expect(visibleText(container)).toContain(
+      "On yearly that's seven months free.",
+    );
+  });
+
+  it("never rounds a part month up into a free one", () => {
+    // $270/yr at 40% off is $162: $198 saved, 6.6 months of $30.
+    mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27000 }];
+    const { container } = render(
+      <LetterOffer
+        discountCode="THANKYOU40"
+        copied={false}
+        onCopyCode={vi.fn()}
+        onClaim={vi.fn()}
+      />,
+    );
+    expect(visibleText(container)).toContain(
+      "On yearly that's six months free.",
+    );
+  });
+
+  it("names no months while the catalogue is unknown", () => {
+    mockPlans = [];
+    const { container } = render(
+      <LetterOffer
+        discountCode="THANKYOU40"
+        copied={false}
+        onCopyCode={vi.fn()}
+        onClaim={vi.fn()}
+      />,
+    );
+    expect(visibleText(container)).not.toContain("free.");
   });
 
   it("is live until its deadline and gone after", () => {

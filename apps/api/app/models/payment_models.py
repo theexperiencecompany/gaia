@@ -137,6 +137,12 @@ class PlanResponse(ResponseModel):
     updated_at: datetime = Field(..., description="Update timestamp")
 
 
+class DiscountCodesResponse(ResponseModel):
+    """Coupon codes the clients advertise, each a Dodo discount code or null when unset."""
+
+    founder_letter: str | None = Field(..., description="Code the founder's letter offers")
+
+
 class CreateSubscriptionResponse(BaseModel):
     """Hosted-checkout session created for a new subscription."""
 

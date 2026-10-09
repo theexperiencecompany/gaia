@@ -1,4 +1,5 @@
 import type { Plan } from "../api/pricingApi";
+import { MONTHS_PER_YEAR } from "../constants";
 
 /**
  * The annual discount, derived from the two prices that actually exist rather
@@ -12,6 +13,20 @@ export function getAnnualSavingsPercent(
 ): number {
   if (fullPriceCents <= 0 || discountedPriceCents <= 0) return 0;
   return Math.round((1 - discountedPriceCents / fullPriceCents) * 100);
+}
+
+/**
+ * The whole months of the monthly rate a yearly price gives back, from the
+ * prices rather than a rounded percentage. Floored: a savings claim may
+ * understate a part month, never round one up into a free one.
+ */
+export function monthsFreeFromPrices(
+  fullPriceCents: number,
+  discountedPriceCents: number,
+): number {
+  if (fullPriceCents <= 0 || discountedPriceCents <= 0) return 0;
+  const savedCents = Math.max(0, fullPriceCents - discountedPriceCents);
+  return Math.floor((savedCents * MONTHS_PER_YEAR) / fullPriceCents);
 }
 
 /**
