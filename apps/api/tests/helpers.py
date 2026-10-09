@@ -3,11 +3,15 @@
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
+import importlib.util
 import math
 import os
+from pathlib import Path
 import re
 import socket
+import sys
 import time
+from types import ModuleType
 from typing import Any, ClassVar
 import zoneinfo
 
@@ -51,6 +55,20 @@ def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+LLM_STUB_DIR = Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+
+
+def load_llm_stub_module(name: str) -> ModuleType:
+    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
+    spec = importlib.util.spec_from_file_location(name, LLM_STUB_DIR / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 # Resolved DB is never 0 (the app's live DB, flushed by this helper's teardown).
