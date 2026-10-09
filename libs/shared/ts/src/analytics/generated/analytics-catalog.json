@@ -6363,6 +6363,10 @@
           "has_project": {
             "title": "Has Project",
             "type": "boolean"
+          },
+          "is_sub_todo": {
+            "title": "Is Sub Todo",
+            "type": "boolean"
           }
         },
         "required": [
@@ -6371,7 +6375,8 @@
           "has_description",
           "labels_count",
           "subtasks_count",
-          "has_project"
+          "has_project",
+          "is_sub_todo"
         ],
         "title": "TodosCreated",
         "type": "object"
@@ -6418,6 +6423,24 @@
           }
         },
         "title": "TodosDeleted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "todos:inbox_desk_provisioned",
+      "class": "TodosInboxDeskProvisioned",
+      "owner": "server",
+      "domain": "todos",
+      "description": "The user's Inbox desk tracked todo exists and its first morning run is armed.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user's Inbox desk tracked todo exists and its first morning run is armed.",
+        "properties": {},
+        "title": "TodosInboxDeskProvisioned",
         "type": "object"
       }
     },
@@ -6498,7 +6521,8 @@
               "invalid_conditions",
               "invalid_config",
               "registration_failed",
-              "no_trigger_instance"
+              "no_trigger_instance",
+              "write_conflict"
             ],
             "title": "Reason",
             "type": "string"
@@ -6700,9 +6724,19 @@
           "condition_count": {
             "title": "Condition Count",
             "type": "integer"
+          },
+          "coalesced": {
+            "title": "Coalesced",
+            "type": "boolean"
           }
         },
-        "required": ["trigger_name", "action", "resolution", "condition_count"],
+        "required": [
+          "trigger_name",
+          "action",
+          "resolution",
+          "condition_count",
+          "coalesced"
+        ],
         "title": "TodosTriggerFired",
         "type": "object"
       }

@@ -12,6 +12,7 @@ __all__ = [
     "SubscriptionFailureReason",
     "TodosCreated",
     "TodosDeleted",
+    "TodosInboxDeskProvisioned",
     "TodosRunResultDelivered",
     "TodosSubscriptionFailed",
     "TodosSubscriptionRegistered",
@@ -28,6 +29,7 @@ SubscriptionFailureReason = Literal[
     "invalid_config",
     "registration_failed",
     "no_trigger_instance",
+    "write_conflict",
 ]
 
 
@@ -43,6 +45,7 @@ class TodosCreated(ServerEvent):
     labels_count: int
     subtasks_count: int
     has_project: bool
+    is_sub_todo: bool
 
 
 class TodosUpdated(ServerEvent):
@@ -120,6 +123,8 @@ class TodosTriggerFired(ServerEvent):
     action: Identifier
     resolution: Identifier
     condition_count: int
+    # The event landed inside a run window already claimed, so it rides that next run.
+    coalesced: bool
 
 
 class TodosRunResultDelivered(ServerEvent):
@@ -133,6 +138,14 @@ class TodosRunResultDelivered(ServerEvent):
     trigger_type: Identifier
     recurring: bool
     platform: Identifier | None = None
+
+
+class TodosInboxDeskProvisioned(ServerEvent):
+    """The user's Inbox desk tracked todo exists and its first morning run is armed."""
+
+    event: ClassVar[str] = "todos:inbox_desk_provisioned"
+    # One desk per user: provisioning repeats only on a reconnect race the insert dedupes.
+    budget_per_user_day: ClassVar[int] = 2
 
 
 class ProjectsCreated(ServerEvent):
