@@ -18,6 +18,8 @@ describe("money", () => {
     expect(currencyExponent("USD")).toBe(2);
     expect(currencyExponent("JPY")).toBe(0);
     expect(currencyExponent("KWD")).toBe(3);
+    expect(currencyExponent("CLF")).toBe(4);
+    expect(currencyExponent("UYW")).toBe(4);
     expect(toMajorUnits(1000, "JPY")).toBe(1000);
     expect(toMajorUnits(1500, "KWD")).toBe(1.5);
   });
