@@ -32,6 +32,7 @@ from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.triggers.subscription_service import resync_subscriptions_for_trigger_names
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
@@ -409,8 +410,11 @@ async def handle_oauth_connection(
             id=integration_config.id,
         )
 
-    # Auto-provision system workflows for supported integrations
-    if integration_config.id in (GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID):
+    if integration_config.id == GMAIL_INTEGRATION_ID:
+        background_tasks.add_task(queue_inbox_desk_provision, user_id)
+        log.info(f"{LogTag.OAUTH} Queued Inbox desk provisioning", user_id=user_id)
+
+    if integration_config.id == GOOGLE_CALENDAR_INTEGRATION_ID:
         background_tasks.add_task(
             provision_system_workflows,
             user_id=user_id,

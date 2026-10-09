@@ -107,12 +107,19 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="That todo is now watching the thread."),
         ]
 
-        update = AsyncMock(return_value=None)
+        async def compare_and_set(
+            todo_id: str, user_id: str, *, subscriptions: list, expected_updated_at=None
+        ):
+            assert (todo_id, user_id) == (TODO_ID, USER_ID)
+            return _todo().model_copy(update={"trigger_subscriptions": subscriptions})
+
+        set_subscriptions = AsyncMock(side_effect=compare_and_set)
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
                 get=AsyncMock(return_value=_todo()),
-                update=update,
+                update=AsyncMock(return_value=None),
+                set_trigger_subscriptions=set_subscriptions,
             ),
             patch(
                 f"{_SERVICE}.TriggerService",
@@ -127,7 +134,7 @@ class TestSubscribeThroughTheGraph:
         assert "is now watching" in result.content
         assert "Repaired automatically" in result.content
 
-        stored = update.await_args.kwargs["update"].trigger_subscriptions[0]
+        stored = set_subscriptions.await_args.kwargs["subscriptions"][0]
         assert stored.conditions[0].field_name == "thread_id"
         assert stored.action is SubscriptionAction.EXECUTE
         # Gmail registers no per-todo instance, so dispatch must find it by user.
@@ -183,12 +190,19 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="Watching for anything from acme.com."),
         ]
 
-        update = AsyncMock(return_value=None)
+        async def compare_and_set(
+            todo_id: str, user_id: str, *, subscriptions: list, expected_updated_at=None
+        ):
+            assert (todo_id, user_id) == (TODO_ID, USER_ID)
+            return _todo().model_copy(update={"trigger_subscriptions": subscriptions})
+
+        set_subscriptions = AsyncMock(side_effect=compare_and_set)
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
                 get=AsyncMock(return_value=_todo()),
-                update=update,
+                update=AsyncMock(return_value=None),
+                set_trigger_subscriptions=set_subscriptions,
             ),
             patch(
                 f"{_SERVICE}.TriggerService",
@@ -208,7 +222,7 @@ class TestSubscribeThroughTheGraph:
         accepted = _tool_message(messages, "call-good")
         assert "is now watching" in accepted.content
         assert (
-            update.await_args.kwargs["update"].trigger_subscriptions[0].conditions[0].field_name
+            set_subscriptions.await_args.kwargs["subscriptions"][0].conditions[0].field_name
             == "sender"
         )
 

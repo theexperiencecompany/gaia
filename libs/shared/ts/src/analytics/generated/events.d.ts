@@ -126,6 +126,7 @@ export type ServerEventName =
   | "support:form_submitted"
   | "todos:created"
   | "todos:deleted"
+  | "todos:inbox_desk_provisioned"
   | "todos:run_result_delivered"
   | "todos:subscription_failed"
   | "todos:subscription_registered"
@@ -914,11 +915,13 @@ export interface EventProperties {
     "labels_count": number;
     "subtasks_count": number;
     "has_project": boolean;
+    "is_sub_todo": boolean;
   };
   "todos:deleted": {
     "todo_id"?: string;
     "count"?: number;
   };
+  "todos:inbox_desk_provisioned": Record<string, never>;
   "todos:run_result_delivered": {
     "outcome": string;
     "delivered": boolean;
@@ -928,7 +931,7 @@ export interface EventProperties {
   };
   "todos:subscription_failed": {
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance" | "write_conflict";
   };
   "todos:subscription_registered": {
     "trigger_name": string;
@@ -952,6 +955,7 @@ export interface EventProperties {
     "action": string;
     "resolution": string;
     "condition_count": number;
+    "coalesced": boolean;
   };
   "todos:updated": {
     "todo_id"?: string;

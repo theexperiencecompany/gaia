@@ -1307,6 +1307,7 @@ class TestTodoNewEvents:
         base.update(overrides)
         return TodoDocument(**base)
 
+    @pytest.mark.usefixtures("todo_response_reads")
     async def test_subtask_add_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{TODOS}.todo_repository.add_subtask", new_callable=AsyncMock) as m,
