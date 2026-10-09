@@ -1456,7 +1456,7 @@
           "emoji": {
             "anyOf": [
               {
-                "pattern": "^[^\\x00-\\x7F]{1,16}$",
+                "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
                 "type": "string"
               },
               {
@@ -2303,7 +2303,7 @@
         "description": "An interactive turn's reply resolved to a one-emoji react instead of a message.",
         "properties": {
           "emoji": {
-            "pattern": "^[^\\x00-\\x7F]{1,16}$",
+            "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
             "title": "Emoji",
             "type": "string"
           }
