@@ -28,7 +28,7 @@ from app.models.todo_models import (
 )
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosToggled
+from shared.py.analytics.catalog.todos import TodosToggled, TodosUpdated
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
@@ -184,6 +184,25 @@ class TestTodoAnalytics:
             ),
             "507f1f77bcf86cd799439011",
         )
+
+    async def test_bulk_update_captures_todos_updated_on_the_caller(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
+                new_callable=AsyncMock,
+                return_value=BulkOperationResponse(total=2, message="ok"),
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["todo-1", "todo-2"], "updates": {"priority": "high"}},
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosUpdated(bulk_count=2))
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
