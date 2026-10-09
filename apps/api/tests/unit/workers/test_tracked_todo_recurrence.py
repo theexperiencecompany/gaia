@@ -21,10 +21,7 @@ import pytest
 from app.models.user_models import AuthenticatedUser
 from app.utils import auth_utils
 from app.utils.timezone import Timezone
-from app.workers.tasks.tracked_todo_tasks import (
-    _compute_next_run,
-    _load_user_with_tz,
-)
+from app.workers.tasks.tracked_todo_tasks import _compute_next_run, _load_user_with_tz
 
 
 def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:

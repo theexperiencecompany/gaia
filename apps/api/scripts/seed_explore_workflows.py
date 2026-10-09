@@ -34,7 +34,6 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
-from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
@@ -932,16 +931,6 @@ def get_health_workflows() -> list[dict[str, Any]]:
 # description, prompt, steps, trigger — is read from the system-workflow
 # definitions so the explore card can never drift from what gets provisioned.
 SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
-    "gmail:email_intelligence": {
-        "icon": "InboxIcon",
-        "icon_color": "#ff726b",
-        "categories": ["Email", "featured"],
-    },
-    "gmail:smart_reply_drafts": {
-        "icon": "MailSend01Icon",
-        "icon_color": "#f68001",
-        "categories": ["Email"],
-    },
     "calendar:meeting_prep": {
         "icon": "UserGroupIcon",
         "icon_color": "#09b7dc",
@@ -963,7 +952,7 @@ def get_system_workflows() -> list[dict[str, Any]]:
     "add this" can't create a second copy of one the user already has.
     """
     configs: list[dict[str, Any]] = []
-    for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
+    for key, factory in CALENDAR_SYSTEM_WORKFLOWS:
         request = factory()
         presentation = SYSTEM_WORKFLOW_PRESENTATION[key]
         configs.append(
@@ -994,8 +983,6 @@ def get_system_workflows() -> list[dict[str, Any]]:
 # stable, and scaled by how broadly each flow applies rather than uniformly.
 DISPLAY_RUN_COUNTS: dict[str, int] = {
     # Built-ins — provisioned for everyone who connects the integration.
-    "Inbox Triage": 8420,
-    "Auto-Draft Replies": 6180,
     "Meeting Briefing": 5740,
     "Meeting Reminder": 7310,
     # Broad daily habits.

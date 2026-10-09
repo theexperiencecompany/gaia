@@ -43,14 +43,14 @@ from app.services.todos.todo_service import (
     update_todo as update_todo_service,
 )
 from app.templates.docstrings.todo_tool_docs import (
-    ADD_SUBTASK,
+    ADD_CHECKLIST_ITEM,
     BULK_COMPLETE_TODOS,
     BULK_DELETE_TODOS,
     BULK_MOVE_TODOS,
     CREATE_PROJECT,
     CREATE_TODO,
+    DELETE_CHECKLIST_ITEM,
     DELETE_PROJECT,
-    DELETE_SUBTASK,
     DELETE_TODO,
     GET_ALL_LABELS,
     GET_TODAY_TODOS,
@@ -62,8 +62,8 @@ from app.templates.docstrings.todo_tool_docs import (
     LIST_TODOS,
     SEARCH_TODOS,
     SEMANTIC_SEARCH_TODOS,
+    UPDATE_CHECKLIST_ITEM,
     UPDATE_PROJECT,
-    UPDATE_SUBTASK,
     UPDATE_TODO,
 )
 from shared.py.wide_events import log
@@ -128,7 +128,7 @@ class TodosSummary(TypedDict):
 
 
 class TodoResult(TypedDict):
-    """A single-todo mutation result (create/update/subtask edits)."""
+    """A single-todo mutation result (create/update/checklist edits)."""
 
     todo: SerializedModel | None
     error: str | None
@@ -882,7 +882,8 @@ async def bulk_complete_todos(
         log.set(tool={"name": "bulk_complete_todos", "action": "bulk_complete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk completing todos", todo_count=len(todo_ids))
 
-        results = await bulk_complete_service(todo_ids, user_id)
+        completion = await bulk_complete_service(todo_ids, user_id)
+        results = completion.todos
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk completed todos to frontend
@@ -900,7 +901,11 @@ async def bulk_complete_todos(
         return {
             "todos": todos_data,
             "count": len(results),
-            "error": None,
+            "error": (
+                f"Not completed, still open: {', '.join(completion.failed)}"
+                if completion.failed
+                else None
+            ),
         }
 
     except Exception as e:
@@ -1003,17 +1008,17 @@ async def bulk_delete_todos(
 
 
 @tool
-@with_doc(ADD_SUBTASK)
-async def add_subtask(
+@with_doc(ADD_CHECKLIST_ITEM)
+async def add_checklist_item(
     config: RunnableConfig,
     todo_id: Annotated[str, "Parent todo ID (required)"],
-    title: Annotated[str, "Subtask title (required)"],
+    title: Annotated[str, "Checklist item title (required)"],
 ) -> TodoResult:
     user_id = get_user_id(config)
 
     try:
-        log.set(tool={"name": "add_subtask", "action": "create"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Adding subtask", todo_id=todo_id)
+        log.set(tool={"name": "add_checklist_item", "action": "create"})
+        log.info(f"{LogTag.TOOL} Todo Tool: Adding checklist item", todo_id=todo_id)
 
         todo = await get_todo_service(todo_id, user_id)
 
@@ -1024,14 +1029,14 @@ async def add_subtask(
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
-        # Stream the updated todo with subtask to frontend
+        # Stream the updated todo with its new checklist item to the frontend
         writer = get_stream_writer()
         writer(
             {
                 "todo_data": {
                     "todos": [todo_dict],
                     "action": "update",
-                    "message": f"Added subtask '{title}' to {result.title}",
+                    "message": f"Added checklist item '{title}' to {result.title}",
                 }
             }
         )
@@ -1039,9 +1044,9 @@ async def add_subtask(
         return {"todo": todo_dict, "error": None}
 
     except Exception as e:
-        error_msg = f"Error adding subtask: {e!s}"
+        error_msg = f"Error adding checklist item: {e!s}"
         log.error(
-            f"{LogTag.TOOL} Error adding subtask",
+            f"{LogTag.TOOL} Error adding checklist item",
             error_type=type(e).__name__,
             error=str(e),
             todo_id=todo_id,
@@ -1050,20 +1055,20 @@ async def add_subtask(
 
 
 @tool
-@with_doc(UPDATE_SUBTASK)
-async def update_subtask(
+@with_doc(UPDATE_CHECKLIST_ITEM)
+async def update_checklist_item(
     config: RunnableConfig,
     todo_id: Annotated[str, "Parent todo ID (required)"],
-    subtask_id: Annotated[str, "Subtask ID to update (required)"],
-    title: Annotated[str | None, "New subtask title"] = None,
-    completed: Annotated[bool | None, "Subtask completion status"] = None,
+    item_id: Annotated[str, "Checklist item ID to update (required)"],
+    title: Annotated[str | None, "New checklist item title"] = None,
+    completed: Annotated[bool | None, "Checklist item completion status"] = None,
 ) -> TodoResult:
     user_id = get_user_id(config)
 
     try:
-        log.set(tool={"name": "update_subtask", "action": "update"})
+        log.set(tool={"name": "update_checklist_item", "action": "update"})
         log.info(
-            f"{LogTag.TOOL} Todo Tool: Updating subtask", subtask_id=subtask_id, todo_id=todo_id
+            f"{LogTag.TOOL} Todo Tool: Updating checklist item", item_id=item_id, todo_id=todo_id
         )
 
         # Get the todo first
@@ -1073,7 +1078,7 @@ async def update_subtask(
         updated_subtasks = []
         subtask_found = False
         for subtask in todo.subtasks:
-            if subtask.id == subtask_id:
+            if subtask.id == item_id:
                 subtask_found = True
                 if title is not None:
                     subtask.title = title
@@ -1082,21 +1087,21 @@ async def update_subtask(
             updated_subtasks.append(subtask)
 
         if not subtask_found:
-            return {"error": f"Subtask {subtask_id} not found", "todo": None}
+            return {"error": f"Checklist item {item_id} not found", "todo": None}
 
         # Update todo with modified subtasks
         update_data = TodoUpdateRequest(subtasks=updated_subtasks)
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
-        # Stream the updated todo with modified subtask to frontend
+        # Stream the updated todo with its edited checklist item to the frontend
         writer = get_stream_writer()
         writer(
             {
                 "todo_data": {
                     "todos": [todo_dict],
                     "action": "update",
-                    "message": f"Updated subtask in {result.title}",
+                    "message": f"Updated checklist item in {result.title}",
                 }
             }
         )
@@ -1104,54 +1109,54 @@ async def update_subtask(
         return {"todo": todo_dict, "error": None}
 
     except Exception as e:
-        error_msg = f"Error updating subtask: {e!s}"
+        error_msg = f"Error updating checklist item: {e!s}"
         log.error(
-            f"{LogTag.TOOL} Error updating subtask",
+            f"{LogTag.TOOL} Error updating checklist item",
             error_type=type(e).__name__,
             error=str(e),
             todo_id=todo_id,
-            subtask_id=subtask_id,
+            item_id=item_id,
         )
         return {"error": error_msg, "todo": None}
 
 
 @tool
-@with_doc(DELETE_SUBTASK)
-async def delete_subtask(
+@with_doc(DELETE_CHECKLIST_ITEM)
+async def delete_checklist_item(
     config: RunnableConfig,
     todo_id: Annotated[str, "Parent todo ID (required)"],
-    subtask_id: Annotated[str, "Subtask ID to delete (required)"],
+    item_id: Annotated[str, "Checklist item ID to delete (required)"],
 ) -> TodoResult:
     user_id = get_user_id(config)
 
     try:
-        log.set(tool={"name": "delete_subtask", "action": "delete"})
+        log.set(tool={"name": "delete_checklist_item", "action": "delete"})
         log.info(
-            f"{LogTag.TOOL} Todo Tool: Deleting subtask", subtask_id=subtask_id, todo_id=todo_id
+            f"{LogTag.TOOL} Todo Tool: Deleting checklist item", item_id=item_id, todo_id=todo_id
         )
 
         # Get the todo first
         todo = await get_todo_service(todo_id, user_id)
 
         # Remove the subtask
-        updated_subtasks = [s for s in todo.subtasks if s.id != subtask_id]
+        updated_subtasks = [s for s in todo.subtasks if s.id != item_id]
 
         if len(updated_subtasks) == len(todo.subtasks):
-            return {"error": f"Subtask {subtask_id} not found", "todo": None}
+            return {"error": f"Checklist item {item_id} not found", "todo": None}
 
         # Update todo with remaining subtasks
         update_data = TodoUpdateRequest(subtasks=updated_subtasks)
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
-        # Stream the updated todo with removed subtask to frontend
+        # Stream the updated todo without the removed checklist item to the frontend
         writer = get_stream_writer()
         writer(
             {
                 "todo_data": {
                     "todos": [todo_dict],
                     "action": "update",
-                    "message": f"Removed subtask from {result.title}",
+                    "message": f"Removed checklist item from {result.title}",
                 }
             }
         )
@@ -1159,13 +1164,13 @@ async def delete_subtask(
         return {"todo": todo_dict, "error": None}
 
     except Exception as e:
-        error_msg = f"Error deleting subtask: {e!s}"
+        error_msg = f"Error deleting checklist item: {e!s}"
         log.error(
-            f"{LogTag.TOOL} Error deleting subtask",
+            f"{LogTag.TOOL} Error deleting checklist item",
             error_type=type(e).__name__,
             error=str(e),
             todo_id=todo_id,
-            subtask_id=subtask_id,
+            item_id=item_id,
         )
         return {"error": error_msg, "todo": None}
 
@@ -1325,8 +1330,8 @@ tools = [
     bulk_complete_todos,
     bulk_move_todos,
     bulk_delete_todos,
-    add_subtask,
-    update_subtask,
-    delete_subtask,
+    add_checklist_item,
+    update_checklist_item,
+    delete_checklist_item,
     get_todos_summary,
 ]

@@ -519,6 +519,10 @@ class TestBulkOperations:
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=5),
             ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
+            ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -544,6 +548,10 @@ class TestBulkOperations:
             patch(
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=3),
+            ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),

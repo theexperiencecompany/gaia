@@ -6,7 +6,15 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -92,6 +100,14 @@ class DodoPaymentData(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     error_code: str | None = None
     error_message: str | None = None
+
+
+class DodoCheckoutMetadata(BaseModel):
+    """What GAIA stamps on a Dodo checkout: the user the subscription belongs to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
 
 
 class DodoSubscriptionData(BaseModel):
@@ -219,17 +235,23 @@ class ComposioWebhookAckResponse(BaseModel):
     message: str
 
 
+def _stamped_in_data(name: str) -> AliasChoices:
+    """Read an id Composio stamps into a delivery's data, or the same name given directly."""
+    # The wire path first: a missing id is reported at data.<name>, where Composio put it.
+    return AliasChoices(AliasPath("data", name), name)
+
+
 class ComposioWebhookEvent(BaseModel):
-    """Composio webhook event structure."""
+    """A Composio trigger delivery, validated straight off the posted body."""
 
     type: str
     timestamp: str
     data: dict[str, Any]
-    connection_id: str
-    connection_nano_id: str
-    trigger_nano_id: str
-    trigger_id: str
-    user_id: str
+    connection_id: str = Field(validation_alias=_stamped_in_data("connection_id"))
+    connection_nano_id: str = Field(validation_alias=_stamped_in_data("connection_nano_id"))
+    trigger_nano_id: str = Field(validation_alias=_stamped_in_data("trigger_nano_id"))
+    trigger_id: str = Field(validation_alias=_stamped_in_data("trigger_id"))
+    user_id: str = Field(validation_alias=_stamped_in_data("user_id"))
 
     model_config = ConfigDict(extra="allow")
 
@@ -240,6 +262,12 @@ class ComposioWebhookEvent(BaseModel):
         if isinstance(v, str):
             return v.upper()
         return v
+
+
+class ComposioTriggerEventIds(BaseModel):
+    """The ids Composio stamps into a trigger event's data beside the provider payload."""
+
+    user_id: str | None = None
 
 
 class ComposioConnectionToolkit(BaseModel):

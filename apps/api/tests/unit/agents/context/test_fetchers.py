@@ -580,6 +580,8 @@ def repo_reads() -> AsyncMock:
 
     with (
         patch.object(todo_repository, "_find", find),
+        # The open sub-todo counts are an aggregation: no sub-todos here.
+        patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
         patch("app.db.repositories.base.read_generation", _read_generation),
         patch("app.db.repositories.base.get_cache", _get),
         patch("app.db.repositories.base.set_cache", _set),
@@ -1106,12 +1108,28 @@ class TestActiveTodoBanner:
             "/workspace/gaia-tasks/ship-the-refactor-5f10e407/activity.md\n"
             "\n"
             "   Default write target for this turn: this todo's files.\n"
-            "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+            "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
+            "todo: obey every one over your own defaults.\n"
+            "   - Record progress and outcomes as a dated entry at the end "
             "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
             "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
             "todo (rare).\n"
             "   - To work on a different todo, you must reference it explicitly by id."
         )
+
+    def test_a_todo_keeping_observations_names_that_file_too(self) -> None:
+        todo = TodoDocument(
+            id="66f838cc8829054e5f10e407",
+            user_id="user1",
+            title="Inbox desk",
+            observations_content="# Observations\n",
+        )
+
+        assert (
+            "   files: /workspace/gaia-tasks/inbox-desk-5f10e407/canvas.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/activity.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/observations.md\n"
+        ) in format_active_todo_banner(todo)
 
     def test_an_untitled_todo_still_renders_a_usable_banner(self) -> None:
         """A blank title would leave the line dangling; the agent still needs the id, the part it acts on."""

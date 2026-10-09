@@ -18,6 +18,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
+from pymongo.errors import BulkWriteError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
@@ -259,7 +260,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return doc
 
     async def _apply_update(
-        self, doc_id: str, scope: str, extra_filter: Mapping[str, object], update: TUpdate
+        self,
+        doc_id: str,
+        scope: str,
+        extra_filter: Mapping[str, object],
+        update: TUpdate,
+        *,
+        touch: bool = True,
     ) -> TDoc | None:
         set_fields = update.model_dump(exclude_unset=True)
         if not set_fields:
@@ -268,7 +275,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 why="a write that changes nothing is a bug (a typo'd or empty update)",
                 fix="set at least one field on the update model",
             )
-        if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
+        if (
+            touch
+            and self.auto_stamp_timestamps
+            and "updated_at" in self.document_model.model_fields
+        ):
             set_fields["updated_at"] = datetime.now(UTC)
         raw = await get_async_collection(self.collection_name).find_one_and_update(
             {**self._identity_filter(doc_id), **extra_filter},
@@ -330,8 +341,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """
         return get_async_collection(self.collection_name)
 
-    async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
-        raw = await get_async_collection(self.collection_name).find_one(dict(filter_))
+    async def _find_one(
+        self, filter_: Mapping[str, object], *, sort: Sequence[tuple[str, int]] | None = None
+    ) -> TDoc | None:
+        raw = await get_async_collection(self.collection_name).find_one(dict(filter_), sort=sort)
         return None if raw is None else self._to_model(raw)
 
     async def _find(
@@ -413,13 +426,21 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             operations.append(
                 UpdateOne({**self._identity_filter(doc_id), **scope_filter}, {"$set": set_fields})
             )
-        result = await get_async_collection(self.collection_name).bulk_write(operations)
+        try:
+            result = await get_async_collection(self.collection_name).bulk_write(operations)
+        except BulkWriteError:
+            # Ordered: the writes before the failing one landed, so their cache is stale too.
+            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
+            raise
         modified = result.modified_count
         if modified:
-            for doc_id, _ in updates:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
+            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
         return modified
+
+    async def _evict_many(self, scope: str, doc_ids: Sequence[str]) -> None:
+        for doc_id in doc_ids:
+            await self._cache_evict(scope, doc_id)
+        await self._invalidate(scope)
 
     async def _bulk_delete(self, doc_ids: Sequence[str], *, scope: str) -> int:
         """Delete many documents in one round trip; all ids must share scope."""
@@ -433,9 +454,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         )
         deleted = result.deleted_count
         if deleted:
-            for doc_id in doc_ids:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
+            await self._evict_many(scope, doc_ids)
         return deleted
 
     async def _apply_raw_update(

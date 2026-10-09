@@ -1,13 +1,15 @@
 """Shared test utilities for GAIA API tests."""
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
+from contextlib import asynccontextmanager, contextmanager
 import math
 import os
 import re
 import socket
+import time
 from typing import Any, ClassVar
+import zoneinfo
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -108,6 +110,30 @@ def worker_redis_url(base_url: str) -> str:
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
+
+
+@contextmanager
+def local_timezone(tz_name: str) -> Iterator[None]:
+    """Run the body with the process local timezone set, restoring it afterwards.
+
+    datetime.now reads the local zone and datetime.now(UTC) does not, so a test
+    that has to tell the two apart has to run where they differ. Asia/Kolkata
+    is UTC+5:30, so anything near midnight separates them.
+    """
+    zoneinfo.ZoneInfo(tz_name)  # fail loudly on a zone this box does not have
+    original = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = tz_name
+        if hasattr(time, "tzset"):
+            time.tzset()
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        if hasattr(time, "tzset"):
+            time.tzset()
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

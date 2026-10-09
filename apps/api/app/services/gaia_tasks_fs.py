@@ -72,6 +72,7 @@ def project_gaia_task(doc: TodoDocument) -> GaiaTaskProjection:
         "id": doc.id,
         "canvas": doc.canvas_content or "",
         "activity": doc.activity_content or "",
+        "observations": doc.observations_content or "",
         "log": doc.log_content or "",
         "meta": {
             "title": doc.title,
