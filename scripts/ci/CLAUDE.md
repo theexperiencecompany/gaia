@@ -24,7 +24,7 @@ lane without grepping the workflow first.
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `unwedge` |
 
 `runner.sh health` is the read half of the governor below: a lane stuck in
 `queued` is either a thrashing BOX or a full GitHub POOL, and the two have
