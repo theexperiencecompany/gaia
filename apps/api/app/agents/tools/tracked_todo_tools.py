@@ -179,7 +179,7 @@ async def create_tracked_todo(
     recurrence: Annotated[
         str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
-        "or a 5-field cron expression. "
+        "or a 5-field cron expression that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone: the backend handles "
         "the conversion. Just pass the cron in user-local wall-clock terms. "
         "Example: '0 9,20 * * *' fires at 9 AM and 8 PM in the user's timezone "
@@ -468,7 +468,8 @@ async def update_tracked_todo(
     ] = None,
     recurrence: Annotated[
         str | None,
-        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron. "
+        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron "
+        "that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone. "
         "Example: '0 9,20 * * *' = 9 AM and 8 PM daily in the user's tz. "
         "Set to empty string '' to clear.",

@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
+from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
-    DeactivationReason,
     IntegrationRef,
     Workflow,
     WorkflowDocument,

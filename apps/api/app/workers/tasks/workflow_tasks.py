@@ -65,6 +65,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -1439,12 +1440,11 @@ async def _skip_unpaid_fire(
     scheduler: WorkflowScheduler,
     workflow: Workflow,
     workflow_id: str,
-    trigger_type: str | None,
 ) -> str | None:
-    """Skip a fire whose owner is not paid, re-arming the next occurrence. Returns the skip reason, or None."""
+    """Skip a fire whose owner is not paid and deactivate the workflow. Returns the skip reason, or None."""
     # The single choke point for every trigger path (schedule, manual,
-    # integration) since each enqueues this same task. Only skips —
-    # deactivation belongs to the billing webhook; re-armed to resume once paid.
+    # integration) since each enqueues this same task. Deactivated with the
+    # reason the subscription-restore path resumes, so it blocks once, not every tick.
     if await is_paid(workflow.user_id):
         return None
     log.warning(
@@ -1456,7 +1456,10 @@ async def _skip_unpaid_fire(
     # raising via require_active_subscription, so the funnel can see it.
     # Explicit id: a worker has no request context for an implicit one.
     capture_paywall_block(workflow.user_id, PAYWALL_FEATURE_WORKFLOW)
-    await _rearm_quietly(scheduler, workflow, trigger_type, workflow_id)
+    # A stale job of a workflow already switched off must not overwrite why it is off:
+    # SUBSCRIPTION_LAPSED would let the next activation turn it back on.
+    if workflow.activated:
+        await scheduler.pause_for_reason(workflow, DeactivationReason.SUBSCRIPTION_LAPSED)
     return f"Workflow {workflow_id} skipped — subscription required"
 
 
@@ -1527,9 +1530,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
 
         # The paid gate runs first and short-circuits admission, so an unpaid
         # fire never claims its scheduled occurrence.
-        skipped = await _skip_unpaid_fire(
-            scheduler, workflow, workflow_id, stamp.trigger_type
-        ) or await _admit_fire(
+        skipped = await _skip_unpaid_fire(scheduler, workflow, workflow_id) or await _admit_fire(
             workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
         )
         if skipped:

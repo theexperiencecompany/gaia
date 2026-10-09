@@ -55,7 +55,7 @@ from directives import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-from wire import build_chat_completion, sse_lines
+from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
 
@@ -125,12 +125,13 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
 
+    request_tokens = prompt_tokens(parsed.messages)
     if parsed.stream:
         return StreamingResponse(
-            sse_lines(parsed.model, response),
+            sse_lines(parsed.model, response, request_tokens),
             media_type="text/event-stream",
         )
-    return JSONResponse(content=build_chat_completion(parsed.model, response))
+    return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)

@@ -19,16 +19,20 @@ WEBHOOK_ROW_WAIT_MAX = timedelta(hours=1)
 
 
 class SubscriptionWorkflowSync(StrEnum):
-    """Which way a billing change moves the user's workflows.
+    """Which way a billing change moves the user's automation.
 
-    Here rather than beside the two service functions it selects between: the
-    webhook reducer names a direction when it queues the retry, and importing it
-    from the workflow stack would recreate the cycle that stack is already
-    deferred around.
+    RESUME_PAUSED resumes the reminders and tracked todos the paywall paused; the
+    other two move workflows.
+
+        Here rather than beside the two service functions it selects between: the
+        webhook reducer names a direction when it queues the retry, and importing it
+        from the workflow stack would recreate the cycle that stack is already
+        deferred around.
     """
 
     PAUSE = "pause"
     RESUME = "resume"
+    RESUME_PAUSED = "resume_paused"
 
 
 #: The ARQ task that reapplies a billing change's workflow pause/resume when the

@@ -21,6 +21,7 @@ from app.constants.todos import (
     TodoActivityEvent,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -50,6 +51,7 @@ from app.services.tracked_todo_service import (
 )
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.occurrence import occurrence_stamp
+from tests.helpers import captured_wide_event
 
 _MOD = "app.services.tracked_todo_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -1211,3 +1213,142 @@ class TestMigrateLegacyCanvas:
             )
 
         write.assert_awaited_once()
+
+
+class TestResumePausedFor:
+    @pytest.fixture(autouse=True)
+    def _held_events(self, fake_redis):
+        """Back the held-event replay with real list semantics; nothing is held unless a test holds it."""
+        return fake_redis
+
+    async def test_one_todo_that_cannot_resume_does_not_strand_the_rest(self, mock_repo):
+        stuck = _todo_doc(pause_reason="subscription_lapsed")
+        fine = _todo_doc(id="todo-2", pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[stuck, fine])
+        mock_repo.update = AsyncMock(side_effect=[ConnectionError("mongo blip"), None])
+
+        with (
+            patch(f"{_MOD}.log") as log,
+            pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
+        ):
+            await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert [c.args[0] for c in mock_repo.update.call_args_list] == [TODO_ID, "todo-2"]
+        log.warning.assert_called_once_with(
+            "tracked_todo.resume_failed",
+            todo_id=TODO_ID,
+            user_id=USER_ID,
+            error="mongo blip",
+            error_type="ConnectionError",
+        )
+        log.set.assert_called_once_with(
+            tracked_todos_resumed=1, tracked_todos_resume_reason="subscription_lapsed"
+        )
+
+    async def test_activation_clears_the_pause_and_fires_a_missed_run_now(self, mock_repo):
+        missed = datetime.now(UTC) - timedelta(hours=3)
+        paused = _todo_doc(pause_reason="subscription_lapsed", scheduled_at=missed)
+        unscheduled = _todo_doc(id="todo-2", pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused, unscheduled])
+        schedule = AsyncMock(return_value=True)
+        before = datetime.now(UTC)
+        with patch.object(TrackedTodoService, "schedule_execution", schedule):
+            async with captured_wide_event() as wide:
+                resumed = await tracked_todo_service.resume_paused_for(
+                    USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+                )
+
+        assert resumed == 2
+        assert (wide["tracked_todos_resumed"], wide["tracked_todos_resume_reason"]) == (
+            2,
+            "subscription_lapsed",
+        )
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            (("todo-2",), USER_ID),
+        ]
+        mock_repo.find_paused_for_reason.assert_awaited_once_with(
+            USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        cleared = [
+            c.kwargs["update"].model_dump(exclude_unset=True)
+            for c in mock_repo.update.call_args_list
+        ]
+        assert cleared == [{"pause_reason": None}, {"pause_reason": None}]
+        ((args, kwargs),) = [(c.args, c.kwargs) for c in schedule.await_args_list]
+        assert args == (TODO_ID, missed)
+        assert kwargs["defer_until"] >= before
+
+    async def test_activation_replays_the_trigger_events_held_while_paused(self, mock_repo):
+        paused = _todo_doc(pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused])
+        with patch(
+            f"{_MOD}.release_trigger_events_held_while_paused", AsyncMock(return_value=2)
+        ) as release:
+            resumed = await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert resumed == 1
+        release.assert_awaited_once_with(TODO_ID)
+
+    async def test_held_events_that_cannot_replay_keep_the_todo_paused_for_the_retry(
+        self, mock_repo
+    ):
+        paused = _todo_doc(pause_reason="subscription_lapsed")
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused])
+        with (
+            patch(
+                f"{_MOD}.release_trigger_events_held_while_paused",
+                AsyncMock(side_effect=ConnectionError("arq down")),
+            ),
+            pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
+        ):
+            await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        writes = [
+            c.kwargs["update"].model_dump(exclude_unset=True)
+            for c in mock_repo.update.call_args_list
+        ]
+        assert writes == [
+            {"pause_reason": None},
+            {"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED},
+        ]
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            ((TODO_ID,), USER_ID),
+        ]
+
+    async def test_a_run_that_cannot_be_enqueued_stays_paused_for_the_retry(self, mock_repo):
+        paused = _todo_doc(
+            pause_reason="subscription_lapsed", scheduled_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused])
+        with (
+            patch.object(
+                TrackedTodoService,
+                "schedule_execution",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
+            pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
+        ):
+            await tracked_todo_service.resume_paused_for(
+                USER_ID, DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        writes = [
+            c.kwargs["update"].model_dump(exclude_unset=True)
+            for c in mock_repo.update.call_args_list
+        ]
+        assert writes == [
+            {"pause_reason": None},
+            {"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED},
+        ]
+        assert [(c.args, c.kwargs["user_id"]) for c in mock_repo.update.call_args_list] == [
+            ((TODO_ID,), USER_ID),
+            ((TODO_ID,), USER_ID),
+        ]
