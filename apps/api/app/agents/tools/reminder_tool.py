@@ -2,14 +2,14 @@
 
 from datetime import datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.reminder_models import (
     AgentType,
     CreateReminderToolRequest,
@@ -26,6 +26,7 @@ from app.templates.docstrings.reminder_tool_docs import (
     SEARCH_REMINDERS,
     UPDATE_REMINDER,
 )
+from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
@@ -42,7 +43,10 @@ async def create_reminder_tool(
     agent: Annotated[
         AgentType, "The agent type creating the reminder (static only)"
     ] = AgentType.STATIC,
-    repeat: Annotated[str | None, "Cron expression for recurring reminders"] = None,
+    repeat: Annotated[
+        str | None,
+        "5-field cron (minute hour day month weekday) for recurring reminders; fires at most once an hour",
+    ] = None,
     delay_seconds: Annotated[
         int | None,
         "Relative delay from NOW in seconds for 'in N minutes/hours/seconds' "
@@ -76,10 +80,12 @@ async def create_reminder_tool(
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id")
+        configurable = read_agent_configurable(config)
+        user_id = configurable.user_id
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
+        if repeat is not None:
+            validate_recurring_schedule(repeat)
 
         # Create the tool request model which handles all validation and conversion
         tool_request = CreateReminderToolRequest(
@@ -98,7 +104,7 @@ async def create_reminder_tool(
             home_timezone=home_timezone_from_config(config).value,
             # The chat this reminder was created in — delivered back into it when
             # it fires. None for a non-chat root (e.g. a REST/UI-created reminder).
-            source_conversation_id=configurable.get("conversation_id"),
+            source_conversation_id=configurable.conversation_id,
         )
 
         request_model = tool_request.to_create_reminder_request()
@@ -107,6 +113,9 @@ async def create_reminder_tool(
 
         return "Reminder created successfully"
 
+    except InvalidScheduleError as e:
+        log.warning(f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=e.reason.value)
+        return e.as_tool_error()
     except ValueError as e:
         log.error(f"{LogTag.TOOL} Validation error", error_type=type(e).__name__)
         return {"error": str(e)}
@@ -124,11 +133,11 @@ async def list_user_reminders_tool(
         ReminderStatus | None,
         "Filter by reminder status (scheduled, completed, cancelled, paused)",
     ] = None,
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """List user reminders tool function."""
     try:
         log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to list reminders"}
 
@@ -150,11 +159,11 @@ async def list_user_reminders_tool(
 async def get_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder"],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Get full details of a specific reminder by ID"""
     try:
         log.set(tool={"name": "get_reminder_tool", "action": "get"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to get reminder"}
 
@@ -178,7 +187,7 @@ async def delete_reminder_tool(
     """Cancel a scheduled reminder by ID"""
     try:
         log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to delete reminder"}
@@ -192,6 +201,17 @@ async def delete_reminder_tool(
         return {"error": str(e)}
 
 
+def _parse_tool_stop_after(stop_after: str, offset: str | None) -> datetime:
+    """Parse the agent's stop_after; it stays naive unless the user named an offset."""
+    try:
+        parsed = datetime.fromisoformat(stop_after)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
+        ) from e
+    return parsed.replace(tzinfo=Timezone.parse(offset).tzinfo) if offset else parsed
+
+
 # Define update_reminder_tool
 @tool(parse_docstring=True)
 @with_rate_limiting("reminder_operations")
@@ -199,7 +219,10 @@ async def delete_reminder_tool(
 async def update_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder to update"],
-    repeat: Annotated[str | None, "Cron expression for recurring reminders (optional)"] = None,
+    repeat: Annotated[
+        str | None,
+        "5-field cron (minute hour day month weekday) for recurring reminders; fires at most once an hour (optional)",
+    ] = None,
     max_occurrences: Annotated[
         int | None, "Maximum number of times to run the reminder (optional)"
     ] = None,
@@ -212,13 +235,13 @@ async def update_reminder_tool(
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
     payload: Annotated[
-        dict[str, Any] | None, "Additional data for the reminder task (optional)"
+        dict[str, object] | None, "Additional data for the reminder task (optional)"
     ] = None,
 ) -> dict[str, str]:
     """Update attributes of an existing reminder"""
     try:
         log.set(tool={"name": "update_reminder_tool", "action": "update"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID is required to update reminder"}
 
@@ -227,34 +250,11 @@ async def update_reminder_tool(
         # avoid nulling fields this update never mentions.
         update = ReminderUpdate()
         if repeat is not None:
-            update.repeat = repeat
+            update.repeat = validate_recurring_schedule(repeat)
         if max_occurrences is not None:
             update.max_occurrences = max_occurrences
         if stop_after:
-            try:
-                # Parse the datetime string
-                dt = datetime.fromisoformat(stop_after.replace(" ", "T"))
-
-                # Handle timezone based on the rules
-                if stop_after_timezone_offset:
-                    # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = dt.replace(
-                        tzinfo=Timezone.parse(stop_after_timezone_offset).tzinfo
-                    )
-                else:
-                    # Absolute time with no timezone - no timezone info
-                    processed_stop_after = dt
-
-                update.stop_after = processed_stop_after
-            except ValueError as e:
-                log.error(
-                    f"{LogTag.TOOL} Invalid stop_after format",
-                    stop_after=stop_after,
-                    error_type=type(e).__name__,
-                )
-                return {
-                    "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
-                }
+            update.stop_after = _parse_tool_stop_after(stop_after, stop_after_timezone_offset)
         if payload is not None:
             update.payload = StaticReminderPayload.model_validate(payload)
 
@@ -263,6 +263,9 @@ async def update_reminder_tool(
             return {"status": "updated"}
         log.error(f"{LogTag.TOOL} Failed to update reminder")
         return {"error": "Failed to update reminder"}
+    except InvalidScheduleError as e:
+        log.warning(f"{LogTag.TOOL} Reminder schedule refused", schedule_rejection=e.reason.value)
+        return e.as_tool_error()
     except Exception as e:
         log.exception(f"{LogTag.TOOL} Exception occurred while updating reminder")
         return {"error": str(e)}
@@ -275,18 +278,18 @@ async def update_reminder_tool(
 async def search_reminders_tool(
     config: RunnableConfig,
     query: Annotated[str, "Search keyword(s) to match against reminders"],
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """Search reminders by keyword or content"""
     try:
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
-        user_id = agent_configurable(config).get("user_id")
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to search reminders"}
 
         reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         for r in reminders:
             # mode="json" ISO-formats datetimes — a python-mode dump keeps native
             # datetime objects that stdlib json.dumps cannot encode (#917).

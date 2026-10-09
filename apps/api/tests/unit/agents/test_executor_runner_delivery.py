@@ -663,6 +663,7 @@ class TestRunLifecycleAnalytics:
         *,
         task_id: str | None = "task-1",
         user_id: str | None = "user-1",
+        error_type: str | None = None,
     ):
         from app.agents.core.background.executor_runner import _ExecutorResult
 
@@ -676,12 +677,12 @@ class TestRunLifecycleAnalytics:
             user_message_id=None,
         )
         with (
-            patch("app.agents.core.background.executor_runner.capture_event") as mock_capture,
+            patch("app.services.analytics_service.capture_event") as mock_capture,
             patch.object(
                 er,
                 "_execute_executor",
                 new_callable=AsyncMock,
-                return_value=_ExecutorResult(result_text, result_type),
+                return_value=_ExecutorResult(result_text, result_type, error_type=error_type),
             ),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):
@@ -715,9 +716,17 @@ class TestRunLifecycleAnalytics:
         assert terminal_props["task_id"] == "task-1"
         assert terminal_props["queued"] is False
         assert terminal_props["executor_active_ms"] >= 0.0
+        # A resumed segment re-enters with the same task, so the terminal is keyed on it.
+        assert "dedupe_key" not in mock_capture.call_args_list[0].kwargs
+        assert mock_capture.call_args_list[1].kwargs["dedupe_key"] == "task-1"
+
+    async def test_a_run_without_a_task_keys_its_terminal_on_the_stream(self) -> None:
+        mock_capture = await self._run_lifecycle("done", "final", task_id=None)
+
+        assert mock_capture.call_args_list[1].kwargs["dedupe_key"] == "stream-1"
 
     async def test_failed_on_error_result(self) -> None:
-        mock_capture = await self._run_lifecycle("it broke", "error")
+        mock_capture = await self._run_lifecycle("it broke", "error", error_type="RuntimeError")
 
         events = [c.args[1] for c in mock_capture.call_args_list]
         assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
@@ -727,6 +736,7 @@ class TestRunLifecycleAnalytics:
         assert terminal_props["task_id"] == "task-1"
         assert terminal_props["queued"] is False
         assert terminal_props["executor_active_ms"] >= 0.0
+        assert terminal_props["reason"] == "RuntimeError"
 
     async def test_a_run_with_no_user_id_captures_nothing(self) -> None:
         """run.user with no id must produce no events at all — the guard relies on a "" default staying falsy."""
@@ -2208,7 +2218,7 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
             user_message_id=None,
         )
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture_event"),
             patch.object(
                 er,
                 "_execute_executor",
@@ -2263,7 +2273,7 @@ class TestRunBoundaryCarriesWorkflowExecution:
             return _ExecutorResult("done", "final")
 
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture_event"),
             patch.object(er, "_execute_executor", side_effect=capture),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):
@@ -2302,7 +2312,7 @@ class TestRunBoundaryCarriesWorkflowExecution:
             return _ExecutorResult("done", "final")
 
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture_event"),
             patch.object(er, "_execute_executor", side_effect=capture),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):

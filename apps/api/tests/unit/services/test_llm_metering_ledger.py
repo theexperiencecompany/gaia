@@ -10,9 +10,10 @@ turn.
 
 import asyncio
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 from langchain_core.messages import AIMessage
 from openrouter.errors import (
@@ -21,12 +22,14 @@ from openrouter.errors import (
     ServiceUnavailableResponseError,
     TooManyRequestsResponseError,
 )
+from pydantic import ValidationError
 import pytest
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services import llm_metering
+from app.services.analytics_service import AnalyticsEvents
 from app.services.llm_metering import (
     LLMCallContext,
     TokenUsage,
@@ -625,6 +628,7 @@ async def test_a_failed_call_emits_a_wide_event_like_any_other_call() -> None:
     assert fields["llm_event"] == "llm_call"
     assert fields["status"] == "error"
     assert fields["error_family"] == "timeout"
+    assert fields["error_type"] == "TimeoutError"
     assert fields["agent_name"] == "executor_agent"
     assert fields["model"] == "deepseek/deepseek-v4-flash"
     assert fields["user_id"] == "u1"
@@ -645,3 +649,145 @@ async def test_the_failure_event_books_no_spend() -> None:
     fields = emitted.call_args.kwargs
     assert fields["cost_usd"] == 0.0
     assert (fields["input_tokens"], fields["output_tokens"]) == (0, 0)
+
+
+# --- a success row with no usage --------------------------------------------- #
+# 2,492 prod rows in 30 days were status ok, model_served unknown, 0 tokens, $0:
+# a budget-stopped turn metered as if a model had answered it.
+
+_NO_USAGE = TokenUsage(input_tokens=0, output_tokens=0, cached_tokens=0, reasoning_tokens=0)
+
+
+@pytest.mark.regression
+def test_the_ledger_refuses_a_success_row_that_carries_no_usage_and_no_cost() -> None:
+    with pytest.raises(ValidationError, match="no tokens and no cost"):
+        LLMCallDocument(
+            created_at=datetime.now(UTC),
+            agent_name="comms_agent",
+            background=False,
+            charge_to_budget=True,
+            model_requested="gpt-5.6-luna",
+            cost_source="table",
+            status="ok",
+        )
+
+
+@pytest.mark.regression
+async def test_a_call_that_reports_no_usage_is_recorded_as_a_loud_error() -> None:
+    """Its cost is lost, so it must count as a failure on the ledger and in the error log, never as a free success."""
+    with patch.object(llm_metering.log, "error") as errored:
+        doc = await _record(usage=_NO_USAGE, provider_cost=None)
+
+    assert doc.status == "error"
+    assert doc.error_family == "no_usage"
+    assert (doc.user_id, doc.model_requested) == ("u1", "deepseek/deepseek-v4-flash")
+    assert (doc.cost_usd, doc.input_tokens, doc.output_tokens) == (0.0, 0, 0)
+    errored.assert_called_once_with(
+        f"{LogTag.AGENT} model call reported no token usage and no cost — "
+        "its spend is unknown and recorded as a no_usage error",
+        agent_name="executor_agent",
+        model="deepseek/deepseek-v4-flash",
+        model_served="deepseek/deepseek-v4",
+    )
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        TokenUsage(input_tokens=1200, output_tokens=0, cached_tokens=0, reasoning_tokens=0),
+        TokenUsage(input_tokens=0, output_tokens=90, cached_tokens=0, reasoning_tokens=0),
+    ],
+    ids=["input-only", "output-only"],
+)
+async def test_either_token_count_alone_is_metered_as_a_success(usage: TokenUsage) -> None:
+    doc = await _record(usage=usage, provider_cost=None)
+
+    assert doc.status == "ok"
+
+
+async def test_a_call_with_no_usage_is_never_charged_to_the_user() -> None:
+    with (
+        patch(
+            "app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock
+        ) as charged,
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
+    ):
+        cost = await record_llm_call(
+            user_id="u1",
+            model_name="gpt-5.6-luna",
+            usage=_NO_USAGE,
+            provider_cost=None,
+            context=CONTEXT,
+        )
+        await _drain()
+
+    assert cost == 0.0
+    charged.assert_not_awaited()
+
+
+async def test_a_reported_cost_is_metered_even_when_the_token_counts_are_missing() -> None:
+    """The provider's own bill is real spend; dropping it for want of token counts would lose money, not a placeholder."""
+    doc = await _record(usage=_NO_USAGE, provider_cost=0.002)
+
+    assert doc.status == "ok"
+    assert doc.cost_usd == 0.002
+
+
+# --- the analytics mirror ----------------------------------------------------- #
+# PostHog gets one ai:llm_call_completed per ledger row, built from the stored row.
+
+VALID_USER = "6a40d2f0c1b2a3d4e5f60718"
+
+
+async def _mirror(
+    *, user_id: str | None = VALID_USER, create: AsyncMock | None = None
+) -> MagicMock:
+    """Record one call and return the PostHog client it reported to."""
+    posthog = MagicMock()
+    ledger = create or AsyncMock(side_effect=lambda doc: doc.model_copy(update={"id": "row-7"}))
+    with (
+        patch("app.services.analytics_service._get_posthog_client", return_value=posthog),
+        patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
+        patch.object(llm_metering.llm_calls_repository, "create", ledger),
+    ):
+        await record_llm_call(
+            user_id=user_id,
+            model_name="deepseek/deepseek-v4-flash",
+            usage=USAGE,
+            provider_cost=0.0037,
+            context=CONTEXT,
+        )
+        await _drain()
+    return posthog
+
+
+async def test_every_ledger_row_is_mirrored_by_one_event_keyed_by_the_row() -> None:
+    """Keyed by the row id, so a replayed emit collapses while two real calls never do."""
+    posthog = await _mirror()
+
+    posthog.capture.assert_called_once()
+    call = posthog.capture.call_args.kwargs
+    assert call["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+    assert call["distinct_id"] == VALID_USER
+    assert call["uuid"] == str(
+        uuid5(NAMESPACE_URL, f"{AnalyticsEvents.AI_LLM_CALL_COMPLETED}:{VALID_USER}:row-7")
+    )
+    assert call["properties"]["cost_usd"] == 0.0037
+
+
+async def test_a_row_the_ledger_never_stored_is_not_reported() -> None:
+    """PostHog mirrors the ledger, so an event for a row Mongo refused would be spend with no record behind it."""
+    posthog = await _mirror(create=AsyncMock(side_effect=RuntimeError("mongo is down")))
+
+    posthog.capture.assert_not_called()
+
+
+@pytest.mark.parametrize("user_id", [None, "system", "not-an-object-id"])
+async def test_a_row_with_no_real_user_is_logged_not_sent_to_posthog(user_id: str | None) -> None:
+    """A non-user distinct_id becomes a ghost person whose spend joins no funnel."""
+    with patch("app.services.llm_usage_analytics.log") as mock_log:
+        posthog = await _mirror(user_id=user_id)
+
+    posthog.capture.assert_not_called()
+    mock_log.warning.assert_called_once()
+    assert mock_log.warning.call_args.kwargs["user_id"] == user_id

@@ -30,7 +30,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
-from app.models.workflow_models import DeactivationReason
+from app.models.scheduler_models import DeactivationReason
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,

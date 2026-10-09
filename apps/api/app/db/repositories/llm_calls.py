@@ -18,7 +18,7 @@ from datetime import datetime
 import re
 from typing import Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo import UpdateOne
 
 from app.constants.general import EXECUTOR_THREAD_PREFIX, SPAWN_THREAD_PREFIX
@@ -26,10 +26,11 @@ from app.db.repositories.base import MongoDocument, MongoRepository
 
 CostSource = Literal["provider", "table"]
 CallStatus = Literal["ok", "error"]
-#: Short, stable classification of WHY a provider call failed. Derived from
-#: the exception type, never from its message — messages change without
-#: warning and would fragment a dashboard into near-duplicates.
-ErrorFamily = Literal["rate_limit", "timeout", "provider_unavailable", "invalid_request", "other"]
+#: Why a call failed: from the exception type, never its (unstable) message.
+#: "no_usage" is a reply that reported no tokens and no cost, so its spend is unknown.
+ErrorFamily = Literal[
+    "rate_limit", "timeout", "provider_unavailable", "invalid_request", "no_usage", "other"
+]
 
 # EXECUTOR_THREAD_PREFIX puts the conversation uuid at the TAIL, SPAWN_THREAD_PREFIX
 # in the MIDDLE (it appends a tool-call id) — hence separate regexes; the executor
@@ -63,6 +64,11 @@ def split_lane_thread(thread_id: str | None) -> LaneThread:
         if match is not None:
             return LaneThread(match.group("conversation_id"), thread_id)
     return LaneThread(thread_id, None)
+
+
+def carries_usage(input_tokens: int, output_tokens: int, cost_usd: float | None) -> bool:
+    """Whether a call reported anything it could be priced from."""
+    return bool(input_tokens or output_tokens or cost_usd)
 
 
 class LLMCallDocument(MongoDocument):
@@ -153,6 +159,15 @@ class LLMCallDocument(MongoDocument):
     #: than written live; their costs are re-derived and context ids are only
     #: as good as the log line, so precision-sensitive analysis can exclude them.
     backfilled: bool = False
+
+    @model_validator(mode="after")
+    def _a_success_carries_usage(self) -> "LLMCallDocument":
+        """Refuse an ok row with no tokens and no cost: it would book a lost cost as a free call."""
+        if self.status == "ok" and not carries_usage(
+            self.input_tokens, self.output_tokens, self.cost_usd
+        ):
+            raise ValueError("an ok llm_calls row carries no tokens and no cost")
+        return self
 
 
 class LLMCallUpdate(BaseModel):
