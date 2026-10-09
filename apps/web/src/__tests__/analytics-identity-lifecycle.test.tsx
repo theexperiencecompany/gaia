@@ -10,7 +10,7 @@
 
 import { ApiError } from "@shared/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { InternalAxiosRequestConfig } from "axios";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,7 +65,7 @@ function renderFetchUser(cachedUser: typeof SIGNED_IN_USER | null) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  renderHook(() => useFetchUser(), { wrapper });
+  return renderHook(() => useFetchUser(), { wrapper });
 }
 
 beforeEach(() => {
@@ -105,6 +105,24 @@ describe("useFetchUser identity reset", () => {
     expect(posthogMock.identify.mock.invocationCallOrder[0]).toBeLessThan(
       posthogMock.reset.mock.invocationCallOrder[0],
     );
+  });
+
+  it("resets once on a 401 that follows a 5xx on the refetch", async () => {
+    fetchUserInfo
+      .mockRejectedValueOnce(new ApiError("down", 503))
+      .mockRejectedValue(new ApiError("expired", 401));
+    posthogMock._isIdentified.mockReturnValue(true);
+
+    const { rerender } = renderFetchUser(SIGNED_IN_USER);
+    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    // The next render re-reads the cleared query, so /me is asked again.
+    rerender();
+    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(2));
+    await act(async () => undefined);
+    posthogMock.__loaded = true;
+    flushPendingAnalytics();
+
+    expect(posthogMock.reset).toHaveBeenCalledTimes(1);
   });
 
   it("does not reset an anonymous visitor's 401", async () => {
