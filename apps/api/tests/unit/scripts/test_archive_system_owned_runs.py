@@ -93,7 +93,8 @@ def seams() -> Iterator[_Seams]:
 
 class TestTheReport:
     async def test_a_dry_run_writes_nothing(self, seams: _Seams) -> None:
-        todos, workflows, others = await run(apply=False)
+        report = await run(apply=False)
+        todos, workflows, others = report.todos, report.workflows, report.others
 
         assert [state.id for state in todos if state.found] == list(SYSTEM_OWNED_TODO_IDS)
         assert [state.id for state in workflows if state.found] == list(SYSTEM_OWNED_WORKFLOW_IDS)
@@ -195,7 +196,34 @@ class TestApply:
             side_effect=lambda wf_id, user_id: _workflow(wf_id, activated=wf_id not in deactivated)
         )
 
-        todos, workflows, _ = await run(apply=True)
+        report = await run(apply=True)
+        todos, workflows = report.todos, report.workflows
 
         assert [state.id for state in todos if not state.archived] == [stuck_todo]
         assert [state.id for state in workflows if not state.archived] == [stuck_workflow]
+
+    async def test_one_failed_target_does_not_stop_the_rest_and_is_reported(
+        self, seams: _Seams
+    ) -> None:
+        broken = SYSTEM_OWNED_TODO_IDS[0]
+        completed: set[str] = set()
+
+        async def complete(todo_id: str, user_id: str, summary: str) -> bool:
+            if todo_id == broken:
+                raise ConnectionError("mongo blip")
+            completed.add(todo_id)
+            return True
+
+        seams.complete.side_effect = complete
+        seams.todos.get = AsyncMock(
+            side_effect=lambda todo_id, user_id: _todo(todo_id, completed=todo_id in completed)
+        )
+
+        report = await run(apply=True)
+
+        assert completed == set(SYSTEM_OWNED_TODO_IDS[1:])
+        assert len(seams.deactivate.await_args_list) == len(SYSTEM_OWNED_WORKFLOW_IDS)
+        assert [state.id for state in report.todos if not state.archived] == [broken]
+        assert [(target, str(error)) for target, error in report.failures] == [
+            (broken, "mongo blip")
+        ]

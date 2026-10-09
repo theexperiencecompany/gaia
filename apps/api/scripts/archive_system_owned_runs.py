@@ -16,9 +16,11 @@ Run from the api directory (or /app inside the container):
 
 import argparse
 import asyncio
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 import sys
+import traceback
 
 from bson import ObjectId
 
@@ -91,6 +93,16 @@ class TargetState:
     detail: str
 
 
+@dataclass(frozen=True)
+class ArchiveReport:
+    """The targets as read back, the other system rows, and every target that failed to archive."""
+
+    todos: list[TargetState]
+    workflows: list[TargetState]
+    others: dict[str, int]
+    failures: list[tuple[str, Exception]] = field(default_factory=list)
+
+
 async def _todo_states() -> list[TargetState]:
     states = []
     for todo_id in SYSTEM_OWNED_TODO_IDS:
@@ -152,23 +164,36 @@ async def other_system_rows() -> dict[str, int]:
     return counts
 
 
-async def run(*, apply: bool) -> tuple[list[TargetState], list[TargetState], dict[str, int]]:
+async def _archive_live(
+    states: list[TargetState], archive: Callable[[str], Awaitable[None]]
+) -> list[tuple[str, Exception]]:
+    """Archive every live target; one that fails is recorded and the rest still run."""
+    failures: list[tuple[str, Exception]] = []
+    for state in states:
+        if not state.found or state.archived:
+            continue
+        try:
+            await archive(state.id)
+        except Exception as e:  # reported after the read-back; the other targets must still run
+            traceback.print_exc()
+            failures.append((state.id, e))
+    return failures
+
+
+async def run(*, apply: bool) -> ArchiveReport:
     """Report the targets, archive the live ones when apply is set, then count the rest.
 
     After apply the targets are read back, so the report shows what was written.
     """
     todos = await _todo_states()
     workflows = await _workflow_states()
+    failures: list[tuple[str, Exception]] = []
     if apply:
-        for state in todos:
-            if state.found and not state.archived:
-                await _archive_todo(state.id)
-        for state in workflows:
-            if state.found and not state.archived:
-                await _archive_workflow(state.id)
+        failures = await _archive_live(todos, _archive_todo)
+        failures += await _archive_live(workflows, _archive_workflow)
         todos = await _todo_states()
         workflows = await _workflow_states()
-    return todos, workflows, await other_system_rows()
+    return ArchiveReport(todos, workflows, await other_system_rows(), failures)
 
 
 def _status(state: TargetState) -> str:
@@ -206,8 +231,13 @@ async def main() -> None:
         "--apply", action="store_true", help="archive the targets (default: report)"
     )
     args = parser.parse_args()
-    todos, workflows, others = await run(apply=args.apply)
-    _render(todos, workflows, others, apply=args.apply)
+    report = await run(apply=args.apply)
+    _render(report.todos, report.workflows, report.others, apply=args.apply)
+    if report.failures:
+        raise ExceptionGroup(
+            f"{len(report.failures)} target(s) could not be archived",
+            [error for _, error in report.failures],
+        )
     if not args.apply:
         print("\nRe-run with --apply to archive them.")
 
