@@ -18,11 +18,11 @@ from app.constants.search import (
 )
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import get_user_id
 from app.templates.docstrings.research_tool_docs import (
     DEEP_RESEARCH,
     RESEARCH_INSTRUCTIONS,
 )
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.crawl4ai_utils import CrawlBatchParams, batch_fetch_with_crawl4ai
 from app.utils.research_utils import (
     RankedUrl,
@@ -209,9 +209,7 @@ async def deep_research(
     # payload, and a LangChain tool serializes a dict (not a model) as JSON.
     log.set(tool={"name": "deep_research", "action": "research"})
     focus_areas = focus_areas or []
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return {"error": "User authentication required", "data": None}
+    get_user_id(config)  # a run that names no user is refused before any fetch
 
     writer = get_stream_writer()
     start_time = time.time()

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
@@ -279,22 +279,35 @@ def run_analytics_context(configurable: AgentConfigurable) -> AnalyticsContext:
     return stamped or current_analytics_context().acting_as(Actor.AGENT)
 
 
-class RunMetadataView(BaseModel):
-    """The GAIA-owned keys of a run's metadata, which build_agent_config stamps beside configurable."""
+class RunMetadata(BaseModel):
+    """The GAIA keys of a run config's metadata; user_id names the caller."""
 
     model_config = ConfigDict(extra="ignore")
 
     user_id: str | None = None
+    conversation_id: str | None = None
 
 
-class _RunConfigView(BaseModel):
-    """A run's RunnableConfig, read only for its metadata."""
+class _RunConfigMetadataView(BaseModel):
+    """The metadata half of a run config, parsed once."""
 
     model_config = ConfigDict(extra="ignore")
 
-    metadata: RunMetadataView = Field(default_factory=RunMetadataView)
+    metadata: RunMetadata | None = None
 
 
-def read_run_metadata(config: object) -> RunMetadataView:
-    """Return a run's metadata, parsed into RunMetadataView; empty when there is no config."""
-    return _RunConfigView.model_validate(config or {}).metadata
+def read_run_metadata(config: AgentRunConfig | None) -> RunMetadata:
+    """Return a run config's metadata, parsed; empty when the config carries none."""
+    return _RunConfigMetadataView.model_validate(config or {}).metadata or RunMetadata()
+
+
+class RunUserMissingError(ValueError):
+    """Raised when a run config names no user: build_agent_config always sets one, so it is a wiring bug."""
+
+
+def get_user_id(config: AgentRunConfig | None) -> str:
+    """Return the user a run acts for, from configurable then metadata; RunUserMissingError when neither names one."""
+    user_id = read_agent_configurable(config).user_id or read_run_metadata(config).user_id
+    if not user_id:
+        raise RunUserMissingError("user_id not found in RunnableConfig")
+    return user_id

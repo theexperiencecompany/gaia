@@ -62,8 +62,8 @@ from app.workers.tasks.workflow_tasks import (
     REPLAY_SUMMARY,
     SHORTCUT_DISCARDED_SUMMARY,
     _fallback_note,
+    _in_run_timezone,
     _notify_replay_finished,
-    _resolve_workflow_user,
     execute_workflow_by_id,
 )
 
@@ -1290,7 +1290,7 @@ class _LockedReplayHarness(_Harness):
             ),
             patch(f"{MODULE}.run_playbook", self.run_playbook),
             patch(f"{MODULE}.notification_service.create_notification", self.notify),
-            patch(f"{MODULE}.load_user_context", self.get_user),
+            patch(f"{MODULE}.require_owner", self.get_user),
         ]
 
     def acquired_task_id(self) -> str:
@@ -2271,14 +2271,8 @@ class TestTheZoneAWorkflowRunsIn:
     ) -> None:
         workflow = _workflow()
         log_seam = MagicMock()
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id=USER_ID)),
-            ),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
+        with patch(f"{MODULE}.log", log_seam):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
         log_seam.warning.assert_any_call(
@@ -2286,30 +2280,6 @@ class TestTheZoneAWorkflowRunsIn:
             "no real user/schedule timezone",
             workflow_id="wf_1",
             user_id=USER_ID,
-        )
-
-    async def test_a_profile_lookup_failure_leaves_the_run_with_only_its_user_id(
-        self,
-    ) -> None:
-        workflow = _workflow()
-        log_seam = MagicMock()
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(side_effect=ConnectionError("mongo away")),
-            ),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
-
-        assert resolved.user_id == USER_ID
-        assert resolved.timezone is None
-        log_seam.warning.assert_any_call(
-            f"{LogTag.WORKER} Could not resolve workflow timezone",
-            user_id=USER_ID,
-            workflow_id="wf_1",
-            error_type="ConnectionError",
-            error="mongo away",
         )
 
 
@@ -2389,44 +2359,28 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
     async def test_a_blank_profile_runs_in_the_schedules_own_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id=USER_ID)),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_plain_utc_profile_still_defers_to_the_schedules_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id=USER_ID, timezone="UTC")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="UTC")
+            )
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_real_profile_zone_wins_over_the_schedules(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(
-                    return_value=AuthenticatedUser(user_id=USER_ID, timezone="Europe/Lisbon")
-                ),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="Europe/Lisbon")
+            )
 
         assert resolved.timezone == Timezone.parse("Europe/Lisbon").value
 
@@ -2434,14 +2388,8 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         """A stored "   " must read as "never picked one", not as a name to parse."""
         workflow = _workflow()
         workflow.trigger_config.timezone = "   "
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id=USER_ID)),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, USER_ID)
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
 

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 from langchain_core.messages import AnyMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from pydantic import BaseModel, ConfigDict
 from uuid_extensions import uuid7str
@@ -9,7 +8,6 @@ from uuid_extensions import uuid7str
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
-from app.models.agent_config import read_run_metadata
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
@@ -150,17 +148,3 @@ async def do_prompt_no_stream(
     # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = _ChatbotReply.model_validate(response).messages[0]
     return PromptResponse(response=ai_message.text)
-
-
-def get_user_id_from_config(config: RunnableConfig) -> str:
-    """Extract user ID from the config."""
-    if not config:
-        log.error(f"{LogTag.CHAT} Tool called without config")
-        return ""
-
-    user_id = read_run_metadata(config).user_id or ""
-
-    if not user_id:
-        log.error(f"{LogTag.CHAT} No user_id found in config metadata")
-
-    return user_id

@@ -39,6 +39,7 @@ from app.agents.workspace.offload import mark_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.models.agent_models import get_user_id
 from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskKind,
@@ -91,7 +92,6 @@ from app.services.workflow.playbook.scripted_model import (
     scripted_call_id,
 )
 from app.services.workflow.playbook.tool_space import ToolSpace
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.timezone import Timezone
 from tests.factories import make_user_id
 
@@ -129,7 +129,7 @@ def _tools(
                 "list_events",
                 {
                     "calendar_id": calendar_id,
-                    "user": get_user_id_from_config(config),
+                    "user": get_user_id(config),
                     # Which scope the call ran under: a handoff's children must
                     # reach the tool tagged as that subagent, and a top-level
                     # step must not be tagged at all.
@@ -405,7 +405,7 @@ async def test_resolved_arguments_reach_the_tool() -> None:
 
 
 async def test_a_replayed_tool_resolves_the_run_user() -> None:
-    """Regression: get_user_id_from_config reads config["metadata"], not configurable, so a hand-built config returned 0 items instead of 38."""
+    """Regression: a hand-built config without the run user returned 0 items instead of 38."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -2659,7 +2659,7 @@ class TestTheStepGraphInvocation:
         assert set(config) == {"configurable", "metadata", "recursion_limit"}
         # One tool call plus the turn that ends the loop, with room to spare.
         assert config["recursion_limit"] == 8
-        # ``get_user_id_from_config`` reads metadata and nothing else.
+        # RunMetadata readers (tracked-todo tools, the Composio hooks) read metadata, not configurable.
         assert config["metadata"] == {"user_id": USER_ID}
         assert config["configurable"]["user_id"] == USER_ID
         assert config["configurable"]["conversation_id"] == "conv_1"

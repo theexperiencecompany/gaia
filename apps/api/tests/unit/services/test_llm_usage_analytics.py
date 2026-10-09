@@ -197,6 +197,29 @@ def test_the_event_is_attributed_to_the_rows_user(posthog: Any) -> None:
     assert call["event"] == AiLlmCallCompleted.event
 
 
+def test_the_rows_upstream_timing_and_context_ids_reach_the_event(posthog: Any) -> None:
+    capture_llm_call(
+        _row(
+            provider="anthropic",
+            finish_reason="length",
+            duration_ms=812.5,
+            conversation_id="conv-9",
+            workflow_id="wf-3",
+        )
+    )
+    props = _captured(posthog)["properties"]
+    assert {
+        key: props[key]
+        for key in ("provider", "finish_reason", "duration_ms", "conversation_id", "workflow_id")
+    } == {
+        "provider": "anthropic",
+        "finish_reason": "length",
+        "duration_ms": 812.5,
+        "conversation_id": "conv-9",
+        "workflow_id": "wf-3",
+    }
+
+
 def test_the_event_carries_the_rows_tokens_cost_and_attribution(posthog: Any) -> None:
     capture_llm_call(_row())
     props = _captured(posthog)["properties"]
