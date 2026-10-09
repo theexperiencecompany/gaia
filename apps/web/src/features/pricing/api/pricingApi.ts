@@ -2,6 +2,7 @@ import type {
   CreateCheckoutSessionRequest,
   CreateSubscriptionRequest,
   CreateSubscriptionResponse,
+  DiscountCodesResponse,
   PaymentVerificationResponse,
   PlanResponse,
   SubscriptionDocument,
@@ -35,6 +36,11 @@ class PricingApi {
     return api.get("/api/v1/payments/plans", {
       query: { active_only: activeOnly },
     });
+  }
+
+  // The coupon codes the server is configured to advertise
+  getDiscountCodes(): Promise<DiscountCodesResponse> {
+    return api.get("/api/v1/payments/discount-codes");
   }
 
   // Create subscription and get payment link

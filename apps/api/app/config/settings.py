@@ -160,6 +160,8 @@ class CommonSettings(BaseAppSettings):
     # Optional coupon surfaced alongside the checkout link in every 402
     # "subscription required" response. Unset means no code is advertised.
     PAYWALL_DISCOUNT_CODE: str | None = None
+    # Coupon the founder's letter offers. Unset means the letter carries no offer.
+    FOUNDER_LETTER_DISCOUNT_CODE: str | None = None
 
     # ----------------------------------------------
     # Observability

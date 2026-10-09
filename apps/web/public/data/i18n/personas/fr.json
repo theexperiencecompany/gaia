@@ -1800,7 +1800,7 @@
       },
       {
         "title": "Open source et auto-hébergeable",
-        "description": "GAIA est totalement open source et peut être auto-hébergée gratuitement — aucun abonnement n’est nécessaire pour commencer — avec une formule Pro à 20 $ / mois si vous souhaitez la version gérée, vous offrant un contrôle total sur vos données et aucune dépendance à un fournisseur."
+        "description": "GAIA est totalement open source et peut être auto-hébergée gratuitement — aucun abonnement n’est nécessaire pour commencer — avec une formule Pro à {{PRO_MONTHLY_PRICE}} $ / mois si vous souhaitez la version gérée, vous offrant un contrôle total sur vos données et aucune dépendance à un fournisseur."
       }
     ],
     "faqs": [
@@ -1866,7 +1866,7 @@
       },
       {
         "title": "Open source et auto-hébergeable",
-        "description": "GAIA est entièrement open source et auto-hébergeable pour les organisations ayant des exigences de résidence des données, avec une formule Pro à 20 $/mois sans frais supplémentaires par utilisateur — pas de tarification par siège qui rend les outils d’assistance aux dirigeants hors de prix."
+        "description": "GAIA est entièrement open source et auto-hébergeable pour les organisations ayant des exigences de résidence des données, avec une formule Pro à {{PRO_MONTHLY_PRICE}} $/mois sans frais supplémentaires par utilisateur — pas de tarification par siège qui rend les outils d’assistance aux dirigeants hors de prix."
       }
     ],
     "faqs": [
@@ -1880,7 +1880,7 @@
       },
       {
         "question": "GAIA est-il adapté à la gestion de communications sensibles d'un cadre dirigeant ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que votre organisation peut le déployer entièrement sur votre propre infrastructure, sans accès aux données par un tiers. Pour les structures ayant besoin d’un contrôle total sur les communications de direction, l’auto-hébergement garantit la souveraineté complète des données. L’abonnement Pro géré à 20 $/mois est également disponible pour les équipes à l’aise avec une solution hébergée."
+        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que votre organisation peut le déployer entièrement sur votre propre infrastructure, sans accès aux données par un tiers. Pour les structures ayant besoin d’un contrôle total sur les communications de direction, l’auto-hébergement garantit la souveraineté complète des données. L’abonnement Pro géré à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour les équipes à l’aise avec une solution hébergée."
       }
     ]
   },
@@ -1932,7 +1932,7 @@
       },
       {
         "title": "Open source et gratuit pour démarrer",
-        "description": "GAIA est entièrement open source, avec une offre gratuite pour le déploiement en auto-hébergement et un forfait Pro à 20 $/mois sans tarification par client ni par utilisateur, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
+        "description": "GAIA est entièrement open source, avec une offre gratuite pour le déploiement en auto-hébergement et un forfait Pro à {{PRO_MONTHLY_PRICE}} $/mois sans tarification par client ni par utilisateur, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
       }
     ],
     "faqs": [
@@ -1946,7 +1946,7 @@
       },
       {
         "question": "Comment GAIA gère-t-elle la confidentialité des clients ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que vous pouvez la déployer sur votre propre infrastructure, sans accès de tiers aux données clients. Pour les assistants virtuels gérant des communications sensibles, l’auto-hébergement garantit un contrôle total des données. Un forfait Pro hébergé à 20 $/mois est également disponible pour ceux qui préfèrent le mode hébergé."
+        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que vous pouvez la déployer sur votre propre infrastructure, sans accès de tiers aux données clients. Pour les assistants virtuels gérant des communications sensibles, l’auto-hébergement garantit un contrôle total des données. Un forfait Pro hébergé à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour ceux qui préfèrent le mode hébergé."
       }
     ]
   }

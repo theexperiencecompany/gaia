@@ -65,6 +65,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
       <PricingCard
         title="Pro"
         price={2000}
+        currency="USD"
         durationIsMonth
         planId="dodo_pro_monthly"
         planViewerState="available"
@@ -84,6 +85,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
       <PricingCard
         title="Pro"
         price={2000}
+        currency="USD"
         durationIsMonth
         planId="dodo_pro_monthly"
         planViewerState="unknown"

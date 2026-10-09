@@ -10,6 +10,7 @@ const proMonthly: Plan = {
   id: "plan_pro",
   dodo_product_id: "pdt_pro_monthly",
   name: "Pro",
+  plan_type: "pro",
   amount: 3000,
   description: null,
   max_users: null,
