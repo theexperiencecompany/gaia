@@ -586,6 +586,25 @@ class TestResume:
         assert "pause_reason" in update.model_fields_set and update.pause_reason is None
         mock_scheduler_base[1].assert_awaited_once_with(reminder.id, new_scheduled_at=next_fire)
 
+    @time_machine.travel(datetime(2026, 10, 8, 12, 0, tzinfo=UTC), tick=False)
+    async def test_a_one_shot_reminder_whose_job_fired_while_paused_is_rearmed(
+        self, scheduler, mock_repo, mock_scheduler_base
+    ):
+        due_while_paused = datetime(2026, 10, 8, 9, 0, tzinfo=UTC)
+        reminder = _reminder_document(
+            status=ScheduledTaskStatus.PAUSED, scheduled_at=due_while_paused
+        )
+        mock_repo.update_for_user.return_value = reminder
+
+        assert await scheduler.resume(reminder) is True
+
+        update = mock_repo.update_for_user.call_args.args[2]
+        assert update.status is ScheduledTaskStatus.SCHEDULED
+        assert update.scheduled_at == due_while_paused
+        mock_scheduler_base[1].assert_awaited_once_with(
+            reminder.id, new_scheduled_at=due_while_paused
+        )
+
     async def test_a_broken_schedule_is_refused_and_left_paused(self, scheduler, mock_repo):
         reminder = _reminder_document(status=ScheduledTaskStatus.PAUSED, repeat="* * * * *")
 

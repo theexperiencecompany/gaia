@@ -140,6 +140,9 @@ class ReminderScheduler(BaseSchedulerService):
                 update.scheduled_at = next_run
             else:
                 update.status = ReminderStatus.COMPLETED
+        elif reminder.scheduled_at is not None:
+            # Its job may have fired and been refused while paused; re-arm it (a past time fires now).
+            update.scheduled_at = reminder.scheduled_at
         return await self.update_reminder(reminder.id, update, reminder.user_id)
 
     async def resume_paused_for(self, user_id: str, reason: DeactivationReason) -> int:
