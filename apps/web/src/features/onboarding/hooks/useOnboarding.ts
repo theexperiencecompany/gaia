@@ -1,8 +1,8 @@
 /**
  * Top-level orchestrator hook for the onboarding flow. Wires the reducer to
- * every effect (persistence, submission, analytics) and exposes the derived
- * stage plus a `restart` action that wipes local state and asks the server
- * to reset.
+ * every effect (persistence, analytics) and exposes the derived stage, the
+ * click-driven `submission`, and a `restart` action that wipes local state and
+ * asks the server to reset.
  *
  * The stage cursor needs one fact this reducer does not own — whether the
  * user is subscribed — so it is read here and passed into `getStage`.
@@ -27,7 +27,6 @@ import { resetOnboarding } from "../api/onboardingApi";
 import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
 import { useOnboardingPreferences } from "../effects/useOnboardingPreferences";
-import { useOnboardingSubmission } from "../effects/useOnboardingSubmission";
 import { draftFromServerPreferences, getStage } from "../state/derive";
 import { initialState } from "../state/initial";
 import { usePaceStore } from "../state/paceStore";
@@ -38,6 +37,10 @@ import {
 } from "../state/persist";
 import { reducer } from "../state/reducer";
 import type { Action, OnboardingState, Stage } from "../state/types";
+import {
+  type OnboardingSubmission,
+  useOnboardingSubmission,
+} from "./useOnboardingSubmission";
 
 interface UseOnboardingReturn {
   state: OnboardingState;
@@ -47,6 +50,7 @@ interface UseOnboardingReturn {
   introSeen: boolean | null;
   markIntroSeen: () => void;
   restart: () => Promise<void>;
+  submission: OnboardingSubmission;
 }
 
 export function useOnboarding(): UseOnboardingReturn {
@@ -78,7 +82,7 @@ export function useOnboarding(): UseOnboardingReturn {
   const handleSubmissionSuccess = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
   }, [queryClient]);
-  useOnboardingSubmission(state, stage, handleSubmissionSuccess);
+  const submission = useOnboardingSubmission(state, handleSubmissionSuccess);
 
   useOnboardingAnalytics(state, stage, hydrated);
 
@@ -119,5 +123,6 @@ export function useOnboarding(): UseOnboardingReturn {
     introSeen: state.introSeen,
     markIntroSeen,
     restart,
+    submission,
   };
 }

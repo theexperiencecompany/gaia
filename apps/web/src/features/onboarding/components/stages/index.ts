@@ -1,4 +1,4 @@
-export { Chat } from "./Chat";
+export { Chat, ChatComposer } from "./Chat";
 export { PaidReveal, PaidRevealComposer } from "./PaidReveal";
 export { Payment } from "./Payment";
 export { Platforms } from "./Platforms";
