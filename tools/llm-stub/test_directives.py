@@ -642,7 +642,7 @@ def _executor_brief(request: str, task: str) -> str:
     )
 
 
-def test_a_brief_quoting_the_request_runs_its_script_once():
+def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
     script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
     brief = _user(_executor_brief(script, script))
 
@@ -653,7 +653,7 @@ def test_a_brief_quoting_the_request_runs_its_script_once():
     assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
 
 
-def test_a_multi_paragraph_request_quote_is_skipped_whole():
+def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
     script = '[[tool:web_search {"q": "x"}]]\n\n[[tool:create_reminder {"title": "y"}]] [[say:ok]]'
     brief = _user(_executor_brief(script, script))
     emitted = [
@@ -665,3 +665,38 @@ def test_a_multi_paragraph_request_quote_is_skipped_whole():
     ]
 
     assert resolve_response(emitted, EXECUTOR_TOOLS) == SayResponse(text="ok")
+
+
+def _after(brief: dict, *names: str) -> list[dict]:
+    turns = [brief]
+    for name in names:
+        turns += [_assistant_tool_call(name), _tool_result(name)]
+    return turns
+
+
+_TWICE = '[[tool:create_reminder {"title": "a"}]]\n\n[[tool:create_reminder {"title": "a"}]]'
+
+
+def test_a_request_repeating_a_paragraph_under_a_different_task_keeps_both() -> None:
+    """A repeated paragraph inside the request is not the task restating it."""
+    task = '[[tool:web_search {"q": "x"}]] [[say:done]]'
+    brief = _user(_executor_brief(_TWICE, task))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == ToolCallResponse(name="web_search", args={"q": "x"})
+
+
+def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
+    script = _TWICE + " [[say:done]]"
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == SayResponse(text="done")

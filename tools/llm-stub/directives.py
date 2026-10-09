@@ -85,10 +85,12 @@ USER_INTERJECTION_TAG = "user_interjection"
 _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
 
 
-# compose_executor_brief opens the executor's brief with the user's request under
-# this header, then the task. The front door forwards that request as the task word
-# for word, so the quote is a second copy of the script the task already carries.
+# compose_executor_brief lays the brief out as sections joined by a blank line:
+# the user's request under this header, the task, then the definition of done.
+# The front door forwards that request as the task word for word, so a quote the
+# task restates is a second copy of the script the task already carries.
 VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+DONE_SECTION_HEAD = "Definition of done"
 _SECTION_BREAK = "\n\n"
 
 
@@ -101,26 +103,26 @@ def _strip_echoed_payloads(text: str) -> str:
 
 
 def _strip_restated_request(text: str) -> str:
-    """Drop the brief's request quote when the task right after it restates it.
+    """Drop the brief's request quote when the task section is that same request.
 
-    The quote ends at the latest section break whose following text starts with
-    the quote again; a quote nothing restates is the script's only copy and stays.
+    Quote and task fill the span from the header to the definition of done, so
+    the quote is restated only when that span is one text twice; a request that
+    merely repeats a paragraph of its own never splits that way and stays whole.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
         return text
-    body_at = header_at + len(VERBATIM_REQUEST_HEADER)
-    body = text[body_at:].lstrip()
-    restated_at = None
-    cut = body.find(_SECTION_BREAK)
-    while cut > 0:
-        quote = body[:cut].strip()
-        if quote and body[cut:].lstrip().startswith(quote):
-            restated_at = cut
-        cut = body.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
-    if restated_at is None:
-        return text
-    return text[:header_at] + body[restated_at:].lstrip()
+    span_at = header_at + len(VERBATIM_REQUEST_HEADER)
+    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
+    span_end = len(text) if done_at < 0 else done_at
+    span = text[span_at:span_end]
+    cut = span.find(_SECTION_BREAK)
+    while cut >= 0:
+        quote, task = span[:cut].strip(), span[cut:].strip()
+        if quote and quote == task:
+            return text[:header_at] + text[span_at + cut :].lstrip()
+        cut = span.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
+    return text
 
 
 def _is_interjection(text: str) -> bool:
