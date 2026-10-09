@@ -70,11 +70,14 @@ function makeWrapper() {
  * the minted links. Waiting on the query state rather than a fixed number of
  * microtasks is what keeps this stable on a loaded CI box.
  */
-async function renderConnect(dispatch = vi.fn()) {
+async function renderConnect(dispatch = vi.fn(), onConfirmed = vi.fn()) {
   const { Wrapper, queryClient } = makeWrapper();
-  const result = renderHook(() => useConnectPlatform(dispatch, true), {
-    wrapper: Wrapper,
-  });
+  const result = renderHook(
+    () => useConnectPlatform(dispatch, true, onConfirmed),
+    {
+      wrapper: Wrapper,
+    },
+  );
   await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
   await waitFor(() =>
     expect(queryClient.getQueryState(LINK_CODE_QUERY_KEY)?.status).not.toBe(
@@ -84,7 +87,7 @@ async function renderConnect(dispatch = vi.fn()) {
   await act(async () => {
     await Promise.resolve();
   });
-  return { ...result, dispatch };
+  return { ...result, dispatch, onConfirmed };
 }
 
 describe("useConnectPlatform", () => {
@@ -113,7 +116,7 @@ describe("useConnectPlatform", () => {
   it("does not mint before the answers are persisted, and mints once after", async () => {
     const { rerender } = renderHook(
       ({ persisted }: { persisted: boolean }) =>
-        useConnectPlatform(vi.fn(), persisted),
+        useConnectPlatform(vi.fn(), persisted, vi.fn()),
       { wrapper: makeWrapper().Wrapper, initialProps: { persisted: false } },
     );
     await act(async () => {
@@ -131,8 +134,8 @@ describe("useConnectPlatform", () => {
   // effect. That was four mints (and four dead codes) per stage entry.
   it("mints exactly once per stage entry across both hook users under StrictMode", async () => {
     function TwoConsumers() {
-      useConnectPlatform(vi.fn(), true);
-      useConnectPlatform(vi.fn(), true);
+      useConnectPlatform(vi.fn(), true, vi.fn());
+      useConnectPlatform(vi.fn(), true, vi.fn());
       return null;
     }
     const { Wrapper } = makeWrapper();
@@ -153,7 +156,7 @@ describe("useConnectPlatform", () => {
   });
 
   it("opens the code-carrying deep link for telegram", async () => {
-    const { result, dispatch } = await renderConnect();
+    const { result, dispatch, onConfirmed } = await renderConnect();
 
     act(() => result.current.connect("telegram"));
 
@@ -166,6 +169,7 @@ describe("useConnectPlatform", () => {
       type: "platformConnected",
       platform: "telegram",
     });
+    expect(onConfirmed).toHaveBeenCalledOnce();
   });
 
   it("opens the code-carrying deep link for whatsapp", async () => {
@@ -227,7 +231,7 @@ describe("useConnectPlatform", () => {
   });
 
   it("advances without staging any prompt when platforms are skipped", async () => {
-    const { result, dispatch } = await renderConnect();
+    const { result, dispatch, onConfirmed } = await renderConnect();
 
     await act(async () => {
       result.current.skip();
@@ -238,6 +242,7 @@ describe("useConnectPlatform", () => {
     // turn here would replay onboarding into an unrelated chat.
     expect(setPendingPrompt).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({ type: "skipPlatforms" });
+    expect(onConfirmed).toHaveBeenCalledOnce();
   });
 
   it("still advances on skip when minting failed", async () => {
