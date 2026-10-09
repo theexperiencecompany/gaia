@@ -18,7 +18,6 @@ from app.utils.workflow_utils import (
     _regenerated_after_prompt_edit,
     apply_workflow_edit,
     create_workflow_directly,
-    get_user_id,
     get_workflow_id,
 )
 
@@ -75,17 +74,6 @@ class TestGetWorkflowId:
         config: RunnableConfig = {"configurable": {"workflow_id": ""}}
         with pytest.raises(WorkflowConfigError, match="workflow run"):
             get_workflow_id(config)
-
-
-@pytest.mark.unit
-class TestGetUserId:
-    def test_returns_the_configurable_user_id(self) -> None:
-        config: RunnableConfig = {"configurable": {"user_id": "u1"}}
-        assert get_user_id(config) == "u1"
-
-    def test_a_config_without_a_user_raises(self) -> None:
-        with pytest.raises(WorkflowConfigError, match="authentication"):
-            get_user_id({"configurable": {}})
 
 
 @pytest.mark.unit
