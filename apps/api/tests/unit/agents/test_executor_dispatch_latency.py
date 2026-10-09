@@ -28,7 +28,6 @@ from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
-from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
@@ -223,7 +222,7 @@ class TestExecutorRunLatency:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "capture") as mock_capture,
+            patch("app.services.analytics_service.capture") as mock_capture,
         ):
             await run_executor_background(
                 run=run, task="do the thing", configurable={"conversation_source": "web"}
@@ -246,6 +245,20 @@ class TestExecutorRunLatency:
         assert _count("executor_active_seconds", {"status": "paused"}) == paused_before
         failed = [c for c in mock_capture.call_args_list if isinstance(c.args[1], AgentRunFailed)]
         assert len(failed) == 1
+
+    async def test_a_pause_records_the_runs_resume_context_on_its_approvals(self) -> None:
+        run = _run("exec-pause-args", t_dispatch_perf=time.perf_counter())
+        recorder = AsyncMock(return_value=True)
+
+        await self._background(
+            run,
+            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1", "appr-2")),
+            record_pause=recorder,
+        )
+
+        recorder.assert_awaited_once_with(
+            run, "do the thing", {"conversation_source": "web"}, ("appr-1", "appr-2")
+        )
 
     async def test_recorded_pause_labels_the_active_span_paused(self) -> None:
         """A pause that records cleanly stays paused on the active span."""
@@ -535,7 +548,7 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "capture", MagicMock()),
+            patch("app.services.analytics_service.capture", MagicMock()),
             patch.object(er.StreamManager, "is_cancelled", is_cancelled_mock),
             patch.object(er.time, "perf_counter", side_effect=list(perf_values)),
         ):
@@ -676,51 +689,6 @@ class TestBackgroundRunExactWiring:
         assert captured["active_ms"] is None
 
 
-_STARTED = AgentRunStarted(agent="executor", mode="background", conversation_id="conv-1")
-
-
-class TestCaptureExecutorTerminalWiring:
-    """The terminal lifecycle event's exact payload: the user-id sentinel and dedupe key."""
-
-    def test_an_empty_user_id_captures_nothing(self) -> None:
-        run = _run("terminal-user", user=AuthenticatedUser(user_id=""))
-
-        with patch.object(er, "capture") as capture:
-            er._capture_executor_terminal(
-                run,
-                run_props=_STARTED,
-                queued=False,
-                timing_fields={},
-                result_type="final",
-            )
-
-        capture.assert_not_called()
-
-    def test_the_dedupe_is_the_task_dispatched_once_and_carries_exact_props(self) -> None:
-        run = _run("s1", user=AuthenticatedUser(user_id=USER_ID), task_id="task-1")
-
-        with patch.object(er, "capture") as capture:
-            er._capture_executor_terminal(
-                run,
-                run_props=_STARTED,
-                queued=False,
-                timing_fields={"executor_active_ms": 12.5},
-                result_type="final",
-            )
-
-        capture.assert_called_once_with(
-            UserId(USER_ID),
-            AgentRunCompleted(
-                agent="executor",
-                mode="background",
-                conversation_id="conv-1",
-                queued=False,
-                executor_active_ms=12.5,
-            ),
-            dedupe=Dedupe(key="task-1", occurred_at=run.dispatched_at),
-        )
-
-
 class TestResumeForwarding:
     def setup_method(self) -> None:
         sess._sessions.clear()
@@ -741,8 +709,8 @@ class TestResumeForwarding:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "release_resume_dispatch", AsyncMock()),
-            patch.object(er, "capture"),
+            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
+            patch("app.services.analytics_service.capture"),
         ):
             await run_executor_background(
                 run=run,
@@ -752,3 +720,22 @@ class TestResumeForwarding:
             )
 
         assert execute.await_args.args[3] is sentinel
+        # A resume held the conversation's resume slot; finishing frees it.
+        release.assert_awaited_once_with("conv-1")
+
+    async def test_a_fresh_run_frees_no_resume_slot(self) -> None:
+        with (
+            patch.object(
+                er, "_execute_executor", AsyncMock(return_value=_ExecutorResult("done", "final"))
+            ),
+            patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
+            patch.object(er, "release_lock_if_owned", AsyncMock()),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
+            patch("app.services.analytics_service.capture"),
+        ):
+            await run_executor_background(
+                run=_run("exec-fresh"), task="do the thing", configurable={}
+            )
+
+        release.assert_not_awaited()

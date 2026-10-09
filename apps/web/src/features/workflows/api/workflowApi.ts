@@ -32,6 +32,13 @@ export const workflowApi = {
   // List the user's workflows
   listWorkflows: () => api.get("/api/v1/workflows"),
 
+  // The server's verdict on a recurring schedule; the one place the rule lives
+  validateCron: (expression: string) =>
+    api.get("/api/v1/reminders/cron/validate", {
+      query: { expression },
+      silent: true,
+    }),
+
   // Get a specific workflow
   getWorkflow: (workflowId: string, options?: { silent?: boolean }) =>
     api.get("/api/v1/workflows/{workflow_id}", {

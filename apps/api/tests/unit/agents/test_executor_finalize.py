@@ -1151,7 +1151,7 @@ class TestARunHandsFinalizeWhatItProduced:
             deliver = enter(patch.object(er, "_deliver_terminal_outcome", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
             enter(patch.object(er.StreamManager, "is_cancelled", AsyncMock(return_value=False)))
-            enter(patch.object(er, "capture", MagicMock()))
+            enter(patch("app.services.analytics_service.capture", MagicMock()))
             enter(patch.object(bridge, "flush_held_approval_cards", AsyncMock()))
             enter(patch.object(eq, "StreamManager", AsyncMock()))
             enter(patch.object(eq, "websocket_manager", AsyncMock()))
