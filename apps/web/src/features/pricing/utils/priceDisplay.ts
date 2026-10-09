@@ -1,7 +1,8 @@
-import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
-import { getAnnualSavingsPercent } from "./annualSavings";
+import { DAYS_PER_BILLING_MONTH, MONTHS_PER_YEAR } from "../constants";
+import { getAnnualSavingsPercent, monthsFreeFromPrices } from "./annualSavings";
+import { toMajorUnits } from "./money";
 
-/** Every price figure a pricing card renders, derived from raw cents. */
+/** Every price figure a pricing card renders, derived from minor units. */
 export interface PriceDisplay {
   perMonthDollars: number;
   yearlyTotalDollars: number | null;
@@ -10,22 +11,22 @@ export interface PriceDisplay {
   monthsFree: number;
 }
 
-// Derives every price figure shown on a card from the raw cents + billing
+// Derives every price figure shown on a card from the minor units + billing
 // period, so the component body stays declarative.
 export function getPriceDisplay(
   price: number,
   originalPrice: number | undefined,
   durationIsMonth: boolean,
+  currency: string,
 ): PriceDisplay {
   const isPaidTier = price > 0;
+  const priceMajor = toMajorUnits(price, currency);
   const perMonthDollars =
     !durationIsMonth && isPaidTier
-      ? Math.round(price / MONTHS_PER_YEAR / CENTS_PER_DOLLAR)
-      : Math.round(price / CENTS_PER_DOLLAR);
+      ? Math.round(priceMajor / MONTHS_PER_YEAR)
+      : Math.round(priceMajor);
   const yearlyTotalDollars =
-    !durationIsMonth && isPaidTier
-      ? Math.round(price / CENTS_PER_DOLLAR)
-      : null;
+    !durationIsMonth && isPaidTier ? Math.round(priceMajor) : null;
   // Savings vs paying monthly (originalPrice = 12× the monthly rate).
   const savePercent = originalPrice
     ? getAnnualSavingsPercent(originalPrice, price)
@@ -39,12 +40,16 @@ export function getPriceDisplay(
     yearlyTotalDollars,
     priceSubLine,
     showSavings: !!yearlyTotalDollars && savePercent > 0,
-    // ~16.7% off a year = pay for 10 months, get 12 → 2 months free.
-    monthsFree: Math.round((savePercent / 100) * MONTHS_PER_YEAR),
+    monthsFree: originalPrice ? monthsFreeFromPrices(originalPrice, price) : 0,
   };
 }
 
 /** What the tier costs once the offer's percentage comes off. */
 export function getOfferPrice(price: number, discountPercent: number): number {
   return Math.round(price * (1 - discountPercent / 100));
+}
+
+/** A monthly price spread over the days of a billing month, in minor units. */
+export function getDailyPrice(monthlyPrice: number): number {
+  return Math.round(monthlyPrice / DAYS_PER_BILLING_MONTH);
 }

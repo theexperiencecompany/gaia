@@ -18,6 +18,18 @@ class PlanType(str, Enum):
     PRO = "pro"
 
 
+class PlanTier(StrEnum):
+    """What a catalogue row sells.
+
+    Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+    never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+    """
+
+    FREE = "free"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
+
+
 class PlanDuration(StrEnum):
     """Billing cycle a plan is charged on.
 
@@ -113,6 +125,7 @@ class PlanResponse(ResponseModel):
     id: str = Field(..., description="Plan ID")
     dodo_product_id: str = Field(..., description="Dodo product ID")
     name: str = Field(..., description="Plan name")
+    plan_type: PlanTier = Field(..., description="Tier this plan sells")
     description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount")
     currency: str = Field(..., description="Currency")
@@ -122,6 +135,12 @@ class PlanResponse(ResponseModel):
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Update timestamp")
+
+
+class DiscountCodesResponse(ResponseModel):
+    """Coupon codes the clients advertise, each a Dodo discount code or null when unset."""
+
+    founder_letter: str | None = Field(..., description="Code the founder's letter offers")
 
 
 class CreateSubscriptionResponse(BaseModel):
@@ -181,6 +200,7 @@ class PlanDocument(MongoDocument):
 
     dodo_product_id: str | None = None
     name: str
+    plan_type: PlanTier
     description: str | None = None
     amount: int
     currency: str

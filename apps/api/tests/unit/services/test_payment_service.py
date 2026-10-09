@@ -31,6 +31,7 @@ from app.models.payment_models import (
     PlanDocument,
     PlanDuration,
     PlanResponse,
+    PlanTier,
     PlanType,
     SubscriptionDocument,
     SubscriptionStatus,
@@ -72,6 +73,7 @@ SAMPLE_PLAN_DOC: dict[str, Any] = {
     "_id": ObjectId(),
     "dodo_product_id": "prod_abc123",
     "name": "Pro Monthly",
+    "plan_type": "pro",
     "description": "Pro features billed monthly",
     "amount": 999,
     "currency": "USD",
@@ -87,6 +89,7 @@ SAMPLE_PLAN = PlanDocument(
     id=str(SAMPLE_PLAN_DOC["_id"]),
     dodo_product_id="prod_abc123",
     name="Pro Monthly",
+    plan_type=PlanTier.PRO,
     description="Pro features billed monthly",
     amount=999,
     currency="USD",
@@ -224,6 +227,7 @@ class TestGetPlans:
             id="abc",
             dodo_product_id="prod_abc123",
             name="Cached Plan",
+            plan_type=PlanTier.PRO,
             description=None,
             amount=999,
             currency="USD",
@@ -268,6 +272,7 @@ class TestGetPlans:
         cached = {
             "id": "abc",
             "name": "Legacy Plan",
+            "plan_type": "pro",
             "amount": 999,
             "currency": "USD",
             "duration": "monthly",
@@ -305,6 +310,7 @@ class TestGetPlans:
         minimal_plan = PlanDocument(
             id=str(ObjectId()),
             name="Basic",
+            plan_type=PlanTier.PRO,
             amount=0,
             currency="USD",
             duration="monthly",
@@ -332,6 +338,7 @@ class TestGetPlans:
             id=str(ObjectId()),
             dodo_product_id="",
             name="Free",
+            plan_type=PlanTier.FREE,
             amount=0,
             currency="USD",
             duration="monthly",
@@ -346,6 +353,22 @@ class TestGetPlans:
         assert [p.name for p in plans] == ["Pro Monthly"]
         assert all(p.amount > 0 for p in plans)
 
+    async def test_a_row_tagged_free_never_reaches_the_response_whatever_its_name(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_redis_cache,
+    ):
+        """The tier tag decides, not the display name the row happens to carry."""
+        renamed_free = SAMPLE_PLAN.model_copy(
+            update={"name": "Starter", "plan_type": PlanTier.FREE, "amount": 0}
+        )
+        mock_plan_repository.list_plans = AsyncMock(return_value=[renamed_free, SAMPLE_PLAN])
+
+        plans = await payment_service.get_plans()
+
+        assert [p.name for p in plans] == ["Pro Monthly"]
+
     async def test_free_plan_filtered_even_when_served_from_cache(
         self,
         payment_service,
@@ -357,6 +380,7 @@ class TestGetPlans:
             id="free-id",
             dodo_product_id="",
             name="Free",
+            plan_type=PlanTier.FREE,
             description=None,
             amount=0,
             currency="USD",
@@ -371,6 +395,7 @@ class TestGetPlans:
             id="pro-id",
             dodo_product_id="prod_abc123",
             name="Pro",
+            plan_type=PlanTier.PRO,
             description=None,
             amount=3000,
             currency="USD",
@@ -400,6 +425,7 @@ class TestGetPlans:
             id=str(ObjectId()),
             dodo_product_id="",
             name="Enterprise",
+            plan_type=PlanTier.ENTERPRISE,
             amount=0,
             currency="USD",
             duration="monthly",
@@ -1229,7 +1255,12 @@ class TestVerifyPaymentCompletion:
         materialize_mocks.track_activation.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SubscriptionActivated(
-                subscription_id="sub_from_checkout", plan_name="Pro", amount=300.0, currency="USD"
+                subscription_id="sub_from_checkout",
+                plan_name="Pro",
+                amount=300.0,
+                currency="USD",
+                amount_charged_pre_tax=300.0,
+                currency_charged="USD",
             ),
         )
         materialize_mocks.send_email.assert_awaited_once()
@@ -1750,16 +1781,17 @@ class TestGetUserSubscriptionStatus:
 def _plan(
     *,
     name: str,
+    plan_type: PlanTier = PlanTier.PRO,
     amount: int,
     duration: str,
     product_id: str,
-    plan_id: str,
     active: bool = True,
 ) -> PlanDocument:
     return PlanDocument(
-        id=plan_id,
+        id=f"p_{product_id or name.lower()}",
         dodo_product_id=product_id,
         name=name,
+        plan_type=plan_type,
         description=None,
         amount=amount,
         currency="USD",
@@ -1772,13 +1804,24 @@ def _plan(
     )
 
 
-# The shipped catalogue shape: Free and Enterprise are both priced at 0 with no
-# Dodo product, so only the two Pro rows are actually purchasable.
+# The shipped catalogue shape: only the two rows tagged Pro are purchasable.
 CATALOGUE = [
-    _plan(name="Free", amount=0, duration="monthly", product_id="", plan_id="p_free"),
-    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m", plan_id="p_m"),
-    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y", plan_id="p_y"),
-    _plan(name="Enterprise", amount=0, duration="monthly", product_id="", plan_id="p_ent"),
+    _plan(
+        name="Free",
+        plan_type=PlanTier.FREE,
+        amount=0,
+        duration="monthly",
+        product_id="",
+    ),
+    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m"),
+    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y"),
+    _plan(
+        name="Enterprise",
+        plan_type=PlanTier.ENTERPRISE,
+        amount=0,
+        duration="monthly",
+        product_id="",
+    ),
 ]
 
 
@@ -1818,7 +1861,6 @@ class TestPlanForSubscription:
             amount=3000,
             duration="monthly",
             product_id="prod_m",
-            plan_id="p_m",
             active=False,
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[retired])
@@ -1876,7 +1918,6 @@ class TestGetProPlan:
             amount=1,
             duration="monthly",
             product_id="prod_m",
-            plan_id="p_m",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[cheap])
 
@@ -1898,7 +1939,7 @@ class TestGetProPlan:
     async def test_never_returns_free_or_enterprise(
         self, payment_service, mock_plan_repository, mock_redis_cache
     ):
-        """Both are priced at 0 with no product id — selling either would 502 at Dodo."""
+        """Neither is tagged Pro — selling either would 502 at Dodo."""
         free_and_enterprise = [CATALOGUE[0], CATALOGUE[3]]
         mock_plan_repository.list_plans = AsyncMock(return_value=free_and_enterprise)
 
@@ -1907,14 +1948,18 @@ class TestGetProPlan:
 
         assert exc.value.status_code == 500
 
-    async def test_a_zero_priced_product_is_not_treated_as_pro(
+    async def test_a_purchasable_row_not_tagged_pro_is_never_sold(
         self, payment_service, mock_plan_repository, mock_redis_cache
     ):
-        """A free-trial product would be purchasable but is not the paid tier."""
-        trial = _plan(
-            name="Trial", amount=0, duration="monthly", product_id="prod_trial", plan_id="p_trial"
+        """A product id and a price do not make a row the paid tier; its tag does."""
+        priced_enterprise = _plan(
+            name="Enterprise",
+            plan_type=PlanTier.ENTERPRISE,
+            amount=500,
+            duration="monthly",
+            product_id="prod_ent",
         )
-        mock_plan_repository.list_plans = AsyncMock(return_value=[trial, CATALOGUE[1]])
+        mock_plan_repository.list_plans = AsyncMock(return_value=[priced_enterprise, CATALOGUE[1]])
 
         plan = await payment_service.get_pro_plan(PlanDuration.MONTHLY)
 

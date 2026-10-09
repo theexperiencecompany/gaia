@@ -1,3 +1,5 @@
+import { ADVERTISED_PRO_MONTHLY_PRICE } from "@/features/pricing/advertisedPrice";
+
 import { generateFAQSchema } from "./seo";
 
 export interface FAQItem {
@@ -78,8 +80,7 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "Is GAIA free?",
-    answer:
-      "GAIA is a paid product. Pro starts at $20 a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
+    answer: `GAIA is a paid product. Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE} a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.`,
   },
 ];
 

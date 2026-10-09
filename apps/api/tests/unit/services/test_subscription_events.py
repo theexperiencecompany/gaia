@@ -325,7 +325,12 @@ class TestActivationCreatesTheRow:
         mock_track_subscription.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SubscriptionActivated(
-                subscription_id="sub_xyz789", plan_name="Pro", amount=9.99, currency="USD"
+                subscription_id="sub_xyz789",
+                plan_name="Pro",
+                amount=9.99,
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
             ),
         )
         mock_webhook_send_email.assert_awaited_once_with(
@@ -360,7 +365,7 @@ class TestActivationCreatesTheRow:
 
         mock_queue_inbox_desk.assert_awaited_once_with(FAKE_USER_ID)
 
-    async def test_a_zero_amount_subscription_reports_no_price(
+    async def test_a_fully_discounted_subscription_reports_zero_not_nothing(
         self,
         mock_webhook_subscription_repository,
         mock_webhook_users_collection,
@@ -368,9 +373,28 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
+        """Regression: a 100%-discount subscriber's 0 was dropped, so revenue sums lost them."""
         await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
 
-        assert mock_track_subscription.call_args.args[1].amount is None
+        event = mock_track_subscription.call_args.args[1]
+        assert event.amount == 0
+        assert event.amount_charged_pre_tax == 0
+
+    async def test_a_localised_subscription_reports_its_own_currency(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+    ) -> None:
+        await _apply(
+            SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=57284, currency="ZAR"
+        )
+
+        event = mock_track_subscription.call_args.args[1]
+        assert (event.amount, event.currency) == (572.84, "ZAR")
+        assert (event.amount_charged_pre_tax, event.currency_charged) == (572.84, "ZAR")
 
     async def test_falls_back_to_the_customer_email_to_find_the_owner(
         self,
@@ -948,7 +972,12 @@ class TestResultsNameTheOwnerAndTheRow:
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
             UserId(FAKE_USER_ID),
-            SubscriptionRenewed(subscription_id="sub_xyz789", currency="USD"),
+            SubscriptionRenewed(
+                subscription_id="sub_xyz789",
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+            ),
         )
 
     async def test_a_stale_event_still_names_the_owner(
