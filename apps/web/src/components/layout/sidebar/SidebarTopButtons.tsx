@@ -18,7 +18,8 @@ import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
+import { toMajorUnits } from "@/features/pricing/utils/money";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -56,17 +57,16 @@ const buttonData = [
 export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
-  const { plans } = usePricing();
+  const { plan: monthlyPlan, isLoading: isPriceLoading } = useProMonthlyPlan();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const { notifications } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 50,
   });
 
-  const monthlyPlan = plans.find(
-    (p) => p.name === "Pro" && p.duration === "monthly",
-  );
-  const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
+  const price = monthlyPlan
+    ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)
+    : null;
 
   const unreadCount = notifications.filter(
     (n) => n.status !== NotificationStatus.READ,
@@ -103,6 +103,7 @@ export default function SidebarTopButtons() {
       {!isUnknown && !isPaid && (
         <SidebarPromo
           price={price}
+          isPriceLoading={isPriceLoading}
           copy={paywallCopyFor(hasEverSubscribed)}
           onUpgrade={() =>
             openUpgradeModal(undefined, {

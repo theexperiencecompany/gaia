@@ -3512,6 +3512,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/discount-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discount Codes Endpoint
+         * @description Get the discount codes the clients advertise.
+         */
+        get: operations["payments_get_discount_codes_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/plans": {
         parameters: {
             query?: never;
@@ -7968,6 +7988,17 @@ export interface components {
             status: string;
         };
         /**
+         * DiscountCodesResponse
+         * @description Coupon codes the clients advertise, each a Dodo discount code or null when unset.
+         */
+        DiscountCodesResponse: {
+            /**
+             * Founder Letter
+             * @description Code the founder's letter offers
+             */
+            founder_letter: string | null;
+        };
+        /**
          * DiscoveredSkillInfo
          * @description A skill found in a remote GitHub repository but not yet installed.
          */
@@ -11528,6 +11559,8 @@ export interface components {
              * @description Plan name
              */
             name: string;
+            /** @description Tier this plan sells */
+            plan_type: components["schemas"]["PlanTier"];
             /**
              * Updated At
              * Format: date-time
@@ -11535,6 +11568,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * PlanTier
+         * @description What a catalogue row sells.
+         *
+         *     Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+         *     never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+         * @enum {string}
+         */
+        PlanTier: "free" | "pro" | "enterprise";
         /**
          * PlanType
          * @description Subscription plan types.
@@ -15524,6 +15566,7 @@ export type DeviceServerResponse = components['schemas']['DeviceServerResponse']
 export type DeviceTokenRequest = components['schemas']['DeviceTokenRequest'];
 export type DeviceTokenResponse = components['schemas']['DeviceTokenResponse'];
 export type DisconnectPlatformResponse = components['schemas']['DisconnectPlatformResponse'];
+export type DiscountCodesResponse = components['schemas']['DiscountCodesResponse'];
 export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
 export type DispatchError = components['schemas']['DispatchError'];
@@ -15724,6 +15767,7 @@ export type PinRequest = components['schemas']['PinRequest'];
 export type PinResponse = components['schemas']['PinResponse'];
 export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
+export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
@@ -25331,6 +25375,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateSubscriptionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    payments_get_discount_codes_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodesResponse"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { Plan } from "@/features/pricing/api/pricingApi";
 
@@ -32,6 +32,7 @@ const FREE_PLAN: Plan = {
   id: "plan_free",
   dodo_product_id: "dodo_free",
   name: "Free",
+  plan_type: "free",
   amount: 0,
   description: null,
   max_users: null,
@@ -47,6 +48,7 @@ const PRO_PLAN: Plan = {
   id: "plan_pro",
   dodo_product_id: "dodo_pro_monthly",
   name: "Pro",
+  plan_type: "pro",
   amount: 2000,
   description: null,
   max_users: null,
@@ -58,10 +60,13 @@ const PRO_PLAN: Plan = {
   updated_at: "",
 };
 
+const PRO_PLAN_MONTHLY_30: Plan = { ...PRO_PLAN, amount: 3000 };
+
 const ENTERPRISE_PLAN: Plan = {
   id: "plan_enterprise",
   dodo_product_id: "",
   name: "Enterprise",
+  plan_type: "enterprise",
   amount: 0,
   description: null,
   max_users: null,
@@ -86,32 +91,33 @@ vi.mock("@/features/pricing/hooks/usePricing", () => ({
 }));
 
 // Imported after the mocks above so PricingCards picks up the mocked hooks.
+import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { isProPlan } from "@/features/pricing/utils/planPredicates";
 
-describe("PricingCards paid-only rendering", () => {
-  // TextMorph (torph) reads window.matchMedia for reduced-motion detection;
-  // jsdom doesn't implement it.
-  beforeAll(() => {
-    window.matchMedia =
-      window.matchMedia ||
-      ((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
-    // TextMorph also calls Element.getAnimations for its exit transition;
-    // jsdom doesn't implement the Web Animations API.
-    if (!Element.prototype.getAnimations) {
-      Element.prototype.getAnimations = () => [];
-    }
-  });
+// TextMorph (torph) reads window.matchMedia for reduced-motion detection;
+// jsdom doesn't implement it.
+beforeAll(() => {
+  window.matchMedia =
+    window.matchMedia ||
+    ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  // TextMorph also calls Element.getAnimations for its exit transition;
+  // jsdom doesn't implement the Web Animations API.
+  if (!Element.prototype.getAnimations) {
+    Element.prototype.getAnimations = () => [];
+  }
+});
 
+describe("PricingCards paid-only rendering", () => {
   it("renders only the paid plan when the backend returns no $0 row", () => {
     mockPlans = [PRO_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);
@@ -148,30 +154,79 @@ describe("PricingCards paid-only rendering", () => {
   });
 });
 
+describe("PricingCards yearly savings", () => {
+  it("compares the yearly row against twelve of the live monthly row", () => {
+    // $30/month vs $270/year is 25% off, three months free; a fixed 1/6
+    // annual discount would have kept saying two.
+    mockPlans = [
+      PRO_PLAN_MONTHLY_30,
+      {
+        ...PRO_PLAN_MONTHLY_30,
+        id: "plan_pro_yearly",
+        duration: "yearly",
+        amount: 27000,
+      },
+    ];
+    render(<PricingCards hideEnterprise />);
+
+    expect(screen.getByText("3 months free")).not.toBeNull();
+  });
+});
+
+const EUR_PRO_MONTHLY: Plan = { ...PRO_PLAN, amount: 3000, currency: "EUR" };
+const EUR_PRO_YEARLY: Plan = {
+  ...EUR_PRO_MONTHLY,
+  id: "plan_pro_yearly",
+  dodo_product_id: "dodo_pro_yearly",
+  amount: 30000,
+  duration: "yearly",
+};
+
+// A row prices itself in its own currency, and a yearly saving is claimed only
+// against a monthly row in the same currency: two currencies need a rate.
+describe("a non-USD catalogue", () => {
+  it("prices the yearly card in the row's own currency", () => {
+    mockPlans = [EUR_PRO_MONTHLY, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("€300");
+    expect(text).not.toContain("$");
+  });
+});
+
+describe("a monthly and a yearly row in different currencies", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("the yearly card claims no months free", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    expect(container.textContent).not.toMatch(/months? free/);
+  });
+
+  it("claims no yearly saving, and says why", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    render(<BillingPeriodTabs isYearly={false} onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/months? free|Save/)).toBeNull();
+    expect(error).toHaveBeenCalled();
+  });
+});
+
 describe("isProPlan", () => {
-  it("matches a plan named exactly Pro, case-insensitively", () => {
-    expect(isProPlan({ ...PRO_PLAN, name: "Pro" })).toBe(true);
-    expect(isProPlan({ ...PRO_PLAN, name: "pro" })).toBe(true);
-    expect(isProPlan({ ...PRO_PLAN, name: " PRO " })).toBe(true);
-  });
-
-  it("does not match an unrelated plan whose name merely contains 'pro'", () => {
-    // The old `.name.toLowerCase().includes("pro")` check would have
-    // wrongly matched both of these as the Pro tier.
-    expect(isProPlan({ ...PRO_PLAN, name: "Proactive", amount: 0 })).toBe(
+  it("is the row's tier tag, not its display name", () => {
+    expect(isProPlan(PRO_PLAN)).toBe(true);
+    expect(isProPlan({ ...PRO_PLAN, name: "Growth" })).toBe(true);
+    expect(isProPlan({ ...ENTERPRISE_PLAN, name: "Pro", amount: 9900 })).toBe(
       false,
     );
-    expect(isProPlan({ ...FREE_PLAN, name: "Property Manager" })).toBe(false);
-  });
-
-  it("falls back to any priced, non-Enterprise plan when the name isn't 'Pro'", () => {
-    expect(isProPlan({ ...PRO_PLAN, name: "Growth", amount: 4900 })).toBe(true);
-  });
-
-  it("never matches a $0 plan or an Enterprise-named plan via the fallback", () => {
-    expect(isProPlan(FREE_PLAN)).toBe(false);
-    expect(isProPlan({ ...PRO_PLAN, name: "Enterprise", amount: 9900 })).toBe(
-      false,
-    );
+    expect(isProPlan({ ...FREE_PLAN, name: "Pro" })).toBe(false);
   });
 });

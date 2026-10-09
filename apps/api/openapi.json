@@ -5011,6 +5011,28 @@
         "title": "DisconnectPlatformResponse",
         "type": "object"
       },
+      "DiscountCodesResponse": {
+        "description": "Coupon codes the clients advertise, each a Dodo discount code or null when unset.",
+        "properties": {
+          "founder_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Code the founder's letter offers",
+            "title": "Founder Letter"
+          }
+        },
+        "required": [
+          "founder_letter"
+        ],
+        "title": "DiscountCodesResponse",
+        "type": "object"
+      },
       "DiscoverSkillsResponse": {
         "description": "Response for previewing the skills available in a GitHub repository.",
         "properties": {
@@ -12518,6 +12540,10 @@
             "title": "Name",
             "type": "string"
           },
+          "plan_type": {
+            "$ref": "#/components/schemas/PlanTier",
+            "description": "Tier this plan sells"
+          },
           "updated_at": {
             "description": "Update timestamp",
             "format": "date-time",
@@ -12529,6 +12555,7 @@
           "id",
           "dodo_product_id",
           "name",
+          "plan_type",
           "description",
           "amount",
           "currency",
@@ -12541,6 +12568,16 @@
         ],
         "title": "PlanResponse",
         "type": "object"
+      },
+      "PlanTier": {
+        "description": "What a catalogue row sells.\n\nNot PlanType, which is a user's entitlement: Enterprise is quoted by the team,\nnever an entitlement a request is gated on. Written by scripts/payment_setup.py.",
+        "enum": [
+          "free",
+          "pro",
+          "enterprise"
+        ],
+        "title": "PlanTier",
+        "type": "string"
       },
       "PlanType": {
         "description": "Subscription plan types.",
@@ -32588,6 +32625,58 @@
           }
         },
         "summary": "Create Checkout Session Endpoint",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/discount-codes": {
+      "get": {
+        "description": "Get the discount codes the clients advertise.",
+        "operationId": "payments_get_discount_codes_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountCodesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Discount Codes Endpoint",
         "tags": [
           "Payments"
         ]

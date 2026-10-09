@@ -7,12 +7,12 @@ import {
 } from "@icons";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import { useAnnualSavings } from "@/features/pricing/hooks/useAnnualSavings";
 
 import {
-  DISCOUNT_CODE,
   DISCOUNT_PERCENT,
   DISCOUNT_TERMS,
-  DISCOUNT_YEARLY_NOTE,
+  discountYearlyNote,
   INK,
   OFFER_LEAD,
 } from "./content";
@@ -21,13 +21,24 @@ import {
 const CTA_BLACK = "#000000";
 
 interface LetterOfferProps {
+  discountCode: string;
   copied: boolean;
   onCopyCode: () => void;
   onClaim: () => void;
 }
 
 /** The offer, seamless and inline, while the code still works. */
-export function LetterOffer({ copied, onCopyCode, onClaim }: LetterOfferProps) {
+export function LetterOffer({
+  discountCode,
+  copied,
+  onCopyCode,
+  onClaim,
+}: LetterOfferProps) {
+  // Only said once the live prices are known, so the months are never a guess.
+  const monthsFree =
+    useAnnualSavings({ offerPercent: DISCOUNT_PERCENT })?.monthsFree ?? 0;
+  const yearlyNote = monthsFree > 0 ? discountYearlyNote(monthsFree) : null;
+
   return (
     <div className="mt-3 space-y-2">
       <p
@@ -41,19 +52,19 @@ export function LetterOffer({ copied, onCopyCode, onClaim }: LetterOfferProps) {
         <button
           type="button"
           onClick={onCopyCode}
-          aria-label={`Copy the discount code ${DISCOUNT_CODE}`}
+          aria-label={`Copy the discount code ${discountCode}`}
           title={copied ? "Copied" : "Copy code"}
           className="mx-0.5 inline-flex translate-y-[-1px] cursor-pointer items-center gap-1 rounded px-1 align-middle font-bold outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
           style={{ color: INK }}
         >
-          {DISCOUNT_CODE}
+          {discountCode}
           {copied ? (
             <CheckmarkCircle02Icon className="h-3.5 w-3.5" />
           ) : (
             <Copy01Icon className="h-3 w-3" />
           )}
         </button>
-        at checkout. {DISCOUNT_YEARLY_NOTE}
+        at checkout.{yearlyNote && ` ${yearlyNote}`}
       </p>
       <RaisedButton
         color={CTA_BLACK}

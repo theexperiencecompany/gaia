@@ -58,3 +58,33 @@ DODO_TEST_MODE_BILLING_ADDRESS: dict[str, str] = {
     "zipcode": "94104",
 }
 DODO_TEST_MODE_PHONE_NUMBER = "+14155550123"
+
+#: ISO 4217 minor-unit exponents that are not 2: a Dodo amount is in the
+#: currency's smallest unit, so 1000 is ¥1000 but 10.00 USD and 1.000 KWD.
+ISO_4217_DEFAULT_EXPONENT = 2
+ISO_4217_EXPONENTS: dict[str, int] = {
+    **dict.fromkeys(
+        (
+            "BIF",
+            "CLP",
+            "DJF",
+            "GNF",
+            "ISK",
+            "JPY",
+            "KMF",
+            "KRW",
+            "PYG",
+            "RWF",
+            "UGX",
+            "UYI",
+            "VND",
+            "VUV",
+            "XAF",
+            "XOF",
+            "XPF",
+        ),
+        0,
+    ),
+    **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
+    **dict.fromkeys(("CLF", "UYW"), 4),
+}
