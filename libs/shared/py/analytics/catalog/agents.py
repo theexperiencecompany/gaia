@@ -79,7 +79,7 @@ class AiLlmCallCompleted(ServerEvent):
     """A background model call outside an agent graph finished; graph calls are covered by $ai_generation."""
 
     event: ClassVar[str] = "ai:llm_call_completed"
-    budget_per_user_day: ClassVar[int] = 500
+    budget_per_user_day: ClassVar[int] = 2500
 
     feature: Identifier
     label: Identifier
