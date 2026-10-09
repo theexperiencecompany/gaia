@@ -1037,8 +1037,9 @@ class TestATodoWhoseOwnerIsNotAUser:
                 archive,
             ),
             patch(f"{MODULE}.log") as log_mock,
+            _serving(pool),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool)
+            result = await _execute_todo_with_retry("todo-1")
         return result, repo, pool, executor, archive, log_mock
 
     @pytest.mark.regression
