@@ -17,6 +17,7 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookLogFields,
+    DodoWebhookPayload,
     DodoWebhookProcessingResult,
     WebhookProcessingStatus,
 )
@@ -138,7 +139,7 @@ class PaymentWebhookService:
             return False
 
     async def process_webhook(
-        self, webhook_data: dict[str, object], webhook_id: str
+        self, webhook_data: DodoWebhookPayload, webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """Process a Dodo payment webhook exactly once.
 

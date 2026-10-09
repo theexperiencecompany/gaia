@@ -130,6 +130,11 @@ const nextConfig = {
     },
   },
   experimental: {
+    // Dagger's local quality gate sets this to keep Next's static-page workers
+    // from consuming the whole developer machine; CI leaves its normal default.
+    ...(process.env.GAIA_BUILD_WORKERS
+      ? { cpus: Number(process.env.GAIA_BUILD_WORKERS) }
+      : {}),
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
     // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
     // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
