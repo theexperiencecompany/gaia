@@ -15,7 +15,7 @@ import type {
   TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
-import { describeCron } from "../utils/cronUtils";
+import { workflowApi } from "../api/workflowApi";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -29,8 +29,15 @@ const scheduleTriggerConfigSchema = z.object({
     .string()
     .trim()
     .min(1, "Cron expression is required")
-    .refine((value) => describeCron(value).isValid, {
-      message: "Invalid cron expression",
+    .superRefine(async (value, ctx) => {
+      // The server owns the recurring-schedule rule; asked once per submit.
+      const verdict = await workflowApi.validateCron(value);
+      if (!verdict.valid) {
+        ctx.addIssue({
+          code: "custom",
+          message: verdict.error ?? "Invalid schedule",
+        });
+      }
     }),
   timezone: z
     .string()
@@ -44,12 +51,11 @@ const manualTriggerConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-// Generic trigger config for all integration triggers (gmail, calendar, slack, etc.)
-// Only validates base fields - backend validates trigger-specific fields
-// This allows new triggers to be added without frontend schema changes
+// Integration triggers (gmail, calendar, slack, ...): base fields only, the backend validates the rest.
+// A built-in type is judged by its own schema only, so a refused schedule cannot pass as an integration.
 const integrationTriggerConfigSchema = z
   .object({
-    type: z.string(),
+    type: z.string().refine((type) => type !== "schedule" && type !== "manual"),
     enabled: z.boolean(),
   })
   .catchall(z.unknown()); // Allow any additional properties

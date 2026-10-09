@@ -7,9 +7,9 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
+from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
     CreateWorkflowRequest,
-    DeactivationReason,
     PublicWorkflowCard,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
@@ -38,6 +38,7 @@ from app.utils.creator import (
     format_creator,
 )
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.schedule import validate_recurring_schedule
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     filter_existing_integration_ids,
@@ -918,6 +919,8 @@ class WorkflowService:
             # reactivation. The stored timezone wins; the request's tz is only
             # a fallback for legacy rows that never stored one.
             if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
+                # A stored schedule that breaks the rule stays off until the user fixes it.
+                validate_recurring_schedule(trigger_config.cron_expression)
                 trigger_config.update_next_run(
                     user_timezone=trigger_config.timezone or user_timezone
                 )

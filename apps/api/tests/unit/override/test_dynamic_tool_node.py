@@ -20,7 +20,8 @@ from langchain_core.tools import tool
 from langgraph.runtime import Runtime
 import pytest
 
-from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.executor import MIDDLEWARE_FAILURE_TEMPLATE, MiddlewareExecutor
+from app.agents.middleware.factory import ContextOptions, create_middleware_stack
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import (
@@ -349,3 +350,46 @@ class TestToolCallsKeepTheRunConfig:
 
         (message,) = result["messages"]
         assert message.content == "q:thread-1"
+
+
+class TestProductionStackFailsClosed:
+    """The real stack, in its real order, around a tool whose side effect is observable."""
+
+    async def test_a_hil_gate_that_raises_never_runs_the_tool(self) -> None:
+        sent: list[str] = []
+
+        @tool
+        async def send_email(to: str) -> str:
+            """Send an email."""
+            sent.append(to)
+            return "sent"
+
+        stack = create_middleware_stack(chat_llm=None, context=ContextOptions(summarize=False))
+        node = DynamicToolNode(
+            {"send_email": send_email}, middleware_executor=MiddlewareExecutor(stack)
+        )
+        config = {
+            "configurable": {
+                "user_id": "user_1",
+                "thread_id": "thread_1",
+                "stream_id": "stream_1",
+                "conversation_id": "conv_1",
+            }
+        }
+
+        with (
+            patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
+            patch(
+                "app.services.hil.gate.is_hil_ledger_enabled",
+                AsyncMock(side_effect=RuntimeError("flag store down")),
+            ),
+        ):
+            result = await node._afunc(
+                _one_call("send_email", {"to": "bob@example.com"}), config, MagicMock(spec=[])
+            )
+
+        (message,) = result["messages"]
+        assert sent == []
+        assert message.status == "error"
+        assert message.tool_call_id == "call_1"
+        assert message.content == MIDDLEWARE_FAILURE_TEMPLATE.format(tool="send_email")

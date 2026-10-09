@@ -19,6 +19,7 @@ from app.constants.analytics import (
 from app.models.payment_models import PlanType, SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
+    agent_run_lifecycle,
     analytics_day_start,
     capture,
     identify_user,
@@ -26,6 +27,7 @@ from app.services.analytics_service import (
     track_subscription_event,
 )
 from shared.py.analytics import Dedupe, PlatformIdentity, UserId
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.auth import UserActive, UserLoggedOut, UserSignedUp
 from shared.py.analytics.catalog.billing import (
@@ -47,6 +49,11 @@ from tests.helpers import captured_wide_event
 
 USER_1 = UserId("6812f0b3c9a14e2b7d5a91cc")
 USER_2 = UserId("6812f0b3c9a14e2b7d5a91dd")
+COMMS_RUN = AgentRunStarted(agent="comms", mode="interactive", conversation_id="conv-1")
+EXECUTOR_RUN = AgentRunStarted(
+    agent="executor", mode="background", conversation_id="conv-1", task_id="task-1"
+)
+TASK_DEDUPE = Dedupe(key="task-1", occurred_at=datetime(2026, 10, 9, tzinfo=UTC))
 CANCELLED = SubscriptionCancelled(
     subscription_id="sub123", product_id="prod_1", billing_interval="Month"
 )
@@ -424,6 +431,94 @@ class TestUserActive:
             await _drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
+
+
+class TestAgentRunLifecycle:
+    """Every run_failed and run_completed follows the run_started of the same run."""
+
+    def _events(self, capture: MagicMock) -> list[tuple[object, Dedupe | None]]:
+        return [(c.args[1], c.kwargs.get("dedupe")) for c in capture.call_args_list]
+
+    def test_a_clean_run_is_started_then_completed_with_its_terminal_props(self) -> None:
+        with patch("app.services.analytics_service.capture") as capture:
+            with agent_run_lifecycle(USER_1.value, EXECUTOR_RUN, dedupe=TASK_DEDUPE) as run:
+                run.queued = True
+
+        assert self._events(capture) == [
+            (EXECUTOR_RUN, None),
+            (AgentRunCompleted(**EXECUTOR_RUN.model_dump(), queued=True), TASK_DEDUPE),
+        ]
+
+    def test_a_raised_failure_is_started_then_failed_and_still_raises(self) -> None:
+        with (
+            patch("app.services.analytics_service.capture") as capture,
+            pytest.raises(KeyError),
+            agent_run_lifecycle(USER_1.value, COMMS_RUN, dedupe=TASK_DEDUPE),
+        ):
+            raise KeyError("boom")
+
+        assert self._events(capture) == [
+            (COMMS_RUN, None),
+            (AgentRunFailed(**COMMS_RUN.model_dump(), reason="KeyError"), TASK_DEDUPE),
+        ]
+
+    async def test_a_cancelled_run_is_started_then_failed_and_still_cancels(self) -> None:
+        async def run_until_cancelled() -> None:
+            with agent_run_lifecycle(USER_1.value, COMMS_RUN, dedupe=TASK_DEDUPE):
+                await asyncio.Event().wait()
+
+        with patch("app.services.analytics_service.capture") as capture:
+            task = asyncio.create_task(run_until_cancelled())
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        assert [c.args[0] for c in capture.call_args_list] == [USER_1, USER_1]
+        assert self._events(capture) == [
+            (COMMS_RUN, None),
+            (AgentRunFailed(**COMMS_RUN.model_dump(), reason="cancelled"), TASK_DEDUPE),
+        ]
+
+    def test_a_failure_the_body_handled_is_failed_with_its_reason(self) -> None:
+        with patch("app.services.analytics_service.capture") as capture:
+            with agent_run_lifecycle(USER_1.value, EXECUTOR_RUN, dedupe=TASK_DEDUPE) as run:
+                run.failure_reason = "approval_lost"
+
+        assert self._events(capture)[1] == (
+            AgentRunFailed(**EXECUTOR_RUN.model_dump(), reason="approval_lost"),
+            TASK_DEDUPE,
+        )
+
+    def test_a_paused_run_has_no_terminal_event(self) -> None:
+        with patch("app.services.analytics_service.capture") as capture:
+            with agent_run_lifecycle(USER_1.value, EXECUTOR_RUN) as run:
+                run.paused = True
+
+        assert self._events(capture) == [(EXECUTOR_RUN, None)]
+
+    def test_no_user_id_captures_nothing(self) -> None:
+        with (
+            patch("app.services.analytics_service.capture") as capture,
+            pytest.raises(ValueError),
+            agent_run_lifecycle("", COMMS_RUN),
+        ):
+            raise ValueError
+
+        capture.assert_not_called()
+
+    async def test_a_run_in_a_users_turn_is_the_agents_work(self, posthog_events) -> None:
+        with (
+            analytics_context(_user_context(EntrySurface.WEB)),
+            agent_run_lifecycle(USER_1.value, COMMS_RUN),
+        ):
+            pass
+        await _drain_at_most_once_sends()
+
+        assert [(e["event"], e["properties"]["actor"]) for e in posthog_events] == [
+            ("agent:run_started", "agent"),
+            ("agent:run_completed", "agent"),
+        ]
 
 
 # ---------------------------------------------------------------------------

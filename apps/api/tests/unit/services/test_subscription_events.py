@@ -30,6 +30,7 @@ from app.services.payments.subscription_events import (
     queue_inbox_desk_safely,
     reactivate_workflows_safely,
     resolve_subscription_owner,
+    resume_paywall_pauses_safely,
     send_welcome_email_safely,
 )
 from shared.py.analytics import UserId
@@ -50,6 +51,7 @@ from tests.unit.services.conftest import (
 pytestmark = pytest.mark.usefixtures(
     "mock_processed_webhook_repository",
     "mock_activation_workflow_reactivation",
+    "mock_paywall_resume",
     "mock_deactivate_workflows",
     "mock_queue_inbox_desk",
 )
@@ -332,6 +334,20 @@ class TestActivationCreatesTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
 
+    async def test_a_first_subscription_resumes_the_reminders_the_paywall_paused(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_paywall_resume,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+
     async def test_a_new_subscriber_has_the_inbox_desk_queued(
         self,
         mock_webhook_users_collection,
@@ -364,10 +380,13 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
-        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={})
+        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={"campaign": "spring"})
 
         mock_webhook_users_collection.get_by_email.assert_awaited_once_with(FAKE_EMAIL)
         assert result.user_id == FAKE_USER_ID
+        # Stored as Dodo sent it: no user_id key it never carried.
+        created = mock_webhook_subscription_repository.create.await_args.args[0]
+        assert created.metadata == {"campaign": "spring"}
 
     async def test_a_subscription_belonging_to_nobody_is_not_written(
         self,
@@ -421,6 +440,24 @@ class TestTransitionsDriveTheSideEffects:
         await _apply(SubscriptionEventKind.RENEWED)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
         mock_deactivate_workflows.assert_awaited_once()
+
+    async def test_reminders_paused_for_the_subscription_resume_when_it_recovers(
+        self,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_paywall_resume,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ON_HOLD)
+        mock_paywall_resume.reminders.assert_not_awaited()
+        mock_paywall_resume.todos.assert_not_awaited()
+
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(status="on_hold", last_event_at=None)
+        )
+        await _apply(SubscriptionEventKind.RENEWED)
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
 
     async def test_a_recovery_queues_the_inbox_desk(
         self,
@@ -588,6 +625,33 @@ class TestSideEffectsNeverFailTheEvent:
             error="mongo exploded",
             error_type="RuntimeError",
             user_id=FAKE_USER_ID,
+        )
+
+    async def test_a_reminder_resume_failure_still_resumes_the_todos_and_is_queued(
+        self, mock_paywall_resume
+    ) -> None:
+        mock_paywall_resume.reminders.side_effect = RuntimeError("mongo exploded")
+        pool = object()
+        with (
+            patch(f"{EVENTS_MODULE}.log") as mock_log,
+            patch(f"{EVENTS_MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{EVENTS_MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
+            await resume_paywall_pauses_safely(FAKE_USER_ID)
+
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_log.error.assert_called_once_with(
+            "[PAYMENT] Failed to resume paywall-paused automation",
+            error="paywall-paused automation did not all resume (1 sub-exception)",
+            error_type="ExceptionGroup",
+            user_id=FAKE_USER_ID,
+        )
+        enqueue.assert_awaited_once_with(
+            pool,
+            SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+            FAKE_USER_ID,
+            SubscriptionWorkflowSync.RESUME_PAUSED.value,
+            _job_id=f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{FAKE_USER_ID}:resume_paused",
         )
 
     async def test_an_inbox_desk_that_cannot_be_queued_is_logged(

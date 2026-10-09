@@ -675,7 +675,7 @@ async def _consume_agent_stream(
     await whatever's left.
     """
     stream_id = turn.stream_id
-    async for chunk in await call_agent(
+    async for chunk in call_agent(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,

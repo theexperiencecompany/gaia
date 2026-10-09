@@ -1,6 +1,9 @@
 """Server-side PostHog capture: catalog events only, attributed to an AnalyticsId."""
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TypeAlias
@@ -8,6 +11,7 @@ from typing import TypeAlias
 from posthog import Posthog
 
 from app.constants.analytics import (
+    AGENT_RUN_CANCELLED_REASON,
     ANALYTICS_DAY_TIMEZONE,
     AT_MOST_ONCE_KEY_PREFIX,
     AT_MOST_ONCE_TASK_NAME,
@@ -19,6 +23,7 @@ from app.db.redis import redis_cache
 from app.models.payment_models import PlanType, SubscriptionStatus
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import AnalyticsId, Dedupe, PostHogCapture, UserId, prepare_capture
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.catalog.auth import UserActive, UserLoggedIn, UserSignedUp
 from shared.py.analytics.catalog.base import ServerEvent, Surface
@@ -28,7 +33,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionExpired,
     SubscriptionRenewed,
 )
-from shared.py.analytics.context import current_analytics_context
+from shared.py.analytics.context import analytics_context, current_analytics_context
 from shared.py.wide_events import log
 
 
@@ -99,7 +104,9 @@ class AIFeature(StrEnum):
     FILE_EXTRACTION = "file_extraction", ("file_image_summary", "file_text_summary")
     FOLLOW_UPS = "follow_ups", ("follow_up_actions",)
     RESEARCH = "research", ("research_queries",)
+    TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     MODERATION = "moderation", ("profanity",)
+    BROWSER = "browser", ("browser_task",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
@@ -203,6 +210,79 @@ def _send(client: Posthog, prepared: PostHogCapture) -> None:
             error_type=type(e).__name__,
             user_id=prepared.distinct_id,
         )
+
+
+@dataclass
+class AgentRunOutcome:
+    """A run's terminal outcome and executor timings, set by a body that reports instead of raising."""
+
+    failure_reason: str | None = None
+    paused: bool = False
+    queued: bool | None = None
+    queue_wait_ms: float | None = None
+    executor_ttft_ms: float | None = None
+    executor_active_ms: float | None = None
+
+
+@contextmanager
+def agent_run_lifecycle(
+    user_id: str | None,
+    run: AgentRunStarted,
+    dedupe: Dedupe | None = None,
+) -> Iterator[AgentRunOutcome]:
+    """Emit run_started, then exactly one of run_completed or run_failed, as the agent's work.
+
+    A raised exception fails the run with its type as reason, a cancellation with
+    "cancelled"; a body that handles its own failure sets failure_reason, and a
+    paused run emits no terminal event.
+    dedupe keys the terminal event. No user id, no events.
+    """
+    outcome = AgentRunOutcome()
+    if not user_id:
+        yield outcome
+        return
+    distinct_id = UserId(user_id)
+    _capture_as_agent(distinct_id, run)
+    try:
+        yield outcome
+    except asyncio.CancelledError:
+        outcome.failure_reason = AGENT_RUN_CANCELLED_REASON
+        _capture_run_terminal(distinct_id, run, outcome, dedupe)
+        raise
+    except Exception as exc:
+        outcome.failure_reason = type(exc).__name__
+        _capture_run_terminal(distinct_id, run, outcome, dedupe)
+        raise
+    if not outcome.paused:
+        _capture_run_terminal(distinct_id, run, outcome, dedupe)
+
+
+def _capture_run_terminal(
+    user_id: UserId,
+    run: AgentRunStarted,
+    outcome: AgentRunOutcome,
+    dedupe: Dedupe | None,
+) -> None:
+    """Emit run_failed with its reason when the outcome failed, else run_completed."""
+    terminal = {
+        **run.model_dump(),
+        "queued": outcome.queued,
+        "queue_wait_ms": outcome.queue_wait_ms,
+        "executor_ttft_ms": outcome.executor_ttft_ms,
+        "executor_active_ms": outcome.executor_active_ms,
+    }
+    event: AgentRunCompleted | AgentRunFailed = (
+        AgentRunCompleted.model_validate(terminal)
+        if outcome.failure_reason is None
+        else AgentRunFailed.model_validate({**terminal, "reason": outcome.failure_reason})
+    )
+    _capture_as_agent(user_id, event, dedupe)
+
+
+def _capture_as_agent(user_id: UserId, event: ServerEvent, dedupe: Dedupe | None = None) -> None:
+    """Capture a run event as the agent's work, so it never marks the user active."""
+    with analytics_context(current_analytics_context().acting_as(Actor.AGENT)):
+        capture(user_id, event, dedupe=dedupe)
 
 
 def track_signup(
