@@ -260,12 +260,8 @@ async def _execute_todo_with_retry(
 
     if skipped := await _skip_reason(doc, origin, armed_for):
         return skipped
-    if doc.pause_reason is not None:
-        log.info("tracked_todo.execute_paused", todo_id=todo_id, pause_reason=doc.pause_reason)
-        await _hold_events_while_paused(todo_id, origin, coalesced)
-        return f"paused:{todo_id}"
-    if not await is_paid(doc.user_id):
-        return await _pause_unpaid(doc, origin, coalesced)
+    if withheld := await _withheld_result(doc, origin, coalesced):
+        return withheld
 
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
@@ -363,6 +359,19 @@ async def _schedule_retry(
         max_attempts=MAX_RETRY_ATTEMPTS,
     )
     return f"retry:{doc.id} (attempt {attempt})"
+
+
+async def _withheld_result(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> str | None:
+    """Return the result of a fire the todo's pause or its owner's lapsed plan withholds, or None."""
+    if doc.pause_reason is not None:
+        log.info("tracked_todo.execute_paused", todo_id=doc.id, pause_reason=doc.pause_reason)
+        await _hold_events_while_paused(doc.id, origin, coalesced)
+        return f"paused:{doc.id}"
+    if not await is_paid(doc.user_id):
+        return await _pause_unpaid(doc, origin, coalesced)
+    return None
 
 
 async def _hold_events_while_paused(
