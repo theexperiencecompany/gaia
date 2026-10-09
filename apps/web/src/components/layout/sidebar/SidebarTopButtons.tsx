@@ -18,7 +18,8 @@ import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
+import { toMajorUnits } from "@/features/pricing/utils/money";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -63,13 +64,12 @@ const buttonData: SidebarButton[] = [
 export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
-  const { plans } = usePricing();
+  const { plan: monthlyPlan, isLoading: isPriceLoading } = useProMonthlyPlan();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
-  const monthlyPlan = plans.find(
-    (p) => p.name === "Pro" && p.duration === "monthly",
-  );
-  const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
+  const price = monthlyPlan
+    ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)
+    : null;
 
   // In settings, the app nav is noise — a single "Back to chats" is all you need.
   if (pathname.startsWith("/settings")) {
@@ -102,6 +102,7 @@ export default function SidebarTopButtons() {
       {!isUnknown && !isPaid && (
         <SidebarPromo
           price={price}
+          isPriceLoading={isPriceLoading}
           copy={paywallCopyFor(hasEverSubscribed)}
           onUpgrade={() =>
             openUpgradeModal(undefined, {

@@ -47,6 +47,7 @@ const PRO_PLAN = {
   id: "plan_pro",
   dodo_product_id: "dodo_pro_monthly",
   name: "Pro",
+  plan_type: "pro",
   amount: 2000,
   currency: "USD",
   duration: "monthly" as const,

@@ -1,8 +1,5 @@
 import type { UserSubscriptionStatus } from "@/features/pricing/api/pricingApi";
-import {
-  convertToUSDCents,
-  formatUSDFromCents,
-} from "@/features/pricing/utils/currencyConverter";
+import { formatWholeOrCents } from "@/features/pricing/utils/money";
 
 // Module-scope formatter: hoisting keeps locale resolution out of the render
 // path (js-hoist-intl); explicit locale+timeZone gives deterministic
@@ -72,11 +69,10 @@ function getStatusText(status: string): string {
 
 function getPriceFormatted(status: UserSubscriptionStatus): string {
   const plan = status.current_plan;
-  if (plan) {
-    return formatUSDFromCents(convertToUSDCents(plan.amount, plan.currency));
-  }
+  if (plan) return formatWholeOrCents(plan.amount, plan.currency);
   const preTaxAmount = status.subscription?.recurring_pre_tax_amount;
-  if (preTaxAmount) return formatUSDFromCents(preTaxAmount);
+  // Dollar-signed whatever it was charged in, as shown today; #1330 escalates it.
+  if (preTaxAmount) return formatWholeOrCents(preTaxAmount, "USD");
   return "$0";
 }
 

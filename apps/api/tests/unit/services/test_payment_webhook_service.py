@@ -18,6 +18,7 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
+    WebhookProcessingStatus,
 )
 from app.services.payments.payment_webhook_service import PaymentWebhookService
 from app.services.payments.subscription_events import (
@@ -34,6 +35,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionExpired,
     SubscriptionRenewed,
 )
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
     FAKE_EMAIL,
@@ -213,6 +215,21 @@ class TestProcessWebhookIdempotency:
             "wh_typeless", event_type="unknown"
         )
 
+    async def test_a_delivery_with_a_non_string_type_is_abandoned_not_crashed(
+        self, webhook_service, mock_processed_webhook_repository
+    ):
+        mock_processed_webhook_repository.claim = AsyncMock(return_value=True)
+
+        result = await webhook_service.process_webhook(
+            {"business_id": "biz", "type": 123, "timestamp": "2026-10-09T00:00:00Z", "data": {}},
+            "wh_numeric_type",
+        )
+
+        assert (result.event_type, result.status) == ("123", WebhookProcessingStatus.ABANDONED)
+        mock_processed_webhook_repository.claim.assert_awaited_once_with(
+            "wh_numeric_type", event_type="123"
+        )
+
     async def test_a_replayed_cancellation_deactivates_workflows_only_once(
         self,
         webhook_service,
@@ -348,6 +365,101 @@ class TestProcessWebhookIdempotency:
             }
         ]
 
+    async def test_an_envelope_with_no_data_is_rejected_by_the_event_model(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+    ):
+        """A missing data object logs as empty fields; the reason given is the envelope's, not the log model's."""
+        bad_data = {"business_id": "biz_1", "type": "payment.succeeded", "timestamp": "t"}
+        with pytest.raises(ValidationError) as rejected:
+            DodoWebhookEvent(**bad_data)
+
+        result = await webhook_service.process_webhook(bad_data, "wh_no_data")
+
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_no_data")
+        assert result.status == "abandoned"
+        assert result.message == f"Invalid payload: {rejected.value!s}"
+
+
+class TestProcessWebhookLogFields:
+    """The fields a delivery is logged with are read before its type picks a full model."""
+
+    async def test_a_payment_is_logged_with_its_customer_amount_and_currency(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        with patch(f"{MODULE}.schedule_account_sync"):
+            async with captured_wide_event() as wide:
+                await webhook_service.process_webhook(event_data, "wh_log_pay")
+
+        payment = wide["payment"]
+        assert (payment["customer_id"], payment["amount_cents"], payment["currency"]) == (
+            "cust_001",
+            999,
+            "USD",
+        )
+
+    async def test_a_top_level_customer_id_is_logged_when_there_is_no_customer_object(
+        self, webhook_service, mock_processed_webhook_repository
+    ):
+        event_data = _make_webhook_event("subscription.updated", {"customer_id": "cust_top"})
+
+        async with captured_wide_event() as wide:
+            await webhook_service.process_webhook(event_data, "wh_log_top")
+
+        assert wide["payment"]["customer_id"] == "cust_top"
+
+    @pytest.mark.parametrize("customer", [None, "cust_as_a_string"])
+    async def test_a_malformed_customer_is_abandoned_not_retried(
+        self, webhook_service, mock_processed_webhook_repository, customer: object
+    ):
+        """A failed delivery is a 503 Dodo retries forever; a body that cannot parse never will."""
+        event_data = _make_webhook_event(
+            "payment.succeeded", {**PAYMENT_DATA_PAYLOAD, "customer": customer}
+        )
+
+        result = await webhook_service.process_webhook(event_data, "wh_bad_customer")
+
+        assert result.status == "abandoned"
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_bad_customer")
+
+    async def test_a_processed_delivery_syncs_the_account_named_in_its_metadata(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        with patch(f"{MODULE}.schedule_account_sync") as sync:
+            result = await webhook_service.process_webhook(event_data, "wh_sync")
+
+        assert result.status == "processed"
+        sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_processed_delivery_without_metadata_syncs_nothing(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        payload = {key: value for key, value in PAYMENT_DATA_PAYLOAD.items() if key != "metadata"}
+        event_data = _make_webhook_event("payment.succeeded", payload)
+
+        with patch(f"{MODULE}.schedule_account_sync") as sync:
+            result = await webhook_service.process_webhook(event_data, "wh_no_meta")
+
+        assert result.status == "processed"
+        sync.assert_not_called()
+
 
 # ============================================================================
 # Payment Event Handlers
@@ -390,8 +502,86 @@ class TestHandlePaymentSucceeded:
                 payment_id="pay_001",
                 amount=PAYMENT_DATA_PAYLOAD["total_amount"] / 100,
                 currency=PAYMENT_DATA_PAYLOAD["currency"],
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+                amount_usd_pre_tax=9.99,
             ),
         )
+
+    async def test_a_localised_taxed_charge_reports_pre_tax_local_and_usd(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        """ZAR summed as dollars read ~3x real revenue; the USD settlement is comparable."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "currency": "ZAR",
+            "total_amount": 59244,
+            "tax": 7727,
+            "settlement_currency": "USD",
+            "settlement_amount": 3450,
+            "settlement_tax": 450,
+        }
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_zar"
+        )
+
+        event = mock_payment_capture.call_args.args[1]
+        assert (event.amount, event.currency) == (592.44, "ZAR")
+        assert (event.amount_charged_pre_tax, event.currency_charged, event.amount_usd_pre_tax) == (
+            515.17,
+            "ZAR",
+            30.0,
+        )
+
+    async def test_a_fully_discounted_charge_reports_zero_not_nothing(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        """Regression: two INR discount-code charges reached PostHog with a null amount."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "currency": "INR",
+            "total_amount": 0,
+            "settlement_amount": 0,
+        }
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_inr"
+        )
+
+        event = mock_payment_capture.call_args.args[1]
+        assert event.amount == 0
+        assert event.amount_usd_pre_tax == 0
+        assert event.to_properties()["amount_usd_pre_tax"] == 0
+
+    async def test_a_non_usd_settlement_sends_no_usd_amount_and_says_so(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        log.reset()
+        payload = {**PAYMENT_DATA_PAYLOAD, "settlement_currency": "INR"}
+        await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_inr_settle"
+        )
+
+        assert "amount_usd_pre_tax" not in mock_payment_capture.call_args.args[1].to_properties()
+        assert log.get()["errors"] == [
+            {
+                "msg": "[PAYMENT] Payment settled in a currency other than USD; "
+                "amount_usd_pre_tax not sent",
+                "payment_id": "pay_001",
+                "settlement_currency": "INR",
+            }
+        ]
 
     async def test_analytics_uses_metadata_user_id_without_db_lookup(
         self,
@@ -1194,12 +1384,13 @@ class TestWebhookAccountSync:
         mock_payment_capture,
         mock_schedule_sync,
     ):
+        """Dodo metadata is string-to-string, so a number there is a malformed body, rejected whole."""
         payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": 12345}}
         event_data = _make_webhook_event("payment.succeeded", payload)
 
         result = await webhook_service.process_webhook(event_data, "wh_sync_003")
 
-        assert result.status == "processed"
+        assert result.status == "abandoned"
         mock_schedule_sync.assert_not_called()
 
 
@@ -1211,9 +1402,8 @@ class TestWebhookAccountSync:
 class TestASilentSkipIsOnTheRecord:
     """A missing analytics id produced no event and no log — a metric that looked healthy while a payment went unrecorded."""
 
-    @pytest.mark.parametrize(
-        "metadata", [{}, {"user_id": 12345}, {"user_id": "someone@example.com"}]
-    )
+    # A non-string user_id never gets here: the body is rejected whole (see TestWebhookAccountSync).
+    @pytest.mark.parametrize("metadata", [{}, {"user_id": "someone@example.com"}])
     async def test_a_payment_without_a_valid_user_id_is_not_captured_anonymously(
         self,
         webhook_service,

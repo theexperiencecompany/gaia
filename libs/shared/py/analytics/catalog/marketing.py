@@ -127,7 +127,8 @@ class FounderLetterShown(WebEvent):
     event: ClassVar[str] = "founder_letter:shown"
     budget_per_user_day: ClassVar[int] = 100
 
-    discount_code: Identifier
+    # None when no founder-letter code is configured: the letter then carries no offer.
+    discount_code: Identifier | None = None
 
 
 class FounderLetterOpened(WebEvent):
@@ -137,7 +138,8 @@ class FounderLetterOpened(WebEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     first_open: bool
-    discount_code: Identifier
+    # None when no founder-letter code is configured: the letter then carries no offer.
+    discount_code: Identifier | None = None
     discount_percent: int
 
 
@@ -157,7 +159,8 @@ class FounderLetterCodeCopied(WebEvent):
     event: ClassVar[str] = "founder_letter:code_copied"
     budget_per_user_day: ClassVar[int] = 50
 
-    discount_code: Identifier
+    # None when no founder-letter code is configured: the letter then carries no offer.
+    discount_code: Identifier | None = None
 
 
 class FounderLetterMeetingClicked(WebEvent):
@@ -173,7 +176,8 @@ class FounderLetterDismissed(WebEvent):
     event: ClassVar[str] = "founder_letter:dismissed"
     budget_per_user_day: ClassVar[int] = 10
 
-    discount_code: Identifier
+    # None when no founder-letter code is configured: the letter then carries no offer.
+    discount_code: Identifier | None = None
 
 
 class WhatsNewCardShown(WebEvent):

@@ -3512,12 +3512,19 @@
         "description": "The user copied the founder letter's discount code.",
         "properties": {
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Discount Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discount Code"
           }
         },
-        "required": ["discount_code"],
         "title": "FounderLetterCodeCopied",
         "type": "object"
       }
@@ -3566,12 +3573,19 @@
         "description": "The user dismissed the founder letter for good on this device.",
         "properties": {
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Discount Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discount Code"
           }
         },
-        "required": ["discount_code"],
         "title": "FounderLetterDismissed",
         "type": "object"
       }
@@ -3613,16 +3627,24 @@
             "type": "boolean"
           },
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Discount Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discount Code"
           },
           "discount_percent": {
             "title": "Discount Percent",
             "type": "integer"
           }
         },
-        "required": ["first_open", "discount_code", "discount_percent"],
+        "required": ["first_open", "discount_percent"],
         "title": "FounderLetterOpened",
         "type": "object"
       }
@@ -3642,12 +3664,19 @@
         "description": "The founder letter envelope rendered; the denominator of its funnel.",
         "properties": {
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Discount Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discount Code"
           }
         },
-        "required": ["discount_code"],
         "title": "FounderLetterShown",
         "type": "object"
       }
