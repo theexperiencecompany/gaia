@@ -56,6 +56,7 @@ pytestmark = pytest.mark.usefixtures(
     "mock_activation_workflow_reactivation",
     "mock_paywall_resume",
     "mock_subscription_plan_cache_drop",
+    "mock_queue_inbox_desk",
 )
 
 

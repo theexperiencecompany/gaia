@@ -32,6 +32,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 # reads them to judge whether an overdue todo is genuinely stuck, and
 # trigger-subscription paths set/clear them, so they live here, not a consumer.
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
+# A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
+NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 
@@ -48,6 +50,8 @@ ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000
 # uncapped canvas pushed a tracked todo's run past MAX_MESSAGE_LENGTH and failed
 # it on every retry; two fifths of that cap leaves room for the rest of the prompt.
 CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
+# Most of a triggered run's event data inlined in its prompt; the run can fetch the source.
+TRIGGER_EVENTS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH // 5
 
 # Tracked-todo recurrence shortcuts. Intervals step from now (drift is fine);
 # anchored steps keep the first fire's wall-clock time.
@@ -63,15 +67,19 @@ TODO_RECURRENCE_SHORTCUTS: Final[frozenset[str]] = frozenset(
     TODO_INTERVAL_RECURRENCES.keys() | TODO_ANCHORED_RECURRENCES.keys()
 )
 
-# How far past its stored scheduled_at a scheduled fire may land and still run.
-# ARQ fires a deferred job at its defer time; a fire outside this window is a
-# job left behind by a reschedule (ARQ cannot cancel it) and is dropped.
+# The ARQ task that runs a tracked todo; also the prefix of its per-occurrence job id.
+EXECUTE_TRACKED_TODO_TASK: Final[str] = "execute_tracked_todo"
+
+# How far past its stored scheduled_at an unstamped fire (queued before jobs
+# carried their occurrence) may land and still run; outside it, it is dropped.
 TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
+# How long a one-time run that came due on a paused account waits before it checks again.
+PAUSED_RUN_RECHECK: Final[timedelta] = timedelta(days=1)
+# How long a todo paused for its subscription keeps the trigger events that reached it.
+PAUSED_TRIGGER_HOLD_TTL: Final[timedelta] = timedelta(days=30)
 
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
-# Bounds the Key Details a run's delivery decision reads next to the report.
-DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
 # The durable job that finishes a run's delivery when the todo store failed it
 # in-process; keyed by the run and its undone step, so each has one job at a time.
@@ -116,12 +124,14 @@ class TodoActivityEvent(StrEnum):
     WATCH_RESUMED = "watch_resumed"
     TRIGGER_FIRED = "trigger_fired"
     TRIGGER_ACTION_FAILED = "trigger_action_failed"
+    SUB_TODO_COMPLETED = "sub_todo_completed"
     RUN_STARTED = "run_started"
     RUN_FINISHED = "run_finished"
     RUN_FAILED = "run_failed"
     RUN_SKIPPED = "run_skipped"
     RETRY_SCHEDULED = "retry_scheduled"
     MARKED_FAILED = "marked_failed"
+    OCCURRENCE_GIVEN_UP = "occurrence_given_up"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
@@ -129,5 +139,109 @@ class TodoActivityEvent(StrEnum):
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity
-# (anything dated, any run log) belongs in activity.md, never here.
-CANVAS_SECTIONS: Final[tuple[str, ...]] = ("Key Details", "Current State", "Context", "Learnings")
+# (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
+CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
+CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
+CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
+CANVAS_SECTIONS: Final[tuple[str, ...]] = (
+    CANVAS_STANDING_RULES_SECTION,
+    CANVAS_KEY_DETAILS_SECTION,
+    CANVAS_CURRENT_STATE_SECTION,
+    "Context",
+    CANVAS_LEARNINGS_SECTION,
+)
+# The Inbox desk's canvas section from before observations.md; its run moves it there.
+CANVAS_OBSERVATIONS_SECTION: Final[str] = "Observations"
+
+# Most a Standing rules section may hold. Every prompt carries it whole, never
+# trimmed, so a canvas write that grows it past this is refused instead.
+STANDING_RULES_MAX_CHARS: Final[int] = 2_000
+
+# observations.md: one block per pattern, its evidence kept across runs.
+OBSERVATIONS_SENDERS_SECTION: Final[str] = "Senders"
+OBSERVATIONS_RECURRING_SECTION: Final[str] = "Recurring"
+OBSERVATIONS_PEOPLE_SECTION: Final[str] = "People"
+OBSERVATION_CONCLUSION: Final[str] = "conclusion"
+OBSERVATION_CONFIDENCE: Final[str] = "confidence"
+OBSERVATION_FIRST_SEEN: Final[str] = "first seen"
+OBSERVATION_LAST_SEEN: Final[str] = "last seen"
+OBSERVATION_DAILY_COUNTS: Final[str] = "daily counts"
+OBSERVATION_EARLIER: Final[str] = "earlier"
+# Days of per-day counts an entry keeps; older days fold into its "earlier" average.
+OBSERVATION_DAILY_COUNT_DAYS: Final[int] = 14
+# Messages from one sender in a run before it gets an entry: a one-off is not a pattern.
+OBSERVATION_MIN_MESSAGES: Final[int] = 3
+# Most observations.md may hold; a write past it is refused.
+OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
+# Most of observations.md a run prompt carries; past it, the conclusions alone.
+OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
+# Most of a todo's Key Details its delivery decision reads.
+DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
+
+# How many referenced todos a run reads Learnings from.
+REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
+
+# Top-level tracked todos in every agent's ACTIVE TRACKED TODOS block; sub-todos fold into a count.
+ACTIVE_TRACKED_SUMMARY_LIMIT: Final[int] = 15
+
+# Open sub-todos a parent's run reads, and how much of each one's Current State.
+SUB_TODOS_PROMPT_LIMIT: Final[int] = 50
+SUB_TODO_STATE_EXCERPT_CHARS: Final[int] = 300
+
+# How much of an existing todo's Current State a refused duplicate create shows.
+EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
+
+# Most todos list_tracked_todos returns, filtered or not; the freshest win.
+LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
+
+# The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
+INBOX_DESK_TITLE: Final[str] = "Inbox desk"
+INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
+PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
+# Automated senders the desk's fetch and its mail watch both leave out: GitHub and other
+# notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.
+INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
+    "noreply",
+    "no-reply",
+    "notifications",
+    "notification",
+    "mailer-daemon",
+    "donotreply",
+)
+# Gmail terms the desk's fetch adds to its window.
+INBOX_DESK_MAIL_FILTER: Final[str] = "category:primary " + " ".join(
+    f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
+)
+# Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
+INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")
+# New mail wakes the desk at once; more mail within the hour rides one run at its end.
+INBOX_DESK_WATCH_WINDOW_SECONDS: Final[int] = 3600
+# Local hours in which mail-woken desk runs send no alert; the morning briefing carries it.
+INBOX_DESK_QUIET_HOURS_START: Final[int] = 22
+INBOX_DESK_QUIET_HOURS_END: Final[int] = 8
+# The desk's briefing is read in seconds: words per item, and lines per capped section.
+INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
+INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5
+INBOX_DESK_FYI_MAX_LINES: Final[int] = 3
+# First retry delay of a failed provisioning; each further try doubles it.
+INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)
+
+# How many times a failed tracked-todo run is retried, and how long each retry waits.
+MAX_RETRY_ATTEMPTS: Final[int] = 3
+RETRY_BACKOFF: Final[list[timedelta]] = [timedelta(hours=1), timedelta(hours=4)]
+# How long one run of a todo may hold its execution lock.
+LOCK_TTL_SECONDS: Final[int] = 1800
+# Held by whichever run of a todo is going: a scheduled or triggered run, or an approval resume.
+RUN_LOCK_KEY: Final[str] = "gaia_todo_exec:{todo_id}"
+
+# An approval resume that lands mid-execution waits for the lock instead of vanishing.
+# Bounded, because a todo stuck under the 30-minute lock TTL must eventually give
+# up loudly rather than re-enqueue itself forever.
+LOCK_DEFER_BACKOFF: Final[list[timedelta]] = [
+    timedelta(minutes=1),
+    timedelta(minutes=3),
+    timedelta(minutes=10),
+]
+# The daily cost-budget feature a triggered todo run charges against.
+TRIGGER_TODO_FEATURE_KEY: Final[str] = "trigger_todo_executions"

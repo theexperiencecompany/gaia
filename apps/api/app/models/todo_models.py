@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from enum import Enum
-from typing import Annotated
+from enum import Enum, StrEnum
+from typing import Annotated, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -30,6 +31,28 @@ class Priority(str, Enum):
     MEDIUM = "medium"  # yellow
     LOW = "low"  # blue
     NONE = "none"  # no color
+
+
+class ExternalRefSource(StrEnum):
+    """The kind of outside object a todo is about."""
+
+    GMAIL_THREAD = "gmail_thread"
+    # A mailbox the Inbox desk triages, keyed by its integration id.
+    INBOX_DESK = "inbox_desk"
+
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
+        return self is ExternalRefSource.INBOX_DESK
+
+
+class ExternalRef(BaseModel):
+    """The outside object a todo is about; at most one open todo per user holds a given ref."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: ExternalRefSource
+    id: str = Field(min_length=1)
 
 
 class SubTask(ResponseModel):
@@ -176,6 +199,11 @@ class TodoResponse(TodoBase, ResponseModel):
         default=None,
         description="Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation",
     )
+    parent_todo_id: str | None = Field(
+        default=None,
+        description="Read-only; the tracked todo this one is a sub-todo of, set by GAIA",
+    )
+    sub_todo_count: int = Field(default=0, description="Open sub-todos of this tracked todo")
 
     @classmethod
     def from_document(
@@ -184,16 +212,18 @@ class TodoResponse(TodoBase, ResponseModel):
         *,
         workflow_categories: list[str] | None = None,
         pending_approval: PendingApprovalRef | None = None,
+        sub_todo_count: int = 0,
     ) -> "TodoResponse":
         """Project a stored ``TodoDocument`` onto the API response shape. The
         tracked-only fields (canvas/log content, retry state) are dropped by
-        ``extra="ignore"``; ``workflow_categories`` and ``pending_approval``
-        are enrichment, not stored."""
+        ``extra="ignore"``; ``workflow_categories``, ``pending_approval`` and
+        ``sub_todo_count`` are enrichment, not stored."""
         return cls.model_validate(
             {
                 **doc.model_dump(),
                 "workflow_categories": workflow_categories or [],
                 "pending_approval": pending_approval,
+                "sub_todo_count": sub_todo_count,
             }
         )
 
@@ -270,6 +300,13 @@ class PaginationMeta(ResponseModel):
     has_prev: bool = Field(..., description="Whether there's a previous page")
 
 
+class SubTodoCount(BaseModel):
+    """One $group row: a parent (its _id) with the number of its open sub-todos."""
+
+    parent_todo_id: str = Field(validation_alias="_id")
+    count: int
+
+
 class TodoLabelCount(BaseModel):
     """One label with the number of (incomplete) todos carrying it."""
 
@@ -319,6 +356,7 @@ class TodoSearchParams(BaseModel):
     due_date_start: datetime | None = None
     due_date_end: datetime | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False)
@@ -339,6 +377,9 @@ class TodoListParams(BaseModel):
     has_due_date: bool | None = None
     overdue: bool | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = Field(
+        default=None, description="Only sub-todos of this tracked todo"
+    )
     due_after: datetime | None = Field(default=None, description="Due date after this date")
     due_before: datetime | None = Field(default=None, description="Due date before this date")
     due_today: bool = Field(default=False, description="Only todos due today")
@@ -355,6 +396,7 @@ class TodoListParams(BaseModel):
             ("completed", self.completed is not None),
             ("priority", bool(self.priority)),
             ("labels", bool(self.labels)),
+            ("parent", bool(self.parent_todo_id)),
             ("due_today", self.due_today),
             ("due_this_week", self.due_this_week),
             ("date_range", bool(self.due_after or self.due_before)),
@@ -387,6 +429,7 @@ class TodoListParams(BaseModel):
             due_date_start=due_after,
             due_date_end=due_before,
             labels=self.labels,
+            parent_todo_id=self.parent_todo_id,
             page=self.page,
             per_page=self.per_page,
             include_stats=self.include_stats,
@@ -408,8 +451,7 @@ class BulkMoveRequest(BulkOperationRequest):
 
 class BulkOperationResponse(BaseModel):
     success: list[str] = Field(default_factory=list)
-    # Todo ids, like ``success`` — the bulk repository calls report a modified
-    # count, never a per-todo error, so there is nothing else to carry.
+    # Todo ids, like ``success``: tracked todos whose completion failed in a bulk complete.
     failed: list[str] = Field(default_factory=list)
     total: int
     message: str
@@ -476,13 +518,16 @@ class TodoDocument(UserScopedDocument):
     gaia_retry_count: int = 0
     expires_at: datetime | None = None
     references: list[str] = Field(default_factory=list)
+    # Set only through tracked_todo_service, which enforces one level under an open tracked todo.
+    parent_todo_id: str | None = None
     notify_on_run: bool = True
     #: Why the system paused this tracked todo's runs; None while it runs normally.
     pause_reason: DeactivationReason | None = None
     completed_at: datetime | None = None
-    # Canvas + activity + log bodies for tracked todos live on the document itself.
+    # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     trigger_subscriptions: list[TriggerSubscription] = Field(default_factory=list)
     # Sender of the email an onboarding-seeded todo was extracted from.
@@ -490,6 +535,8 @@ class TodoDocument(UserScopedDocument):
     # The chat that created this tracked todo, captured at creation. None for todos
     # created outside a chat (onboarding/REST).
     source_conversation_id: str | None = None
+    # Set only at insert, never updated: the unique index keys on it while the todo is open.
+    external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -515,11 +562,13 @@ class TodoUpdate(BaseModel):
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None
+    parent_todo_id: str | None = None
     notify_on_run: bool | None = None
     pause_reason: DeactivationReason | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
     trigger_subscriptions: list[TriggerSubscription] | None = None
@@ -567,3 +616,25 @@ class TodoPage(BaseModel):
 
     items: list[TodoDocument] = Field(default_factory=list)
     total: int = 0
+
+
+@dataclass(frozen=True)
+class UpdateFieldInputs:
+    """The raw agent-supplied field values for update_tracked_todo, bundled so the
+    validator chain that consumes them is one small helper instead of six inline
+    guards on the tool body."""
+
+    labels: list[str] | None
+    due_date: str | None
+    priority: Priority | None
+    scheduled_at: str | None
+    recurrence: str | None
+    expires_at: str | None
+
+
+class TodoRunContext(NamedTuple):
+    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
+
+    parent_rules: str = ""
+    sub_todos: str = ""
+    learnings: str = ""

@@ -10,7 +10,7 @@ trigger is a separate responsibility from todo CRUD, not because it is a separat
 module.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -18,9 +18,11 @@ import pytest
 
 from app.agents.core.graph_builder import build_graph
 from app.agents.tools import tracked_todo_tools
+from app.agents.tools.tracked_todo_formatting import (
+    format_subscription_lines,
+    format_tracked_todo_full,
+)
 from app.agents.tools.tracked_todo_tools import (
-    _format_subscription_lines,
-    _format_tracked_todo_full,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,
@@ -153,7 +155,7 @@ class TestSubscribe:
     @staticmethod
     def _register() -> tuple[AsyncMock, TriggerSubscription]:
         subscription = _subscription()
-        return AsyncMock(return_value=(subscription, ValidationOutcome())), subscription
+        return AsyncMock(return_value=(subscription, ValidationOutcome(), True)), subscription
 
     async def test_it_registers_and_reports_the_subscription_id(self) -> None:
         register, subscription = self._register()
@@ -332,7 +334,8 @@ class TestSubscribe:
         assert repaired.repairs, "fixture no longer exercises a repair"
 
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), repaired))
+            f"{_MOD}.register_subscription",
+            AsyncMock(return_value=(_subscription(), repaired, True)),
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
@@ -355,7 +358,8 @@ class TestSubscribe:
             ],
         )
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), outcome))
+            f"{_MOD}.register_subscription",
+            AsyncMock(return_value=(_subscription(), outcome, True)),
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
@@ -531,7 +535,7 @@ class TestSubscriptionsAreVisibleOnTheTodo:
         )
         doc = _todo(trigger_subscriptions=[subscription])
 
-        rendered = _format_tracked_todo_full(doc, datetime.now(UTC))
+        rendered = format_tracked_todo_full(doc, datetime.now(UTC))
 
         assert f"Watching {GMAIL} -> execute when thread_id equals t-1" in rendered
         assert subscription.id in rendered
@@ -539,15 +543,15 @@ class TestSubscriptionsAreVisibleOnTheTodo:
     def test_a_watch_with_no_conditions_says_so(self) -> None:
         doc = _todo(trigger_subscriptions=[_subscription()])
 
-        assert "when any event" in _format_tracked_todo_full(doc, datetime.now(UTC))
+        assert "when any event" in format_tracked_todo_full(doc, datetime.now(UTC))
 
     def test_a_paused_watch_says_the_integration_is_disconnected(self) -> None:
         doc = _todo(trigger_subscriptions=[_subscription(status=TriggerSubscriptionStatus.PAUSED)])
 
-        assert "PAUSED" in _format_tracked_todo_full(doc, datetime.now(UTC))
+        assert "PAUSED" in format_tracked_todo_full(doc, datetime.now(UTC))
 
     def test_a_todo_with_no_watches_renders_unchanged(self) -> None:
-        assert "Watching" not in _format_tracked_todo_full(_todo(), datetime.now(UTC))
+        assert "Watching" not in format_tracked_todo_full(_todo(), datetime.now(UTC))
 
 
 class TestFormatSubscriptionLines:
@@ -566,7 +570,7 @@ class TestFormatSubscriptionLines:
 
     def test_all_match_joins_conditions_with_and(self) -> None:
         sub = _subscription(match=ConditionMatch.ALL, conditions=self._two_conditions())
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == (
             f"Watching {GMAIL} -> execute when "
@@ -576,7 +580,7 @@ class TestFormatSubscriptionLines:
 
     def test_any_match_joins_conditions_with_or(self) -> None:
         sub = _subscription(match=ConditionMatch.ANY, conditions=self._two_conditions())
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == (
             f"Watching {GMAIL} -> execute when "
@@ -586,15 +590,38 @@ class TestFormatSubscriptionLines:
 
     def test_a_paused_watch_ends_with_the_disconnected_marker(self) -> None:
         sub = _subscription(status=TriggerSubscriptionStatus.PAUSED)
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line.endswith(" (PAUSED: integration disconnected)")
 
     def test_an_active_watch_ends_at_the_subscription_id_with_no_marker(self) -> None:
         sub = _subscription()
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == f"Watching {GMAIL} -> execute when any event (subscription: {sub.id})"
+
+
+class TestFormatTrackedTodoFull:
+    def test_labels_age_and_missing_timestamps_render_exactly(self):
+        """Two labels join with ', '; a missing updated_at falls back to now (0d)."""
+        now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        doc = _todo(
+            labels=["gaia-tracked", "needs-reply", "vip"],
+            created_at=now - timedelta(days=4),
+            updated_at=None,
+        )
+        rendered = format_tracked_todo_full(doc, now)
+
+        assert '"Chase Acme" [needs-reply, vip]' in rendered
+        assert "Age: 4d | Last updated: 0d ago" in rendered
+
+    def test_parent_and_subscriptions_render_on_their_own_lines(self):
+        now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        doc = _todo(parent_todo_id="parent-1")
+        rendered = format_tracked_todo_full(doc, now)
+
+        assert "Sub-todo of parent-1" in rendered
+        assert rendered.count("Sub-todo of parent-1") == 1
 
 
 class TestToolsAreReachable:

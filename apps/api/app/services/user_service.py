@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument, UserUpdate, UserUpdateResponse
 from app.utils.oauth_utils import upload_user_picture
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -15,6 +16,12 @@ async def get_user_by_id(user_id: str) -> UserDocument | None:
     except Exception as e:
         log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=404, detail="User not found") from e
+
+
+async def get_profile_timezone(user_id: str) -> Timezone:
+    """Return the timezone on the user's profile; UTC when they have none or it is not one."""
+    user = await get_user_by_id(user_id)
+    return Timezone.parse(user.timezone if user else None)
 
 
 async def update_user_profile(
