@@ -247,41 +247,22 @@ class TestPaidOnlyGateLetsProUsersThrough:
         mock_execute_chat.assert_awaited_once()
 
 
-class TestTheGateNeverDestroys:
-    """Found in review: the gate deactivated every workflow the user owned off a five-minute-stale cache read.
+class TestABlockedFireDeactivatesOnlyThatWorkflow:
+    """The block is authoritative (is_paid reads the row when the cache says FREE), so the fired workflow is deactivated with the reason the restore path resumes, and is never re-armed to block again next tick."""
 
-    Deactivation belongs to the billing webhook; the gate only skips (is_paid asks the database
-    first — see TestTheGateReadsTheRowWhenTheCacheSaysFree).
-    """
-
-    async def test_a_skipped_scheduled_run_is_re_armed_not_deactivated(self) -> None:
+    @pytest.mark.regression
+    async def test_a_blocked_scheduled_run_is_deactivated_not_rearmed(self) -> None:
         workflow = _make_workflow(user_id="user-free-4")
-        workflow.repeat = "daily"
+        workflow.repeat = "0 9 * * *"
         scheduler, p_scheduler = _patch_scheduler(workflow)
         with (
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.WorkflowService") as service,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        scheduler.handle_recurring_task.assert_awaited_once()
-        service.deactivate_workflow.assert_not_called()
-
-    async def test_the_re_arm_names_the_workflow_it_could_not_arm(self) -> None:
-        """A re-arm failure is logged against the workflow id; a lost id is an unattributable error in the log."""
-        workflow = _make_workflow(user_id="user-free-6")
-        workflow.repeat = "daily"
-        scheduler, p_scheduler = _patch_scheduler(workflow)
-        with (
-            p_scheduler,
-            patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}._rearm_quietly", new_callable=AsyncMock) as rearm,
-        ):
-            context = {"trigger_type": "schedule"}
-            await execute_workflow_by_id({}, workflow.id, context)
-
-        rearm.assert_awaited_once_with(scheduler, workflow, "schedule", workflow.id)
+        scheduler.pause_for_reason.assert_awaited_once_with(workflow, "subscription_lapsed")
+        scheduler.handle_recurring_task.assert_not_called()
 
     async def test_a_skipped_manual_run_does_not_shift_the_schedule(self) -> None:
         workflow = _make_workflow(user_id="user-free-5")
@@ -294,3 +275,20 @@ class TestTheGateNeverDestroys:
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         scheduler.handle_recurring_task.assert_not_called()
+
+    async def test_a_stale_fire_of_a_workflow_the_user_switched_off_keeps_their_choice(
+        self,
+    ) -> None:
+        # Overwriting their off switch with SUBSCRIPTION_LAPSED would let the next
+        # subscription activation turn the workflow back on.
+        workflow = _make_workflow(user_id="user-free-6")
+        workflow.activated = False
+        scheduler, p_scheduler = _patch_scheduler(workflow)
+        with (
+            p_scheduler,
+            patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
+        ):
+            result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
+
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
+        scheduler.pause_for_reason.assert_not_called()

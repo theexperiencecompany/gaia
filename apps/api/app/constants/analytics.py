@@ -12,3 +12,6 @@ FEATURE_CHOICE_PERSON_PROPERTY_PREFIX = "feature_"
 #: Request header carrying the browser's PostHog session id (set by the web API
 #: client), so server events join the session and replay of the click behind them.
 POSTHOG_SESSION_HEADER = "X-PostHog-Session-Id"
+
+#: agent:run_failed reason for a run cancelled mid-flight (shutdown, a stopped turn).
+AGENT_RUN_CANCELLED_REASON = "cancelled"

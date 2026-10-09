@@ -347,7 +347,7 @@ class TestConsumeAgentStreamCallsTheAgent:
 
         # The real ``call_agent`` signature, so a dropped positional/keyword
         # raises TypeError here instead of silently shifting an argument.
-        async def fake_call_agent(
+        def fake_call_agent(
             request: MessageRequestWithHistory,
             conversation_id: str,
             user: AuthenticatedUser,
@@ -402,7 +402,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
             for chunk in chunks:
                 yield f"data: {json.dumps(chunk)}\n\n"
 
-        async def fake_call_agent(**_: Any) -> AsyncGenerator[str, None]:
+        def fake_call_agent(**_: Any) -> AsyncGenerator[str, None]:
             return _chunks()
 
         state = _StreamState(turn_id="turn-1")
