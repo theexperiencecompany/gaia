@@ -11528,6 +11528,8 @@ export interface components {
              * @description Plan name
              */
             name: string;
+            /** @description Tier this plan sells */
+            plan_type: components["schemas"]["PlanTier"];
             /**
              * Updated At
              * Format: date-time
@@ -11535,6 +11537,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * PlanTier
+         * @description What a catalogue row sells.
+         *
+         *     Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+         *     never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+         * @enum {string}
+         */
+        PlanTier: "free" | "pro" | "enterprise";
         /**
          * PlanType
          * @description Subscription plan types.
@@ -15724,6 +15735,7 @@ export type PinRequest = components['schemas']['PinRequest'];
 export type PinResponse = components['schemas']['PinResponse'];
 export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
+export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];

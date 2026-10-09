@@ -19,6 +19,7 @@ import { useNotifications } from "@/features/notification/hooks/useNotifications
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { isProPlan } from "@/features/pricing/utils/planPredicates";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -64,7 +65,7 @@ export default function SidebarTopButtons() {
   });
 
   const monthlyPlan = plans.find(
-    (p) => p.name === "Pro" && p.duration === "monthly",
+    (p) => isProPlan(p) && p.duration === "monthly",
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
 

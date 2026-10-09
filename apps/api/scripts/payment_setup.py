@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Set up GAIA subscription plans in the database using Dodo product IDs.
+"""Sync GAIA's subscription plan catalogue in the database from the Dodo products.
 
-Run from apps/api/: python scripts/payment_setup.py --monthly-product-id
-<id> --yearly-product-id <id> (also works via PYTHONPATH=/app, or
-python -m scripts.payment_setup). Pass --dry-run first to print the
-per-field diff without writing anything.
+Dodo is the price: each Pro row's amount and currency are read back from its
+Dodo product, and every row is tagged with the tier it sells. Run from apps/api/:
+python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
+(also works via PYTHONPATH=/app, or python -m scripts.payment_setup). By default
+it only prints the per-field diff against Mongo; pass --apply to write it.
 
 docker exec skips the image entrypoint, so Infisical's machine-identity
 vars from Docker Swarm secrets are missing in an exec shell; export them
@@ -15,6 +16,7 @@ Needs DODO_PAYMENTS_API_KEY (Infisical or env var) and MONGO_DB configured.
 
 import argparse
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import os
 from pathlib import Path
@@ -39,12 +41,15 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
+from dodopayments import DodoPayments
+from dodopayments.types.price import RecurringPrice
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 from app.config.settings import settings
 from app.constants.cache import PLANS_CACHE_KEYS
 from app.db.redis import redis_cache
-from app.models.payment_models import PlanDocument
+from app.models.payment_models import PlanDocument, PlanDuration, PlanTier
+from app.services.payments.payment_service import payment_service
 
 # Timestamps are bookkeeping, not catalogue content: a run that changes none of
 # these fields is a no-op, so they are what the diff compares.
@@ -52,8 +57,45 @@ _TIMESTAMP_FIELDS = {"created_at", "updated_at"}
 
 Outcome = Literal["created", "updated", "unchanged"]
 
+# The Dodo billing interval each catalogue duration must be charged on.
+DODO_INTERVAL: dict[PlanDuration, str] = {
+    PlanDuration.MONTHLY: "Month",
+    PlanDuration.YEARLY: "Year",
+}
 
-def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
+# Quoted by the team, never checked out, so it carries no Dodo price.
+ENTERPRISE_CURRENCY = "USD"
+
+
+@dataclass(frozen=True)
+class ProductPrice:
+    """What Dodo charges for one product, in the currency's minor unit."""
+
+    product_id: str
+    amount: int
+    currency: str
+
+
+def fetch_product_price(
+    client: DodoPayments, product_id: str, duration: PlanDuration
+) -> ProductPrice:
+    """Read a Pro product's recurring price from Dodo, refusing one billed on another cycle."""
+    price = client.products.retrieve(product_id).price
+    if not isinstance(price, RecurringPrice):
+        raise ValueError(f"Dodo product {product_id} is not a subscription ({price.type})")
+    if (
+        price.payment_frequency_interval != DODO_INTERVAL[duration]
+        or price.payment_frequency_count != 1
+    ):
+        raise ValueError(
+            f"Dodo product {product_id} bills every "
+            f"{price.payment_frequency_count} {price.payment_frequency_interval}, "
+            f"not the {duration} plan's 1 {DODO_INTERVAL[duration]}"
+        )
+    return ProductPrice(product_id=product_id, amount=price.price, currency=price.currency)
+
+
+def build_plan_catalogue(monthly: ProductPrice, yearly: ProductPrice) -> list[PlanDocument]:
     """Return the subscription plans GAIA offers, as they should exist in the database."""
     now = datetime.now(UTC)
     # GAIA is paid-only: these read as what Pro includes, never as a step up
@@ -71,11 +113,12 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
 
     return [
         PlanDocument(
-            dodo_product_id=monthly_product_id,
+            dodo_product_id=monthly.product_id,
             name="Pro",
+            plan_type=PlanTier.PRO,
             description="Everything GAIA does, in one plan.",
-            amount=3000,  # $30.00 in cents
-            currency="USD",
+            amount=monthly.amount,
+            currency=monthly.currency,
             duration="monthly",
             max_users=1,
             features=pro_features,
@@ -84,11 +127,12 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             updated_at=now,
         ),
         PlanDocument(
-            dodo_product_id=yearly_product_id,
+            dodo_product_id=yearly.product_id,
             name="Pro",
+            plan_type=PlanTier.PRO,
             description="Everything GAIA does, in one plan.",
-            amount=30000,  # $300.00 in cents (2 months free, ~16.7% discount)
-            currency="USD",
+            amount=yearly.amount,
+            currency=yearly.currency,
             duration="yearly",
             max_users=1,
             features=pro_features,
@@ -100,9 +144,10 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             # Enterprise — lead capture only, no Dodo product.
             dodo_product_id="",
             name="Enterprise",
+            plan_type=PlanTier.ENTERPRISE,
             description="For teams ready to roll GAIA out to every employee.",
             amount=0,  # Custom pricing, frontend shows 'Custom' label.
-            currency="USD",
+            currency=ENTERPRISE_CURRENCY,
             duration="monthly",
             max_users=0,  # 0 == unlimited, contact sales
             features=[
@@ -123,24 +168,33 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
 async def deactivate_free_plan(
     collection: AsyncIOMotorCollection[dict[str, Any]], dry_run: bool
 ) -> bool:
-    """Mark a leftover Free plan row inactive rather than deleting it, keeping the historical record.
+    """Retire a leftover Free row: inactive and tagged free, kept as the historical record.
 
-    GAIA is paid-only and the catalogue no longer seeds a Free row.
-    Idempotent: a no-op once the row is already inactive or never seeded.
+    GAIA is paid-only and the catalogue no longer seeds a Free row, but the API
+    still reads inactive rows, so the row must carry its tier.
+    Idempotent: a no-op once the row is retired or was never seeded.
     """
-    existing = await collection.find_one({"name": "Free", "is_active": True})
+    retired = {"is_active": False, "plan_type": PlanTier.FREE.value}
+    existing = await collection.find_one(
+        {"name": "Free", "$or": [{"is_active": True}, {"plan_type": {"$ne": PlanTier.FREE.value}}]}
+    )
     if existing is None:
         return False
 
     if dry_run:
-        print("   📝 Would mark existing Free plan inactive (paid-only cutover)")
+        print("   📝 Would retire the Free plan (inactive, tagged free)")
     else:
         await collection.update_one(
             {"_id": existing["_id"]},
-            {"$set": {"is_active": False, "updated_at": datetime.now(UTC)}},
+            {"$set": {**retired, "updated_at": datetime.now(UTC)}},
         )
-        print("   🚫 Marked existing Free plan inactive (paid-only cutover)")
+        print("   🚫 Retired the Free plan (inactive, tagged free)")
     return True
+
+
+async def count_untagged_plans(collection: AsyncIOMotorCollection[dict[str, Any]]) -> int:
+    """Rows the API cannot read: every plan row must name the tier it sells."""
+    return await collection.count_documents({"plan_type": {"$exists": False}})
 
 
 async def cleanup_old_indexes(collection: AsyncIOMotorCollection[dict[str, Any]]) -> None:
@@ -257,9 +311,9 @@ async def invalidate_plan_cache() -> None:
 
 
 async def setup_payment_plans(
-    monthly_product_id: str, yearly_product_id: str, dry_run: bool = False
+    monthly_product_id: str, yearly_product_id: str, dry_run: bool = True
 ) -> bool:
-    """Set up GAIA subscription plans in the database using Dodo product IDs."""
+    """Sync the subscription plan catalogue from the Dodo products; dry_run only prints the diff."""
     print("🚀 GAIA Payment Setup" + (" (DRY RUN — no writes)" if dry_run else ""))
     print("=" * 50)
 
@@ -272,8 +326,18 @@ async def setup_payment_plans(
         return False
 
     print("🔗 Dodo Payments API key resolved")
-    print(f"📦 Monthly Product ID: {monthly_product_id}")
-    print(f"📦 Yearly Product ID: {yearly_product_id}")
+    monthly, yearly = await asyncio.gather(
+        asyncio.to_thread(
+            fetch_product_price, payment_service.client, monthly_product_id, PlanDuration.MONTHLY
+        ),
+        asyncio.to_thread(
+            fetch_product_price, payment_service.client, yearly_product_id, PlanDuration.YEARLY
+        ),
+    )
+    print(
+        f"📦 Monthly Product ID: {monthly_product_id} (Dodo: {monthly.amount} {monthly.currency})"
+    )
+    print(f"📦 Yearly Product ID: {yearly_product_id} (Dodo: {yearly.amount} {yearly.currency})")
     print()
 
     client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(settings.MONGO_DB)
@@ -288,16 +352,24 @@ async def setup_payment_plans(
         print()
 
         outcomes: list[Outcome] = []
-        for plan in build_plan_catalogue(monthly_product_id, yearly_product_id):
+        for plan in build_plan_catalogue(monthly, yearly):
             outcomes.append(await reconcile_plan(collection, plan, dry_run))
             print_plan_details(plan)
 
         await deactivate_free_plan(collection, dry_run)
 
-        # Before the report below, so a failure while reading it back can never
-        # leave the API serving a cached catalogue the database has moved past.
+        # Right after the writes, so no later check or report failing can leave
+        # the API serving a cached catalogue the database has moved past.
         if not dry_run:
             await invalidate_plan_cache()
+
+        untagged = await count_untagged_plans(collection)
+        if dry_run:
+            print(f"   🏷️  {untagged} plan row(s) carry no plan_type before this run")
+        elif untagged:
+            raise RuntimeError(
+                f"{untagged} plan row(s) carry no plan_type; the API cannot read them"
+            )
 
         print_summary(outcomes, dry_run)
         await print_active_plans(collection, dry_run)
@@ -329,22 +401,20 @@ async def main() -> None:
         help="Dodo product ID for yearly Pro plan",
     )
     parser.add_argument(
-        "--dry-run",
+        "--apply",
         action="store_true",
-        help="Print the changes that would be made without writing to the database",
+        help="Write the changes; without it the run only prints the diff against the database",
     )
 
     args = parser.parse_args()
 
     succeeded = await setup_payment_plans(
-        args.monthly_product_id, args.yearly_product_id, dry_run=args.dry_run
+        args.monthly_product_id, args.yearly_product_id, dry_run=not args.apply
     )
     if not succeeded:
         sys.exit(1)
 
-    print(
-        "\n🎉 Dry run finished!" if args.dry_run else "\n🎉 Payment setup completed successfully!"
-    )
+    print("\n🎉 Payment setup completed successfully!" if args.apply else "\n🎉 Dry run finished!")
 
 
 if __name__ == "__main__":
