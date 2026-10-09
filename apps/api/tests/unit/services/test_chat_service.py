@@ -742,7 +742,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
