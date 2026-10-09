@@ -1277,8 +1277,9 @@ class TestResumePausedFor:
             for c in mock_repo.update.call_args_list
         ]
         assert cleared == [{"pause_reason": None}, {"pause_reason": None}]
-        ((todo_id, when),) = [c.args for c in schedule.await_args_list]
-        assert todo_id == TODO_ID and when >= before
+        ((args, kwargs),) = [(c.args, c.kwargs) for c in schedule.await_args_list]
+        assert args == (TODO_ID, missed)
+        assert kwargs["defer_until"] >= before
 
     async def test_activation_replays_the_trigger_events_held_while_paused(self, mock_repo):
         paused = _todo_doc(pause_reason="subscription_lapsed")
@@ -1324,7 +1325,11 @@ class TestResumePausedFor:
         )
         mock_repo.find_paused_for_reason = AsyncMock(return_value=[paused])
         with (
-            patch.object(TrackedTodoService, "schedule_execution", AsyncMock(return_value=False)),
+            patch.object(
+                TrackedTodoService,
+                "schedule_execution",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
             pytest.raises(ExceptionGroup, match=r"^1 paused tracked todo\(s\) could not resume"),
         ):
             await tracked_todo_service.resume_paused_for(

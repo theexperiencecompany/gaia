@@ -490,11 +490,15 @@ class TrackedTodoService:
 
     @staticmethod
     async def _rearm_resumed(todo: TodoDocument) -> None:
-        """Queue a resumed todo's due run now and replay the trigger events held while it was paused."""
-        if todo.scheduled_at is not None and not await TrackedTodoService.schedule_execution(
-            todo.id, max(todo.scheduled_at, datetime.now(UTC))
-        ):
-            raise RuntimeError(f"tracked todo {todo.id} could not be enqueued")
+        """Queue a resumed todo's due run now and replay the trigger events held while it was paused.
+
+        The job is armed for the stored occurrence so the stale-fire guard runs it; when
+        a job for that same occurrence is still queued, it is the run and none is added.
+        """
+        if todo.scheduled_at is not None:
+            await TrackedTodoService.schedule_execution(
+                todo.id, todo.scheduled_at, defer_until=max(todo.scheduled_at, datetime.now(UTC))
+            )
         await release_trigger_events_held_while_paused(todo.id)
 
     @staticmethod

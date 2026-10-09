@@ -71,6 +71,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -2050,6 +2051,49 @@ class TestOneRunPerOccurrence:
             ),
         ):
             yield run
+
+    async def test_a_todo_resumed_after_resubscribing_runs_its_missed_occurrence_once(
+        self, queue, account
+    ):
+        due = datetime.now(UTC) - timedelta(hours=3)
+        row = _TodoRow(_doc(scheduled_at=due))
+        row.find_paused_for_reason = AsyncMock(side_effect=lambda *_: [row.doc])
+        await tracked_todo_service.schedule_execution("todo-1", due)
+        (blocked,) = await _queued(queue)
+        account.paid.return_value = False
+
+        with (
+            self._worker(row) as run,
+            patch(f"{MODULE}.capture_event"),
+            patch("app.services.tracked_todo_service.todo_repository", row),
+        ):
+            assert await _fire(queue, blocked) == "paused:todo-1 (subscription required)"
+            account.paid.return_value = True
+            resumed = await tracked_todo_service.resume_paused_for(
+                "user-1", DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+            results = [await _fire(queue, job) for job in await _queued(queue)]
+
+        assert resumed == 1
+        assert results == ["success:todo-1"]
+        run.assert_awaited_once()
+
+    async def test_a_resume_while_the_occurrence_is_still_queued_adds_no_second_run(
+        self, queue, account
+    ):
+        later = datetime.now(UTC) + timedelta(hours=1)
+        row = _TodoRow(_doc(scheduled_at=later, pause_reason="subscription_lapsed"))
+        row.find_paused_for_reason = AsyncMock(side_effect=lambda *_: [row.doc])
+        await tracked_todo_service.schedule_execution("todo-1", later)
+
+        with patch("app.services.tracked_todo_service.todo_repository", row):
+            resumed = await tracked_todo_service.resume_paused_for(
+                "user-1", DeactivationReason.SUBSCRIPTION_LAPSED
+            )
+
+        assert resumed == 1
+        assert row.doc.pause_reason is None
+        assert len(await _queued(queue)) == 1
 
     async def test_a_job_left_behind_by_a_reschedule_does_not_run(self, queue):
         armed = datetime.now(UTC)
