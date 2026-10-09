@@ -92,9 +92,15 @@ def cmd_history(args: argparse.Namespace) -> int:
     target = TARGETS[_target(args)]
     db = ground_truth_db()
     read = reader(target)
-    pending_merges = merge_email_persons.plan(read, db).merges
-    history = backfill_history.plan(read, db)
+    merge_plan = merge_email_persons.plan(read, db)
+    pending_merges = merge_plan.merges
+    history = backfill_history.plan(read, db).holding_out(merge_plan.held_users)
     print(history.summary())
+    if merge_plan.held_users:
+        print(
+            f"  held out: {len(merge_plan.held_users)} users whose history is on an email person "
+            "merge-email-persons will not merge; review those persons first"
+        )
     for problem in history.unbuildable:
         print(f"  cannot build: {problem}")
     if not args.apply:

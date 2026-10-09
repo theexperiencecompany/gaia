@@ -7,6 +7,7 @@ from uuid import UUID
 
 from bson import ObjectId
 import pytest
+from scripts.analytics_ops import backfill_history
 from scripts.analytics_ops.backfill_history import (
     Backfill,
     activation,
@@ -17,6 +18,7 @@ from scripts.analytics_ops.backfill_history import (
 from scripts.analytics_ops.posthog_api import Sender
 
 from app.models.payment_models import SubscriptionDocument
+from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
 ALICE = "6ac74a19fa5dfaf1f5770471"
 CREATED = datetime(2025, 11, 3, 9, 30, tzinfo=UTC)
@@ -165,3 +167,62 @@ class TestOwnerFallbackIsPerSubscription:
         backfill, review = untracked_activations(rows, tracked_ids=set(), owners_tracked=set())
 
         assert ([row.dodo_subscription_id for row in backfill], review) == (["sub_1", "sub_2"], [])
+
+
+class _Collection:
+    def __init__(self, docs: list[dict[str, object]]) -> None:
+        self.docs = docs
+
+    def find(self, _query: object) -> list[dict[str, object]]:
+        return self.docs
+
+    def find_one(self, _query: object, sort: object = None) -> dict[str, object] | None:
+        return min(self.docs, key=lambda doc: str(doc["created_at"]), default=None)
+
+
+class _Db:
+    def __init__(self, subscriptions: list[dict[str, object]]) -> None:
+        self.subscriptions = _Collection(subscriptions)
+
+    def __getitem__(self, name: str) -> _Collection:
+        return getattr(self, name)
+
+
+@pytest.mark.regression
+def test_an_owners_activation_already_matched_by_id_does_not_cover_an_older_subscription() -> None:
+    """The owner fallback counted sub_1's own activation as proof for sub_2, so sub_2 was never sent."""
+    activations_on_alice = [(ALICE, "sub_1")]
+    db = _Db(
+        [
+            _subscription(dodo_subscription_id="sub_1").model_dump(),
+            _subscription(dodo_subscription_id="sub_2").model_dump(),
+        ]
+    )
+    reader = FakeReader(
+        {
+            backfill_history.TRACKED_SUBSCRIPTIONS_HOGQL: [["sub_1"]],
+            backfill_history.USERS_WITH_UNMATCHED_ACTIVATION_HOGQL: lambda values: [
+                [owner]
+                for owner, subscription_id in activations_on_alice
+                if owner in values["ids"] and subscription_id not in values["known"]
+            ],
+        }
+    )
+
+    planned, review = backfill_history.plan_activations(reader, db)
+
+    assert [backfill.event.subscription_id for backfill in planned] == ["sub_2"]
+    assert review == []
+
+
+def test_a_held_user_is_left_out_of_both_backfills() -> None:
+    bob = "6ac74a19fa5dfaf1f5770472"
+    history = backfill_history.HistoryPlan(
+        signups=[signup(_user()), signup(_user(bob))],
+        activations=[activation(_subscription()), activation(_subscription(user_id=bob))],
+        unbuildable=[],
+    )
+
+    kept = history.holding_out({ALICE})
+
+    assert [b.user_id.distinct_id for b in kept.signups + kept.activations] == [bob, bob]

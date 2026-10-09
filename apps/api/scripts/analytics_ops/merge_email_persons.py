@@ -84,6 +84,8 @@ class MergePlan:
     ambiguous: list[str]
     # A merge moves every alias's activity, so one alias no user holds needs a human.
     unowned_aliases: list[str]
+    # Users whose history sits on a person left unmerged, out of reach of a Mongo-id lookup.
+    held_users: set[str]
 
     def summary(self) -> str:
         """Return the bucket counts."""
@@ -141,7 +143,7 @@ class EmailPerson:
 
 def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> MergePlan:
     """Sort each email person into merge, already merged, unmatched or ambiguous; merges oldest first."""
-    result = MergePlan([], [], [], [], [])
+    result = MergePlan([], [], [], [], [], set())
     for person in persons:
         if any(_is_user_id(d) for d in person.distinct_ids):
             result.already_merged.append(person.person_id)
@@ -154,8 +156,10 @@ def match(persons: Iterable[EmailPerson], owners: Mapping[str, set[str]]) -> Mer
             result.unmatched.append(person.person_id)
         elif len(matches) > 1:
             result.ambiguous.append(person.person_id)
+            result.held_users.update(matches)
         elif not all(owners_per_email):
             result.unowned_aliases.append(person.person_id)
+            result.held_users.update(matches)
         else:
             result.merges.append(
                 Merge(

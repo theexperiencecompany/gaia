@@ -47,6 +47,14 @@ USERS_WITH_EVENT_HOGQL = (
     "AND person_id IN (SELECT person_id FROM events WHERE event = {event} "
     "AND timestamp >= toDateTime({since}, 'UTC')) LIMIT {limit}"
 )
+# Users whose person holds an activation naming no subscription GAIA knows: the only
+# activations that can stand for a subscription missing by id.
+USERS_WITH_UNMATCHED_ACTIVATION_HOGQL = (
+    "SELECT distinct_id FROM person_distinct_ids WHERE has({ids}, distinct_id) "
+    "AND person_id IN (SELECT person_id FROM events WHERE event = {event} "
+    "AND timestamp >= toDateTime({since}, 'UTC') "
+    "AND NOT has({known}, toString(properties.subscription_id))) LIMIT {limit}"
+)
 TRACKED_SUBSCRIPTIONS_HOGQL = (
     "SELECT DISTINCT toString(properties.subscription_id) FROM events "
     "WHERE event = {event} AND timestamp >= toDateTime({since}, 'UTC') LIMIT {limit}"
@@ -76,6 +84,14 @@ class HistoryPlan:
             f"{len(self.signups)} {UserSignedUp.event}, "
             f"{len(self.activations)} {SubscriptionActivated.event}, "
             f"{len(self.unbuildable)} records that cannot be built (not sent)"
+        )
+
+    def holding_out(self, users: set[str]) -> HistoryPlan:
+        """Return the plan without the events of users, whose history is not yet readable."""
+        return HistoryPlan(
+            [b for b in self.signups if b.user_id.distinct_id not in users],
+            [b for b in self.activations if b.user_id.distinct_id not in users],
+            self.unbuildable,
         )
 
 
@@ -149,7 +165,7 @@ def activation(row: SubscriptionDocument) -> Backfill:
 def plan_activations(
     read: PostHogReader, db: Database[Document]
 ) -> tuple[list[Backfill], list[str]]:
-    """Plan an activation for every subscription PostHog has none for, by id or on its owner's person."""
+    """Plan an activation for every subscription PostHog has none for, by id or by an unmatched one on its owner's person."""
     rows = [SubscriptionDocument.model_validate(raw) for raw in db.subscriptions.find({})]
     earliest = _earliest(db, "subscriptions")
     since = earliest.strftime("%Y-%m-%d %H:%M:%S")
@@ -161,12 +177,19 @@ def plan_activations(
             {"event": SubscriptionActivated.event, "since": since},
         )
     }
-    owners_tracked = _already_tracked(
-        read,
-        sorted({row.user_id for row in rows}),
-        SubscriptionActivated.event,
-        earliest,
-    )
+    owners_tracked = {
+        str(distinct_id)
+        for (distinct_id,) in hogql_complete(
+            read,
+            USERS_WITH_UNMATCHED_ACTIVATION_HOGQL,
+            {
+                "ids": sorted({row.user_id for row in rows}),
+                "known": sorted({row.dodo_subscription_id for row in rows}),
+                "event": SubscriptionActivated.event,
+                "since": since,
+            },
+        )
+    }
     to_backfill, unbuildable = untracked_activations(rows, tracked_ids, owners_tracked)
     planned: list[Backfill] = []
     for row in to_backfill:

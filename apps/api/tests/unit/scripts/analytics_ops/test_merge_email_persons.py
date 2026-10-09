@@ -286,6 +286,21 @@ class TestEveryAliasMustBeOwned:
 
         assert (plan.merges, plan.unowned_aliases) == ([], ["p1"])
 
+    def test_a_user_with_history_on_an_unmerged_person_is_held_out_of_the_history_backfill(
+        self,
+    ) -> None:
+        """Their old events stay on the email person, out of reach of the history plan's id lookups."""
+        plan = match(
+            [
+                _person("p1", "alice@x.com", "other@x.com"),
+                _person("p2", "bob@x.com", "carol@x.com"),
+                _person("p3", "dave@x.com"),
+            ],
+            _owners((ALICE, "alice@x.com"), (BOB, "bob@x.com"), (CAROL, "carol@x.com")),
+        )
+
+        assert plan.held_users == {ALICE, BOB, CAROL}
+
 
 def test_a_snapshot_is_readable_only_by_its_owner(tmp_path: Path) -> None:
     path = write_snapshot([_merge("p1", "alice@x.com", ALICE, "2026-01-01 00:00:00")], tmp_path)
