@@ -16,6 +16,7 @@ from tests._harness.context_chain import (
     AgentTier,
     ContextSeed,
     HarnessUser,
+    bound_for,
     effective_context,
     message_in_slot,
     slots_of,
@@ -93,7 +94,7 @@ class TestSystemBlockIsLeadingAndContiguous:
             ContextSeed(
                 sources=RICH_SOURCES,
                 prior_messages=list(STALE_THREAD) if multi_turn else None,
-                configurable_overrides={"provider": LLMProviderName.GEMINI},
+                configurable_overrides=bound_for(LLMProviderName.GEMINI),
             ),
         )
 
@@ -111,11 +112,11 @@ class TestSystemBlockIsLeadingAndContiguous:
 class TestTheTailLayoutOnTheOpenAIWire:
     """What the default (OpenRouter) lane does instead, and why.
 
-    Every provider on the OpenAI wire applies a system message wherever it
-    appears, so the per-turn slots sort BEHIND the conversation and the cacheable
-    prefix grows to cover the history — measured 97% against 83% for the
-    leading-block layout. Nothing here is safe on Gemini, which is why the layout
-    is chosen per provider rather than globally.
+    OpenRouter applies a system message wherever it appears, so the per-turn slots
+    sort BEHIND the conversation and the cacheable prefix grows to cover the
+    history — measured 97% against 83% for the leading-block layout. Nothing here
+    is safe on Gemini, nor on OpenAI, which reuses only a whole earlier request,
+    so the layout is chosen per provider rather than globally.
     """
 
     @pytest.mark.parametrize("tier", list(AgentTier))
@@ -247,7 +248,9 @@ class TestOneMessagePerSlot:
                     f"a stale {message.content!r} outlived the current turn's copy"
                 )
 
-    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.GEMINI])
+    @pytest.mark.parametrize(
+        "provider", [LLMProviderName.OPENROUTER, LLMProviderName.OPENAI, LLMProviderName.GEMINI]
+    )
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_slots_appear_in_canonical_order(
         self, tier: AgentTier, provider: LLMProviderName
@@ -258,7 +261,7 @@ class TestOneMessagePerSlot:
             ContextSeed(
                 sources=RICH_SOURCES,
                 prior_messages=list(STALE_THREAD),
-                configurable_overrides={"provider": provider},
+                configurable_overrides=bound_for(provider),
             ),
         )
 

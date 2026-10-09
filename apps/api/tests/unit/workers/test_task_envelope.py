@@ -154,8 +154,8 @@ async def _report_analytics_context(ctx: Mapping[str, object]) -> AnalyticsConte
     return current_analytics_context()
 
 
-async def test_a_job_runs_in_the_analytics_context_its_producer_carried() -> None:
-    """The job is attributed to what enqueued it, browser session included, in a fresh worker context."""
+async def test_a_job_runs_as_the_agent_in_the_run_its_producer_carried() -> None:
+    """Queued work is never the human acting, but keeps the trigger, surface and session that caused it."""
     carried = AnalyticsContext(
         attribution=Attribution(
             actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
@@ -177,7 +177,7 @@ async def test_a_job_runs_in_the_analytics_context_its_producer_carried() -> Non
             asyncio.create_task, arq_task(_report_analytics_context)({}, **job_kwargs)
         )
 
-    assert seen == carried
+    assert seen == carried.acting_as(Actor.AGENT)
 
 
 async def test_a_job_nobody_attributed_is_the_workers_system_work() -> None:

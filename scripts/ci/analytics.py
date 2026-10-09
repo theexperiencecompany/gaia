@@ -67,11 +67,6 @@ ENVELOPE_PROPERTIES = frozenset({"timestamp"})
 
 PROBE_EVENT = "user:signed_up"
 PROBE_DAYS = 7
-# {filters} is where PostHog splices the project's test-account filter in.
-PROBE_HOGQL = (
-    "SELECT count() FROM events "
-    "WHERE event = {event} AND timestamp > now() - toIntervalDay({days}) AND {filters}"
-)
 SUGGESTION_CUTOFF = 0.6
 PAGE_LIMIT = 100
 HTTP_TIMEOUT_S = 30
@@ -616,13 +611,15 @@ class PostHog:
 
     def probe(self, filter_test_accounts: bool) -> int:
         """Count the probe event over the probe window, with the test-account filter on or off."""
-        query = {
-            "kind": "HogQLQuery",
-            "query": PROBE_HOGQL,
-            "values": {"event": PROBE_EVENT, "days": PROBE_DAYS},
-            "filters": {"filterTestAccounts": filter_test_accounts},
+        # The same query node a dashboard trends tile runs, so the filter is applied exactly as it is there.
+        query: JsonObject = {
+            "kind": "TrendsQuery",
+            "series": [{"kind": "EventsNode", "event": PROBE_EVENT, "math": "total"}],
+            "dateRange": {"date_from": f"-{PROBE_DAYS}d"},
+            "filterTestAccounts": filter_test_accounts,
         }
-        return int(self._request("POST", f"{self.base}/query/", {"query": query})["results"][0][0])
+        [series] = self._request("POST", f"{self.base}/query/", {"query": query})["results"]
+        return int(series["count"])
 
     def create_action(self, action: Mapping[str, JsonValue]) -> None:
         """Create an action."""

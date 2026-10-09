@@ -108,6 +108,12 @@ class TestCarriesNoData:
                 True,
                 "the same, with the tool's own zero tally beside it",
             ),
+            pytest.param(
+                '{"data": {"fetched_at": 1790000000, "fetched_count": 0, "messages": []}}',
+                True,
+                "the same, stamped with when its query ran",
+                marks=pytest.mark.regression,
+            ),
             (
                 '{"successful": true, "error": null, "data": {"messages": []}}',
                 True,
