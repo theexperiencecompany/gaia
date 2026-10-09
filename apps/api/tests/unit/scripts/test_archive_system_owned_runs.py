@@ -169,3 +169,33 @@ class TestApply:
 
         archived = [c.args[0] for c in seams.complete.await_args_list]
         assert archived == list(SYSTEM_OWNED_TODO_IDS[2:])
+
+    async def test_the_report_after_apply_is_read_back_from_the_database(
+        self, seams: _Seams
+    ) -> None:
+        stuck_todo, stuck_workflow = SYSTEM_OWNED_TODO_IDS[0], SYSTEM_OWNED_WORKFLOW_IDS[0]
+        completed: set[str] = set()
+        deactivated: set[str] = set()
+
+        async def complete(todo_id: str, user_id: str, summary: str) -> bool:
+            if todo_id != stuck_todo:
+                completed.add(todo_id)
+            return todo_id != stuck_todo
+
+        async def deactivate(wf_id: str, user_id: str, *, reason: DeactivationReason) -> None:
+            if wf_id != stuck_workflow:
+                deactivated.add(wf_id)
+
+        seams.complete.side_effect = complete
+        seams.deactivate.side_effect = deactivate
+        seams.todos.get = AsyncMock(
+            side_effect=lambda todo_id, user_id: _todo(todo_id, completed=todo_id in completed)
+        )
+        seams.workflows.get_for_user = AsyncMock(
+            side_effect=lambda wf_id, user_id: _workflow(wf_id, activated=wf_id not in deactivated)
+        )
+
+        todos, workflows, _ = await run(apply=True)
+
+        assert [state.id for state in todos if not state.archived] == [stuck_todo]
+        assert [state.id for state in workflows if not state.archived] == [stuck_workflow]

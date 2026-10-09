@@ -153,7 +153,10 @@ async def other_system_rows() -> dict[str, int]:
 
 
 async def run(*, apply: bool) -> tuple[list[TargetState], list[TargetState], dict[str, int]]:
-    """Report the targets, archive the live ones when apply is set, then count the rest."""
+    """Report the targets, archive the live ones when apply is set, then count the rest.
+
+    After apply the targets are read back, so the report shows what was written.
+    """
     todos = await _todo_states()
     workflows = await _workflow_states()
     if apply:
@@ -163,13 +166,15 @@ async def run(*, apply: bool) -> tuple[list[TargetState], list[TargetState], dic
         for state in workflows:
             if state.found and not state.archived:
                 await _archive_workflow(state.id)
+        todos = await _todo_states()
+        workflows = await _workflow_states()
     return todos, workflows, await other_system_rows()
 
 
 def _status(state: TargetState) -> str:
     if not state.found:
         return "skipped"
-    return "already archived" if state.archived else "live"
+    return "archived" if state.archived else "live"
 
 
 def _render(
@@ -179,11 +184,10 @@ def _render(
     *,
     apply: bool,
 ) -> None:
-    print("APPLIED" if apply else "DRY RUN: nothing was written")
-    verb = "archived" if apply else "to archive"
+    print("APPLIED: read back after writing" if apply else "DRY RUN: nothing was written")
     for label, states in (("todos", todos), ("workflows", workflows)):
         live = sum(_status(state) == "live" for state in states)
-        print(f"\n{label}: {live} {verb}")
+        print(f"\n{label}: {live} {'still live' if apply else 'to archive'}")
         for state in states:
             print(f"  {state.id}  [{_status(state)}]  {state.detail}")
     print(
