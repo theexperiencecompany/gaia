@@ -1,6 +1,6 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
@@ -145,7 +145,7 @@ def _resolve_context(kwargs: dict[str, object]) -> UserRateLimitContext | None:
     # Decoration-time validation in with_rate_limiting guarantees a `config`
     # parameter; it carries LangGraph's RunnableConfig mapping.
     config = kwargs.get(_CONFIG_PARAM)
-    if not context and config:
+    if not context and isinstance(config, Mapping):
         # Extract from RunnableConfig
         context = {
             "user_id": read_run_metadata(config).user_id,

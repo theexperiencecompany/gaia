@@ -4548,7 +4548,8 @@
           "integration_expired",
           "subscription_lapsed",
           "integration_never_connected",
-          "invalid_schedule"
+          "invalid_schedule",
+          "owner_not_found"
         ],
         "title": "DeactivationReason",
         "type": "string"
