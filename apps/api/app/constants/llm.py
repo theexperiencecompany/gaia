@@ -176,6 +176,11 @@ RECURSION_HWM_FRACTION = 0.80
 # When this few supersteps remain before the limit, acall_model injects a
 # wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+# Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
+# starts showing the wrap-up notice, so the model answers before GraphRecursionError.
+# Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
+RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
+RECURSION_WRAPUP_MIN_STEPS = 6
 
 # Nudges the executor on unconfirmed work (a pending tracked todo, or no real
 # tool ran). Scoped to the CURRENT delegation — counting the executor thread

@@ -15,12 +15,16 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants import todos as todo_constants
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS
+from app.models import todo_models
 from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import NotificationType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -43,6 +47,7 @@ class _Seams:
     send: AsyncMock
     activity: AsyncMock
     capture: MagicMock
+    in_app: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -60,6 +65,7 @@ def _seams(
         send=AsyncMock(return_value=sent_on),
         activity=AsyncMock(return_value=True),
         capture=MagicMock(),
+        in_app=AsyncMock(),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
@@ -69,6 +75,7 @@ def _seams(
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
+        patch.object(trd.notification_service, "create_notification", seams.in_app),
     ):
         yield seams
 
@@ -88,16 +95,53 @@ class TestResultsThatReachNobody:
         assert "result not sent: it could not be written up" in seams.entry()
         assert seams.props()["outcome"] == "narration_failed"
 
-    async def test_no_linked_chat_app_is_recorded_as_undelivered(self) -> None:
-        """Counting an unlinked user's skipped delivery as sent hides the failure."""
+    async def test_with_no_linked_chat_app_the_result_arrives_in_the_app(self) -> None:
+        """A web-only user never received a tracked todo's result before."""
         with _seams(todo=_todo(), sent_on=None) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
-        seams.send.assert_awaited_once()
-        assert "no linked chat app accepted it" in seams.entry()
+        request = seams.in_app.await_args.args[0]
+        assert request.user_id == "user-1"
+        assert request.type is NotificationType.INFO
+        assert request.content.title == "Watch the deploy"
+        assert request.content.body == "Deploy failed."
+        assert request.metadata == {"todo_id": "todo-1"}
+        assert seams.entry() == "result sent as an in-app notification (summary='report')"
+        assert seams.props()["outcome"] == "delivered"
+        assert seams.props()["platform"] is None
+
+    @pytest.mark.regression
+    async def test_an_in_app_result_keeps_its_lines_and_turns_bubble_breaks_into_paragraphs(
+        self,
+    ) -> None:
+        """Regression: the raw break token reached the in-app body, which no client splits on."""
+        narrated = (
+            f"Here's today's briefing.{NEW_MESSAGE_BREAKER}Needs you\n- Sam: the lease, by Friday"
+        )
+        with _seams(todo=_todo(), narrated=narrated, sent_on=None) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.in_app.await_args.args[0].content.body == (
+            "Here's today's briefing.\n\nNeeds you\n- Sam: the lease, by Friday"
+        )
+
+    async def test_a_result_neither_a_chat_app_nor_the_app_took_is_undelivered(self) -> None:
+        """Counting a delivery that reached nobody as sent hides the failure."""
+        with _seams(todo=_todo(), sent_on=None) as seams:
+            seams.in_app.side_effect = ConnectionError("mongo down")
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
         assert seams.props()["outcome"] == "undelivered"
         assert seams.props()["delivered"] is False
-        assert seams.props()["platform"] is None
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} todo run result could not be sent in the app",
+                "todo_id": "todo-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
     async def test_a_todo_deleted_mid_run_gets_nothing(self) -> None:
         with _seams(todo=None) as seams:
@@ -106,6 +150,56 @@ class TestResultsThatReachNobody:
         seams.narrate.assert_not_awaited()
         seams.activity.assert_not_awaited()
         seams.capture.assert_not_called()
+
+
+class TestABriefingThatOwnsItsForm:
+    """The desk's run guidance sets its briefing's form; comms decides only whether it is sent."""
+
+    BRIEFING = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri · draft ready"
+
+    def _desk(self) -> TodoDocument:
+        return _todo(
+            external_ref=todo_models.ExternalRef(
+                source=todo_models.ExternalRefSource.INBOX_DESK, id="int-1"
+            )
+        )
+
+    @pytest.mark.regression
+    async def test_a_desk_briefing_reaches_the_app_as_the_desk_wrote_it(self) -> None:
+        """Regression: comms retold a sectioned desk briefing as flat lines, its headings gone."""
+        with _seams(todo=self._desk(), narrated="Priya: send the deck by Friday.") as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        assert seams.in_app.await_args.args[0].content.body == self.BRIEFING
+
+    async def test_a_desk_briefing_reaches_a_chat_app_as_the_desk_wrote_it(self) -> None:
+        with _seams(
+            todo=self._desk(),
+            narrated="Priya: send the deck by Friday.",
+            sent_on=ConversationSource.TELEGRAM,
+        ) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
+
+    async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
+        with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        seams.send.assert_not_awaited()
+        seams.in_app.assert_not_awaited()
+        assert seams.props()["outcome"] == "silenced"
+
+    async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
+        thread = _todo(
+            external_ref=todo_models.ExternalRef(
+                source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
+            )
+        )
+        with _seams(todo=thread) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
 
 
 class TestAttribution:
@@ -187,29 +281,77 @@ class TestTheWideEventSaysWhatHappened:
         assert (error["todo_id"], error["emoji"]) == ("todo-1", "👍")
 
 
-class TestTheDecisionSeesTheStandingRequests:
-    async def test_key_details_reach_the_write_up_bounded(self) -> None:
-        long_details = "- Tell me every time.\n" + "x" * DELIVERY_KEY_DETAILS_MAX_CHARS
-        todo = _todo(canvas_content=f"## Key Details\n{long_details}\n\n## Current State\n- ok\n")
+class TestTheDecisionSeesTheStandingRules:
+    async def test_the_standing_rules_reach_the_write_up_bounded(self) -> None:
+        long_rules = (
+            "- 2026-09-28: tell me every time.\n" + "x" * todo_constants.STANDING_RULES_MAX_CHARS
+        )
+        todo = _todo(
+            canvas_content=f"## Standing rules\n{long_rules}\n\n## Key Details\n- thread abc\n"
+        )
         with _seams(todo=todo) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", long_details[:DELIVERY_KEY_DETAILS_MAX_CHARS]
+            "Watch the deploy",
+            long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],
+            "- thread abc",
         )
 
-    async def test_a_todo_without_key_details_gets_the_rules_alone(self) -> None:
+    async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
+        todo = _todo(canvas_content="## Standing rules\n\n## Key Details\n- thread abc\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, "- thread abc"
+        )
+
+    @pytest.mark.regression
+    async def test_a_request_an_older_todo_kept_in_key_details_still_reaches_the_write_up(
+        self,
+    ) -> None:
+        details = "- tell me every time.\n" + "x" * todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS
+        todo = _todo(canvas_content=f"## Key Details\n{details}\n\n## Current State\n- ok\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS]
+        )
+
+    @pytest.mark.regression
+    async def test_a_new_todo_template_carries_no_rules(self) -> None:
+        todo = _todo(canvas_content=CANVAS_TEMPLATE.format(title="Watch the deploy"))
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, None
+        )
+
+    @pytest.mark.regression
+    async def test_a_title_cased_heading_still_reaches_the_write_up(self) -> None:
+        todo = _todo(canvas_content="## Standing Rules\n- 2026-09-28: tell me every time.\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", "- 2026-09-28: tell me every time.", None
+        )
+
+    async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
         with _seams(todo=_todo(canvas_content="## Current State\n- ok\n")) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )
 
-    async def test_a_todo_with_no_canvas_gets_the_rules_alone(self) -> None:
+    async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
         with _seams(todo=_todo(canvas_content=None)) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )
