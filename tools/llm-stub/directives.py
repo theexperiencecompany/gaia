@@ -133,12 +133,16 @@ class DirectiveError(ValueError):
 
 @dataclass(frozen=True)
 class ToolDirective:
+    """One scripted [[tool:...]] call: the tool to emit and its arguments."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayDirective:
+    """The script's terminal [[say:...]] reply."""
+
     text: str
 
 
@@ -147,12 +151,16 @@ Directive = ToolDirective | SayDirective
 
 @dataclass(frozen=True)
 class ToolCallResponse:
+    """A tool call as the answer to one invocation."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayResponse:
+    """Plain assistant text as the answer to one invocation."""
+
     text: str
 
 
@@ -484,6 +492,7 @@ class ChatRequest:
 
 
 def parse_request(body: dict[str, Any]) -> ChatRequest:
+    """Read the model, messages, stream flag and bound tool names off a chat-completions body."""
     tool_names = {
         (tool.get("function") or {}).get("name")
         for tool in body.get("tools") or []
