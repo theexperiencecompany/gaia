@@ -8,6 +8,7 @@ neither file re-declares them.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -241,6 +242,24 @@ def mock_activation_workflow_reactivation():
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
+
+
+@pytest.fixture
+def mock_paywall_resume():
+    """Patch both resumes of paywall-paused automation (reminders, tracked todos); opted into like mock_activation_workflow_reactivation."""
+    with (
+        patch(
+            "app.services.reminder_service.reminder_scheduler.resume_paused_for",
+            new_callable=AsyncMock,
+        ) as reminders,
+        patch(
+            "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",
+            new_callable=AsyncMock,
+        ) as todos,
+    ):
+        reminders.return_value = 0
+        todos.return_value = 0
+        yield SimpleNamespace(reminders=reminders, todos=todos)
 
 
 @pytest.fixture

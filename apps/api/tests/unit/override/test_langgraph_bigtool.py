@@ -1291,6 +1291,8 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         assert rebound["configurable"]["user_id"] == "u1"
         # The dead lane's pins are cleared, not merged forward.
         assert "provider_pin" not in rebound["configurable"]
+        # Named so the reply is priced as the model that served it, not the one that failed.
+        assert options.fallback_model == "gemini-x"
 
     @pytest.mark.asyncio
     async def test_the_async_node_runs_the_fallback_under_the_fallback_lane(self) -> None:
@@ -1500,13 +1502,16 @@ class TestToolsToBindOrdering:
 
 class TestLogMessagePreviewDirect:
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_long_content_is_truncated_with_an_ellipsis(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("x" * 500)]))
+    def test_entries_carry_the_role_and_length_and_never_the_words(
+        self, mock_log: MagicMock
+    ) -> None:
+        _log_message_preview(_make_state(messages=[HumanMessage("my divorce papers")]))
 
         (msg,), kwargs = mock_log.info.call_args
-        entry = kwargs["preview"][0]
-        assert len(entry["content"]) == 200
-        assert entry["content"].endswith("...")
+        assert msg == "acall_model message preview"
+        assert kwargs["preview"] == [
+            {"role": "HumanMessage", "content_length": len("my divorce papers")}
+        ]
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_a_failing_message_is_swallowed_into_debug(self, mock_log: MagicMock) -> None:
@@ -1522,42 +1527,19 @@ class TestLogMessagePreviewDirect:
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_only_the_last_six_messages_are_previewed(self, mock_log: MagicMock) -> None:
-        messages = [HumanMessage(f"m{i}") for i in range(7)]
+        messages = [HumanMessage("m" * i) for i in range(7)]
 
         _log_message_preview(_make_state(messages=messages))
 
         preview = mock_log.info.call_args.kwargs["preview"]
-        assert [entry["content"] for entry in preview] == [f"m{i}" for i in range(1, 7)]
+        assert [entry["content_length"] for entry in preview] == [1, 2, 3, 4, 5, 6]
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_entries_carry_exactly_role_and_content(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("hello")]))
-
-        (msg,), kwargs = mock_log.info.call_args
-        assert msg == "acall_model message preview"
-        assert kwargs["preview"] == [{"role": "HumanMessage", "content": "hello"}]
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_a_message_without_content_attr_logs_empty_content(self, mock_log: MagicMock) -> None:
+    def test_a_message_without_content_attr_logs_zero_length(self, mock_log: MagicMock) -> None:
         _log_message_preview(_make_state(messages=[object()]))
 
         entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["role"] == "object"
-        assert entry["content"] == ""
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_content_of_exactly_200_chars_is_not_truncated(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("y" * 200)]))
-
-        entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["content"] == "y" * 200
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_content_of_201_chars_is_truncated_to_200(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("z" * 201)]))
-
-        entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["content"] == "z" * 197 + "..."
+        assert entry == {"role": "object", "content_length": 0}
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_a_state_without_messages_previews_an_empty_list(self, mock_log: MagicMock) -> None:

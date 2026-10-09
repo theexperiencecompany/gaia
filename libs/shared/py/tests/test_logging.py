@@ -433,3 +433,17 @@ class TestHashLogIdentifier:
 
     def test_an_unkeyed_hash_matches_the_bots(self) -> None:
         assert logging_mod.hash_log_identifier(123456789, None) == "h_15e2b0d3c33891eb"
+
+
+class TestTextShape:
+    """User-written text is logged by size and a keyed hash, never its words."""
+
+    def test_a_keyed_shape_carries_the_length_and_hash(self) -> None:
+        assert logging_mod.text_shape("123456789", "s3cret") == {
+            "length": 9,
+            "hash": "h_d374762a95f913ec",
+        }
+
+    def test_without_a_key_only_the_length_is_recorded(self) -> None:
+        # An unkeyed digest of a short phrase is reversed by hashing guesses.
+        assert logging_mod.text_shape("123456789", None) == {"length": 9}

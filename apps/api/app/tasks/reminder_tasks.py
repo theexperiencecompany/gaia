@@ -9,6 +9,7 @@ from app.models.reminder_models import (
     ReminderModel,
     StaticReminderPayload,
 )
+from app.models.scheduler_models import TaskOutcome
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
 from app.utils.auth_utils import load_user_context
@@ -110,7 +111,7 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
 
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
-) -> None:
+) -> TaskOutcome:
     """Execute a static reminder task; the only agent type handled here is STATIC."""
     log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
@@ -122,9 +123,7 @@ async def execute_reminder_by_agent(
         )
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
 
-    # Paid-only gate; only SKIPS (never writes) so process_task_execution's own
-    # SCHEDULED/COMPLETED reschedule re-arms a recurring reminder once the
-    # subscription resumes — writing PAUSED here was always overwritten by that call.
+    # The scheduler pauses a blocked recurring reminder, so this fires once per job.
     if not await is_paid(reminder.user_id):
         log.warning(
             "Reminder skipped — subscription required",
@@ -139,7 +138,7 @@ async def execute_reminder_by_agent(
             AnalyticsEvents.PAYWALL_BLOCKED,
             {"feature": PAYWALL_FEATURE_REMINDER},
         )
-        return
+        return TaskOutcome.ENTITLEMENT_BLOCKED
 
     try:
         if reminder.agent == AgentType.STATIC:
@@ -153,6 +152,7 @@ async def execute_reminder_by_agent(
             AnalyticsEvents.REMINDER_COMPLETED,
             {"reminder_id": reminder.id, "agent": reminder.agent.value},
         )
+        return TaskOutcome.EXECUTED
     except Exception as e:
         log.error(
             "Failed to execute reminder",

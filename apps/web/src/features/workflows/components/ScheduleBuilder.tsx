@@ -4,6 +4,7 @@ import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
+import { useCronValidation } from "../hooks/useCronValidation";
 import {
   buildCronExpression,
   type CronSchedule,
@@ -255,12 +256,14 @@ function TimeOfDayInput({
   );
 }
 
-/** Plain-English preview / format hint for the raw cron expression. */
+/** Plain-English preview, the reason it is refused, or the format hint for the raw cron expression. */
 function CronPreview({
   description,
+  error,
   showError,
 }: {
   description?: string;
+  error?: string;
   showError: boolean;
 }) {
   return (
@@ -272,7 +275,7 @@ function CronPreview({
           <span className="text-zinc-400">{description}</span>
         </>
       ) : (
-        // Otherwise: info icon + the field format, tinted red when invalid.
+        // Otherwise: info icon + why it is refused, or the field format while empty.
         <>
           <InformationCircleIcon
             className={`h-3.5 w-3.5 shrink-0 ${
@@ -280,7 +283,9 @@ function CronPreview({
             }`}
           />
           <span className={showError ? "text-danger" : "text-zinc-500"}>
-            minute hour day-of-month month day-of-week
+            {showError && error
+              ? error
+              : "minute hour day-of-month month day-of-week"}
           </span>
         </>
       )}
@@ -390,9 +395,11 @@ export const ScheduleBuilder = ({
     onChange(cron);
   };
 
-  // Live preview/validation of the custom cron expression
-  const cronPreview = useMemo(() => describeCron(customCron), [customCron]);
-  const showCronError = customCron.trim().length > 0 && !cronPreview.isValid;
+  // Plain-English preview locally; whether the schedule is acceptable is the server's verdict.
+  const isCustom = simpleSchedule.frequency === "custom";
+  const cronDescription = useMemo(() => describeCron(customCron), [customCron]);
+  const cronVerdict = useCronValidation(isCustom ? customCron : "");
+  const showCronError = cronVerdict?.valid === false;
 
   // Get 12-hour display values from 24-hour stored value
   const hour24 = parseInt(simpleSchedule.hour, 10) || 0;
@@ -532,7 +539,8 @@ export const ScheduleBuilder = ({
 
       {simpleSchedule.frequency === "custom" && (
         <CronPreview
-          description={cronPreview.description}
+          description={cronDescription}
+          error={cronVerdict?.error ?? undefined}
           showError={showCronError}
         />
       )}
