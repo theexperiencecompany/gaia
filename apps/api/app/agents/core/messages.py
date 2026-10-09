@@ -20,7 +20,6 @@ from app.helpers.message_helpers import (
 )
 from app.models.message_models import (
     FileData,
-    MessageDict,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
@@ -61,25 +60,16 @@ class MessageAttachments:
     trigger_context: Mapping[str, object] | None = None
 
 
-def _latest_user_content(messages: list[MessageDict]) -> str:
-    """Return the trimmed text of the last turn when the user sent it, else an empty string."""
-    if not messages:
-        return ""
-    latest: MessageDict = messages[-1]
-    return latest.get("content", "").strip() if latest.get("role") == "user" else ""
-
-
 async def construct_langchain_messages(
-    messages: list[MessageDict],
-    query: str | None = None,
+    query: str,
     scope: MessageScope | None = None,
     attachments: MessageAttachments | None = None,
 ) -> list[AnyMessage]:
     """Construct LangChain messages for agent interaction.
 
     Builds a conversation from system prompt + optional memory + human
-    message. LangChain checkpointer handles history, so only current input
-    is processed here.
+    message. query is the user's turn: the human message and the memory
+    recall query. The checkpointer owns history, so only this turn is built.
     """
     scope = scope or MessageScope()
     attachments = attachments or MessageAttachments()
@@ -101,7 +91,7 @@ async def construct_langchain_messages(
         user_dict.onboarding if user_dict else None
     )
 
-    user_content = _latest_user_content(messages)
+    user_content = query.strip()
 
     assembled = await assemble_context(
         SectionContext(

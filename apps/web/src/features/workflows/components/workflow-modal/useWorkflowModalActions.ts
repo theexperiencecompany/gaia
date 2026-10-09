@@ -236,7 +236,7 @@ export function useWorkflowModalActions({
 
     // Validate the trigger config before sending
     try {
-      const validationResult = workflowFormSchema.safeParse(data);
+      const validationResult = await workflowFormSchema.safeParseAsync(data);
       if (!validationResult.success) {
         dispatch({ type: "phase", phase: "error" });
         return;

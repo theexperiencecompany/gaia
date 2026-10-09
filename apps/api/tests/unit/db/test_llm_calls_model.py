@@ -9,11 +9,13 @@ splits one turn across two ids.
 
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
 import pytest
 
 from app.db.repositories.llm_calls import (
     LLMCallDocument,
     LLMCallUpdate,
+    carries_usage,
     split_lane_thread,
 )
 
@@ -27,6 +29,8 @@ def _doc(**overrides: object) -> LLMCallDocument:
         "background": False,
         "charge_to_budget": True,
         "model_requested": "deepseek/deepseek-v4-flash",
+        "input_tokens": 120,
+        "output_tokens": 8,
         "cost_source": "table",
     }
     fields.update(overrides)
@@ -149,8 +153,17 @@ def test_every_optional_identifier_defaults_to_none_rather_than_a_placeholder() 
 
 
 def test_token_counts_and_cost_default_to_zero_not_none() -> None:
-    """A call that reported no tokens spent no tokens; summing the ledger must not coalesce nulls."""
-    doc = _doc()
+    """A failed call reported no tokens and spent none; summing the ledger must not coalesce nulls."""
+    doc = LLMCallDocument(
+        created_at=datetime(2026, 8, 29, 12, 0, tzinfo=UTC),
+        agent_name="comms_agent",
+        background=False,
+        charge_to_budget=True,
+        model_requested="deepseek/deepseek-v4-flash",
+        cost_source="table",
+        status="error",
+        error_family="timeout",
+    )
 
     assert (doc.input_tokens, doc.cached_tokens, doc.output_tokens, doc.reasoning_tokens) == (
         0,
@@ -193,3 +206,30 @@ def test_an_unknown_cost_source_is_rejected() -> None:
     """cost_source decides whether a row counts as provider-priced coverage; a third value would quietly count as neither."""
     with pytest.raises(ValueError):
         _doc(cost_source="guessed")
+
+
+@pytest.mark.parametrize(
+    ("input_tokens", "output_tokens", "cost_usd", "carries"),
+    [(0, 0, None, False), (5, 0, None, True), (0, 5, None, True), (0, 0, 0.01, True)],
+)
+def test_any_one_of_tokens_or_cost_is_enough_to_price_a_call(
+    input_tokens: int, output_tokens: int, cost_usd: float | None, carries: bool
+) -> None:
+    assert carries_usage(input_tokens, output_tokens, cost_usd) is carries
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [{"input_tokens": 120, "output_tokens": 0}, {"input_tokens": 0, "output_tokens": 8}],
+    ids=["input-only", "output-only"],
+)
+def test_an_ok_row_with_either_token_count_is_accepted(usage: dict[str, int]) -> None:
+    assert _doc(**usage).status == "ok"
+
+
+def test_an_ok_row_with_no_tokens_and_no_cost_is_refused() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _doc(input_tokens=0, output_tokens=0)
+
+    [error] = exc_info.value.errors()
+    assert error["msg"] == "Value error, an ok llm_calls row carries no tokens and no cost"

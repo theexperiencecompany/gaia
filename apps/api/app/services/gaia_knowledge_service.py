@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.constants.chroma import GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS
 from app.core.lazy_loader import providers
 from app.db.chroma.chromadb import ChromaClient
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 
@@ -111,7 +112,7 @@ class GaiaKnowledgeService:
         log.set(
             component="gaia_knowledge_service",
             operation="search_knowledge",
-            query_preview=query[:50],
+            knowledge_query=user_text_shape(query),
             limit=limit,
         )
         try:

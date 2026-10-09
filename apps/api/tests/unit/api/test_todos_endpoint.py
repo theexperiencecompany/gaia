@@ -28,6 +28,7 @@ from app.models.todo_models import (
 )
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
+from app.utils.log_identifiers import user_text_shape
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
@@ -137,7 +138,7 @@ class TestListTodos:
             todo={
                 "operation": "list",
                 "search_mode": "semantic",
-                "query": "launch",
+                "query": user_text_shape("launch"),
                 "page": 2,
                 "per_page": 10,
                 "filters_applied": ["query", "project"],
@@ -552,6 +553,43 @@ class TestUpdateTodoReschedule:
 
         assert resp.status_code == 200
         schedule.assert_awaited_once_with("todo-1", when)
+
+
+class TestUpdateTodoRecurrence:
+    async def test_a_mobile_rrule_round_trips_unchanged(self, client: AsyncClient) -> None:
+        """The mobile detail sheet sends an RRULE as display-only recurrence on a plain todo."""
+        rrule = "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"
+        stored = _todo_response().model_copy(update={"recurrence": rrule})
+        update = AsyncMock(return_value=stored)
+        with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": rrule})
+
+        assert resp.status_code == 200
+        assert update.await_args.args[1].recurrence == rrule
+        assert resp.json()["recurrence"] == rrule
+
+    async def test_a_refused_tracked_schedule_is_a_422_with_the_reason(
+        self, client: AsyncClient
+    ) -> None:
+        tracked = TodoDocument.model_validate(
+            {
+                "id": "todo-1",
+                "user_id": "u1",
+                "title": "Check inbox",
+                "labels": [GAIA_TRACKED_LABEL],
+            }
+        )
+        with (
+            patch(
+                "app.services.todos.todo_service.todo_repository.get",
+                new=AsyncMock(return_value=tracked),
+            ),
+            patch("app.services.todos.todo_service.todo_repository.update", new=AsyncMock()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": "* * * * *"})
+
+        assert resp.status_code == 422
+        assert "Schedules can repeat at most once an hour." in resp.text
 
 
 class TestUpdateTodoTimeline:

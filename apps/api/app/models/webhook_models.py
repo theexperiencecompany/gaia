@@ -15,7 +15,6 @@ from pydantic import (
     JsonValue,
     ValidationError,
     field_validator,
-    with_config,
 )
 from typing_extensions import TypedDict
 
@@ -23,12 +22,12 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
-@with_config(ConfigDict(extra="allow"))
-class DodoCheckoutMetadata(TypedDict, total=False):
-    """What GAIA stamps on a checkout (payment_service.create_subscription); other keys pass through."""
+class DodoSubscriptionMetadata(BaseModel):
+    """The metadata GAIA stamps on a subscription at checkout; anything else Dodo carries is kept."""
 
-    user_id: str
-    product_id: str
+    model_config = ConfigDict(extra="allow")
+
+    user_id: str | None = None
 
 
 class DodoWebhookCustomerRef(BaseModel):
@@ -50,7 +49,7 @@ class DodoWebhookLogFields(BaseModel):
     customer_id: str | None = None
     total_amount: int | None = None
     currency: str | None = None
-    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
 
 
 class DodoWebhookPayload(TypedDict, total=False):
@@ -139,7 +138,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -167,7 +166,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: DodoCheckoutMetadata = Field(default_factory=lambda: DodoCheckoutMetadata())
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 
