@@ -5,18 +5,14 @@ import type React from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getDiscountCodes = vi.fn();
-const trackEvent = vi.fn();
+const track = vi.fn();
 
 vi.mock("@/features/pricing/api/pricingApi", () => ({
   pricingApi: { getDiscountCodes: () => getDiscountCodes() },
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    FOUNDER_LETTER_SHOWN: "founder_letter:shown",
-    FOUNDER_LETTER_DISMISSED: "founder_letter:dismissed",
-  },
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
+  track: (...args: unknown[]) => track(...args),
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
@@ -52,7 +48,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
   window.localStorage.clear();
   getDiscountCodes.mockReset();
-  trackEvent.mockReset();
+  track.mockReset();
 });
 
 describe("founder letter offer code", () => {
@@ -64,7 +60,7 @@ describe("founder letter offer code", () => {
     await waitFor(() =>
       expect(result.current.liveOfferCode).toBe("THANKYOU40"),
     );
-    expect(trackEvent).toHaveBeenCalledWith("founder_letter:shown", {
+    expect(track).toHaveBeenCalledWith("founder_letter:shown", {
       discount_code: "THANKYOU40",
     });
   });
@@ -75,8 +71,8 @@ describe("founder letter offer code", () => {
     const { result } = renderHook(() => useFounderLetter(false), { wrapper });
 
     await waitFor(() =>
-      expect(trackEvent).toHaveBeenCalledWith("founder_letter:shown", {
-        discount_code: null,
+      expect(track).toHaveBeenCalledWith("founder_letter:shown", {
+        discount_code: undefined,
       }),
     );
     expect(result.current.liveOfferCode).toBeNull();
@@ -88,7 +84,7 @@ describe("founder letter offer code", () => {
 
     const { result } = renderHook(() => useFounderLetter(false), { wrapper });
 
-    await waitFor(() => expect(trackEvent).toHaveBeenCalled());
+    await waitFor(() => expect(track).toHaveBeenCalled());
     expect(result.current.liveOfferCode).toBeNull();
   });
 
@@ -101,7 +97,7 @@ describe("founder letter offer code", () => {
     await act(async () => codes.resolve({ founder_letter: "THANKYOU40" }));
 
     await waitFor(() =>
-      expect(trackEvent).toHaveBeenCalledWith("founder_letter:shown", {
+      expect(track).toHaveBeenCalledWith("founder_letter:shown", {
         discount_code: "THANKYOU40",
       }),
     );
