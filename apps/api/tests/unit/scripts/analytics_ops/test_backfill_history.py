@@ -120,6 +120,28 @@ class TestPayload:
             "USD",
         )
 
+    def test_an_activation_carries_the_live_revenue_properties(
+        self, recording_sender: Sender, sent: list[dict[str, object]]
+    ) -> None:
+        [message] = _send(recording_sender, sent, [activation(_subscription(currency="JPY"))])
+
+        props = message["properties"]
+        assert (props["amount"], props["amount_charged_pre_tax"], props["currency_charged"]) == (
+            2000.0,
+            2000.0,
+            "JPY",
+        )
+
+    def test_a_fully_discounted_activation_reports_zero_not_nothing(
+        self, recording_sender: Sender, sent: list[dict[str, object]]
+    ) -> None:
+        [message] = _send(
+            recording_sender, sent, [activation(_subscription(recurring_pre_tax_amount=0))]
+        )
+
+        props = message["properties"]
+        assert (props["amount"], props["amount_charged_pre_tax"]) == (0.0, 0.0)
+
     def test_a_subscription_with_no_creation_time_cannot_be_backfilled(self) -> None:
         with pytest.raises(ValueError, match="created_at"):
             activation(_subscription(created_at=None))

@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pymongo.database import Database
 
 from app.models.payment_models import SubscriptionDocument
-from app.services.payments.subscription_events import CENTS_PER_UNIT
+from app.utils.money import to_major_units
 from shared.py.analytics import Dedupe, UserId, prepare_capture
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.auth import UserSignedUp
@@ -147,15 +147,21 @@ def activation(row: SubscriptionDocument) -> Backfill:
     """Build the activation a subscription row reports; raise ValueError when it cannot be."""
     if row.created_at is None or row.currency is None:
         raise ValueError("no created_at or currency")
+    # A 0 is a real discount-code charge: reported as 0, never dropped, as the live activation does.
+    amount = (
+        None
+        if row.recurring_pre_tax_amount is None
+        else float(to_major_units(row.recurring_pre_tax_amount, row.currency))
+    )
     return Backfill(
         UserId(row.user_id),
         SubscriptionActivated(
             subscription_id=row.dodo_subscription_id,
             plan_name=PRO_PLAN_NAME,
             currency=row.currency,
-            amount=row.recurring_pre_tax_amount / CENTS_PER_UNIT
-            if row.recurring_pre_tax_amount
-            else None,
+            amount=amount,
+            amount_charged_pre_tax=amount,
+            currency_charged=row.currency if amount is not None else None,
             backfilled=True,
         ),
         Dedupe(key=row.dodo_subscription_id, occurred_at=row.created_at),

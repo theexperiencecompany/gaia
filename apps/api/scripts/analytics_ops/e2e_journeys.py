@@ -29,10 +29,10 @@ from app.models.user_models import (
 )
 from app.models.webhook_models import (
     DodoBillingData,
-    DodoCheckoutMetadata,
     DodoCustomerData,
     DodoPaymentData,
     DodoSubscriptionData,
+    DodoSubscriptionMetadata,
     DodoWebhookEvent,
     DodoWebhookEventType,
 )
@@ -184,7 +184,7 @@ def payment(stack: Stack) -> None:
     now = datetime.now(UTC).isoformat()
     customer = DodoCustomerData(customer_id=f"cus_{user_id}", email=stack.email, name="E2E")
     billing = DodoBillingData(country=BILLING_COUNTRY)
-    metadata = DodoCheckoutMetadata(user_id=user_id)
+    metadata = DodoSubscriptionMetadata(user_id=user_id)
     subscription_id = f"sub_e2e_{uuid4().hex}"
     subscription = DodoSubscriptionData(
         subscription_id=subscription_id,
