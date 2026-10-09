@@ -1,11 +1,14 @@
-"""Gmail tool payloads the Composio Gmail hooks read.
+"""Gmail tool payloads the Composio Gmail hooks read, and the views the mail templates make of them.
 
-Two kinds of shape live here: the data payloads of the Gmail tools whose
+Three kinds of shape live here: the data payloads of the Gmail tools whose
 results the hooks reshape (Composio documents only the data/error/successful
 envelope, so every inner field is optional with the default the UI shows for
-it), and the argument bags of the tools whose calls the hooks preview or
-annotate. MIME-level message models live in composio_schemas.gmail.
+it), the trimmed views mail_templates builds from them for the agent, and the
+argument bags of the tools whose calls the hooks preview or annotate.
+MIME-level message models live in composio_schemas.gmail.
 """
+
+from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,6 +17,7 @@ from app.models.composio_schemas.google_people import (
     GoogleContactsResponseData,
     GooglePeopleSearchResponseData,
 )
+from app.models.integrations.gmail_messages import RelayedGmailMessage
 
 
 class GmailDraftCreatedData(BaseModel):
@@ -78,19 +82,60 @@ class GmailSearchPeopleData(BaseModel):
     response_data: GooglePeopleSearchResponseData | None = None
 
 
+class GmailThreadData(BaseModel):
+    """A users.threads resource: GMAIL_FETCH_MESSAGE_BY_THREAD_ID's data, or Gmail's own via the proxy."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    messages: list[RelayedGmailMessage] = Field(default_factory=list)
+
+
+class GmailDraftDetailData(BaseModel):
+    """A users.drafts resource: GMAIL_GET_DRAFT's data, or one GMAIL_LIST_DRAFTS entry."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    message: RelayedGmailMessage | None = None
+
+
+class GmailDraftListData(BaseModel):
+    """``GMAIL_LIST_DRAFTS``; Gmail omits ``drafts`` when the mailbox has none."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    drafts: list[GmailDraftDetailData] | None = None
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
 class GmailThreadMessageView(BaseModel):
-    """One message of a thread as ``mail_templates.thread_template`` shapes it
-    (``minimal_message_template`` with both body formats)."""
+    """One message of a thread as ``minimal_message_template`` shapes it.
+
+    The hook reads it back with every field defaulted, so a partial message
+    still renders the thread card.
+    """
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     id: str | None = ""
-    sender: str | None = Field(default="", alias="from")
+    thread_id: str | None = Field(
+        default="", validation_alias="threadId", serialization_alias="threadId"
+    )
+    sender: str | None = Field(default="", validation_alias="from", serialization_alias="from")
+    to: str | None = ""
     subject: str | None = ""
-    time: str | None = ""
     snippet: str | None = ""
+    time: str | None = ""
+    is_read: bool = Field(default=False, validation_alias="isRead", serialization_alias="isRead")
+    has_attachment: bool = Field(
+        default=False, validation_alias="hasAttachment", serialization_alias="hasAttachment"
+    )
     body: str | None = ""
-    content: GmailMessageContent | None = None
+    labels: list[str] = Field(default_factory=list)
+    content: GmailMessageContent | None = Field(
+        default=None, exclude_if=lambda content: content is None
+    )
 
 
 class GmailThreadView(BaseModel):
@@ -100,7 +145,34 @@ class GmailThreadView(BaseModel):
 
     id: str | None = None
     messages: list[GmailThreadMessageView] = Field(default_factory=list)
-    message_count: int | None = Field(default=0, alias="messageCount")
+    message_count: int | None = Field(
+        default=0, validation_alias="messageCount", serialization_alias="messageCount"
+    )
+
+
+class GmailDraftMessageView(TypedDict):
+    """A draft's message as ``draft_template`` trims it; body is the plain text."""
+
+    to: str
+    subject: str
+    snippet: str
+    body: str
+    content: GmailMessageContent
+
+
+class GmailDraftView(TypedDict):
+    """``draft_template``'s output."""
+
+    id: str
+    message: GmailDraftMessageView
+
+
+class GmailDraftListView(TypedDict):
+    """``process_list_drafts_response``'s output; drafts appears only when Gmail sent them."""
+
+    nextPageToken: str | None
+    resultSize: int
+    drafts: NotRequired[list[GmailDraftView]]
 
 
 class GmailComposeArguments(BaseModel):
