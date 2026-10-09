@@ -31,7 +31,7 @@ from app.workers.config.worker_settings import (
 )
 from app.workers.metrics import TASK_DURATION_SECONDS, TASK_TOTAL
 from app.workers.queue import ANALYTICS_CONTEXT_KWARG, TRACE_ID_KWARG
-from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 from shared.py.wide_events import log, wide_task
 
@@ -108,11 +108,15 @@ def _pop_trace_id(kwargs: dict[str, object]) -> str | None:
 
 
 def _pop_analytics_context(kwargs: dict[str, object]) -> AnalyticsContext:
-    """Take the analytics context enqueue_worker_job carried in; a job nobody attributed is system work."""
+    """Take the run enqueue_worker_job carried in, acted on by the agent; a job nobody attributed is system work.
+
+    The human's own action was captured when they made the request; queued work
+    running later must not count as theirs or mark them active.
+    """
     carried = kwargs.pop(ANALYTICS_CONTEXT_KWARG, None)
     if carried is None:
         return worker_context(Trigger.SYSTEM)
-    return AnalyticsContext.model_validate(carried)
+    return AnalyticsContext.model_validate(carried).acting_as(Actor.AGENT)
 
 
 def arq_function(
