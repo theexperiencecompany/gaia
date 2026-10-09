@@ -116,13 +116,8 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
     },
 
     getTodosByLabel: async (label, skip, limit) => {
-      const params: Record<string, string | number> = { labels: label };
-      if (skip !== undefined && limit !== undefined) {
-        params.page = Math.floor(skip / limit) + 1;
-        params.per_page = limit;
-      }
       const response = await http.get<TodoListResponse | Todo[]>(
-        `${TODO_ENDPOINTS.list}${buildQueryString(params)}`,
+        `${TODO_ENDPOINTS.list}${buildQueryString({ labels: label, skip, limit })}`,
         { silent: true },
       );
       return normalizeListResponse(response);
