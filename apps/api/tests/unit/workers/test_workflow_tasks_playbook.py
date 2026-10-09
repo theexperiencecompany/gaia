@@ -2272,7 +2272,7 @@ class TestTheZoneAWorkflowRunsIn:
         workflow = _workflow()
         log_seam = MagicMock()
         with patch(f"{MODULE}.log", log_seam):
-            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id="u_1"))
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
         log_seam.warning.assert_any_call(
@@ -2360,7 +2360,7 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
         with patch(f"{MODULE}.log", MagicMock()):
-            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id="u_1"))
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
@@ -2368,7 +2368,9 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
         with patch(f"{MODULE}.log", MagicMock()):
-            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id="u_1", timezone="UTC"))
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="UTC")
+            )
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
@@ -2377,7 +2379,7 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         workflow.trigger_config.timezone = "Asia/Kolkata"
         with patch(f"{MODULE}.log", MagicMock()):
             resolved = _in_run_timezone(
-                workflow, AuthenticatedUser(user_id="u_1", timezone="Europe/Lisbon")
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="Europe/Lisbon")
             )
 
         assert resolved.timezone == Timezone.parse("Europe/Lisbon").value
@@ -2387,7 +2389,7 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         workflow = _workflow()
         workflow.trigger_config.timezone = "   "
         with patch(f"{MODULE}.log", MagicMock()):
-            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id="u_1"))
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
 
