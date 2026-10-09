@@ -1,7 +1,8 @@
-import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
+import { MONTHS_PER_YEAR } from "../constants";
 import { getAnnualSavingsPercent } from "./annualSavings";
+import { toMajorUnits } from "./money";
 
-/** Every price figure a pricing card renders, derived from raw cents. */
+/** Every price figure a pricing card renders, derived from minor units. */
 export interface PriceDisplay {
   perMonthDollars: number;
   yearlyTotalDollars: number | null;
@@ -10,22 +11,22 @@ export interface PriceDisplay {
   monthsFree: number;
 }
 
-// Derives every price figure shown on a card from the raw cents + billing
+// Derives every price figure shown on a card from the minor units + billing
 // period, so the component body stays declarative.
 export function getPriceDisplay(
   price: number,
   originalPrice: number | undefined,
   durationIsMonth: boolean,
+  currency: string,
 ): PriceDisplay {
   const isPaidTier = price > 0;
+  const priceMajor = toMajorUnits(price, currency);
   const perMonthDollars =
     !durationIsMonth && isPaidTier
-      ? Math.round(price / MONTHS_PER_YEAR / CENTS_PER_DOLLAR)
-      : Math.round(price / CENTS_PER_DOLLAR);
+      ? Math.round(priceMajor / MONTHS_PER_YEAR)
+      : Math.round(priceMajor);
   const yearlyTotalDollars =
-    !durationIsMonth && isPaidTier
-      ? Math.round(price / CENTS_PER_DOLLAR)
-      : null;
+    !durationIsMonth && isPaidTier ? Math.round(priceMajor) : null;
   // Savings vs paying monthly (originalPrice = 12× the monthly rate).
   const savePercent = originalPrice
     ? getAnnualSavingsPercent(originalPrice, price)

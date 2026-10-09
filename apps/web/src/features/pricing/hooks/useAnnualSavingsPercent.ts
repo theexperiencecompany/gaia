@@ -1,8 +1,7 @@
 "use client";
 
 import { MONTHS_PER_YEAR } from "../constants";
-import { getAnnualSavingsPercent } from "../utils/annualSavings";
-import { convertToUSDCents } from "../utils/currencyConverter";
+import { getAnnualSavingsPercent, isMonthlyTwin } from "../utils/annualSavings";
 import { isProPlan } from "../utils/planPredicates";
 import { usePricing } from "./usePricing";
 
@@ -14,17 +13,17 @@ import { usePricing } from "./usePricing";
 export function useAnnualSavingsPercent(): number | null {
   const { plans } = usePricing();
 
-  const monthly = plans.find(
-    (plan) => isProPlan(plan) && plan.duration === "monthly",
-  );
   const yearly = plans.find(
     (plan) => isProPlan(plan) && plan.duration === "yearly",
   );
+  const monthly = yearly
+    ? plans.find((plan) => isMonthlyTwin(plan, yearly))
+    : undefined;
   if (!monthly || !yearly) return null;
 
   const percent = getAnnualSavingsPercent(
-    convertToUSDCents(monthly.amount, monthly.currency) * MONTHS_PER_YEAR,
-    convertToUSDCents(yearly.amount, yearly.currency),
+    monthly.amount * MONTHS_PER_YEAR,
+    yearly.amount,
   );
   return percent > 0 ? percent : null;
 }

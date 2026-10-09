@@ -10,7 +10,6 @@ import {
   usePricing,
 } from "../hooks/usePricing";
 import { getPlanViewerState } from "../types";
-import { convertToUSDCents } from "../utils/currencyConverter";
 import {
   displayPlanName,
   isEnterprisePlan,
@@ -161,15 +160,12 @@ export function PricingCards({
             index === 0
               ? "Includes:"
               : `Everything in ${sortedPlans[index - 1].name}, plus`;
-          // Convert any currency to USD cents for display
-          const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
-
           // Every paid annual plan carries the same discount, so the pre-discount
           // price (what 12 monthly payments would cost) is the annual price
           // divided by the retained fraction.
-          const originalPriceInUSDCents =
+          const originalPrice =
             !durationIsMonth && plan.amount > 0
-              ? Math.round(priceInUSDCents / ANNUAL_PRICE_RETENTION)
+              ? Math.round(plan.amount / ANNUAL_PRICE_RETENTION)
               : undefined;
 
           // current_plan can be null even for an active subscription (product not
@@ -208,8 +204,9 @@ export function PricingCards({
               features={plan.features}
               featuresHeading={featuresHeading}
               description={plan.description ?? undefined}
-              price={priceInUSDCents} // Always in USD cents
-              originalPrice={originalPriceInUSDCents}
+              price={plan.amount}
+              currency={plan.currency}
+              originalPrice={originalPrice}
               title={displayPlanName(plan)}
               isPro={isPro}
               planViewerState={planViewerState}

@@ -53,7 +53,6 @@ apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/tools/subscription_tool.py	TB002
 apps/api/app/agents/tools/todo_tools.py	TB001
 apps/api/app/agents/tools/todo_tools.py	TB002
 apps/api/app/agents/tools/webpage_tool.py	TB001
@@ -67,7 +66,6 @@ apps/api/app/api/v1/endpoints/device.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
 apps/api/app/api/v1/endpoints/health.py	TB002
 apps/api/app/api/v1/endpoints/oauth.py	TB002
-apps/api/app/api/v1/endpoints/payments.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
 apps/api/app/config/token_repository.py	TB001
@@ -161,8 +159,6 @@ apps/api/app/services/onboarding/inbox_triage_service.py	TB002
 apps/api/app/services/onboarding/intelligence_service.py	TB002
 apps/api/app/services/onboarding/onboarding_service.py	TB001
 apps/api/app/services/onboarding/writing_style_service.py	TB002
-apps/api/app/services/payments/payment_webhook_service.py	TB001
-apps/api/app/services/payments/payment_webhook_service.py	TB002
 apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/provider_metadata_service.py	TB001

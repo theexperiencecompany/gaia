@@ -4,9 +4,6 @@
 /** Months billed up front on an annual plan. */
 export const MONTHS_PER_YEAR = 12;
 
-/** Backend prices are in cents; divide by this to get dollars. */
-export const CENTS_PER_DOLLAR = 100;
-
 /** Discount every paid annual plan carries versus paying monthly. */
 const ANNUAL_DISCOUNT_RATE = 1 / 6;
 
