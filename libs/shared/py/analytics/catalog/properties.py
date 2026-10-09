@@ -36,7 +36,12 @@ Hostname = Annotated[str, StringConstraints(pattern=r"^[^\s@/]{1,253}$"), IdKind
 #: An ISO 4217 currency code as the payment provider reports it ("USD", "inr").
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$"), IdKind("currency_code")]
 
-#: A single emoji: short and non-ASCII only, so no word can pass as one.
-Emoji = Annotated[str, StringConstraints(pattern=r"^[^\x00-\x7F]{1,16}$"), IdKind("emoji")]
+#: A single emoji: short and non-ASCII only, so no word can pass as one, or a keycap (1️⃣ #️⃣ *️⃣).
+Emoji = Annotated[
+    str,
+    # The keycap code points are literal (not \x{...}) so the exported JSON-schema pattern is valid ECMAScript.
+    StringConstraints(pattern="^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$"),
+    IdKind("emoji"),
+]
 
 __all__ = ["CurrencyCode", "Emoji", "Hostname", "IdKind", "Identifier", "ObjectIdStr", "UrlPath"]
