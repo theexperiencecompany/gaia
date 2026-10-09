@@ -67,11 +67,6 @@ ENVELOPE_PROPERTIES = frozenset({"timestamp"})
 
 PROBE_EVENT = "user:signed_up"
 PROBE_DAYS = 7
-# {filters} is where PostHog splices the project's test-account filter in.
-PROBE_HOGQL = (
-    "SELECT count() FROM events "
-    "WHERE event = {event} AND timestamp > now() - toIntervalDay({days}) AND {filters}"
-)
 SUGGESTION_CUTOFF = 0.6
 PAGE_LIMIT = 100
 HTTP_TIMEOUT_S = 30
@@ -615,29 +610,23 @@ class PostHog:
         return self._all("actions/")
 
     def hogql(
-        self,
-        query: str,
-        values: Mapping[str, JsonValue] | None = None,
-        *,
-        filter_test_accounts: bool = False,
+        self, query: str, values: Mapping[str, JsonValue] | None = None
     ) -> list[list[JsonValue]]:
         """Run a HogQL query with {placeholder} values and return its rows."""
-        node: JsonObject = {
-            "kind": "HogQLQuery",
-            "query": query,
-            "values": dict(values or {}),
-            "filters": {"filterTestAccounts": filter_test_accounts},
-        }
+        node: JsonObject = {"kind": "HogQLQuery", "query": query, "values": dict(values or {})}
         return self._request("POST", f"{self.base}/query/", {"query": node})["results"]
 
     def probe(self, filter_test_accounts: bool) -> int:
         """Count the probe event over the probe window, with the test-account filter on or off."""
-        rows = self.hogql(
-            PROBE_HOGQL,
-            {"event": PROBE_EVENT, "days": PROBE_DAYS},
-            filter_test_accounts=filter_test_accounts,
-        )
-        return int(rows[0][0])
+        # The same query node a dashboard trends tile runs, so the filter is applied exactly as it is there.
+        query: JsonObject = {
+            "kind": "TrendsQuery",
+            "series": [{"kind": "EventsNode", "event": PROBE_EVENT, "math": "total"}],
+            "dateRange": {"date_from": f"-{PROBE_DAYS}d"},
+            "filterTestAccounts": filter_test_accounts,
+        }
+        [series] = self._request("POST", f"{self.base}/query/", {"query": query})["results"]
+        return int(series["count"])
 
     def create_action(self, action: Mapping[str, JsonValue]) -> None:
         """Create an action."""

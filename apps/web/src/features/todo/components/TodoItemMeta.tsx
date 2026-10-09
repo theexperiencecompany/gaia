@@ -10,6 +10,7 @@ import {
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
+  TaskDone01Icon,
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
@@ -38,6 +39,7 @@ const todoHasMeta = (todo: Todo): boolean =>
   !!todo.scheduled_at ||
   !!todo.expires_at ||
   isTrackedTodo(todo) ||
+  todo.sub_todo_count > 0 ||
   todo.labels.length > 0;
 
 const dueChipColor = (isToday: boolean, isOverdue: boolean) => {
@@ -142,6 +144,20 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         </Chip>
       )}
 
+      {todo.sub_todo_count > 0 && (
+        <Chip
+          className="flex items-center text-zinc-400 px-1"
+          size="sm"
+          radius="sm"
+          variant="flat"
+          startContent={
+            <TaskDone01Icon width={15} height={15} className="mx-1" />
+          }
+        >
+          {todo.sub_todo_count} sub-todos
+        </Chip>
+      )}
+
       {todoProject && (
         <Chip
           size="sm"
@@ -174,7 +190,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       <TodoPriorityChip priority={todo.priority} />
 
-      {/* Subtasks Count */}
+      {/* Checklist progress */}
       {todo.subtasks.length > 0 && (
         <Chip
           size="sm"
@@ -186,7 +202,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           }
         >
           {todo.subtasks.filter((s) => s.completed).length}/
-          {todo.subtasks.length} subtasks
+          {todo.subtasks.length} checklist
         </Chip>
       )}
     </div>

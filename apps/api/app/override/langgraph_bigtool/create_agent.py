@@ -8,6 +8,7 @@ Type/lint errors here are expected: adapted from an external library.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
 import functools
+import math
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
@@ -22,6 +23,9 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+
+# LangGraph's default limit (env-overridable) has no public export.
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 
 # Compat shim marked "to be removed in v1" (we're on 1.2.7); re-exports
 # without __all__, so it's invisible to no_implicit_reexport — imported
@@ -60,7 +64,8 @@ from app.constants.llm import (
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
     PROMPT_CACHE_KEY_PROVIDERS,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
     STICKY_ROUTING_PROVIDERS,
 )
 from app.constants.log_tags import LogTag
@@ -84,6 +89,7 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
     dedupe_tool_bindings,
@@ -232,22 +238,32 @@ def _build_retrieve_tools(
     return retrieve_tools, get_store_arg(retrieve_tools)
 
 
-def _maybe_inject_wrapup(state: State) -> State:
-    """Warn the model to finish when the recursion budget is nearly spent.
+def _maybe_inject_wrapup(state: State, config: RunnableConfig) -> State:
+    """Tell the model to answer now once its remaining steps reach the wrap-up window.
 
-    Injected per model call (never persisted): a trailing HumanMessage,
-    because Gemini drops trailing SystemMessages. Without this, the run
-    dies mid-exploration with a hard GraphRecursionError the model never
-    saw coming.
+    A trailing HumanMessage (Gemini drops trailing SystemMessages) on each model
+    call in the window, never persisted: the executor thread spans delegations,
+    and a stored notice would greet the next one.
     """
-    remaining = state.get("remaining_steps")
-    if not isinstance(remaining, int) or remaining > RECURSION_WRAPUP_THRESHOLD_STEPS:
+    remaining = state.get(REMAINING_STEPS_KEY)
+    # LangGraph strips a limit equal to its default from the node's config.
+    recursion_limit = config.get("recursion_limit", DEFAULT_RECURSION_LIMIT)
+    threshold = max(
+        RECURSION_WRAPUP_MIN_STEPS,
+        math.ceil(recursion_limit * RECURSION_WRAPUP_REMAINING_FRACTION),
+    )
+    if not isinstance(remaining, int) or remaining > threshold:
         return state
+    log.info(
+        f"{LogTag.AGENT} Recursion wrap-up notice shown",
+        remaining_steps=remaining,
+        recursion_limit=recursion_limit,
+    )
     notice = HumanMessage(
         content=(
             "[System notice: you are almost out of steps for this run "
-            f"(~{remaining} left). Stop exploring now. Summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            f"(~{remaining} left). Stop calling tools and give your final answer now. "
+            "Summarize what you did, what you found and what remains to be done.]"
         )
     )
     return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
@@ -319,7 +335,7 @@ def _after_model_result(
     # not the full list. Tombstones prune slot-stale prompt copies; injected
     # messages are committed AHEAD of the response so the thread reads in order.
     result: dict[str, object] = {"messages": [*tombstones, *injected, response]}
-    base_keys = {"messages", "selected_tool_ids"}
+    base_keys = {"messages", "selected_tool_ids", REMAINING_STEPS_KEY}
     result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
 
@@ -348,7 +364,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
@@ -378,7 +394,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
 
         # The raw bag goes back to LangChain untouched (it owns the keys it
         # merged in); the typed view is what GAIA reads its own keys through.

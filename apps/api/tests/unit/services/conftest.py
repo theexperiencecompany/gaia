@@ -159,10 +159,11 @@ def mock_webhook_subscription_repository():
     By default the subscription already exists as an active row with no
     billing dates recorded (SAMPLE_SUBSCRIPTION), which is what every
     lifecycle event needs to find; a test about activation creating the row
-    sets get_by_dodo_id to return None.
+    sets get_by_dodo_id to return None. The user has no other active subscription.
     """
     mock_repo = MagicMock()
     mock_repo.get_by_dodo_id = AsyncMock(return_value=SAMPLE_SUBSCRIPTION)
+    mock_repo.get_active_for_user = AsyncMock(return_value=None)
     mock_repo.create = AsyncMock()
     mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
     with patch("app.services.payments.subscription_events.subscription_repository", mock_repo):
@@ -215,6 +216,15 @@ def mock_webhook_send_email():
     with patch(
         "app.services.payments.subscription_events.send_pro_subscription_email",
         new_callable=AsyncMock,
+    ) as mock_fn:
+        yield mock_fn
+
+
+@pytest.fixture
+def mock_queue_inbox_desk():
+    """Patch the Inbox desk queue at its source module (import deferred to break a cycle); opt in like the one below."""
+    with patch(
+        "app.services.todos.inbox_desk.queue_inbox_desk_provision", new_callable=AsyncMock
     ) as mock_fn:
         yield mock_fn
 

@@ -39,10 +39,12 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ToolDataEntry
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
+from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from tests.e2e._harness.background import drain_background_runs
@@ -106,9 +108,10 @@ class StreamingScriptedModel(RecordingFakeModel):
         run_manager: AsyncCallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
-        # Cursor advance lives in the base ``_generate``; calling it keeps one
-        # script position whichever path a tier takes.
-        message = super()._generate(messages, stop=stop, **kwargs).generations[0].message
+        # Through ``self._generate``, as RecordingFakeModel's async path does: one
+        # script position whichever path a tier takes, and a subclass's response
+        # override applies when streamed too.
+        message = self._generate(messages, stop=stop, **kwargs).generations[0].message
         chunk = ChatGenerationChunk(
             message=AIMessageChunk(
                 content=message.content,
@@ -533,6 +536,44 @@ class TestCommsToExecutor:
         )
         assert flowchart["data"]["inputs"] == FLOWCHART_ARGS
         assert flowchart["data"]["output"] == run.transcript.result_for("create_flowchart")
+
+
+class TestFeedbackOnATrackedTodo:
+    """The comms model's routing is scripted; the binding it asks for runs for real."""
+
+    DESK = TodoDocument(
+        id="66f838cc8829054e5f10e401",
+        user_id=USER.user_id,
+        title="Inbox desk",
+        canvas_content="## Standing rules\n\n## Current State\n- 3 threads open\n",
+    )
+
+    async def test_the_executor_handed_the_feedback_is_bound_to_that_todo(self) -> None:
+        task = "Apply the user's feedback to this todo: stop showing me newsletters"
+        with patch.object(todo_repository, "get", AsyncMock(return_value=self.DESK)):
+            run = await run_chain(
+                "stop showing me newsletters",
+                comms=[
+                    call(
+                        "call_executor",
+                        {
+                            "task": task,
+                            "acceptance_criteria": ["the rule is in the desk's Standing rules"],
+                            "active_todo_id": self.DESK.id,
+                        },
+                        call_id="tc_exec",
+                    ),
+                    "Got it.",
+                ],
+                executor=["Recorded the rule."],
+            )
+
+        assert run.executor_model is not None
+        (first_prompt, *_) = run.executor_model.prompts
+        seen = "\n".join(str(message.content) for message in first_prompt)
+        assert f"🎯 ACTIVE TODO (this run is bound to this todo)\n   id: {self.DESK.id}\n" in seen
+        assert "Its Standing rules are the user's instructions for this todo" in seen
+        assert task in seen
 
 
 # ---------------------------------------------------------------------------

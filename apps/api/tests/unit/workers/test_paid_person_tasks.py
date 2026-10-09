@@ -1,5 +1,6 @@
 """The durable retry behind a billing change's paid-state person properties."""
 
+from collections.abc import Iterator
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,6 +31,16 @@ def _row(status: str) -> SubscriptionDocument:
             "cancel_at_next_billing_date": True,
         }
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_other_active_subscription() -> Iterator[None]:
+    with patch(
+        f"{EVENTS}.subscription_repository.get_active_for_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
 
 
 @pytest.mark.unit

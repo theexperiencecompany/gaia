@@ -1,8 +1,14 @@
 import asyncio
+from collections import Counter
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from http import HTTPStatus
 import math
+from typing import NamedTuple, NoReturn
 import uuid
+
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -13,6 +19,7 @@ from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
     BulkUpdateRequest,
+    ExternalRef,
     PaginationMeta,
     PendingApprovalRef,
     Priority,
@@ -33,8 +40,16 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
-from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
+from app.services.todos.errors import (
+    ExternalRefReopenedTwiceError,
+    ExternalRefTakenError,
+    SubTodoParentError,
+    TrackedLabelChangeError,
+    TrackedTodoWorkflowError,
+)
+from app.services.todos.external_ref_watch import release_watches, watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -105,6 +120,24 @@ async def _get_pending_approvals_for_todos(
     return refs
 
 
+async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
+    """Project todos onto TodoResponse with their workflow categories, approvals and open sub-todos."""
+    workflow_categories, pending_approvals, sub_todo_counts = await asyncio.gather(
+        _get_workflow_categories_for_todos(todos, user_id),
+        _get_pending_approvals_for_todos(todos),
+        todo_repository.count_open_sub_todos(user_id, [todo.id for todo in todos]),
+    )
+    return [
+        TodoResponse.from_document(
+            todo,
+            workflow_categories=workflow_categories.get(todo.id),
+            pending_approval=pending_approvals.get(todo.id),
+            sub_todo_count=sub_todo_counts.get(todo.id, 0),
+        )
+        for todo in todos
+    ]
+
+
 def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
     """Give every subtask a stable id, generating one where it is missing."""
     result: list[SubTask] = []
@@ -158,6 +191,172 @@ async def _refuse_a_bulk_tracked_label_change(
         raise TrackedLabelChangeError()
 
 
+async def _raise_ref_taken(
+    user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
+) -> NoReturn:
+    """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
+    holder = await todo_repository.find_open_by_external_ref(user_id, ref) if ref else None
+    if holder is None:
+        raise error
+    raise ExternalRefTakenError(holder) from error
+
+
+async def _refuse_a_reopen_of_a_taken_ref(
+    user_id: str, todo_ids: list[str]
+) -> list[tuple[TodoDocument, ExternalRef]]:
+    """Refuse a reopen that would give an outside object a second open todo.
+
+    Returns each completed todo among todo_ids that holds a ref, with that ref.
+    """
+    reopened = [
+        (todo, todo.external_ref)
+        for todo in await todo_repository.find_by_ids(user_id, todo_ids)
+        if todo.completed and todo.external_ref is not None
+    ]
+    ref_counts = Counter(ref for _, ref in reopened)
+    sharing = [todo.id for todo, ref in reopened if ref_counts[ref] > 1]
+    if sharing:
+        raise ExternalRefReopenedTwiceError(sharing)
+    for _, ref in reopened:
+        holder = await todo_repository.find_open_by_external_ref(user_id, ref)
+        if holder is not None:
+            raise ExternalRefTakenError(holder)
+    return reopened
+
+
+async def _refuse_a_reopen_under_a_closed_parent(user_id: str, todo_ids: list[str]) -> None:
+    """Refuse reopening a sub-todo whose parent is completed: it would run outside its cascade."""
+    children = [
+        doc for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.parent_todo_id
+    ]
+    if not children:
+        return
+    parent_ids = list({child.parent_todo_id for child in children if child.parent_todo_id})
+    open_parents = {
+        parent.id
+        for parent in await todo_repository.find_by_ids(user_id, parent_ids)
+        if not parent.completed
+    }
+    closed = [child.id for child in children if child.parent_todo_id not in open_parents]
+    if closed:
+        raise SubTodoParentError(
+            f"Sub-todo {', '.join(closed)} cannot reopen while its parent is completed; "
+            "reopen the parent first."
+        )
+
+
+@asynccontextmanager
+async def _watching_refs_to_reopen(
+    user_id: str, todo_ids: list[str], *, reopening: bool
+) -> AsyncIterator[None]:
+    """Watch each reopened todo's ref again for the reopen; a completed todo's watch never fires.
+
+    When the reopen does not land, the watches added here leave every todo still completed.
+    """
+    if reopening:
+        await _refuse_a_reopen_under_a_closed_parent(user_id, todo_ids)
+    added: dict[str, list[TriggerSubscription]] = {}
+    try:
+        if reopening:
+            for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
+                added[todo.id] = await watch_external_ref(
+                    todo.id, user_id, ref, todo.trigger_subscriptions
+                )
+        yield
+    except Exception:
+        if added:
+            docs = await todo_repository.find_by_ids(user_id, list(added))
+            still_completed = {doc.id for doc in docs if doc.completed}
+            for todo_id, watches in added.items():
+                if todo_id in still_completed:
+                    await release_watches(todo_id, user_id, watches)
+        raise
+
+
+async def _persist_update(
+    todo_id: str, user_id: str, workflow_id: str | None, update: TodoUpdate
+) -> TodoDocument | None:
+    """Write the update and any workflow link; reopening onto a held ref raises ExternalRefTakenError."""
+    if workflow_id is not None and not await todo_repository.link_workflow(
+        todo_id, user_id=user_id, workflow_id=workflow_id
+    ):
+        # The check above passed, so the todo became tracked (or went away) mid-update.
+        raise TrackedTodoWorkflowError()
+    if not update.model_fields_set:
+        # A tracked completion or a workflow link already persisted + invalidated.
+        return await todo_repository.get(todo_id, user_id=user_id)
+    try:
+        return await todo_repository.update(todo_id, user_id=user_id, update=update)
+    except DuplicateKeyError as e:
+        # Reopening a todo whose outside object another open todo now holds.
+        reopened = await todo_repository.get(todo_id, user_id=user_id)
+        await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
+
+
+async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
+    """Add every sub-todo of the given todos: deleting a parent takes its sub-todos with it."""
+    children = await todo_repository.find_sub_todos(user_id, todo_ids)
+    return list(dict.fromkeys([*todo_ids, *(child.id for child in children)]))
+
+
+async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> None:
+    """Refuse, before any write, a bulk update that may only be made one todo at a time."""
+    # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
+    if request.updates.workflow_id is not None:
+        raise AppError(
+            message="A workflow is linked one todo at a time, not in bulk",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
+    if request.updates.labels is not None:
+        await _refuse_a_bulk_tracked_label_change(user_id, request.todo_ids, request.updates.labels)
+    project_id = request.updates.project_id
+    if project_id is not None and not await project_repository.get(project_id, user_id=user_id):
+        raise ValueError(f"Project {project_id} not found")
+
+
+class _TrackedCompletion(NamedTuple):
+    """How a bulk completion went for the tracked todos among its ids, and which ids were plain."""
+
+    completed: list[str]
+    failed: list[str]
+    plain: list[str]
+
+
+async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _TrackedCompletion:
+    """Complete the tracked todos among todo_ids one by one; one failing does not stop the rest.
+
+    A tracked todo's completion tears down its watches and completes its sub-todos,
+    which a bulk $set cannot do.
+    """
+    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+        tracked_todo_service,
+    )
+
+    tracked = {
+        doc.id for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
+    }
+    completion = _TrackedCompletion(
+        completed=[], failed=[], plain=[todo_id for todo_id in todo_ids if todo_id not in tracked]
+    )
+    for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
+        try:
+            await tracked_todo_service.complete_tracked_todo(
+                todo_id, user_id, summary="Completed via bulk operation"
+            )
+        except Exception as e:
+            # Reported per todo in the response; the todos already completed keep their completion.
+            log.error(
+                "todo.bulk_tracked_complete_failed",
+                todo_id=todo_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            completion.failed.append(todo_id)
+        else:
+            completion.completed.append(todo_id)
+    return completion
+
+
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     """Rebuild update without the completion fields.
 
@@ -188,6 +387,7 @@ class TodoService:
             or params.completed is not None
             or params.priority
             or params.labels
+            or params.parent_todo_id
         )
 
     @staticmethod
@@ -197,8 +397,19 @@ class TodoService:
 
     # CRUD Operations
     @classmethod
-    async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
-        """Create a new todo with automatic inbox assignment."""
+    async def create_todo(
+        cls,
+        todo: TodoModel,
+        user_id: str,
+        *,
+        external_ref: ExternalRef | None = None,
+        parent_todo_id: str | None = None,
+    ) -> TodoResponse:
+        """Create a new todo with automatic inbox assignment.
+
+        parent_todo_id must already be validated (tracked_todo_service does it).
+        Raises ExternalRefTakenError when another open todo already holds external_ref.
+        """
         log.set(
             component="todo_service",
             operation="create_todo",
@@ -244,8 +455,14 @@ class TodoService:
             expires_at=todo.expires_at,
             references=todo.references,
             notify_on_run=todo.notify_on_run,
+            external_ref=external_ref,
+            parent_todo_id=parent_todo_id,
         )
-        created = await todo_repository.create(document)
+        try:
+            created = await todo_repository.create(document)
+        except DuplicateKeyError as e:
+            # The open-ref unique index turned this insert away: the loser reads the winner.
+            await _raise_ref_taken(user_id, external_ref, e)
 
         # Index for search
         try:
@@ -263,6 +480,7 @@ class TodoService:
                 labels_count=len(created.labels),
                 subtasks_count=len(created.subtasks),
                 has_project=project_chosen,
+                is_sub_todo=created.parent_todo_id is not None,
             ),
         )
         return TodoResponse.from_document(created)
@@ -305,22 +523,18 @@ class TodoService:
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        if todo.workflow_id:
-            workflow_categories = await _get_workflow_categories_for_todos([todo], user_id)
-            return TodoResponse.from_document(
-                todo,
-                workflow_categories=workflow_categories.get(todo.id),
-                pending_approval=(await _get_pending_approvals_for_todos([todo])).get(todo.id),
-            )
-        pending = await _get_pending_approvals_for_todos([todo])
-        return TodoResponse.from_document(todo, pending_approval=pending.get(todo.id))
+        (response,) = await todo_responses(user_id, [todo])
+        return response
 
     @classmethod
     async def list_todos(cls, user_id: str, params: TodoSearchParams) -> TodoListResponse:
         """List todos with filtering, pagination, and optional stats."""
         # Semantic / hybrid search is a vector concern handled separately.
         if params.q and params.mode in [SearchMode.SEMANTIC, SearchMode.HYBRID]:
-            return await cls._search_todos(user_id, params)
+            if not params.parent_todo_id:
+                return await cls._search_todos(user_id, params)
+            # Embeddings carry no parent id, so one parent's sub-todos are searched by text.
+            params = params.model_copy(update={"mode": SearchMode.TEXT})
 
         inbox_project_id = (
             await cls._get_inbox_id(user_id) if cls._needs_inbox_default(params) else None
@@ -329,18 +543,7 @@ class TodoService:
             user_id=user_id, params=params, inbox_project_id=inbox_project_id
         )
 
-        workflow_categories, pending_approvals = await asyncio.gather(
-            _get_workflow_categories_for_todos(page.items, user_id),
-            _get_pending_approvals_for_todos(page.items),
-        )
-        data = [
-            TodoResponse.from_document(
-                todo,
-                workflow_categories=workflow_categories.get(todo.id),
-                pending_approval=pending_approvals.get(todo.id),
-            )
-            for todo in page.items
-        ]
+        data = await todo_responses(user_id, page.items)
         pages = math.ceil(page.total / params.per_page) if params.per_page else 0
         meta = PaginationMeta(
             total=page.total,
@@ -400,17 +603,10 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
-        if updates.workflow_id is not None and not await todo_repository.link_workflow(
-            todo_id, user_id=user_id, workflow_id=updates.workflow_id
+        async with _watching_refs_to_reopen(
+            user_id, [todo_id], reopening=update.completed is False
         ):
-            # The check above passed, so the todo became tracked (or went away) mid-update.
-            raise TrackedTodoWorkflowError()
-
-        if update.model_fields_set:
-            updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
-        else:
-            # A tracked completion or a workflow link already persisted + invalidated.
-            updated = await todo_repository.get(todo_id, user_id=user_id)
+            updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
         if not updated:
             raise ValueError(f"Todo {todo_id} not found")
@@ -445,7 +641,8 @@ class TodoService:
                     has_subtasks=bool(updated.subtasks),
                 ),
             )
-        return TodoResponse.from_document(updated)
+        (response,) = await todo_responses(user_id, [updated])
+        return response
 
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
@@ -453,6 +650,10 @@ class TodoService:
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
+
+        # A sub-todo does not outlive its parent; each goes through this same path.
+        for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
+            await cls.delete_todo(child.id, user_id)
 
         # Unregister before the document goes: once it is deleted nothing names
         # the Composio trigger any more, so the registration would leak forever.
@@ -484,30 +685,35 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
-        # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
-        if request.updates.workflow_id is not None:
-            raise AppError(
-                message="A workflow is linked one todo at a time, not in bulk",
-                status_code=HTTPStatus.BAD_REQUEST,
-            )
-        if request.updates.labels is not None:
-            await _refuse_a_bulk_tracked_label_change(
-                user_id, request.todo_ids, request.updates.labels
-            )
+        await _refuse_a_bulk_update(request, user_id)
+        reopening = request.updates.completed is False
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
             )
 
-        if update.project_id is not None:
-            project = await project_repository.get(update.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {update.project_id} not found")
+        completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
+        if update.completed is True:
+            completion = await _complete_tracked_among(user_id, request.todo_ids)
+            other_fields = _drop_completion_fields(update)
+            if completion.completed and other_fields.model_fields_set:
+                await todo_repository.bulk_update(user_id, completion.completed, other_fields)
+        completed_tracked, plain_ids = completion.completed, completion.plain
 
-        modified = await todo_repository.bulk_update(user_id, request.todo_ids, update)
+        succeeded = list(completed_tracked)
+        if plain_ids:
+            async with _watching_refs_to_reopen(user_id, plain_ids, reopening=reopening):
+                try:
+                    modified = await todo_repository.bulk_update(user_id, plain_ids, update)
+                except BulkWriteError:
+                    # A create or reopen took a ref after the check above; the writes before it landed.
+                    if reopening:
+                        await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                    raise
+            succeeded.extend(plain_ids[:modified])
 
-        if modified > 0:
+        if succeeded:
             try:
                 updated_todos = await todo_repository.find_by_ids(user_id, request.todo_ids)
                 await asyncio.gather(
@@ -519,16 +725,28 @@ class TodoService:
             schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
-            success=request.todo_ids[:modified],
-            failed=[],
+            success=succeeded,
+            failed=completion.failed,
             total=len(request.todo_ids),
-            message=f"Updated {modified} todos",
+            message=f"Updated {len(succeeded)} todos",
         )
 
     @classmethod
     async def bulk_delete_todos(cls, todo_ids: list[str], user_id: str) -> BulkOperationResponse:
-        """Bulk delete multiple todos."""
+        """Bulk delete multiple todos, and the sub-todos of any parent among them."""
+        todo_ids = await with_sub_todos(user_id, todo_ids)
         todos_to_delete = await todo_repository.find_by_ids(user_id, todo_ids)
+
+        # As in the single delete: unregister while the documents still name their triggers.
+        for doc in todos_to_delete:
+            if doc.trigger_subscriptions:
+                await teardown_subscriptions(doc.id, user_id, reason="bulk_deleted")
+            if doc.vfs_path:
+                try:
+                    await delete_canvas_embedding(doc.id)
+                except Exception as e:
+                    log.warning("todo.canvas_embedding_delete_failed", todo_id=doc.id, error=str(e))
+
         deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
         if deleted > 0:

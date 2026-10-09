@@ -157,7 +157,7 @@ class TestScanThenEnqueueMemory:
         assert pool.enqueue_job.await_args.args == ("process_gmail_emails_to_memory", USER)
 
     async def test_the_memory_job_runs_with_the_attribution_that_queued_it(self) -> None:
-        """The job carries its producer's analytics context, so its events are not system work."""
+        """The job carries its producer's run, so its events are not system work, and the agent does them."""
         users_onboarding = AnalyticsContext(
             attribution=Attribution(
                 actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
@@ -192,7 +192,7 @@ class TestScanThenEnqueueMemory:
             asyncio.create_task, arq_task(_ingest)({}, *call.args[1:], **job_kwargs)
         )
 
-        assert seen == [users_onboarding]
+        assert seen == [users_onboarding.acting_as(Actor.AGENT)]
 
     async def test_a_queue_failure_does_not_fail_the_scan(self) -> None:
         # The visible scan already succeeded; losing durable ingestion must not

@@ -96,7 +96,10 @@ if (typeof window !== "undefined") {
     }
 
     try {
-      const { default: posthog } = await import("posthog-js");
+      const [{ default: posthog }, analytics] = await Promise.all([
+        import("posthog-js"),
+        import("@/lib/analytics"),
+      ]);
       posthog.init(posthogProjectToken, {
         // Ingestion goes through the first-party /ingest proxy (see next.config.mjs
         // rewrites → NEXT_PUBLIC_POSTHOG_HOST) so ad blockers can't drop events;
@@ -115,13 +118,10 @@ if (typeof window !== "undefined") {
         before_send: filterExceptionBeforeSend,
       });
 
-      // Anything captured while init was queued at idle was buffered, not
-      // dropped — replay it now, in order; imported dynamically to keep analytics off the critical rendering path.
-      const { flushPendingAnalytics, resetLegacyEmailIdentity } = await import(
-        "@/lib/analytics"
-      );
-      resetLegacyEmailIdentity();
-      flushPendingAnalytics();
+      // Synchronously, before posthog's next-tick initial pageview can carry a legacy email id.
+      analytics.resetLegacyEmailIdentity();
+      // Anything captured while init was queued at idle was buffered, not dropped — replay it now, in order.
+      analytics.flushPendingAnalytics();
     } catch {
       // Analytics should never break the app.
     }

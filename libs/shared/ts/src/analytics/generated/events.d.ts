@@ -127,6 +127,7 @@ export type ServerEventName =
   | "support:form_submitted"
   | "todos:created"
   | "todos:deleted"
+  | "todos:inbox_desk_provisioned"
   | "todos:run_result_delivered"
   | "todos:subscription_failed"
   | "todos:subscription_registered"
@@ -1342,6 +1343,7 @@ export interface EventProperties {
     "labels_count": number;
     "subtasks_count": number;
     "has_project": boolean;
+    "is_sub_todo": boolean;
   };
   "todos:deleted": {
     "actor": "user" | "agent";
@@ -1349,6 +1351,11 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "todo_id"?: string;
     "count"?: number;
+  };
+  "todos:inbox_desk_provisioned": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "todos:run_result_delivered": {
     "actor": "user" | "agent";
@@ -1365,7 +1372,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance" | "write_conflict";
   };
   "todos:subscription_registered": {
     "actor": "user" | "agent";
@@ -1398,6 +1405,7 @@ export interface EventProperties {
     "action": string;
     "resolution": string;
     "condition_count": number;
+    "coalesced": boolean;
   };
   "todos:updated": {
     "actor": "user" | "agent";

@@ -74,7 +74,7 @@ def _todo(*, notify_on_run: bool = True) -> TodoDocument:
         title="Watch the staging deploy",
         labels=["gaia-tracked"],
         notify_on_run=notify_on_run,
-        canvas_content="## Key Details\n- Tell me when a deploy fails.\n\n## Current State\n- green\n",
+        canvas_content="## Standing rules\n- Tell me when a deploy fails.\n\n## Current State\n- green\n",
     )
 
 
@@ -188,7 +188,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert user.user_id == USER.user_id
         assert seams.narrate.await_args.kwargs == {
             "preamble": tracked_todo_delivery_note(
-                "Watch the staging deploy", "- Tell me when a deploy fails."
+                "Watch the staging deploy", "- Tell me when a deploy fails.", None
             )
         }
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
