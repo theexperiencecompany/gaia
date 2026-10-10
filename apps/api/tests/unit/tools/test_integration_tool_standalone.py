@@ -54,12 +54,10 @@ def _make_integration(
     short_name: str = "",
     description: str = "Email",
     category: str = "email",
-    *,
-    composio: bool = False,
 ) -> MagicMock:
-    """Create a mock OAuthIntegration; composio gives it the config that allows several accounts."""
+    """Create a mock OAuthIntegration with one connection (no Composio account list)."""
     mock = MagicMock()
-    mock.composio_config = MagicMock() if composio else None
+    mock.composio_config = None
     mock.id = integration_id
     mock.name = name
     mock.available = available
