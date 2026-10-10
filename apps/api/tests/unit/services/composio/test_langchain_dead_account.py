@@ -326,13 +326,14 @@ class TestDeadAccountReconciles:
         with (
             # Already expired by the first call, so this one changes nothing.
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)),
+            patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)) as read,
             _ui_chat_turn(writer),
         ):
             result = await asyncio.to_thread(
                 action_func, __runnable_config__={"metadata": metadata}
             )
 
+        read.assert_awaited_once_with("user-1", "gmail")
         writer.assert_not_called()
         assert result["error"] == (
             "The Gmail account work@acme.com has lost its connection. "
