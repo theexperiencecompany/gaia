@@ -27,8 +27,9 @@ from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
 from sentry_sdk.types import Event
 
+from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
-from app.config.sentry import _drop_llm_attempt_errors, _make_sentry_loguru_sink
+from app.config.sentry import _make_sentry_loguru_sink
 from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
@@ -272,4 +273,4 @@ def test_only_an_error_captured_inside_a_langchain_model_call_is_dropped(
 ) -> None:
     event: Event = {"contexts": {"trace": {"origin": origin, "op": op}}}
 
-    assert (_drop_llm_attempt_errors(event, {}) is None) is dropped
+    assert (sentry_config._drop_llm_attempt_errors(event, {}) is None) is dropped

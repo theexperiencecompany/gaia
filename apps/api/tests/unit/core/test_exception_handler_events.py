@@ -19,9 +19,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import ClientDisconnect, Request
 from starlette.types import Message
 
+from app.core import exception_handlers
 from app.core.exception_handlers import (
     app_error_handler,
-    client_disconnect_handler,
     http_exception_handler,
     register_exception_handlers,
     unhandled_exception_handler,
@@ -90,7 +90,7 @@ async def test_a_500_app_error_is_an_error_carrying_its_exception() -> None:
 
 async def test_a_client_disconnect_is_a_warning_naming_the_request() -> None:
     with patch(HANDLERS_LOG) as mock_log:
-        response = await client_disconnect_handler(
+        response = await exception_handlers.client_disconnect_handler(
             _request(method="PUT", path="/api/v1/webhook"), ClientDisconnect()
         )
 
@@ -234,7 +234,7 @@ async def test_the_registration_covers_every_kind_of_failure() -> None:
         app_error_handler,
         validation_error_handler,
         http_exception_handler,
-        client_disconnect_handler,
+        exception_handlers.client_disconnect_handler,
         unhandled_exception_handler,
     ]
 
