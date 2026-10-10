@@ -76,7 +76,7 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
 def _could_become_directive(bubble: str) -> bool:
     """Whether a bubble still being written can end as a directive."""
     candidate = bubble.lstrip()
-    compact = _SPACED_OPENING_RE.sub(r"<\1", candidate, count=1)
+    compact = _SPACED_OPENING_RE.sub(r"<\1", candidate)
     if not any(
         opening.startswith(compact[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
     ):

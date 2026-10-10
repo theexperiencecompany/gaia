@@ -219,6 +219,23 @@ class TestUpdateAccount:
             UserId(USER_ID), IntegrationAccountRenamed(integration_id="gmail", cleared=False)
         )
 
+    async def test_an_account_removed_mid_rename_is_404(self, seams: Seams) -> None:
+        seams.get_record.return_value = _record(make_integration_account("ca_1"))
+        seams.name.side_effect = None
+        seams.name.return_value = None
+
+        with pytest.raises(AppError) as exc:
+            await update_account(
+                USER_ID, "gmail", "ca_1", nickname="Work", rename=True, make_primary=False
+            )
+
+        assert exc.value == AppError(
+            message="Account not found on this integration",
+            status_code=404,
+            meta={"integration_id": "gmail", "account": "ca_1"},
+        )
+        seams.capture.assert_not_called()
+
     async def test_a_blank_name_clears_the_nickname(self, seams: Seams) -> None:
         seams.get_record.return_value = _record(
             make_integration_account("ca_1", nickname="Work"), make_integration_account("ca_2")

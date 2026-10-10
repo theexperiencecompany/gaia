@@ -300,10 +300,27 @@ async def test_live_connect_approvals_are_rewritten_with_a_matching_fingerprint(
     )
 
 
-async def test_a_dry_run_counts_the_approvals_and_writes_nothing() -> None:
+async def test_an_approval_for_a_named_account_keeps_it_in_the_fingerprint() -> None:
     approvals = _approvals(
-        {"_id": ObjectId(), "args": {"integration_ids": ["slack"], "force_reconnect": False}}
+        {
+            "_id": ObjectId(),
+            "args": {"integration_ids": ["gmail"], "force_reconnect": True},
+            "account": "Work",
+        }
     )
 
-    assert await migrate_connect_approvals(approvals, apply=False) == 1
+    await migrate_connect_approvals(approvals, apply=True)
+
+    new_args = {"integration_ids": ["gmail"], "mode": "reconnect"}
+    fingerprint = approvals.update_one.await_args.args[1]["$set"]["fingerprint"]
+    assert fingerprint == approval_fingerprint("connect_integration", new_args, "Work")
+
+
+async def test_a_dry_run_counts_the_approvals_and_writes_nothing() -> None:
+    approvals = _approvals(
+        {"_id": ObjectId(), "args": {"integration_ids": ["slack"], "force_reconnect": False}},
+        {"_id": ObjectId(), "args": {"integration_ids": ["gmail"], "force_reconnect": True}},
+    )
+
+    assert await migrate_connect_approvals(approvals, apply=False) == 2
     approvals.update_one.assert_not_awaited()
