@@ -11,6 +11,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
 from app.services.integrations.integration_account_lifecycle import AccountConnected
@@ -69,7 +70,7 @@ NEW_ACCOUNT = AccountConnected(
     account=IntegrationAccount(connected_account_id="acc1", label="me@gmail.com"),
     replaced_account_id=None,
     primary_changed=True,
-    reauthorized=False,
+    outcome=AccountConnectOutcome.ADDED,
 )
 
 
@@ -642,7 +643,10 @@ class TestComposioCallback:
         self, composio_state: AsyncMock, completed_connection: AsyncMock, client: AsyncClient
     ):
         completed_connection.return_value = ConnectionCompleted(
-            user_id="uid1", integration_id="gmail", provider="google"
+            user_id="uid1",
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
 
         await client.get(
@@ -657,7 +661,10 @@ class TestComposioCallback:
         self, completed_connection: AsyncMock, route_log: MagicMock, client: AsyncClient
     ):
         completed_connection.return_value = ConnectionCompleted(
-            user_id=USER_ID, integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
 
         response = await client.get(
@@ -668,7 +675,7 @@ class TestComposioCallback:
         assert response.status_code == 307
         assert (
             response.headers["location"]
-            == f"{FRONTEND}/integrations?oauth_success=true&integration=gmail"
+            == f"{FRONTEND}/integrations?oauth_success=true&integration=gmail&account_outcome=added"
         )
         assert completed_connection.await_args.args == ("acc1",)
         assert completed_connection.await_args.kwargs["expected_user_id"] == USER_ID
@@ -686,7 +693,10 @@ class TestComposioCallback:
         self, completed_connection: AsyncMock, route_log: MagicMock, client: AsyncClient
     ):
         completed_connection.return_value = ConnectionCompleted(
-            user_id=USER_ID, integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
         with patch(
             "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
@@ -702,6 +712,7 @@ class TestComposioCallback:
         assert (
             response.headers["location"]
             == f"{FRONTEND}/integrations?tab=all&oauth_success=true&integration=gmail"
+            "&account_outcome=added"
         )
 
     @pytest.mark.parametrize(

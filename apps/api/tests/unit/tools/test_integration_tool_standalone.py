@@ -537,8 +537,8 @@ class TestConnectIntegration:
         """Minting for the wrong user hands one person another's connect flow, and losing the name leaves the agent telling the user "None" needs connecting."""
         mock_gsw.return_value = _writer()
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == (FAKE_USER_ID, "gmail"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == (FAKE_USER_ID, "gmail", None):
                 return "https://app.example.com/connect/for-this-user"
             return None
 
@@ -671,7 +671,9 @@ class TestConnectIntegration:
 
         assert "already connected" in result
         mock_check.assert_any_call("gmail", FAKE_USER_ID)
-        mock_request.assert_awaited_once_with("posthog", "PostHog", FAKE_USER_ID, mode="connect")
+        mock_request.assert_awaited_once_with(
+            "posthog", "PostHog", FAKE_USER_ID, mode="connect", account=None
+        )
 
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
@@ -694,7 +696,9 @@ class TestConnectIntegration:
 
         assert "not found" in result
         mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
-        mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, mode="connect")
+        mock_request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode="connect", account=None
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])

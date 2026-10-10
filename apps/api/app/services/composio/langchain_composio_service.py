@@ -21,7 +21,7 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
+from app.constants.integrations import INTEGRATION_STATUS_EXPIRED, ConnectMode
 from app.constants.log_tags import LogTag
 from app.models.agent_config import RunMetadata
 from app.services.composio.account_scope import account_scope
@@ -31,7 +31,6 @@ from app.services.composio.dead_account import (
     message_mentions_dead_account,
 )
 from app.services.integrations.integration_accounts import (
-    derive_status,
     get_account_record,
     primary_account,
 )
@@ -82,31 +81,32 @@ async def _expire_and_request_reconnect(
     connected_account_id: str | None,
     reason: str,
 ) -> str:
-    """Mark the account expired, then tell the agent what the user must do.
+    """Mark the account expired, then show the card that signs that account back in.
 
-    With another account still live the integration stays connected, so the message names
-    the one account instead of showing a connect card. Ordered, not concurrent: the card
-    reads the stored status. Own wide-event boundary: executor threads carry none.
+    Ordered, not concurrent: the card reads the stored status. Own wide-event
+    boundary: executor threads carry none.
     """
     async with log_context("composio_tool_integration_expiry", user_id=user_id):
         await expire_account(
             user_id, integration_id, connected_account_id, trigger="tool_execution", reason=reason
         )
     # Read back rather than trusting the expiry's outcome: a repeat call on an account
-    # already expired changes nothing, yet still needs only that account named.
+    # already expired changes nothing, yet still needs that account named.
     record = await get_account_record(user_id, integration_id)
-    if record is not None and derive_status(record.accounts) == "connected":
+    dead = None
+    if record is not None:
         dead = (
             record.find_account(connected_account_id)
             if connected_account_id
             else primary_account(record)
         )
-        if dead is not None:
-            return (
-                f"The {integration_name} account {dead.display_name} has lost its "
-                f"connection. {ACCOUNT_NEEDS_RECONNECT_HINT}"
-            )
-    return await request_integration_connection(integration_id, integration_name, user_id)
+    return await request_integration_connection(
+        integration_id,
+        integration_name,
+        user_id,
+        mode=ConnectMode.RECONNECT,
+        account=dead if dead is not None and dead.status == INTEGRATION_STATUS_EXPIRED else None,
+    )
 
 
 def _clean_reserved_keyword(keyword: str) -> str:

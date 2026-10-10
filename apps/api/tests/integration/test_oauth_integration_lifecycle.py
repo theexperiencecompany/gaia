@@ -24,7 +24,7 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConnectOutcome
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
@@ -1458,7 +1458,7 @@ class TestMultipleAccounts:
 
         assert isinstance(connected, AccountConnected)
         assert connected.primary_changed is True
-        assert connected.reauthorized is False
+        assert connected.outcome is AccountConnectOutcome.ADDED
         doc = repo.docs[(USER_ID, "gmail")]
         assert doc.status == "connected"
         assert doc.primary_account_id == "ca_work"
@@ -1476,16 +1476,16 @@ class TestMultipleAccounts:
         assert isinstance(connected, AccountConnected)
         assert connected.primary_changed is False
         # Another mailbox on a connected integration is a new connect, not a reconnect.
-        assert connected.reauthorized is False
+        assert connected.outcome is AccountConnectOutcome.ADDED
         doc = repo.docs[(USER_ID, "gmail")]
         assert [a.label for a in doc.accounts] == ["work@acme.com", "me@gmail.com"]
         assert doc.primary_account_id == "ca_work"
         assert composio.revoked == []
 
-    async def test_reconnecting_the_same_identity_replaces_it_instead_of_duplicating(
+    async def test_adding_a_mailbox_already_connected_replaces_it_and_says_so(
         self, repo: _FakeUserIntegrationRepo, composio: _Composio
     ) -> None:
-        """The old account dies (or is a leftover); the new grant takes its place, nickname and primacy included."""
+        """The new grant takes the old one's place, nickname and primacy included; nothing is added."""
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
         await update_account(
             USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
@@ -1496,7 +1496,7 @@ class TestMultipleAccounts:
         assert isinstance(connected, AccountConnected)
         assert connected.replaced_account_id == "ca_work"
         assert connected.primary_changed is True
-        assert connected.reauthorized is True
+        assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
         doc = repo.docs[(USER_ID, "gmail")]
         assert [(a.connected_account_id, a.display_name) for a in doc.accounts] == [
             ("ca_work_again", "Work")
@@ -1504,7 +1504,103 @@ class TestMultipleAccounts:
         assert doc.primary_account_id == "ca_work_again"
         assert composio.revoked == ["ca_work"]
 
-    async def test_a_callback_for_an_account_already_recorded_is_a_reauthorization(
+    async def test_adding_the_identity_of_an_expired_account_is_a_reconnect(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook")
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work_again")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.outcome is AccountConnectOutcome.RECONNECTED
+        assert [a.status for a in repo.docs[(USER_ID, "gmail")].accounts] == ["connected"]
+
+    async def test_an_expired_account_signed_back_in_is_restored_in_place(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+        await update_account(
+            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+        )
+        await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook", reason="expired")
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.outcome is AccountConnectOutcome.RECONNECTED
+        assert connected.primary_restored is True
+        assert connected.primary_changed is False
+        assert connected.replaced_account_id is None
+        doc = repo.docs[(USER_ID, "gmail")]
+        assert [
+            (a.connected_account_id, a.display_name, a.status, a.expired_at, a.expired_reason)
+            for a in doc.accounts
+        ] == [
+            ("ca_work", "Work", "connected", None, None),
+            ("ca_home", "me@gmail.com", "connected", None, None),
+        ]
+        assert doc.primary_account_id == "ca_work"
+        assert composio.revoked == []
+
+    async def test_restoring_a_secondary_account_leaves_the_primary_alone(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+        await expire_account(USER_ID, "gmail", "ca_home", trigger="webhook")
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_home")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.primary_restored is False
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+
+    async def test_signing_an_expired_account_in_as_someone_new_renames_it(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        """The account now holds the other person's grant, so the old nickname no longer fits."""
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await update_account(
+            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+        )
+        await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook")
+        composio.emails["ca_work"] = "someone.else@acme.com"
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.outcome is AccountConnectOutcome.RECONNECTED
+        [account] = repo.docs[(USER_ID, "gmail")].accounts
+        assert (account.display_name, account.identity, account.status) == (
+            "someone.else@acme.com",
+            {"email": "someone.else@acme.com"},
+            "connected",
+        )
+
+    async def test_signing_an_expired_account_in_as_another_connected_one_drops_it(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio, resync: AsyncMock
+    ) -> None:
+        """Keeping it would leave two entries acting as one mailbox under different names."""
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+        await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook")
+        composio.emails["ca_work"] = "me@gmail.com"
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
+        assert connected.account.connected_account_id == "ca_home"
+        assert connected.replaced_account_id == "ca_work"
+        doc = repo.docs[(USER_ID, "gmail")]
+        assert [a.connected_account_id for a in doc.accounts] == ["ca_home"]
+        assert doc.primary_account_id == "ca_home"
+        assert composio.revoked == ["ca_work"]
+        resync.assert_awaited_once_with(USER_ID, self._gmail())
+
+    async def test_a_callback_for_a_working_account_already_recorded_changes_nothing(
         self, repo: _FakeUserIntegrationRepo, composio: _Composio
     ) -> None:
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
@@ -1512,7 +1608,7 @@ class TestMultipleAccounts:
         connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
 
         assert isinstance(connected, AccountConnected)
-        assert connected.reauthorized is True
+        assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
         assert connected.replaced_account_id is None
         assert [a.connected_account_id for a in repo.docs[(USER_ID, "gmail")].accounts] == [
             "ca_work"

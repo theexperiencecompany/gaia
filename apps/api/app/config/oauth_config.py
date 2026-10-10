@@ -211,6 +211,15 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit_version="20260107_00",
         ),
         destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="GOOGLECALENDAR_GET_CURRENT_USER",
+                    variables=[VariableExtraction(name="email", field_path="email")],
+                ),
+            ],
+            label_template="{email}",
+        ),
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",

@@ -13,6 +13,7 @@ import pytest
 from app.config.settings import settings
 import app.services.connect_link_service as svc
 from app.services.connect_link_service import (
+    ConnectLinkBinding,
     build_connect_link_url,
     resolve_and_consume_connect_code,
 )
@@ -52,14 +53,24 @@ class TestConnectLinkCode:
         assert url is not None
         assert url.startswith(f"{settings.FRONTEND_URL.rstrip('/')}/connect/")
         code = _code_from_url(url)
-        assert await resolve_and_consume_connect_code(code) == ("user1", "notion")
+        assert await resolve_and_consume_connect_code(code) == ConnectLinkBinding(
+            "user1", "notion", None
+        )
+
+    async def test_a_reconnect_link_carries_the_account_to_sign_back_in(
+        self, fake_store: dict[str, object]
+    ) -> None:
+        code = _code_from_url(await build_connect_link_url("user1", "gmail", "ca_work"))
+        assert await resolve_and_consume_connect_code(code) == ConnectLinkBinding(
+            "user1", "gmail", "ca_work"
+        )
 
     async def test_single_use_second_resolve_is_none(self, fake_store: dict[str, object]) -> None:
         """Second open of the same link must fail — the heart of single-use."""
         code = _code_from_url(await build_connect_link_url("user1", "notion"))
         first = await resolve_and_consume_connect_code(code)
         second = await resolve_and_consume_connect_code(code)
-        assert first == ("user1", "notion")
+        assert first == ConnectLinkBinding("user1", "notion", None)
         assert second is None
 
     async def test_unknown_code_rejected(self, fake_store: dict[str, object]) -> None:

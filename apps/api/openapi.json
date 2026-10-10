@@ -3094,6 +3094,18 @@
       "ConnectIntegrationRequest": {
         "description": "Request to connect an integration.",
         "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An expired account to sign back in, in place, instead of adding one",
+            "title": "Account Id"
+          },
           "bearer_token": {
             "anyOf": [
               {

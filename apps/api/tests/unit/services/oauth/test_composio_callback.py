@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks
 import pytest
 from tests.factories import make_integration_config
 
+from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
 from app.services.integrations.integration_account_lifecycle import (
@@ -48,12 +49,12 @@ def mock_config():
         yield get_config
 
 
-def _connected(*, reauthorized: bool) -> AccountConnected:
+def _connected(outcome: AccountConnectOutcome) -> AccountConnected:
     return AccountConnected(
         account=IntegrationAccount(connected_account_id="acc1", label="me@gmail.com"),
         replaced_account_id=None,
         primary_changed=False,
-        reauthorized=reauthorized,
+        outcome=outcome,
     )
 
 
@@ -62,7 +63,7 @@ def mock_handle():
     with patch(
         f"{MODULE}.handle_oauth_connection",
         new_callable=AsyncMock,
-        return_value=_connected(reauthorized=False),
+        return_value=_connected(AccountConnectOutcome.ADDED),
     ) as handle:
         yield handle
 
@@ -213,7 +214,10 @@ class TestCompleteComposioConnectionSuccess:
         )
 
         assert outcome == ConnectionCompleted(
-            user_id=USER_ID, integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
         mock_composio.get_connected_account_by_id.assert_called_once_with("acc1")
         mock_config.assert_called_once_with("config1")
@@ -237,25 +241,42 @@ class TestCompleteComposioConnectionSuccess:
         )
         mock_log.error.assert_not_called()
 
-    @pytest.mark.parametrize("reauthorized", [True, False], ids=["same_account", "new_account"])
+    @pytest.mark.parametrize(
+        ("outcome", "is_reconnect"),
+        [
+            (AccountConnectOutcome.ADDED, False),
+            (AccountConnectOutcome.RECONNECTED, True),
+            (AccountConnectOutcome.ALREADY_CONNECTED, True),
+        ],
+    )
     async def test_is_reconnect_says_whether_an_account_the_user_had_signed_in_again(
-        self, mock_composio, mock_config, mock_handle, mock_capture, background_tasks, reauthorized
+        self,
+        mock_composio,
+        mock_config,
+        mock_handle,
+        mock_capture,
+        background_tasks,
+        outcome,
+        is_reconnect,
     ):
         """A further account on an integration connected before is a new connect, not a reconnect."""
         mock_composio.get_connected_account_by_id.return_value = _account(
             user_id=USER_ID, config_id="config1"
         )
         mock_config.return_value = _integration()
-        mock_handle.return_value = _connected(reauthorized=reauthorized)
+        mock_handle.return_value = _connected(outcome)
 
-        await complete_composio_connection(
+        completed = await complete_composio_connection(
             "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
+        assert completed == ConnectionCompleted(
+            user_id=USER_ID, integration_id="gmail", provider="google", outcome=outcome
+        )
         mock_capture.assert_called_once_with(
             UserId(USER_ID),
             IntegrationConnected(
-                integration_id="gmail", provider="google", is_reconnect=reauthorized
+                integration_id="gmail", provider="google", is_reconnect=is_reconnect
             ),
         )
 
@@ -271,7 +292,10 @@ class TestCompleteComposioConnectionSuccess:
         )
 
         assert outcome == ConnectionCompleted(
-            user_id=USER_ID, integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
         mock_log.set.assert_called_once_with(user={"id": USER_ID})
         mock_handle.assert_awaited_once_with(

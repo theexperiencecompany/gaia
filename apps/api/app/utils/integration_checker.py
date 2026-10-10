@@ -20,10 +20,11 @@ from typing import NamedTuple
 from langgraph.config import get_config, get_stream_writer
 
 from app.config.settings import settings
-from app.constants.integrations import ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.agent_models import AgentConfigurableView, read_agent_configurable
 from app.models.chat_models import SourceCategory
+from app.models.integration_models import IntegrationAccount
 from app.services.connect_link_service import build_connect_link_url
 
 
@@ -50,7 +51,17 @@ class _Ask(NamedTuple):
     button: str
 
 
-def _ask(mode: ConnectMode, expired: bool, name: str) -> _Ask:
+def _ask(mode: ConnectMode, expired: bool, name: str, account: str | None) -> _Ask:
+    if account is not None:
+        return _Ask(
+            card=f"Your {name} account {account} lost its connection. Sign in as {account} "
+            "again to keep using it.",
+            lead=f"The user's {name} account {account} lost its connection and must be signed "
+            f"in again. {ACCOUNT_NEEDS_RECONNECT_HINT}",
+            verb="reconnect",
+            gap=f"the {name} account {account} lost its connection",
+            button="reconnect button",
+        )
     if mode is ConnectMode.ADD_ACCOUNT:
         return _Ask(
             card=f"Add another {name} account. Sign in with the account you want to add.",
@@ -105,9 +116,11 @@ async def request_integration_connection(
     user_id: str,
     *,
     mode: ConnectMode = ConnectMode.CONNECT,
+    account: IntegrationAccount | None = None,
 ) -> str:
     """Show the connect card for mode and return the agent instruction.
 
+    With an account, the card and link sign that expired account back in place.
     UI clients get a URL-free text; text-only clients relay the single-use
     link (valid 1 hour) or the integrations page. A background run gets the
     integrations page, read after any single-use link has died, and carries on.
@@ -115,7 +128,7 @@ async def request_integration_connection(
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
     expired = await user_integration_repository.is_expired(user_id, integration_id)
-    ask = _ask(mode, expired, integration_name)
+    ask = _ask(mode, expired, integration_name, account.display_name if account else None)
     run = _current_run()
     source_category = run.source_category if run is not None else None
 
@@ -128,11 +141,17 @@ async def request_integration_connection(
                 "integration_connection_required": {
                     "integration_id": integration_id,
                     "integration_name": integration_name,
-                    "expired": not adding and (expired or mode is ConnectMode.RECONNECT),
+                    "expired": not adding
+                    and (expired or mode is ConnectMode.RECONNECT or account is not None),
                     "add_account": adding,
                     "message": ask.card,
                     "connected_accounts": (
                         await _connected_account_names(user_id, integration_id) if adding else []
+                    ),
+                    "reconnect_account": (
+                        {"id": account.connected_account_id, "name": account.display_name}
+                        if account
+                        else None
                     ),
                 }
             }
@@ -155,7 +174,9 @@ async def request_integration_connection(
             f"your reply, the UI card handles it. Ask the user to click it, then try again."
         )
 
-    connect_url = await build_connect_link_url(user_id, integration_id)
+    connect_url = await build_connect_link_url(
+        user_id, integration_id, account.connected_account_id if account else None
+    )
     if not connect_url:
         return (
             f"{ask.lead} The user is on a text-only platform (no UI). Ask them to open "

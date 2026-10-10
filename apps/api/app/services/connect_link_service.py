@@ -15,6 +15,7 @@ and an endpoint that only redirects into OAuth, never returns data.
 from __future__ import annotations
 
 import secrets
+from typing import NamedTuple
 
 from app.config.settings import settings
 from app.constants.auth import CONNECT_LINK_CODE_BYTES, CONNECT_LINK_TTL_MINUTES
@@ -29,18 +30,26 @@ def _code_key(code: str) -> str:
     return f"{CONNECT_LINK_PREFIX}:{code}"
 
 
-async def build_connect_link_url(user_id: str, integration_id: str) -> str | None:
+class ConnectLinkBinding(NamedTuple):
+    user_id: str
+    integration_id: str
+    # The expired account to sign back in; None starts a new connection.
+    account_id: str | None
+
+
+async def build_connect_link_url(
+    user_id: str, integration_id: str, account_id: str | None = None
+) -> str | None:
     """Mint a single-use connect link pointing at the frontend /connect/<code>.
 
-    Stores the (user_id, integration_id) binding in Redis under a fresh
-    high-entropy code and returns the frontend URL. Returns None when the
-    binding can't be stored (Redis unavailable/failed) so callers degrade to a
-    generic connect prompt instead of handing out a link that can't resolve.
+    Returns None when the binding can't be stored (Redis unavailable/failed) so
+    callers degrade to a generic connect prompt instead of handing out a link
+    that can't resolve.
     """
     code = secrets.token_urlsafe(CONNECT_LINK_CODE_BYTES)
     stored = await set_cache(
         _code_key(code),
-        {"user_id": user_id, "integration_id": integration_id},
+        {"user_id": user_id, "integration_id": integration_id, "account_id": account_id},
         ttl=CONNECT_LINK_TTL_MINUTES * 60,
     )
     if not stored:
@@ -51,11 +60,10 @@ async def build_connect_link_url(user_id: str, integration_id: str) -> str | Non
     return f"{base}{CONNECT_LINK_FRONTEND_PATH}/{code}"
 
 
-async def resolve_and_consume_connect_code(code: str) -> tuple[str, str] | None:
-    """Atomically consume a connect code, returning (user_id, integration_id).
+async def resolve_and_consume_connect_code(code: str) -> ConnectLinkBinding | None:
+    """Atomically consume a connect code; None for an unknown, expired, or already-used one.
 
-    The code is deleted on first read (GETDEL), enforcing single-use. Returns
-    None for an unknown, expired, or already-consumed code.
+    The code is deleted on first read (GETDEL), enforcing single-use.
     """
     data = await get_and_delete_cache(_code_key(code))
     if not isinstance(data, dict):
@@ -67,4 +75,7 @@ async def resolve_and_consume_connect_code(code: str) -> tuple[str, str] | None:
         return None
 
     log.set(auth={"user_id": str(user_id), "provider": str(integration_id)})
-    return str(user_id), str(integration_id)
+    account_id = data.get("account_id")
+    return ConnectLinkBinding(
+        str(user_id), str(integration_id), str(account_id) if account_id else None
+    )

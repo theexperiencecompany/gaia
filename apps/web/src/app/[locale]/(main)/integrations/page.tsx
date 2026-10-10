@@ -169,8 +169,10 @@ export default function IntegrationsPage() {
         handleIntegrationClick(integrationId);
       }
     },
-    onConnectRequested: (integrationId) => {
-      void connectIntegration(integrationId);
+    onConnectRequested: (integrationId, accountId) => {
+      void connectIntegration(integrationId, {
+        accountId: accountId ?? undefined,
+      });
     },
     onConnectLinkFailed: (reason) => {
       const messages: Partial<Record<string, string>> =

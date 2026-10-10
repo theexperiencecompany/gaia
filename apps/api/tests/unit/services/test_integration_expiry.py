@@ -263,7 +263,7 @@ class TestTheAnnouncement:
         request = announce_seams["notify"].create_notification.await_args.args[0]
         assert request.content.title == "Notion (ca_1@acme.com) disconnected"
 
-    async def test_it_is_an_in_app_warning_with_a_primary_reconnect_deep_link(
+    async def test_it_is_an_in_app_warning_whose_button_signs_that_account_back_in(
         self, announce_seams: dict[str, MagicMock]
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), ["Digest"], None)
@@ -275,7 +275,7 @@ class TestTheAnnouncement:
         (action,) = request.content.actions
         assert action.label == "Reconnect"
         assert action.style == ActionStyle.PRIMARY
-        assert action.config.redirect.url == f"/integrations?id={INTEGRATION_ID}"
+        assert action.config.redirect.url == f"/integrations?connect={INTEGRATION_ID}&account=ca_1"
         assert request.metadata == {"integration_id": INTEGRATION_ID, "paused_workflows": 1}
         assert request.content.body == (
             f"{GENERIC_LEAD} Your “Digest” workflow is paused until you reconnect."

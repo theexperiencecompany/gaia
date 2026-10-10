@@ -8,15 +8,21 @@ import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useIntegrationAccounts } from "@/features/integrations/hooks/useIntegrationAccounts";
-import type { Integration } from "@/features/integrations/types";
+import type {
+  Integration,
+  IntegrationConnectOptions,
+} from "@/features/integrations/types";
 
 import { IntegrationAccountRenameModal } from "./IntegrationAccountRenameModal";
 import { IntegrationAccountRow } from "./IntegrationAccountRow";
 
 interface IntegrationAccountsProps {
   integration: Integration;
-  /** Starts a connect; a new identity is added, a known one is re-authorized in place. */
-  onConnect: (integrationId: string) => Promise<unknown>;
+  /** Starts a connect: a new account, or with accountId that expired account signed back in. */
+  onConnect: (
+    integrationId: string,
+    options?: IntegrationConnectOptions,
+  ) => Promise<unknown>;
 }
 
 /** The accounts connected to a Composio integration, the primary first among equals. */
@@ -67,7 +73,9 @@ export function IntegrationAccounts({
           isPending={pendingAccountId === account.id}
           onMakePrimary={() => makePrimary(account.id)}
           onRename={() => setRenaming(account)}
-          onReconnect={() => onConnect(integration.id)}
+          onReconnect={() =>
+            onConnect(integration.id, { accountId: account.id })
+          }
           onRemove={() => setRemoving(account)}
         />
       ))}

@@ -52,8 +52,8 @@ COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
 FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
 # What the agent is told when the account a call ran as has lost its connection.
 ACCOUNT_NEEDS_RECONNECT_HINT: Final = (
-    "Tell the user it must be reconnected in Integrations. Do not use another account "
-    "in its place, or answer with another account's data, unless they ask."
+    "Do not use another account in its place, or answer with another account's data, "
+    "unless they ask."
 )
 # The agent's account tools; bound when an integration with several accounts is activated.
 RENAME_INTEGRATION_ACCOUNT_TOOL: Final = "rename_integration_account"
@@ -63,8 +63,8 @@ DISCONNECT_INTEGRATION_TOOL: Final = "disconnect_integration"
 CONNECT_INTEGRATION_TOOL: Final = "connect_integration"
 # A nickname replaces the account's label in the UI and the agent's context.
 MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
-# Redirect error code when a connect would exceed MAX_ACCOUNTS_PER_INTEGRATION.
-ACCOUNT_LIMIT_ERROR: Final = "account_limit"
+# Query param the OAuth callback carries an AccountConnectOutcome in.
+ACCOUNT_OUTCOME_PARAM: Final = "account_outcome"
 
 
 class ConnectMode(StrEnum):
@@ -73,6 +73,16 @@ class ConnectMode(StrEnum):
     CONNECT = "connect"
     ADD_ACCOUNT = "add_account"
     RECONNECT = "reconnect"
+
+
+class AccountConnectOutcome(StrEnum):
+    """What a finished sign-in did to the user's accounts on the integration."""
+
+    ADDED = "added"
+    # An expired account signed back in, in place or by matching its identity.
+    RECONNECTED = "reconnected"
+    # The sign-in was an account that was already connected; nothing was added.
+    ALREADY_CONNECTED = "already_connected"
 
 
 # Integration managed_by provider identifiers

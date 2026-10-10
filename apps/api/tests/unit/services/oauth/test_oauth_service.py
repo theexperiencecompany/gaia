@@ -9,6 +9,7 @@ import pytest
 from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
 
+from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
 from app.models.user_models import BioStatus, UserDocument
@@ -950,7 +951,7 @@ class TestHandleOAuthConnection:
             account=IntegrationAccount(connected_account_id="ca_new", label="me@gmail.com"),
             replaced_account_id=None,
             primary_changed=False,
-            reauthorized=False,
+            outcome=AccountConnectOutcome.ADDED,
         )
         trigger = MagicMock()
         trigger.workflow_trigger_schema.slug = "gmail_new_message"

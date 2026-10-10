@@ -217,7 +217,8 @@ async def announce_account_expiry(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=f"/integrations?id={integration_id}",
+                                url=f"/integrations?connect={integration_id}"
+                                f"&account={expired.account.connected_account_id}",
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )

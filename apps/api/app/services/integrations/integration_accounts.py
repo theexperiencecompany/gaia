@@ -53,13 +53,8 @@ def describe_account(account: IntegrationAccount, primary_id: str | None) -> str
 
 
 def at_account_limit(record: UserIntegrationDocument | None) -> bool:
-    """Whether a connect must be refused up front: only live accounts count here.
-
-    Reconnecting an expired account replaces it, so the callback, which knows the
-    identity, is where every account counts.
-    """
-    live = [a for a in record.accounts if a.status == "connected"] if record else []
-    return len(live) >= MAX_ACCOUNTS_PER_INTEGRATION
+    """Whether adding another account must be refused; an expired one counts until removed."""
+    return record is not None and len(record.accounts) >= MAX_ACCOUNTS_PER_INTEGRATION
 
 
 def primary_account(record: UserIntegrationDocument) -> IntegrationAccount | None:

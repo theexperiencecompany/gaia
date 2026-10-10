@@ -14,7 +14,10 @@ import { IntegrationRelatedWorkflows } from "@/features/integrations/components/
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
-import type { Integration } from "@/features/integrations/types";
+import type {
+  Integration,
+  IntegrationConnectOptions,
+} from "@/features/integrations/types";
 
 import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
@@ -28,6 +31,7 @@ interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (
     integrationId: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;

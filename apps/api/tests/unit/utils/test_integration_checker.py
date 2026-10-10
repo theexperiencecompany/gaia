@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.integrations import ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from app.utils.integration_checker import request_integration_connection
 from tests.integration_account_factories import make_integration_account, make_integration_record
@@ -254,6 +254,7 @@ class TestAddAccountPrompt:
             "message": "Add another Gmail account. Sign in with the account you want to add.",
             # The primary first, so the card reads the way the user thinks of them.
             "connected_accounts": ["Work", "me@gmail.com"],
+            "reconnect_account": None,
         }
         lookup.assert_awaited_once_with(_USER, _INTEGRATION_ID)
         assert msg == (
@@ -293,6 +294,49 @@ class TestAddAccountPrompt:
                 "gmail", "Gmail", "user1", mode=ConnectMode.RECONNECT
             )
         assert self._card(writer)["add_account"] is False
+
+
+class TestAccountReconnectPrompt:
+    """One expired account is signed back in place, named on the card and in the link."""
+
+    _DEAD = make_integration_account("ca_work", "expired", label="work@acme.com")
+
+    async def test_the_card_names_the_account_and_carries_its_id(self) -> None:
+        # The integration itself stays connected while another account works.
+        with _graph_run("ui", expired=False) as writer:
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.RECONNECT, account=self._DEAD
+            )
+
+        assert writer.call_args.args[0]["integration_connection_required"] == {
+            "integration_id": "gmail",
+            "integration_name": "Gmail",
+            "expired": True,
+            "add_account": False,
+            "message": "Your Gmail account work@acme.com lost its connection. Sign in as "
+            "work@acme.com again to keep using it.",
+            "connected_accounts": [],
+            "reconnect_account": {"id": "ca_work", "name": "work@acme.com"},
+        }
+        assert msg == (
+            "The user's Gmail account work@acme.com lost its connection and must be signed in "
+            f"again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown to the "
+            "user, so do NOT include any URL in your reply, the UI card handles it. Ask the "
+            "user to click it, then try again."
+        )
+
+    async def test_a_bot_link_signs_that_account_back_in(self) -> None:
+        mint = AsyncMock(return_value=_MAGIC_LINK)
+        with (
+            _graph_run("bot"),
+            patch("app.utils.integration_checker.build_connect_link_url", mint),
+        ):
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.RECONNECT, account=self._DEAD
+            )
+
+        mint.assert_awaited_once_with("user1", "gmail", "ca_work")
+        assert msg.endswith(f"valid for 1 hour: {_MAGIC_LINK}")
 
 
 class TestExactCopyPerMode:

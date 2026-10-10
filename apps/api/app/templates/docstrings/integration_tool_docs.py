@@ -97,6 +97,8 @@ PARAMETERS:
   call list_integrations first if unsure.
 - `mode`: "connect" (default), "add_account" for another account, or "reconnect"
   when they ask to reconnect or refresh access.
+- `account`: with "reconnect", the expired account to sign back in, by its listed
+  name. It keeps its name and stays primary if it was.
 
 The user signs in through a card (or a single-use link on text-only platforms); this
 tool never connects anything by itself. To remove an account, use disconnect_integration.

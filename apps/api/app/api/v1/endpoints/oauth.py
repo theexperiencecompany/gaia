@@ -17,6 +17,7 @@ from app.constants.auth import (
     WOS_SESSION_COOKIE,
 )
 from app.constants.cache import MOBILE_REDIRECT_TTL
+from app.constants.integrations import ACCOUNT_OUTCOME_PARAM
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
@@ -588,4 +589,5 @@ async def composio_callback(
     return RedirectResponse(
         url=f"{settings.FRONTEND_URL}{redirect_path}{separator}"
         f"oauth_success=true&integration={outcome.integration_id}"
+        f"&{ACCOUNT_OUTCOME_PARAM}={outcome.outcome}"
     )

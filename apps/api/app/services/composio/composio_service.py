@@ -62,6 +62,10 @@ def _composio_event_totals() -> _ComposioEventTotals:
     return _WideEventComposio.model_validate(log.get()).composio
 
 
+def _callback_url(state_token: str) -> str:
+    return add_query_param(settings.COMPOSIO_REDIRECT_URI, "state", state_token)
+
+
 class ComposioService:
     """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
 
@@ -83,7 +87,7 @@ class ComposioService:
         custom_tools_registry.initialize(self.composio)
 
     async def connect_account(
-        self, provider: str, user_id: str, state_token: str | None = None
+        self, provider: str, user_id: str, state_token: str
     ) -> ComposioConnectLink:
         """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
@@ -93,16 +97,6 @@ class ComposioService:
 
         log.set(composio_provider=provider, composio_user_id=user_id)
         try:
-            callback_url = (
-                add_query_param(
-                    settings.COMPOSIO_REDIRECT_URI,
-                    "state",
-                    state_token,
-                )
-                if state_token
-                else settings.COMPOSIO_REDIRECT_URI
-            )
-
             # link(), not initiate(): the legacy endpoint retires 2026-07-03 and
             # then raises ComposioLegacyConnectedAccountsEndpointRetiredError. Same
             # return shape/allow_multiple semantics; redirect now goes to Composio's hosted Connect Link.
@@ -112,7 +106,7 @@ class ComposioService:
                 lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
-                    callback_url=callback_url,
+                    callback_url=_callback_url(state_token),
                     allow_multiple=True,
                 ),
             )
@@ -131,6 +125,26 @@ class ComposioService:
                 error_type=type(e).__name__,
             )
             raise
+
+    async def reauthorize_account(
+        self, connected_account_id: str, state_token: str
+    ) -> ComposioConnectLink:
+        """Start a fresh sign-in for an existing account, keeping its id (and so its place in GAIA)."""
+        log.set(composio_connected_account_id=connected_account_id)
+        refreshed = await asyncio.to_thread(
+            self.composio.connected_accounts.refresh,
+            connected_account_id,
+            body_redirect_url=_callback_url(state_token),
+        )
+        if not refreshed.redirect_url:
+            raise RuntimeError(
+                f"Composio returned no sign-in URL for {connected_account_id} ({refreshed.status})"
+            )
+        return {
+            "status": "pending",
+            "redirect_url": refreshed.redirect_url,
+            "connection_id": refreshed.id,
+        }
 
     async def get_tools(
         self, tool_kit: str, exclude_tools: list[str] | None = None

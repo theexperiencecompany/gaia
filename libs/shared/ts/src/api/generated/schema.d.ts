@@ -7156,6 +7156,11 @@ export interface components {
          * @description Request to connect an integration.
          */
         ConnectIntegrationRequest: {
+            /**
+             * Account Id
+             * @description An expired account to sign back in, in place, instead of adding one
+             */
+            account_id?: string | null;
             /** Bearer Token */
             bearer_token?: string | null;
             /**

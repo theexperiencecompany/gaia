@@ -31,7 +31,7 @@ from app.constants.execute import (
     TICKET_NAMES,
     TICKET_REVOKE_NAME,
 )
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
+from app.constants.integrations import ConnectMode
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
@@ -45,6 +45,7 @@ from app.services.integrations.integration_accounts import (
 )
 from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
+from app.utils.integration_checker import request_integration_connection
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
 from shared.py.wide_events import log, spawn_logged_task
@@ -151,7 +152,14 @@ async def _choose_account(
         return DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",
-            hint=ACCOUNT_NEEDS_RECONNECT_HINT,
+            # Same card a call that finds the account dead at Composio shows.
+            hint=await request_integration_connection(
+                integration.id,
+                integration.name,
+                user_id,
+                mode=ConnectMode.RECONNECT,
+                account=chosen,
+            ),
         )
     return _AccountChoice(
         selection=ComposioAccountSelection(

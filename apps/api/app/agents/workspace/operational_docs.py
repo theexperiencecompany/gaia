@@ -49,7 +49,8 @@ tools, and gets a directory:
   connect / link / set up a service. GAIA supports several accounts per
   service (up to 5): when they want another, use `mode="add_account"`; if you're
   not sure they do, tell them which accounts are connected and ask.
-  `mode="reconnect"` when they ask to reconnect or refresh a connection.
+  `mode="reconnect"` when they ask to reconnect or refresh a connection; with
+  several accounts, pass the expired one as `account`.
 - `disconnect_integration`: remove a connection, or one account of a service
   with several (pass `account`). Asks the user to approve first.
 - `set_primary_integration_account` / `rename_integration_account`: change which

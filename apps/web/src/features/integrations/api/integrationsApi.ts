@@ -8,6 +8,7 @@ import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import type {
   CommunityIntegration,
   CreateCustomIntegrationRequest,
+  IntegrationConnectOptions,
 } from "../types";
 
 /** `addIntegration`'s result: the API's answer plus the two client-side states. */
@@ -84,7 +85,7 @@ export const integrationsApi = {
    */
   connectIntegration: async (
     integrationId: string,
-    bearerToken?: string,
+    { bearerToken, accountId }: IntegrationConnectOptions = {},
   ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
     if (typeof window === "undefined")
       return { status: "error", name: "Unknown" };
@@ -99,7 +100,11 @@ export const integrationsApi = {
       "/api/v1/integrations/connect/{integration_id}",
       {
         path: { integration_id: integrationId.toLowerCase() },
-        body: { redirect_path: redirectPath, bearer_token: bearerToken },
+        body: {
+          redirect_path: redirectPath,
+          bearer_token: bearerToken,
+          account_id: accountId,
+        },
       },
     );
 

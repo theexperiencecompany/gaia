@@ -113,24 +113,16 @@ class TestConnectModes:
 
         assert result == "card shown"
         request.assert_awaited_once_with(
-            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.ADD_ACCOUNT
+            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.ADD_ACCOUNT, account=None
         )
 
-    @pytest.mark.parametrize(
-        ("statuses", "refused"),
-        [
-            (["connected"] * MAX_ACCOUNTS_PER_INTEGRATION, True),
-            (["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1) + ["expired"], False),
-        ],
-        ids=["at_cap", "an_expired_one_does_not_count"],
-    )
+    @pytest.mark.parametrize("last", ["connected", "expired"])
     async def test_add_account_stops_at_the_account_cap(
-        self,
-        seams: tuple[AsyncMock, AsyncMock, AsyncMock],
-        statuses: list[IntegrationAccountStatus],
-        refused: bool,
+        self, seams: tuple[AsyncMock, AsyncMock, AsyncMock], last: IntegrationAccountStatus
     ) -> None:
+        """An expired account counts: it comes back by reconnecting, not by adding."""
         _, record, request = seams
+        statuses = ["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1) + [last]
         record.return_value = make_integration_record(
             *(make_integration_account(f"ca_{i}", st) for i, st in enumerate(statuses)),
             user_id=FAKE_USER_ID,
@@ -138,14 +130,12 @@ class TestConnectModes:
 
         result = await self._connect("gmail", "add_account")
 
-        if refused:
-            assert result == (
-                f"Gmail already has {MAX_ACCOUNTS_PER_INTEGRATION} accounts, the most allowed. "
-                "One must be disconnected (disconnect_integration) first."
-            )
-            request.assert_not_awaited()
-        else:
-            assert result == "card shown"
+        assert result == (
+            f"Gmail already has {MAX_ACCOUNTS_PER_INTEGRATION} accounts, the most allowed. "
+            "One must be disconnected (disconnect_integration) or, if expired, reconnected "
+            "(mode='reconnect') first."
+        )
+        request.assert_not_awaited()
 
     async def test_add_account_on_an_unconnected_integration_is_a_first_connect(
         self, seams: tuple[AsyncMock, AsyncMock, AsyncMock]
@@ -155,7 +145,9 @@ class TestConnectModes:
 
         await self._connect("gmail", "add_account")
 
-        request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.CONNECT)
+        request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.CONNECT, account=None
+        )
         record.assert_not_awaited()
 
     async def test_add_account_on_a_single_connection_integration_is_refused(
@@ -173,6 +165,133 @@ class TestConnectModes:
     ) -> None:
         with pytest.raises(ValidationError):
             await self._connect("gmail", "add")
+
+
+class TestReconnectMode:
+    """A reconnect signs an expired account back in place; it never adds one."""
+
+    @pytest.fixture
+    def seams(self) -> Iterator[tuple[AsyncMock, AsyncMock]]:
+        with (
+            patch(f"{MODULE}.get_stream_writer", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.OAUTH_INTEGRATIONS",
+                [
+                    _integration("gmail", "Gmail", composio=True),
+                    _integration("posthog", "PostHog", composio=False),
+                ],
+            ),
+            patch(f"{MODULE}.get_account_record", new_callable=AsyncMock) as record,
+            patch(
+                f"{MODULE}.request_integration_connection",
+                new_callable=AsyncMock,
+                return_value="card shown",
+            ) as request,
+        ):
+            yield record, request
+
+    @staticmethod
+    async def _reconnect(integration_id: str, account: str | None = None) -> str:
+        args: dict[str, object] = {"integration_ids": [integration_id], "mode": "reconnect"}
+        if account is not None:
+            args["account"] = account
+        return await connect_integration.ainvoke(args, config=_cfg())
+
+    async def test_the_one_expired_account_is_the_one_signed_back_in(
+        self, seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        record, request = seams
+        dead = make_integration_account("ca_2", "expired")
+        record.return_value = make_integration_record(
+            make_integration_account("ca_1"), dead, user_id=FAKE_USER_ID
+        )
+
+        assert await self._reconnect("gmail") == "card shown"
+        request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.RECONNECT, account=dead
+        )
+
+    async def test_a_named_expired_account_is_the_one_signed_back_in(
+        self, seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        record, request = seams
+        work = make_integration_account("ca_2", "expired", nickname="Work")
+        record.return_value = make_integration_record(
+            make_integration_account("ca_1", "expired"), work, user_id=FAKE_USER_ID
+        )
+
+        assert await self._reconnect("gmail", "work") == "card shown"
+        request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.RECONNECT, account=work
+        )
+
+    @pytest.mark.parametrize(
+        ("account", "statuses", "answer"),
+        [
+            (
+                None,
+                ["expired", "expired"],
+                "Several Gmail accounts lost their connection (ca_0@acme.com, ca_1@acme.com). "
+                "Ask the user which to reconnect, then pass it as account.",
+            ),
+            (
+                None,
+                ["connected", "connected"],
+                "✅ Every Gmail account is connected and working (ca_0@acme.com, ca_1@acme.com), "
+                "so there is nothing to reconnect. To add another, use mode='add_account'.",
+            ),
+            (
+                "ca_0@acme.com",
+                ["connected", "expired"],
+                "✅ Gmail account ca_0@acme.com is connected and working.",
+            ),
+            (
+                "Personal",
+                ["connected", "expired"],
+                "No Gmail account is named 'Personal'. Its accounts: ca_0@acme.com, ca_1@acme.com.",
+            ),
+        ],
+        ids=["several_expired", "none_expired", "named_working", "unknown_name"],
+    )
+    async def test_no_card_starts_without_one_expired_account_to_sign_back_in(
+        self,
+        seams: tuple[AsyncMock, AsyncMock],
+        account: str | None,
+        statuses: list[IntegrationAccountStatus],
+        answer: str,
+    ) -> None:
+        record, request = seams
+        record.return_value = make_integration_record(
+            *(make_integration_account(f"ca_{i}", st) for i, st in enumerate(statuses)),
+            user_id=FAKE_USER_ID,
+        )
+
+        assert await self._reconnect("gmail", account) == answer
+        request.assert_not_awaited()
+
+    async def test_an_integration_never_connected_gets_a_first_connect(
+        self, seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        record, request = seams
+        record.return_value = None
+
+        await self._reconnect("gmail")
+
+        request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.CONNECT, account=None
+        )
+
+    async def test_a_single_connection_integration_reconnects_as_a_whole(
+        self, seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        record, request = seams
+
+        await self._reconnect("posthog")
+
+        request.assert_awaited_once_with(
+            "posthog", "PostHog", FAKE_USER_ID, mode=ConnectMode.RECONNECT, account=None
+        )
+        record.assert_not_awaited()
 
 
 class TestCheckIntegrationsStatusAccounts:

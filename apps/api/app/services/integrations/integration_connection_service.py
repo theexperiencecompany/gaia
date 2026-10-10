@@ -13,10 +13,10 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
-from app.constants.integrations import ACCOUNT_LIMIT_ERROR, MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import INTEGRATION_STATUS_CONNECTED, MAX_ACCOUNTS_PER_INTEGRATION
 from app.constants.log_tags import LogTag
 from app.helpers.mcp_helpers import get_api_base_url
-from app.models.integrations.composio import ComposioConnectLink
+from app.models.integration_models import UserIntegrationDocument
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -321,28 +321,44 @@ async def _connect_with_bearer_token(
         )
 
 
+def _composio_connect_refusal(
+    record: UserIntegrationDocument | None,
+    integration_name: str,
+    reconnect_account_id: str | None,
+) -> str | None:
+    """Return why a connect is refused up front, as the user reads it, or None to proceed."""
+    if reconnect_account_id is None:
+        if at_account_limit(record):
+            return (
+                f"You can connect up to {MAX_ACCOUNTS_PER_INTEGRATION} {integration_name} "
+                "accounts. Remove one to add another."
+            )
+        return None
+    account = record.find_account(reconnect_account_id) if record else None
+    if account is None:
+        return f"That {integration_name} account is no longer connected. Add it again instead."
+    if account.status == INTEGRATION_STATUS_CONNECTED:
+        return f"{account.display_name} is already connected."
+    return None
+
+
 async def connect_composio_integration(
     user_id: str,
     integration_id: str,
     integration_name: str,
     provider: str,
     redirect_path: str,
+    reconnect_account_id: str | None = None,
 ) -> ConnectIntegrationResponse:
-    """Handle Composio integration connection."""
+    """Start a Composio sign-in: a new account, or a fresh one for an expired account in place."""
     log.set(integration={"provider": provider, "action": "connect_composio"})
     composio_service = get_composio_service()
 
     record = await get_account_record(user_id, integration_id)
-    if at_account_limit(record):
+    refusal = _composio_connect_refusal(record, integration_name, reconnect_account_id)
+    if refusal is not None:
         return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=integration_name,
-            error=ACCOUNT_LIMIT_ERROR,
-            message=(
-                f"You can connect up to {MAX_ACCOUNTS_PER_INTEGRATION} {integration_name} "
-                "accounts. Remove one to add another."
-            ),
+            status="error", integration_id=integration_id, name=integration_name, error=refusal
         )
 
     state_token = await create_oauth_state(
@@ -351,13 +367,16 @@ async def connect_composio_integration(
         integration_id=integration_id,
     )
 
-    # Adding a further account must not demote a working integration to pending.
-    if record is None or not record.accounts:
-        await update_user_integration_status(user_id, integration_id, "created")
-
-    connect_link: ComposioConnectLink = await composio_service.connect_account(
-        provider, user_id, state_token=state_token
-    )
+    if reconnect_account_id is not None:
+        # Same Composio account, so its name, primary role and triggers survive.
+        connect_link = await composio_service.reauthorize_account(reconnect_account_id, state_token)
+    else:
+        # Adding a further account must not demote a working integration to pending.
+        if record is None or not record.accounts:
+            await update_user_integration_status(user_id, integration_id, "created")
+        connect_link = await composio_service.connect_account(
+            provider, user_id, state_token=state_token
+        )
     # Composio mints the account before the user authorizes it, and the hosted
     # Connect Link redirects back without naming it.
     await attach_connected_account(state_token, connect_link["connection_id"])
@@ -369,6 +388,7 @@ async def connect_composio_integration(
             "managed_by": "composio",
             "auth_type": "oauth2",
             "status": "redirect",
+            "reconnect_account": reconnect_account_id is not None,
         }
     )
     return ConnectIntegrationResponse(
@@ -438,6 +458,7 @@ async def initiate_integration_connection(
     user_email: str = "",
     redirect_path: str = "/integrations",
     bearer_token: str | None = None,
+    reconnect_account_id: str | None = None,
 ) -> ConnectIntegrationResponse | None:
     """Resolve an integration and start its connect flow.
 
@@ -486,6 +507,7 @@ async def initiate_integration_connection(
                 integration_name=resolved.name,
                 provider=provider,
                 redirect_path=redirect_path,
+                reconnect_account_id=reconnect_account_id,
             )
         if resolved.managed_by == "self":
             if not provider:

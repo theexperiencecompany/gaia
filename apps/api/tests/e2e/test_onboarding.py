@@ -31,7 +31,7 @@ from fastapi import BackgroundTasks
 from httpx import AsyncClient
 import pytest
 
-from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.integrations import GMAIL_INTEGRATION_ID, AccountConnectOutcome
 from app.constants.onboarding import (
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
@@ -539,7 +539,7 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
                     account=IntegrationAccount(connected_account_id="ca_gmail", label="me"),
                     replaced_account_id=None,
                     primary_changed=True,
-                    reauthorized=False,
+                    outcome=AccountConnectOutcome.ADDED,
                 )
             ),
         ),

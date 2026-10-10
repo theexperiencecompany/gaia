@@ -89,7 +89,7 @@ class TestFetchAccountIdentity:
     async def test_an_integration_without_a_profile_call_has_no_identity(
         self, execute: MagicMock
     ) -> None:
-        assert await fetch_account_identity("u1", _integration("googlecalendar"), "ca_1") == {}
+        assert await fetch_account_identity("u1", _integration("googledocs"), "ca_1") == {}
         execute.assert_not_called()
 
 
@@ -116,13 +116,11 @@ class TestAccountLabel:
         log.warning.assert_not_called()
 
     def test_an_integration_without_a_template_ignores_the_identity(self) -> None:
-        label = account_label(_integration("googlecalendar"), {"email": "a@b.c"}, set())
+        label = account_label(_integration("googledocs"), {"email": "a@b.c"}, set())
 
-        assert label == "Google Calendar account 1"
+        assert label == "Google Docs account 1"
 
     def test_numbers_skip_labels_already_taken(self) -> None:
-        taken = {"Google Calendar account 2"}
+        taken = {"Google Docs account 2"}
 
-        assert account_label(_integration("googlecalendar"), {}, taken) == (
-            "Google Calendar account 3"
-        )
+        assert account_label(_integration("googledocs"), {}, taken) == ("Google Docs account 3")

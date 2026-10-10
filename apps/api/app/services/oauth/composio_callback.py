@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import BackgroundTasks
 
 from app.config.oauth_config import get_integration_by_config
+from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
@@ -25,6 +26,7 @@ class ConnectionCompleted:
     user_id: str
     integration_id: str
     provider: str
+    outcome: AccountConnectOutcome
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,7 @@ async def complete_composio_connection(
             integration_id=integration_config.id,
             provider=integration_config.provider,
             # A further account is a new connect even when the integration had one before.
-            is_reconnect=connected.reauthorized,
+            is_reconnect=connected.outcome is not AccountConnectOutcome.ADDED,
         ),
     )
     log.info(
@@ -117,4 +119,5 @@ async def complete_composio_connection(
         user_id=str(user_id),
         integration_id=integration_config.id,
         provider=integration_config.provider,
+        outcome=connected.outcome,
     )

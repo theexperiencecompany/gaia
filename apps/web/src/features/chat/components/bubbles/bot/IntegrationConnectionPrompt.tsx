@@ -36,6 +36,7 @@ interface IntegrationConnectCardProps {
   expired?: boolean;
   addAccount?: boolean;
   connectedAccounts?: string[];
+  reconnectAccountId?: string;
 }
 
 function StatusChip({
@@ -137,9 +138,10 @@ function IntegrationConnectCard({
   expired,
   addAccount,
   connectedAccounts,
+  reconnectAccountId,
 }: IntegrationConnectCardProps) {
   const { phase, token, setToken, toolsCount, error, connect } =
-    useInlineIntegrationConnect(integration.id);
+    useInlineIntegrationConnect(integration.id, reconnectAccountId);
 
   const state = connectionPromptState(
     { expired, add_account: addAccount },
@@ -217,6 +219,7 @@ export default function IntegrationConnectionPrompt({
     expired,
     add_account,
     connected_accounts,
+    reconnect_account,
     integration_name,
   } = integration_connection_required;
   const { integrations } = useIntegrations();
@@ -242,6 +245,7 @@ export default function IntegrationConnectionPrompt({
           expired={expired}
           addAccount={add_account}
           connectedAccounts={connected_accounts}
+          reconnectAccountId={reconnect_account?.id}
         />
       ) : (
         // Catalog still loading: header from the streamed name + spinner, rather

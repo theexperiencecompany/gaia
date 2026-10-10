@@ -77,10 +77,10 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() =>
-      expect(connectIntegration).toHaveBeenCalledWith(
-        "custom-bearer",
-        "sk-test-123",
-      ),
+      expect(connectIntegration).toHaveBeenCalledWith("custom-bearer", {
+        bearerToken: "sk-test-123",
+        accountId: undefined,
+      }),
     );
     // success surfaces inline, no navigation/modal
     await screen.findByText("Connected");
@@ -110,10 +110,10 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() =>
-      expect(connectIntegration).toHaveBeenCalledWith(
-        "custom-oauth",
-        undefined,
-      ),
+      expect(connectIntegration).toHaveBeenCalledWith("custom-oauth", {
+        bearerToken: undefined,
+        accountId: undefined,
+      }),
     );
   });
 
@@ -163,7 +163,43 @@ describe("IntegrationConnectionPrompt — adding another account", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));
 
     await waitFor(() =>
-      expect(connectIntegration).toHaveBeenCalledWith("gmail", undefined),
+      expect(connectIntegration).toHaveBeenCalledWith("gmail", {
+        bearerToken: undefined,
+        accountId: undefined,
+      }),
+    );
+  });
+
+  it("signs the named expired account back in on a connected integration", async () => {
+    connectIntegration.mockResolvedValue({ status: "redirecting" });
+    integrations = [
+      {
+        ...oauthIntegration(),
+        id: "gmail",
+        name: "Gmail",
+        status: "connected",
+        source: "platform",
+      },
+    ];
+    render(
+      <IntegrationConnectionPrompt
+        integration_connection_required={{
+          integration_id: "gmail",
+          message: "Your Gmail account work@acme.com lost its connection.",
+          expired: true,
+          add_account: false,
+          reconnect_account: { id: "ca_work", name: "work@acme.com" },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() =>
+      expect(connectIntegration).toHaveBeenCalledWith("gmail", {
+        bearerToken: undefined,
+        accountId: "ca_work",
+      }),
     );
   });
 });

@@ -99,10 +99,10 @@ class TestConnectAccount:
         svc = _make_service()
         with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
             with pytest.raises(ValueError, match="not supported"):
-                await svc.connect_account("unsupported", "user1")
+                await svc.connect_account("unsupported", "user1", "tok")
 
     @pytest.mark.asyncio
-    async def test_connect_account_success(self):
+    async def test_a_new_account_link_returns_to_the_callback_with_its_state(self):
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth123"
@@ -122,43 +122,20 @@ class TestConnectAccount:
                 "app.services.composio.composio_service.settings",
                 MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
             ),
-        ):
-            result = await svc.connect_account("gmail", "user1")
-
-        assert result["status"] == "pending"
-        assert result["redirect_url"] == "https://example.com/redirect"
-        assert result["connection_id"] == "conn123"
-
-    @pytest.mark.asyncio
-    async def test_connect_account_with_state_token(self):
-        svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth123"
-
-        connection_request = MagicMock()
-        connection_request.redirect_url = "https://example.com/redirect"
-        connection_request.id = "conn123"
-
-        svc.composio.connected_accounts.link.return_value = connection_request
-
-        with (
-            patch(
-                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-                {"gmail": config},
-            ),
-            patch(
-                "app.services.composio.composio_service.settings",
-                MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
-            ),
-            patch(
-                "app.services.composio.composio_service.add_query_param",
-                return_value="https://example.com/cb?state=tok",
-            ) as mock_add,
         ):
             result = await svc.connect_account("gmail", "user1", state_token="tok")
 
-        mock_add.assert_called_once_with("https://example.com/cb", "state", "tok")
-        assert result["status"] == "pending"
+        assert result == {
+            "status": "pending",
+            "redirect_url": "https://example.com/redirect",
+            "connection_id": "conn123",
+        }
+        svc.composio.connected_accounts.link.assert_called_once_with(
+            user_id="user1",
+            auth_config_id="auth123",
+            callback_url="https://example.com/cb?state=tok",
+            allow_multiple=True,
+        )
 
     @pytest.mark.asyncio
     async def test_connect_account_propagates_exception(self):
@@ -178,7 +155,49 @@ class TestConnectAccount:
             ),
         ):
             with pytest.raises(RuntimeError, match="boom"):
-                await svc.connect_account("gmail", "user1")
+                await svc.connect_account("gmail", "user1", "tok")
+
+
+class TestReauthorizeAccount:
+    @pytest.mark.asyncio
+    async def test_the_same_account_is_sent_back_through_sign_in(self):
+        svc = _make_service()
+        svc.composio.connected_accounts.refresh.return_value = MagicMock(
+            id="ca_work", status="INITIATED", redirect_url="https://composio.dev/s/abc"
+        )
+
+        with patch(
+            "app.services.composio.composio_service.settings",
+            MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
+        ):
+            result = await svc.reauthorize_account("ca_work", "tok")
+
+        assert result == {
+            "status": "pending",
+            "redirect_url": "https://composio.dev/s/abc",
+            "connection_id": "ca_work",
+        }
+        svc.composio.connected_accounts.refresh.assert_called_once_with(
+            "ca_work", body_redirect_url="https://example.com/cb?state=tok"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_sign_in_url_is_an_error_not_a_dead_link(self):
+        svc = _make_service()
+        svc.composio.connected_accounts.refresh.return_value = MagicMock(
+            id="ca_work", status="ACTIVE", redirect_url=None
+        )
+
+        with (
+            patch(
+                "app.services.composio.composio_service.settings",
+                MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
+            ),
+            pytest.raises(RuntimeError) as exc,
+        ):
+            await svc.reauthorize_account("ca_work", "tok")
+
+        assert str(exc.value) == "Composio returned no sign-in URL for ca_work (ACTIVE)"
 
 
 class TestGetTools:

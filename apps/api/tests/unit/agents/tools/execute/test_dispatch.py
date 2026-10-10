@@ -24,7 +24,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
+from app.constants.integrations import ConnectMode
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
@@ -54,6 +54,18 @@ def account_record() -> Iterator[AsyncMock]:
     """Pin the user's accounts on the tool's integration; none on record by default."""
     with patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as lookup:
         yield lookup
+
+
+RECONNECT_PROMPT = "A reconnect button has been shown to the user."
+
+
+@pytest.fixture(autouse=True)
+def reconnect_prompt() -> Iterator[AsyncMock]:
+    """Stand in for the reconnect card; its copy is pinned in test_integration_checker."""
+    with patch(
+        f"{MODULE}.request_integration_connection", AsyncMock(return_value=RECONNECT_PROMPT)
+    ) as prompt:
+        yield prompt
 
 
 def _gmail_accounts(
@@ -179,8 +191,8 @@ class TestAccountChoice:
         assert '"Personal" (connected)' in result.error.hint
         tool.ainvoke.assert_not_awaited()
 
-    async def test_an_expired_account_is_refused_while_another_still_works(
-        self, account_record: AsyncMock
+    async def test_an_expired_account_is_refused_and_offered_back_while_another_works(
+        self, account_record: AsyncMock, reconnect_prompt: AsyncMock
     ) -> None:
         dead = PERSONAL.model_copy(update={"status": "expired"})
         account_record.return_value = _gmail_accounts(WORK, dead)
@@ -190,6 +202,10 @@ class TestAccountChoice:
 
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.ACCOUNT_EXPIRED
+        assert result.error.hint == RECONNECT_PROMPT
+        reconnect_prompt.assert_awaited_once_with(
+            "gmail", "Gmail", USER_ID, mode=ConnectMode.RECONNECT, account=dead
+        )
         tool.ainvoke.assert_not_awaited()
 
     async def test_with_every_account_dead_the_call_runs_into_the_reconnect_path(
@@ -840,7 +856,7 @@ REFUSALS = {
         error=DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail="The Gmail account Personal needs reconnecting.",
-            hint=ACCOUNT_NEEDS_RECONNECT_HINT,
+            hint=RECONNECT_PROMPT,
         ),
         warning="execute: account not usable",
         data={"recipient": "a@b.c", "subject": "hi"},

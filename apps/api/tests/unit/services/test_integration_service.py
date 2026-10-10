@@ -28,7 +28,7 @@ import pytest
 from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
-from app.constants.integrations import ACCOUNT_LIMIT_ERROR, MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -2678,6 +2678,11 @@ class TestConnectComposioIntegration:
             "redirect_url": "https://composio.dev/auth",
             "connection_id": "ca_initiated",
         }
+        service.reauthorize_account.return_value = {
+            "status": "pending",
+            "redirect_url": "https://composio.dev/reauth",
+            "connection_id": "ca_1",
+        }
         with (
             patch(f"{module}.get_composio_service", return_value=service),
             patch(f"{module}.create_oauth_state", AsyncMock(return_value="state-token")),
@@ -2687,13 +2692,14 @@ class TestConnectComposioIntegration:
         ):
             yield {"service": service, "attach": attach, "status": status, "record": record}
 
-    async def _connect(self) -> ConnectIntegrationResponse:
+    async def _connect(self, reconnect_account_id: str | None = None) -> ConnectIntegrationResponse:
         return await connect_composio_integration(
             user_id=USER_ID,
             integration_id="slack",
             integration_name="Slack",
             provider="slack",
             redirect_path="/integrations",
+            reconnect_account_id=reconnect_account_id,
         )
 
     async def test_a_first_account_redirects_and_records_the_pending_id_on_its_state(
@@ -2722,34 +2728,62 @@ class TestConnectComposioIntegration:
         assert result.status == "redirect"
         seams["status"].assert_not_awaited()
 
-    async def test_at_the_live_account_limit_no_link_is_minted(
-        self, seams: dict[str, MagicMock]
+    @pytest.mark.parametrize("last", ["connected", "expired"])
+    async def test_at_the_account_limit_no_link_is_minted(
+        self, seams: dict[str, MagicMock], last: IntegrationAccountStatus
     ) -> None:
+        """An expired account counts: reconnecting it happens in place, never as an addition."""
         seams["record"].return_value = _slack_accounts(
-            *(["connected"] * MAX_ACCOUNTS_PER_INTEGRATION)
+            *(["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1)), last
         )
 
         result = await self._connect()
 
         assert result.status == "error"
-        assert result.error == ACCOUNT_LIMIT_ERROR
-        assert result.message == (
+        assert result.error == (
             f"You can connect up to {MAX_ACCOUNTS_PER_INTEGRATION} Slack accounts. "
             "Remove one to add another."
         )
         seams["service"].connect_account.assert_not_awaited()
+        seams["attach"].assert_not_awaited()
 
-    async def test_an_expired_account_does_not_block_reconnecting_it(
+    async def test_reconnecting_an_expired_account_signs_in_that_same_account(
         self, seams: dict[str, MagicMock]
     ) -> None:
-        """Reconnecting the same identity replaces the dead account, so it must not count."""
         seams["record"].return_value = _slack_accounts(
             *(["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1)), "expired"
         )
+        expired_id = f"ca_{MAX_ACCOUNTS_PER_INTEGRATION - 1}"
+        seams["service"].reauthorize_account.return_value["connection_id"] = expired_id
 
-        result = await self._connect()
+        result = await self._connect(reconnect_account_id=expired_id)
 
         assert result.status == "redirect"
+        assert result.redirect_url == "https://composio.dev/reauth"
+        seams["service"].reauthorize_account.assert_awaited_once_with(expired_id, "state-token")
+        seams["service"].connect_account.assert_not_awaited()
+        seams["attach"].assert_awaited_once_with("state-token", expired_id)
+        seams["status"].assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("account_id", "error"),
+        [
+            ("ca_0", "acct 0 is already connected."),
+            ("ca_gone", "That Slack account is no longer connected. Add it again instead."),
+        ],
+        ids=["working_account", "unknown_account"],
+    )
+    async def test_only_a_tracked_expired_account_can_be_reconnected(
+        self, seams: dict[str, MagicMock], account_id: str, error: str
+    ) -> None:
+        seams["record"].return_value = _slack_accounts("connected", "expired")
+
+        result = await self._connect(reconnect_account_id=account_id)
+
+        assert result.status == "error"
+        assert result.error == error
+        seams["service"].reauthorize_account.assert_not_awaited()
+        seams["attach"].assert_not_awaited()
 
 
 class TestConnectSelfIntegration:

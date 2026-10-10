@@ -65,6 +65,8 @@ export interface IntegrationConnectionData {
   add_account?: boolean;
   // The accounts already connected, primary first, shown on an add-account card.
   connected_accounts?: string[];
+  // The expired account the card signs back in, in place of adding a new one.
+  reconnect_account?: { id: string; name: string } | null;
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";

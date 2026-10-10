@@ -30,7 +30,6 @@ from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.account_scope import current_selection
 from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.langchain_composio_service import LangchainProvider
-from app.services.integrations.integration_expiry import AccountExpired
 from tests.factories import make_composio_not_found, make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
@@ -169,6 +168,7 @@ class TestDeadAccountReconciles:
             "add_account": False,
             "message": "Your Gmail connection expired. Sign in again to keep using it.",
             "connected_accounts": [],
+            "reconnect_account": None,
         }
         assert result["successful"] is False
         assert "EXPIRED" in result["error"]
@@ -254,20 +254,14 @@ class TestDeadAccountReconciles:
         assert result["successful"] is False
         assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
 
-    async def test_with_another_account_still_live_it_names_the_dead_one_and_shows_no_card(
+    async def test_with_another_account_still_live_the_card_signs_the_dead_one_back_in(
         self, no_other_live_account: AsyncMock
     ) -> None:
-        """The integration stays connected, so a connect card would invite connecting Gmail again."""
+        """A whole-Gmail connect card here would add a second copy of the account, not revive it."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
         action_func = _action_func(
             provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
-        )
-        expired = AccountExpired(
-            account=IntegrationAccount(connected_account_id="ca_work", label="work@acme.com"),
-            account_count=2,
-            was_primary=False,
-            integration_expired=False,
         )
         writer = MagicMock()
         no_other_live_account.return_value = UserIntegrationDocument(
@@ -283,18 +277,22 @@ class TestDeadAccountReconciles:
         )
 
         with (
-            patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
-            _ui_chat_turn(writer),
+            patch(f"{MODULE}.expire_account", AsyncMock()),
+            _ui_chat_turn(writer, expired=False),
         ):
             result = await asyncio.to_thread(
                 action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
             )
 
-        writer.assert_not_called()
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["reconnect_account"] == {"id": "ca_work", "name": "work@acme.com"}
+        assert card["expired"] is True
         assert result == {
             "successful": False,
-            "error": "The Gmail account work@acme.com has lost its connection. "
-            + ACCOUNT_NEEDS_RECONNECT_HINT,
+            "error": "The user's Gmail account work@acme.com lost its connection and must be "
+            f"signed in again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown "
+            "to the user, so do NOT include any URL in your reply, the UI card handles it. Ask "
+            "the user to click it, then try again.",
             "data": None,
         }
 
@@ -328,18 +326,13 @@ class TestDeadAccountReconciles:
             # Already expired by the first call, so this one changes nothing.
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
             patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)) as read,
-            _ui_chat_turn(writer),
+            _ui_chat_turn(writer, expired=False),
         ):
-            result = await asyncio.to_thread(
-                action_func, __runnable_config__={"metadata": metadata}
-            )
+            await asyncio.to_thread(action_func, __runnable_config__={"metadata": metadata})
 
         read.assert_awaited_once_with("user-1", "gmail")
-        writer.assert_not_called()
-        assert result["error"] == (
-            "The Gmail account work@acme.com has lost its connection. "
-            + ACCOUNT_NEEDS_RECONNECT_HINT
-        )
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["reconnect_account"] == {"id": "ca_work", "name": "work@acme.com"}
 
     async def test_the_transition_runs_under_its_own_named_wide_event_boundary(self) -> None:
         """The dispatch arrives from an executor thread with no boundary of its own; without this one every log.set() is discarded."""

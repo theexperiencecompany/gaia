@@ -244,8 +244,8 @@ def _setup_account_triggers(
         triggers=integration_config.associated_triggers,
     )
     # Workflow and todo triggers live on the primary account only, so they are
-    # re-registered when a connect replaced it or made a first one.
-    if connected.primary_changed:
+    # re-registered when a connect replaced, restored or made a first one.
+    if connected.primary_changed or connected.primary_restored:
         background_tasks.add_task(resync_primary_bound_triggers, user_id, integration_config)
 
 
@@ -360,7 +360,7 @@ async def handle_oauth_connection(
     if integration_config.id == GMAIL_INTEGRATION_ID and connected.primary_changed:
         await _handle_gmail_connection(user_id)
 
-    if connected.primary_changed:
+    if connected.primary_changed or connected.primary_restored:
         # Workflows bind to the primary, so only its return can unblock them.
         background_tasks.add_task(
             resume_workflows_for_reconnected_integration,

@@ -7,7 +7,11 @@ change of primary re-registers them.
 from dataclasses import dataclass
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import (
+    INTEGRATION_STATUS_CONNECTED,
+    MAX_ACCOUNTS_PER_INTEGRATION,
+    AccountConnectOutcome,
+)
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.oauth_models import OAuthIntegration
@@ -40,8 +44,9 @@ class AccountConnected:
     # The account this connect re-authorized (same identity), now revoked.
     replaced_account_id: str | None
     primary_changed: bool
-    # Signed in an account the user already had (the same one, or its identity), not a new one.
-    reauthorized: bool
+    outcome: AccountConnectOutcome
+    # The primary was expired and signed back in under its own id.
+    primary_restored: bool = False
 
 
 @dataclass(frozen=True)
@@ -88,6 +93,61 @@ async def resync_primary_bound_triggers(user_id: str, integration: OAuthIntegrat
     await resync_subscriptions_for_trigger_names(user_id, set(names))
 
 
+async def _restore_account(
+    user_id: str,
+    integration: OAuthIntegration,
+    record: UserIntegrationDocument,
+    account: IntegrationAccount,
+) -> AccountConnected:
+    """Bring an account signed back in under its own id to life; its name and role stay."""
+    if account.status == INTEGRATION_STATUS_CONNECTED:
+        return AccountConnected(
+            account=account,
+            replaced_account_id=None,
+            primary_changed=False,
+            outcome=AccountConnectOutcome.ALREADY_CONNECTED,
+        )
+    identity = await _identity_or_empty(user_id, integration, account.connected_account_id)
+    others = [a for a in record.accounts if a is not account]
+    if not identity or _same_identity(account.identity, identity):
+        update: dict[str, object] = {}
+    else:
+        # Signed in as someone else: the account is now that person.
+        twin = next((a for a in others if _same_identity(a.identity, identity)), None)
+        if twin is not None:
+            await remove_account(user_id, integration.id, account.connected_account_id)
+            log.set_ns("integration_account", outcome="reconnected_as_existing")
+            return AccountConnected(
+                account=twin,
+                replaced_account_id=account.connected_account_id,
+                primary_changed=record.primary_account_id == account.connected_account_id,
+                outcome=AccountConnectOutcome.ALREADY_CONNECTED,
+            )
+        update = {
+            "identity": identity,
+            "label": account_label(integration, identity, {a.label for a in others}),
+            "nickname": None,
+        }
+    restored = account.model_copy(
+        update={
+            **update,
+            "status": INTEGRATION_STATUS_CONNECTED,
+            "expired_at": None,
+            "expired_reason": None,
+        }
+    )
+    accounts = [restored if a is account else a for a in record.accounts]
+    await save_accounts(user_id, integration.id, accounts, record.primary_account_id)
+    log.set_ns("integration_account", outcome="restored", identity_changed=bool(update))
+    return AccountConnected(
+        account=restored,
+        replaced_account_id=None,
+        primary_changed=False,
+        outcome=AccountConnectOutcome.RECONNECTED,
+        primary_restored=record.primary_account_id == account.connected_account_id,
+    )
+
+
 async def record_connected_account(
     user_id: str, integration: OAuthIntegration, connected_account_id: str
 ) -> AccountConnected | AccountLimitReached:
@@ -96,11 +156,9 @@ async def record_connected_account(
     accounts = list(record.accounts) if record else []
     previous_primary = record.primary_account_id if record else None
 
-    existing = next((a for a in accounts if a.connected_account_id == connected_account_id), None)
-    if existing is not None:
-        return AccountConnected(
-            account=existing, replaced_account_id=None, primary_changed=False, reauthorized=True
-        )
+    existing = record.find_account(connected_account_id) if record else None
+    if record is not None and existing is not None:
+        return await _restore_account(user_id, integration, record, existing)
 
     identity = await _identity_or_empty(user_id, integration, connected_account_id)
     superseded = next((a for a in accounts if _same_identity(a.identity, identity)), None)
@@ -150,11 +208,17 @@ async def record_connected_account(
             has_identity=bool(identity),
         ),
     )
+    if superseded is None:
+        outcome = AccountConnectOutcome.ADDED
+    elif superseded.status == INTEGRATION_STATUS_CONNECTED:
+        outcome = AccountConnectOutcome.ALREADY_CONNECTED
+    else:
+        outcome = AccountConnectOutcome.RECONNECTED
     return AccountConnected(
         account=account,
         replaced_account_id=superseded.connected_account_id if superseded else None,
         primary_changed=primary != previous_primary,
-        reauthorized=superseded is not None,
+        outcome=outcome,
     )
 
 

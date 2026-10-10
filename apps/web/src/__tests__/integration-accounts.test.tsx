@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  fireEvent,
   render,
   renderHook,
   screen,
@@ -110,6 +111,25 @@ describe("connected accounts", () => {
     expect(screen.getByText("Primary")).toBeTruthy();
     expect(screen.getByText("Expired")).toBeTruthy();
     expect(getAccounts).toHaveBeenCalledWith("gmail");
+  });
+
+  it("reconnecting an expired account signs that account back in", async () => {
+    getAccounts.mockResolvedValue(accountsResponse());
+    const onConnect = vi.fn().mockResolvedValue({ status: "redirecting" });
+
+    render(<IntegrationAccounts integration={gmail} onConnect={onConnect} />, {
+      wrapper,
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Manage Personal" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
+
+    await waitFor(() =>
+      expect(onConnect).toHaveBeenCalledExactlyOnceWith("gmail", {
+        accountId: "ca_home",
+      }),
+    );
   });
 
   it("stops offering another account at the limit", async () => {
