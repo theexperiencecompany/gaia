@@ -32,6 +32,16 @@ interface SimpleSchedule {
   minute: string;
 }
 
+// The cron shapes the preset pickers can represent; any other stored cron
+// (yearly, steps, ranges, lists) opens in custom mode so it is shown and kept verbatim.
+const PRESET_INTERVALS: Partial<
+  Record<CronSchedule["type"], SimpleSchedule["interval"]>
+> = {
+  daily: "day",
+  weekly: "week",
+  monthly: "month",
+};
+
 // Pure function to initialize schedule state from cron expression
 const initializeScheduleFromCron = (
   cronExpression?: string,
@@ -50,8 +60,9 @@ const initializeScheduleFromCron = (
   }
 
   const parsed = parseCronExpression(cronExpression);
+  const interval = PRESET_INTERVALS[parsed.type];
 
-  if (parsed.type === "custom") {
+  if (!interval) {
     return {
       ...defaultSchedule,
       frequency: "custom",
@@ -60,14 +71,7 @@ const initializeScheduleFromCron = (
 
   return {
     frequency: "every",
-    interval:
-      parsed.type === "daily"
-        ? "day"
-        : parsed.type === "weekly"
-          ? "week"
-          : parsed.type === "monthly"
-            ? "month"
-            : "day",
+    interval,
     dayOfWeek: parsed.dayOfWeek?.toString() || "1",
     dayOfMonth: parsed.dayOfMonth?.toString() || "1",
     hour: parsed.hour?.toString() || "9",
@@ -80,9 +84,7 @@ const initializeCustomCron = (cronExpression?: string): string => {
   if (!cronExpression?.trim()) return "";
 
   const parsed = parseCronExpression(cronExpression);
-  return parsed.type === "custom"
-    ? parsed.customExpression || cronExpression
-    : "";
+  return PRESET_INTERVALS[parsed.type] ? "" : cronExpression;
 };
 
 // Let each dropdown popover grow to fit its labels instead of inheriting the
