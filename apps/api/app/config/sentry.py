@@ -14,6 +14,7 @@ from sentry_sdk.types import Event, Hint
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from shared.py.logging import ARQ_LOGGER_DISPLAY_NAME, env_context
 from shared.py.wide_events import (
     BOUNDARY_FAILURE_MESSAGE,
     BOUNDARY_LOGGER_NAMES,
@@ -111,6 +112,12 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
         if logger_name in BOUNDARY_LOGGER_NAMES:
             return
 
+        # ARQ's own "job failed" line re-reports the job's exception from outside the
+        # job's context, where Sentry's dedupe cannot see it; ArqIntegration ignores
+        # this logger for the same reason and reports job failures itself.
+        if logger_name == ARQ_LOGGER_DISPLAY_NAME:
+            return
+
         # The constant "task failed" line is skipped only when it carries no
         # exception; a boundary that raised without a specific error still
         # reaches Sentry below, captured as its attached exception.
@@ -158,6 +165,8 @@ def init_sentry() -> None:
         disabled_integrations=[LoguruIntegration(), LoggingIntegration()],
         before_send=_drop_llm_attempt_errors,
     )
+    # The API and the ARQ worker share one project; the Promtail service name tells them apart.
+    sentry_sdk.get_global_scope().set_tag("service", env_context()["service"])
 
     # Bridge Loguru → Sentry for ERROR and CRITICAL records.
     # Without this, log.error() / log.exception() calls are only visible

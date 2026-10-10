@@ -7,12 +7,16 @@ sits past it as a backstop only.
 """
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 import contextvars
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
+from arq.connections import ArqRedis
+import arq.worker
+import fakeredis.aioredis
 import pytest
+from sentry_sdk.types import Event
 
 from app.workers.config.worker_settings import ARQ_BACKSTOP_GRACE_SECONDS
 from app.workers.queue import TRACE_ID_KWARG, enqueue_worker_job
@@ -24,6 +28,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.logging import env_context
 from tests.helpers import WideEventRecorder
 
 pytestmark = pytest.mark.unit
@@ -240,3 +245,42 @@ async def test_enqueue_hands_arq_the_job_and_every_control_unchanged() -> None:
     )
     carried = pool.enqueue_job.await_args.kwargs["_gaia_analytics_context"]
     assert type(carried["attribution"]["actor"]) is str
+
+
+async def _fails_outright(ctx: Mapping[str, object]) -> str:
+    raise RuntimeError("mongo unreachable")
+
+
+@pytest.fixture
+def _as_the_worker_process(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Identify as the ARQ worker process does (app.workers.lifecycle.startup)."""
+    monkeypatch.setenv("GAIA_SERVICE_NAME", "arq_worker")
+    env_context.cache_clear()
+    yield
+    env_context.cache_clear()
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("_as_the_worker_process")
+async def test_a_failing_job_reaches_sentry_once_tagged_as_the_worker(
+    sentry_events: list[Event],
+) -> None:
+    redis = ArqRedis(connection_pool=fakeredis.aioredis.FakeRedis().connection_pool)
+    worker = arq.worker.create_worker(
+        {"functions": [arq_task(_fails_outright)]},
+        redis_pool=redis,
+        burst=True,
+        poll_delay=0,
+        handle_signals=False,
+    )
+    await redis.enqueue_job("_fails_outright")
+
+    # fakeredis has no INFO, which arq only reads to log the server version at boot.
+    with patch("arq.worker.log_redis_info", AsyncMock()):
+        await worker.main()
+    await redis.aclose()
+
+    assert [
+        (event["exception"]["values"][-1]["type"], event["tags"]["service"])
+        for event in sentry_events
+    ] == [("RuntimeError", "arq_worker")]

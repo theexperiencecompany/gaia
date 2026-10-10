@@ -254,9 +254,12 @@ _OWNED_LOG_NAMESPACES = ("app", "gaia_shared", "uvicorn", "fastapi", "gunicorn",
 
 _OTLP_TRACE_EXPORTER_LOGGER = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
 
+ARQ_LOGGER_DISPLAY_NAME = "ARQ"
+
 # Short display names for the busiest loggers. Anything unmapped falls back to
 # its top-level package (`aiormq.connection` → `AIORMQ`).
 _LOGGER_DISPLAY_NAMES = {
+    "arq.worker": ARQ_LOGGER_DISPLAY_NAME,
     "uvicorn": "UVICORN",
     "uvicorn.error": "UVICORN",
     "uvicorn.access": "UVICORN",
