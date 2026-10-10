@@ -11,7 +11,6 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 from fastapi import HTTPException
-from langgraph.config import get_stream_writer
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from app.api.v1.middleware.tiered_rate_limiter import (
@@ -27,6 +26,7 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
 from app.models.agent_config import read_run_metadata
+from app.models.agent_models import current_stream_writer
 from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
@@ -193,30 +193,15 @@ def _limit_hit_exception(
     reset_time = detail.get("reset_time") or getattr(e, "reset_time", None)
     plan_required = detail.get("plan_required") or getattr(e, "plan_required", None)
 
-    # Emit inline rate limit card via LangGraph stream writer (only available
-    # when executing inside a LangGraph graph).
-    try:
-        writer = get_stream_writer()
-    except RuntimeError as stream_error:
-        # "not in a runnable context" (workflows, background tasks) — the card
-        # is decoration. Only the missing context is swallowed; card
-        # construction/delivery failures propagate.
-        log.debug(
-            f"{LogTag.API} Rate limit card not streamed",
-            actual_feature_key=actual_feature_key,
-            error=str(stream_error),
-            error_type=type(stream_error).__name__,
+    card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
+    current_stream_writer()(
+        build_rate_limit_card(
+            feature=actual_feature_key,
+            plan_required=plan_required,
+            reset_time=card_reset_time,
+            current_plan=plan_label(user_plan),
         )
-    else:
-        card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
-        writer(
-            build_rate_limit_card(
-                feature=actual_feature_key,
-                plan_required=plan_required,
-                reset_time=card_reset_time,
-                current_plan=plan_label(user_plan),
-            )
-        )
+    )
 
     return LangChainRateLimitError(
         feature=actual_feature_key,

@@ -8,7 +8,7 @@ ever exercise the pass-through path, so nothing else runs this code.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -98,11 +98,15 @@ async def _call_blocked_tool(
     *,
     plan: PlanType | str = PlanType.FREE,
     writer: MagicMock | None = None,
-    stream_writer_error: Exception | None = None,
+    in_graph_run: bool = True,
 ) -> None:
     """Drive the decorated tool with the limiter refusing the call."""
     decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
-    get_writer = MagicMock(side_effect=stream_writer_error, return_value=writer or MagicMock())
+    stream = (
+        patch.object(rl, "current_stream_writer", return_value=writer or MagicMock())
+        if in_graph_run
+        else nullcontext()
+    )
     with (
         patch(
             "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
@@ -112,7 +116,7 @@ async def _call_blocked_tool(
             "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
             new=AsyncMock(side_effect=exceeded),
         ),
-        patch.object(rl, "get_stream_writer", new=get_writer),
+        stream,
     ):
         await decorated(config={"metadata": {"user_id": USER_ID}})
 
@@ -219,7 +223,7 @@ class TestBlockedToolStreamsItsCard:
         with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
-                stream_writer_error=RuntimeError("not in a streaming context"),
+                in_graph_run=False,
             )
 
 
@@ -661,7 +665,7 @@ class TestToolPlanLabelling:
                 "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
                 new=AsyncMock(side_effect=exceeded, return_value={}),
             ),
-            patch.object(rl, "get_stream_writer", MagicMock(return_value=writer)),
+            patch.object(rl, "current_stream_writer", MagicMock(return_value=writer)),
         ):
             await decorated(config={"metadata": {"user_id": USER_ID}})
 
@@ -823,7 +827,7 @@ class TestLimitHitException:
         writer = MagicMock()
         with (
             patch("app.decorators.rate_limiting.capture") as capture,
-            patch.object(rl, "get_stream_writer", return_value=writer),
+            patch.object(rl, "current_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log") as log,
         ):
             result = rl._limit_hit_exception(USER_ID, "generate_image", plan, exc)
@@ -871,7 +875,7 @@ class TestLimitHitExceptionDetailFallbacks:
         writer = MagicMock()
         with (
             patch("app.decorators.rate_limiting.capture"),
-            patch.object(rl, "get_stream_writer", return_value=writer),
+            patch.object(rl, "current_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log"),
         ):
             result = rl._limit_hit_exception(USER_ID, "generate_image", PlanType.PRO, exc)

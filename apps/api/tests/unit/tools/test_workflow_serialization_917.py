@@ -85,7 +85,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.get_workflow = AsyncMock(return_value=doc)
@@ -105,7 +105,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.deactivate_workflow = AsyncMock(return_value=doc)
@@ -126,7 +126,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.activate_workflow = AsyncMock(return_value=doc)

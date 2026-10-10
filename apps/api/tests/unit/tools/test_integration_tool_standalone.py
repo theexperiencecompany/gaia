@@ -123,7 +123,7 @@ async def _list(config: dict[str, Any], search: str | None = None):
 class TestListIntegrations:
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_happy_path_empty_stamps_the_wide_event(
@@ -145,7 +145,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -206,7 +206,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_custom_integrations_partition_is_exact(
@@ -262,7 +262,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_listed_custom_ids_are_excluded_from_public_search_exactly(
@@ -287,7 +287,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_no_custom_integrations_skips_the_lookup(
@@ -311,7 +311,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -388,7 +388,7 @@ class TestListIntegrations:
 
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_search_failure_is_non_fatal_and_warns(
@@ -417,13 +417,13 @@ class TestListIntegrations:
         assert "Failed to search public integrations" in warning["msg"]
         assert warning["error_type"] == "RuntimeError"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_no_user_id(self, mock_gsw: MagicMock) -> None:
         result = await _list(_cfg_no_user())
         assert result == "Error: User ID not found in configuration."
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_multiple_integrations_status",
         new_callable=AsyncMock,
@@ -453,7 +453,7 @@ class TestConnectIntegration:
         with patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)):
             yield
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -471,7 +471,7 @@ class TestConnectIntegration:
         # request_integration_connection, so the writer to watch is that
         # module's — and a source category has to exist for a card to be sent.
         with (
-            patch("app.utils.integration_checker.get_stream_writer", return_value=w),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=w),
             patch(
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "ui"}},
@@ -486,7 +486,7 @@ class TestConnectIntegration:
         ]
         assert len(integration_calls) == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -507,7 +507,7 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
             ),
-            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=_writer()),
             patch(
                 "app.utils.integration_checker.build_connect_link_url",
                 new=AsyncMock(return_value="https://app.example.com/connect/test-token"),
@@ -520,7 +520,7 @@ class TestConnectIntegration:
         # Bot platforms get the minted login-free connect link inline (verbatim).
         assert "https://app.example.com/connect/test-token" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -546,7 +546,7 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
             ),
-            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=_writer()),
             patch(
                 "app.utils.integration_checker.build_connect_link_url",
                 new=AsyncMock(side_effect=_link),
@@ -559,7 +559,7 @@ class TestConnectIntegration:
         assert "https://app.example.com/connect/for-this-user" in result
         assert result.startswith("Gmail needs to be connected")
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -580,7 +580,7 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "ui"}},
             ),
-            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=_writer()),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
                 config=_cfg(), integration_ids=["gmail"]
@@ -589,7 +589,7 @@ class TestConnectIntegration:
         assert "http" not in result
         assert "card" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -608,7 +608,7 @@ class TestConnectIntegration:
         assert "already connected" in result
 
     @pytest.mark.regression
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,
@@ -629,7 +629,7 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "ui"}},
             ),
-            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=writer),
         ):
             result = await connect_integration.ainvoke(
                 {"integration_ids": ["posthog"], "force_reconnect": True}, config=_cfg()
@@ -646,7 +646,7 @@ class TestConnectIntegration:
         assert card["expired"] is True
 
     @pytest.mark.regression
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
@@ -675,7 +675,7 @@ class TestConnectIntegration:
         )
 
     @pytest.mark.regression
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
@@ -697,7 +697,7 @@ class TestConnectIntegration:
         mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
         mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, force_reconnect=False)
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
@@ -707,7 +707,7 @@ class TestConnectIntegration:
         )
         assert "not found" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", available=False)],
@@ -726,7 +726,7 @@ class TestConnectIntegration:
         )
         assert "Error" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_empty_list(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
@@ -736,7 +736,7 @@ class TestConnectIntegration:
         )
         assert result == "No integrations to connect."
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
         new_callable=AsyncMock,

@@ -73,7 +73,7 @@ def tools() -> dict[str, Any]:
 def writer():
     """Capture everything the tool pushes to the LangGraph stream."""
     sink = MagicMock()
-    with patch(f"{MODULE}.get_stream_writer", return_value=sink):
+    with patch(f"{MODULE}.current_stream_writer", return_value=sink):
         yield sink
 
 

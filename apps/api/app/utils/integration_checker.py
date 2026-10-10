@@ -15,11 +15,15 @@ different asks. Only the stored record tells the two apart, so this module
 reads it rather than taking it as an argument.
 """
 
-from langgraph.config import get_config, get_stream_writer
+from langgraph.config import get_config
 
 from app.config.settings import settings
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.agent_models import AgentConfigurableView, read_agent_configurable
+from app.models.agent_models import (
+    AgentConfigurableView,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.chat_models import SourceCategory
 from app.services.connect_link_service import build_connect_link_url
 
@@ -72,7 +76,7 @@ async def request_integration_connection(
             )
         else:
             card_message = f"To use {integration_name} features, please connect your account first."
-        get_stream_writer()(
+        current_stream_writer()(
             {
                 "integration_connection_required": {
                     "integration_id": integration_id,

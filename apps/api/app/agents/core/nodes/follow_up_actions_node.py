@@ -8,7 +8,6 @@ from typing import cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
@@ -20,7 +19,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable, config_agent_name
+from app.models.agent_models import agent_configurable, config_agent_name, current_stream_writer
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.latency_metrics import observe_graph_node
@@ -116,7 +115,7 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
     Follow-up actions are streamed, not stored in state.
     """
     # Send completion marker as soon as follow-up actions start
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     try:
         writer(MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True))
     except Exception as write_error:

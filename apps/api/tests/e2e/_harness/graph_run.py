@@ -430,7 +430,7 @@ async def comms_graph(
             f"{node_module}.get_user_integration_capabilities",
             new=AsyncMock(return_value={"tool_names": []}),
         ),
-        patch(f"{node_module}.get_stream_writer", return_value=lambda _: None),
+        patch(f"{node_module}.current_stream_writer", return_value=lambda _: None),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch(
             "app.agents.core.background.executor_runner.prepare_executor_execution",

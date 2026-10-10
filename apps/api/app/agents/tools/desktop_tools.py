@@ -10,13 +10,12 @@ from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
 from app.services.storage import write_session_file
@@ -75,7 +74,7 @@ async def _run_desktop_action(
 
 def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
     """Stream a unified tool_data entry so the chat UI renders a card."""
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     writer(
         {
             "tool_data": {
@@ -115,7 +114,7 @@ async def take_screenshot(
     config: RunnableConfig,
     query: Annotated[str, "What to look for or describe on the screen"],
 ) -> str | list[dict[str, Any]]:
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     writer({"progress": "Looking at your screen..."})
 
     outcome = await _run_desktop_action(config, "screenshot")

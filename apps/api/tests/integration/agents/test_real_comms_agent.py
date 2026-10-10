@@ -124,7 +124,7 @@ def _follow_up_node_io_patches(
         ),
         # I/O boundary 3: LangGraph stream context
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=writer_fn,
         ),
     ]
