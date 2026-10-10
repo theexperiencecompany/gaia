@@ -312,9 +312,9 @@ async def update_account(
     integration_id: str,
     connected_account_id: str,
     *,
-    nickname: str | None,
-    rename: bool,
-    make_primary: bool,
+    nickname: str | None = None,
+    rename: bool = False,
+    make_primary: bool = False,
 ) -> UserIntegrationDocument:
     """Rename and/or promote one account; with neither, return the record unchanged."""
     record = await _require_record(user_id, integration_id)

@@ -205,6 +205,7 @@ class TestSetPrimaryIntegrationAccount:
         )
 
         assert result == "work@acme.com is now the primary googlecalendar account."
+        assert {c.args for c in seams.get_record.await_args_list} == {(USER_ID, "googlecalendar")}
         seams.save.assert_awaited_once_with(
             USER_ID, "googlecalendar", seams.get_record.return_value.accounts, "ca_2"
         )
@@ -250,7 +251,8 @@ class TestDisconnectIntegration:
 
         result = await _disconnect("googlecalendar", "Personal")
 
-        assert result == "Disconnected Personal. The primary account is work@acme.com."
+        assert result == 'Disconnected Personal. Still connected: "work@acme.com" (primary).'
+        assert {c.args for c in seams.get_record.await_args_list} == {(USER_ID, "googlecalendar")}
         seams.revoke.assert_awaited_once_with("ca_1")
         seams.save.assert_awaited_once()
         assert seams.save.await_args.args[2:] == (

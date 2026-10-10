@@ -18,7 +18,7 @@ from app.services.integrations.integration_account_lifecycle import (
     remove_account,
     update_account,
 )
-from app.services.integrations.integration_accounts import match_account, primary_account
+from app.services.integrations.integration_accounts import describe_account, match_account
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
@@ -84,12 +84,7 @@ async def _rename_integration_account(
         await _connected_accounts(user_id, integration_id), integration_id, account
     )
     saved = await update_account(
-        user_id,
-        integration_id,
-        target.connected_account_id,
-        nickname=name,
-        rename=True,
-        make_primary=False,
+        user_id, integration_id, target.connected_account_id, nickname=name, rename=True
     )
     renamed = saved.find_account(target.connected_account_id)
     if renamed is None or renamed.nickname is None:
@@ -101,14 +96,7 @@ async def _set_primary_integration_account(user_id: str, integration_id: str, ac
     target = _named_account(
         await _connected_accounts(user_id, integration_id), integration_id, account
     )
-    await update_account(
-        user_id,
-        integration_id,
-        target.connected_account_id,
-        nickname=None,
-        rename=False,
-        make_primary=True,
-    )
+    await update_account(user_id, integration_id, target.connected_account_id, make_primary=True)
     return f"{target.display_name} is now the primary {integration_id} account."
 
 
@@ -149,9 +137,8 @@ async def _disconnect_integration(user_id: str, integration_id: str, account: st
             f"Disconnected {target.display_name}, the only {integration_id} account, "
             f"so {integration_id} is no longer connected."
         )
-    primary = primary_account(remaining)
-    primary_note = f" The primary account is {primary.display_name}." if primary else ""
-    return f"Disconnected {target.display_name}.{primary_note}"
+    left = ", ".join(describe_account(a, remaining.primary_account_id) for a in remaining.accounts)
+    return f"Disconnected {target.display_name}. Still connected: {left}."
 
 
 rename_integration_account = define_mutation_tool(
