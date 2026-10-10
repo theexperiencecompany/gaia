@@ -73,6 +73,12 @@ class TestInterpretCommsOutput:
             ("<SILENCE >nothing new< /SILENCE >", CommsDirectiveKind.SILENCE, "nothing new"),
             ("< silence >nothing new</ silence >", CommsDirectiveKind.SILENCE, "nothing new"),
             ("< EMOJI >👍</EMOJI >", CommsDirectiveKind.REACT, "👍"),
+            # Seen live too: a space between every letter of the tag.
+            (
+                "< S I L E N C E >Waiting for the inbox check to finish.</SILENCE>",
+                CommsDirectiveKind.SILENCE,
+                "Waiting for the inbox check to finish.",
+            ),
         ],
     )
     def test_spaces_inside_a_tag_still_make_it_a_directive(
@@ -199,6 +205,9 @@ class TestVisibleCommsText:
             (f"A.{BREAK}REACT: 👍{BREAK}", "A."),
             (f"A.{BREAK}{BREAK}C", f"A.{BREAK}C"),
             ("< SIL", ""),
+            ("< S I L E N", ""),
+            ("< S I L E N C E >Waiting", ""),
+            ("<SILENT>ly", "<SILENT>ly"),
             ("< SILENCE >Already rep", ""),
             (f"Hello there.{BREAK}< SILENCE >x</SILENCE>", "Hello there."),
             ("< 5 items left", "< 5 items left"),

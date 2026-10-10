@@ -30,6 +30,11 @@ from app.services.composio.dead_account import (
     is_dead_account_error,
     message_mentions_dead_account,
 )
+from app.services.integrations.integration_accounts import (
+    derive_status,
+    get_account_record,
+    primary_account,
+)
 from app.services.integrations.integration_expiry import expire_account
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
@@ -84,14 +89,23 @@ async def _expire_and_request_reconnect(
     reads the stored status. Own wide-event boundary: executor threads carry none.
     """
     async with log_context("composio_tool_integration_expiry", user_id=user_id):
-        expired = await expire_account(
+        await expire_account(
             user_id, integration_id, connected_account_id, trigger="tool_execution", reason=reason
         )
-    if expired is not None and not expired.integration_expired:
-        return (
-            f"The {integration_name} account {expired.account.display_name} has lost its "
-            f"connection. {ACCOUNT_NEEDS_RECONNECT_HINT}"
+    # Read back rather than trusting the expiry's outcome: a repeat call on an account
+    # already expired changes nothing, yet still needs only that account named.
+    record = await get_account_record(user_id, integration_id)
+    if record is not None and derive_status(record.accounts) == "connected":
+        dead = (
+            record.find_account(connected_account_id)
+            if connected_account_id
+            else primary_account(record)
         )
+        if dead is not None:
+            return (
+                f"The {integration_name} account {dead.display_name} has lost its "
+                f"connection. {ACCOUNT_NEEDS_RECONNECT_HINT}"
+            )
     return await request_integration_connection(integration_id, integration_name, user_id)
 
 

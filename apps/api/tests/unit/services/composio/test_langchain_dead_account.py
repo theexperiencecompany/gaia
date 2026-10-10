@@ -25,7 +25,7 @@ import pytest
 
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.integration_models import IntegrationAccount
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.account_scope import current_selection
 from app.services.composio.dead_account import ConnectedAccountGoneError
@@ -43,6 +43,13 @@ DEAD_ACCOUNT_BODY = {
         "message": "No connected account found for user and toolkit GMAIL",
     }
 }
+
+
+@pytest.fixture(autouse=True)
+def no_other_live_account() -> Iterator[AsyncMock]:
+    """Stub the stored record the reconnect wording is read from; None unless a test says otherwise."""
+    with patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as record:
+        yield record
 
 
 def _raises(exc: Exception) -> Any:
@@ -247,7 +254,7 @@ class TestDeadAccountReconciles:
         assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
 
     async def test_with_another_account_still_live_it_names_the_dead_one_and_shows_no_card(
-        self,
+        self, no_other_live_account: AsyncMock
     ) -> None:
         """The integration stays connected, so a connect card would invite connecting Gmail again."""
         provider = LangchainProvider()
@@ -262,6 +269,17 @@ class TestDeadAccountReconciles:
             integration_expired=False,
         )
         writer = MagicMock()
+        no_other_live_account.return_value = UserIntegrationDocument(
+            user_id="user-1",
+            integration_id="gmail",
+            accounts=[
+                IntegrationAccount(connected_account_id="ca_home", label="me@gmail.com"),
+                IntegrationAccount(
+                    connected_account_id="ca_work", label="work@acme.com", status="expired"
+                ),
+            ],
+            primary_account_id="ca_work",
+        )
 
         with (
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
@@ -278,6 +296,48 @@ class TestDeadAccountReconciles:
             + ACCOUNT_NEEDS_RECONNECT_HINT,
             "data": None,
         }
+
+    async def test_a_second_call_to_an_already_dead_account_still_names_only_it(
+        self,
+    ) -> None:
+        """Seen live: a second call to the dead account got the whole-Gmail "connect" card."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
+        record = UserIntegrationDocument(
+            user_id="user-1",
+            integration_id="gmail",
+            accounts=[
+                IntegrationAccount(connected_account_id="ca_home", label="me@gmail.com"),
+                IntegrationAccount(
+                    connected_account_id="ca_work", label="work@acme.com", status="expired"
+                ),
+            ],
+            primary_account_id="ca_home",
+        )
+        metadata = {
+            "user_id": "user-1",
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_work"},
+        }
+        writer = MagicMock()
+
+        with (
+            # Already expired by the first call, so this one changes nothing.
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)),
+            _ui_chat_turn(writer),
+        ):
+            result = await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": metadata}
+            )
+
+        writer.assert_not_called()
+        assert result["error"] == (
+            "The Gmail account work@acme.com has lost its connection. "
+            + ACCOUNT_NEEDS_RECONNECT_HINT
+        )
 
     async def test_the_transition_runs_under_its_own_named_wide_event_boundary(self) -> None:
         """The dispatch arrives from an executor thread with no boundary of its own; without this one every log.set() is discarded."""

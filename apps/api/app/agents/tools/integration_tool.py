@@ -336,9 +336,9 @@ async def connect_integration(
     config: RunnableConfig,
     mode: Annotated[
         ConnectMode,
-        "'connect' (default) for integrations the user has not connected; 'add_account' to "
-        "connect another account to one they already have; 'reconnect' only when the user "
-        "explicitly asks to reconnect or refresh a connection.",
+        "'connect' (default) for a plain 'connect X', even when X is already connected (it "
+        "then lists the accounts); 'add_account' only when the user asks for another "
+        "account; 'reconnect' only when they explicitly ask to reconnect or refresh access.",
     ] = ConnectMode.CONNECT,
 ) -> str:
     try:

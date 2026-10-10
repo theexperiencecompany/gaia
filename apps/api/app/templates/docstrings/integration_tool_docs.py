@@ -95,9 +95,11 @@ Use this tool when the user asks to:
 PARAMETERS:
 - `integration_ids` (List[str]): Exact integration IDs (e.g., "gmail", "notion");
   call list_integrations first if unsure.
-- `mode`: "connect" (default) for integrations the user has not connected;
-  "add_account" to connect another account while the current ones stay connected;
-  "reconnect" only when the user explicitly asks to reconnect or refresh access.
+- `mode`: "connect" (default) for a plain "connect X", including when X is already
+  connected: it then starts nothing and lists the accounts, so you can ask whether
+  they want another. "add_account" only when the user asks for another or an
+  additional account. "reconnect" only when they explicitly ask to reconnect or
+  refresh access.
 
 BEHAVIOR:
 - A card (or, on text-only platforms, a single-use link) lets the user sign in;
