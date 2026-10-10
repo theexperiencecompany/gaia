@@ -91,6 +91,7 @@ def _format_todos(todos: list[Todo]) -> str:
         return ""
 
     lines = ["## Current Tasks"]
+    todo: Todo
     for i, todo in enumerate(todos, 1):
         icon = {
             "completed": "\u2713",
@@ -127,11 +128,12 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def plan_tasks(
         tasks: list[TaskInput],
         tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Create a task plan for multi-step work."""
         now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
 
+        task: TaskInput
         for i, task in enumerate(tasks):
             new_todos.append(
                 Todo(
@@ -144,7 +146,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
 
         _emit_todo_progress(new_todos, source, source_label)
 
-        first_task = new_todos[0]["content"] if new_todos else "none"
+        first_task = next((todo["content"] for todo in new_todos), "none")
         return Command(
             update={
                 "todos": new_todos,
@@ -164,11 +166,11 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list[Todo], InjectedState("todos")],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Update task statuses and/or add new tasks in a single call."""
         now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [t.copy() for t in todos]
-        todo_map = {t["id"]: t for t in updated_todos}
+        todo_map: dict[str, Todo] = {t["id"]: t for t in updated_todos}
 
         summary_parts: list[str] = []
         added: list[str] = []
@@ -223,7 +225,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                     summary_parts.append(f"{task_id}→{status}")
             elif content:
                 # Add new task
-                new_todo = Todo(
+                new_todo: Todo = Todo(
                     id=str(uuid4())[:8],
                     content=content,
                     status="pending",

@@ -6,7 +6,7 @@ dependency direction and closes an import cycle
 (services -> agents -> services.composio -> services.integrations).
 """
 
-from typing import Any
+from typing import TypedDict
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.cache import ONE_DAY_TTL
@@ -16,8 +16,30 @@ from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_connected_integration_ids
 
 
+class IntegrationToolInfo(TypedDict):
+    """One tool of a connected integration, as follow-up generation reads it."""
+
+    name: str
+    description: str
+
+
+class IntegrationToolset(TypedDict):
+    """A connected integration and the tools it brings."""
+
+    name: str
+    tools: list[IntegrationToolInfo]
+
+
+class UserIntegrationCapabilities(TypedDict):
+    """Everything a user can act on: core tools plus their connected integrations."""
+
+    integration_names: list[str]
+    tool_names: list[str]
+    capabilities: dict[str, IntegrationToolset]
+
+
 @Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
-async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
+async def get_user_integration_capabilities(user_id: str) -> UserIntegrationCapabilities:
     """Get capabilities (tools) for user's connected integrations + core tools.
 
     Optimized for follow-up action generation to avoid passing all tools to
@@ -28,7 +50,7 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
     tool_registry = await get_tool_registry()
     core_categories = tool_registry.get_core_categories()
 
-    tool_names_set = set()
+    tool_names_set: set[str] = set()
 
     # Add core tool names
     for category in core_categories:
@@ -39,8 +61,8 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
     # follow-up suggestions, so a not-yet-connected one must not surface.
     connected_ids = await get_connected_integration_ids(user_id)
 
-    integration_names = []
-    capabilities = {}
+    integration_names: list[str] = []
+    capabilities: dict[str, IntegrationToolset] = {}
 
     for integration_id in connected_ids:
         # Get integration details with tools
@@ -51,7 +73,7 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
         integration_names.append(integration.name)
 
         # Extract tool names and descriptions
-        tools_info = []
+        tools_info: list[IntegrationToolInfo] = []
         integration_tool: StoredIntegrationTool
         for integration_tool in integration.tools:
             tool_names_set.add(integration_tool.name)
