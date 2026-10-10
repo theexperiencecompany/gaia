@@ -185,20 +185,17 @@ class _TicketData(TypedDict, total=False):
     id: object
 
 
-def dispatch_config_for(user_id: str) -> RunnableConfig:
-    """Run config carrying the caller's identity for user-bound wrappers.
+def dispatch_config_for(user_id: str, run_config: RunnableConfig | None = None) -> RunnableConfig:
+    """Run config carrying the caller's identity in configurable AND metadata, which wrappers split.
 
-    Tools are user-agnostic at resolve time (see the resolver's materialized
-    cache); Composio/MCP wrappers resolve per-user auth from config at
-    invocation — ``configurable`` AND ``metadata``, both, because different
-    wrappers read different keys. One helper so synthesized configs (sandbox
-    route, ledger executor) cannot drift into setting only one and running
-    as Composio's "default" user with no connected accounts.
+    Layered onto run_config when the call happens inside a graph run, so the tool
+    keeps that run's stream writer, stream and surface; a ledger redeem without it
+    crashed on get_stream_writer.
     """
-    return {
-        "configurable": {"user_id": user_id},
-        "metadata": {"user_id": user_id},
-    }
+    config: RunnableConfig = run_config.copy() if run_config is not None else {}
+    config["configurable"] = {**config.get("configurable", {}), "user_id": user_id}
+    config["metadata"] = {**config.get("metadata", {}), "user_id": user_id}
+    return config
 
 
 @dataclass(frozen=True)
@@ -426,6 +423,7 @@ async def _dispatch_ticket(
             user_id=ticket_user,
             conversation_id=conversation_id,
             caller=caller,
+            run_config=config,
         )
         text = (
             f"Executed '{approval_id}' ({result.state.value}): {result.detail}"

@@ -26,7 +26,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
-from app.services.integrations.integration_accounts import get_account_record
+from app.services.integrations.integration_accounts import at_account_limit, get_account_record
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
@@ -333,9 +333,7 @@ async def connect_composio_integration(
     composio_service = get_composio_service()
 
     record = await get_account_record(user_id, integration_id)
-    live_accounts = [a for a in record.accounts if a.status == "connected"] if record else []
-    # Expired accounts still count at the callback, but reconnecting one replaces it.
-    if len(live_accounts) >= MAX_ACCOUNTS_PER_INTEGRATION:
+    if at_account_limit(record):
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,

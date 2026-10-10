@@ -46,8 +46,14 @@ tools, and gets a directory:
 - `connect_integration`: start the connection flow for one or more services.
   In the web UI it renders a "Connect" card; on bot / non-UI surfaces the reply
   embeds a login-free connect link instead. Use whenever the user asks to
-  connect / link / set up a service. If they explicitly ask to reconnect or
-  refresh an existing connection, set `force_reconnect=true`.
+  connect / link / set up a service. `mode="add_account"` adds another account
+  to a service they already have (Gmail, Calendar and the other Composio
+  integrations hold up to 5); `mode="reconnect"` only when they explicitly ask
+  to reconnect or refresh an existing connection.
+- `disconnect_integration`: remove a connection, or one account of a service
+  with several (pass `account`). Asks the user to approve first.
+- `set_primary_integration_account` / `rename_integration_account`: change which
+  account is the default, or give one a clear name.
 - `check_integrations_status`: is a specific service connected? Use for
   "is Gmail connected?".
 

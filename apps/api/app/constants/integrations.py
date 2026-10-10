@@ -1,5 +1,6 @@
 """Constants for integration tools."""
 
+from enum import StrEnum
 from typing import Final
 
 from composio.core.models.webhook_events import ConnectionStatusEnum
@@ -54,12 +55,25 @@ ACCOUNT_NEEDS_RECONNECT_HINT: Final = (
     "Tell the user it must be reconnected in Integrations. Do not use another account "
     "in its place, or answer with another account's data, unless they ask."
 )
-# The agent tool that names an account; bound when a multi-account integration is activated.
+# The agent's account tools; bound when an integration with several accounts is activated.
 RENAME_INTEGRATION_ACCOUNT_TOOL: Final = "rename_integration_account"
+SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL: Final = "set_primary_integration_account"
+DISCONNECT_INTEGRATION_TOOL: Final = "disconnect_integration"
+# Starts a connect, an added account or a reconnect (ConnectMode).
+CONNECT_INTEGRATION_TOOL: Final = "connect_integration"
 # A nickname replaces the account's label in the UI and the agent's context.
 MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
 # Redirect error code when a connect would exceed MAX_ACCOUNTS_PER_INTEGRATION.
 ACCOUNT_LIMIT_ERROR: Final = "account_limit"
+
+
+class ConnectMode(StrEnum):
+    """What a connect_integration call asks the user to do."""
+
+    CONNECT = "connect"
+    ADD_ACCOUNT = "add_account"
+    RECONNECT = "reconnect"
+
 
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"

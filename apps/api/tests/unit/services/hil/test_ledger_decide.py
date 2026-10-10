@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -42,6 +43,10 @@ from app.services.hil.resolution import (
 )
 
 MODULE = "app.services.hil.ledger_decide"
+# The executor run a ticket is redeemed on.
+RUN_CONFIG: RunnableConfig = {
+    "configurable": {"thread_id": "executor_conv-1", "user_id": "u1", "conversation_id": "conv-1"}
+}
 RUNNER = "app.agents.core.background.executor_runner"
 
 
@@ -463,6 +468,7 @@ class TestRedeemExecution:
             "user_id": "u1",
             "conversation_id": "conv-1",
             "caller": "executor_conv-1",
+            "run_config": RUN_CONFIG,
         }
 
     async def test_provider_timeout_lands_unknown_never_failed(self) -> None:
@@ -552,11 +558,53 @@ class TestRedeemIdentity:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         config = dispatch.await_args.kwargs["config"]
         assert config["configurable"]["user_id"] == "u1"
         assert config["metadata"]["user_id"] == "u1"
+
+    @pytest.mark.regression
+    async def test_redeem_runs_the_envelope_on_the_redeeming_run(self) -> None:
+        """Regression: a rebuilt bare config dropped the run's stream writer, stream and surface."""
+        from app.services.hil import ledger_decide
+        from app.services.hil.ledger_decide import redeem_approved
+
+        repo = _repo(_row(state=LedgerState.APPROVED))
+        repo.claim_executing = AsyncMock(return_value=True)
+        ok_result = MagicMock(ok=True, output="sent", error=None)
+        run_config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "executor_conv-1",
+                "user_id": "u1",
+                "conversation_id": "conv-1",
+                "stream_id": "stream-1",
+                "source_category": "ui",
+            },
+            "metadata": {"source": "chat"},
+            "tags": ["executor"],
+        }
+        with (
+            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+            patch.object(
+                ledger_decide, "dispatch_tool", new=AsyncMock(return_value=ok_result)
+            ) as dispatch,
+        ):
+            await redeem_approved(
+                "ap_abc",
+                user_id="u1",
+                conversation_id="conv-1",
+                caller="executor_conv-1",
+                run_config=run_config,
+            )
+
+        assert dispatch.await_args.kwargs["config"] == {
+            "configurable": run_config["configurable"],
+            "metadata": {"source": "chat", "user_id": "u1"},
+            "tags": ["executor"],
+        }
+        assert run_config["metadata"] == {"source": "chat"}
 
 
 @pytest.mark.unit
@@ -582,6 +630,7 @@ class TestRedeemTerminalStates:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         repo.transition.assert_awaited_once_with("ap_abc", LS.EXECUTING, LS.EXECUTED)
@@ -612,6 +661,7 @@ class TestRedeemTerminalStates:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         repo.transition.assert_awaited_once_with("ap_abc", LS.EXECUTING, LS.FAILED)
@@ -641,6 +691,7 @@ class TestRedeemTerminalStates:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         repo.transition.assert_awaited_once_with("ap_abc", LS.EXECUTING, LS.UNKNOWN)
@@ -874,6 +925,7 @@ class TestApproveResumesBackgroundOwner:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         dispatch.assert_awaited_once()
@@ -902,12 +954,14 @@ class TestApproveResumesBackgroundOwner:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
             second = await redeem_approved(
                 "ap_abc",
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         assert first.ok is True
@@ -932,6 +986,7 @@ class TestApproveResumesBackgroundOwner:
                 user_id="u1",
                 conversation_id="other-conv",
                 caller="executor_other-conv",
+                run_config=RUN_CONFIG,
             )
         dispatch.assert_not_awaited()
 
@@ -950,6 +1005,7 @@ class TestApproveResumesBackgroundOwner:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         assert result.ok is False
@@ -1188,6 +1244,7 @@ class TestRedeemSettlesTerminalFrame:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         assert result.ok is True
@@ -1221,6 +1278,7 @@ class TestRedeemSettlesTerminalFrame:
                 user_id="u1",
                 conversation_id="conv-1",
                 caller="executor_conv-1",
+                run_config=RUN_CONFIG,
             )
 
         assert result.ok is False
@@ -1302,7 +1360,7 @@ def seams() -> Iterator[LedgerSeams]:
         patch(f"{MODULE}.record_owner_deny", new=AsyncMock()) as record_deny,
         patch(f"{RUNNER}.deliver_to_executor", new=AsyncMock()) as deliver,
         patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
-        patch(f"{MODULE}.dispatch_config_for", side_effect=lambda uid: {"user": uid}),
+        patch(f"{MODULE}.dispatch_config_for", side_effect=lambda uid, _run_config: {"user": uid}),
     ):
         yield LedgerSeams(
             rows=rows,
@@ -1730,7 +1788,9 @@ class TestDecideLedgerBatchOutcomes:
 @pytest.mark.unit
 class TestRedeemOutcomes:
     async def _redeem(self, caller: str = "executor_conv-1") -> RedeemResult:
-        return await redeem_approved("ap_1", user_id="u1", conversation_id="conv-1", caller=caller)
+        return await redeem_approved(
+            "ap_1", user_id="u1", conversation_id="conv-1", caller=caller, run_config=RUN_CONFIG
+        )
 
     async def test_an_already_settled_ticket_is_refused_with_its_state(
         self, seams: LedgerSeams
@@ -1806,7 +1866,9 @@ class TestRedeemOutcomes:
         seams.rows["ap_1"] = _doc(state=LedgerState.APPROVED, user_id="")
         seams.dispatch.return_value = MagicMock(ok=True, output="ok", error=None)
 
-        await redeem_approved("ap_1", user_id="", conversation_id="conv-1", caller="executor_c")
+        await redeem_approved(
+            "ap_1", user_id="", conversation_id="conv-1", caller="executor_c", run_config=RUN_CONFIG
+        )
 
         assert seams.dispatch.await_args.kwargs["user_id"] is None
 

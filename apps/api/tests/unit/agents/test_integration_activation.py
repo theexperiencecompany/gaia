@@ -18,7 +18,6 @@ from app.agents.core.subagents.integration_activation import (
     activate_integration,
 )
 from app.agents.tools.execute.resolver import ResolvedTool
-from app.constants.integrations import RENAME_INTEGRATION_ACCOUNT_TOOL
 from app.constants.log_tags import LogTag
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
@@ -135,7 +134,9 @@ class TestActivationContext:
         context = await _activation_context("gmail", "Gmail", "u1", True)
 
         assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(
-            integration="Gmail", tool=RENAME_INTEGRATION_ACCOUNT_TOOL
+            integration="Gmail",
+            tools="rename_integration_account, set_primary_integration_account, "
+            "disconnect_integration",
         ) in context.split("\n\n")
         sources["build_provider_metadata_block"].assert_not_awaited()
 
@@ -551,7 +552,7 @@ class TestActivateIntegrationTool:
         assert text.index("CTX") < text.index("## GMAIL_FETCH_MESSAGES")
         assert self._bound(result) == ["query_json"]
 
-    async def test_with_several_accounts_the_rename_tool_is_bound_too(
+    async def test_with_several_accounts_the_account_tools_are_bound_too(
         self, connected: AsyncMock
     ) -> None:
         context = AsyncMock(return_value="CTX")
@@ -566,7 +567,12 @@ class TestActivateIntegrationTool:
             call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
             result = await activate_integration.ainvoke(call, run_cfg)
 
-        assert self._bound(result) == ["query_json", RENAME_INTEGRATION_ACCOUNT_TOOL]
+        assert self._bound(result) == [
+            "query_json",
+            "rename_integration_account",
+            "set_primary_integration_account",
+            "disconnect_integration",
+        ]
         context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", True)
 
     async def test_unconnected_integration_returns_the_connect_prompt(self) -> None:

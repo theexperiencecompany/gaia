@@ -1,7 +1,7 @@
 import {
-  CONNECT_ACTION_LABEL,
   connectionPromptState,
   type IntegrationConnectionData,
+  PROMPT_ACTION_LABEL,
 } from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { useCallback, useRef } from "react";
@@ -32,7 +32,7 @@ export function IntegrationConnectionCard({
   data,
   onConnect,
 }: IntegrationConnectionCardProps) {
-  const { integration_id, message, expired } = data;
+  const { integration_id, message, expired, add_account } = data;
   const { integrations, connect } = useIntegrations();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
@@ -64,7 +64,10 @@ export function IntegrationConnectionCard({
     return null;
   }
 
-  const state = connectionPromptState(expired, integration.status);
+  const state = connectionPromptState(
+    { expired, add_account },
+    integration.status,
+  );
   const isConnected = state === "connected";
   const isAvailable =
     integration.source === "custom" || !!integration.available;
@@ -81,7 +84,9 @@ export function IntegrationConnectionCard({
         icon={headerIcon ? undefined : ConnectIcon}
         iconSize={20}
         title={(open) =>
-          `${open ? "Hide" : "Show"} 1 ${state === "expired" ? "Reconnect" : "Integration"} Required`
+          state === "add_account"
+            ? `${open ? "Hide" : "Show"} Add Account`
+            : `${open ? "Hide" : "Show"} 1 ${state === "expired" ? "Reconnect" : "Integration"} Required`
         }
         titleTone="muted"
       >
@@ -100,7 +105,8 @@ export function IntegrationConnectionCard({
                 <Text className="text-zinc-100 text-sm font-medium">
                   {integration.name}
                 </Text>
-                {isConnected ? (
+                {/* Adding an account leaves the integration connected. */}
+                {isConnected || state === "add_account" ? (
                   <Chip
                     size="sm"
                     variant="soft"
@@ -148,7 +154,7 @@ export function IntegrationConnectionCard({
                   void handleConnect();
                 }}
               >
-                <Button.Label>{CONNECT_ACTION_LABEL[state]}</Button.Label>
+                <Button.Label>{PROMPT_ACTION_LABEL[state]}</Button.Label>
               </Button>
             </View>
           ) : null}

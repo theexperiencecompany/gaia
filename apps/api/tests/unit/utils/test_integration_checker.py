@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.integrations import ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from app.utils.integration_checker import request_integration_connection
 
@@ -175,7 +176,7 @@ class TestExpiredConnectionPrompt:
     ) -> None:
         with _graph_run("ui") as writer:
             ui_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", force_reconnect=True
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
         assert "reconnect button" in ui_message
@@ -185,7 +186,7 @@ class TestExpiredConnectionPrompt:
 
         with _graph_run("bot"):
             bot_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", force_reconnect=True
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
         assert _MAGIC_LINK in bot_message
@@ -196,7 +197,7 @@ class TestExpiredConnectionPrompt:
         """The reconnect wording is user-facing copy; pin it verbatim."""
         with _graph_run("ui") as writer:
             ui_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", force_reconnect=True
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
         card = self._card(writer)
         assert card["message"] == (
@@ -209,9 +210,72 @@ class TestExpiredConnectionPrompt:
 
         with _graph_run("bg", execution_mode="background"):
             bg_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", force_reconnect=True
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
         assert "the PostHog connection needs a refresh" in bg_message
+
+
+class TestAddAccountPrompt:
+    """Adding an account asks for another sign-in while the current accounts stay connected."""
+
+    @staticmethod
+    def _card(writer: MagicMock) -> dict[str, object]:
+        payload = writer.call_args.args[0]["integration_connection_required"]
+        assert isinstance(payload, dict)
+        return payload
+
+    @pytest.mark.parametrize("expired", [False, True], ids=["live", "all_expired"])
+    async def test_the_card_asks_to_add_an_account_and_is_never_a_reconnect(
+        self, expired: bool
+    ) -> None:
+        with _graph_run("ui", expired=expired) as writer:
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
+            )
+
+        assert self._card(writer) == {
+            "integration_id": "gmail",
+            "integration_name": "Gmail",
+            "expired": False,
+            "add_account": True,
+            "message": "Add another Gmail account. Sign in with the account you want to add.",
+        }
+        assert msg == (
+            "The user wants to add another Gmail account; their current accounts stay "
+            "connected. A button to add the account has been shown to the user, so do NOT "
+            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
+            "then try again."
+        )
+
+    async def test_a_bot_gets_the_single_use_link(self) -> None:
+        with _graph_run("bot"):
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
+            )
+
+        assert msg.startswith("The user wants to add another Gmail account;")
+        assert msg.endswith(f"valid for 1 hour: {_MAGIC_LINK}")
+
+    async def test_a_bot_without_a_link_is_sent_to_the_integrations_page(self) -> None:
+        with _graph_run("bot", connect_url=None):
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
+            )
+
+        assert msg.endswith(
+            f"Ask them to open {_FAKE_FRONTEND}/integrations and add another account to Gmail there."
+        )
+
+    async def test_other_modes_stream_no_add_account_flag(self) -> None:
+        with _graph_run("ui") as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["add_account"] is False
+
+        with _graph_run("ui") as writer:
+            await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert self._card(writer)["add_account"] is False
 
 
 class TestBackgroundRunPrompt:

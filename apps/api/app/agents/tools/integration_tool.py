@@ -13,9 +13,13 @@ from pydantic import BaseModel, ConfigDict
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
+    CONNECT_INTEGRATION_TOOL,
+    DISCONNECT_INTEGRATION_TOOL,
+    MAX_ACCOUNTS_PER_INTEGRATION,
     MAX_AVAILABLE_FOR_LLM,
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
+    ConnectMode,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
@@ -35,6 +39,7 @@ from app.models.integration_models import (
     SuggestedIntegration,
 )
 from app.models.mcp_config import McpProbeResult
+from app.models.oauth_models import OAuthIntegration
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (
     list_device_servers,
@@ -43,6 +48,11 @@ from app.services.device.device_service import (
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
+)
+from app.services.integrations.integration_accounts import (
+    at_account_limit,
+    describe_account,
+    get_account_record,
 )
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
@@ -287,6 +297,34 @@ async def suggest_integrations(
     )
 
 
+async def _connect_step(
+    integration: OAuthIntegration, user_id: str, mode: ConnectMode
+) -> ConnectMode | str:
+    """The connect to start for one integration, or why none starts."""
+    if mode is ConnectMode.RECONNECT:
+        return mode
+    if not await check_single_integration_status(integration.id, user_id):
+        return ConnectMode.CONNECT
+    if integration.composio_config is None:
+        if mode is ConnectMode.ADD_ACCOUNT:
+            return f"{integration.name} connects a single account; it cannot have several."
+        return f"✅ {integration.name} is already connected!"
+    record = await get_account_record(user_id, integration.id)
+    if mode is ConnectMode.ADD_ACCOUNT:
+        if at_account_limit(record):
+            return (
+                f"{integration.name} already has {MAX_ACCOUNTS_PER_INTEGRATION} accounts, the "
+                f"most allowed. One must be disconnected ({DISCONNECT_INTEGRATION_TOOL}) first."
+            )
+        return mode
+    names = ", ".join(a.display_name for a in record.accounts) if record else ""
+    listed = f" ({names})" if names else ""
+    return (
+        f"✅ {integration.name} is already connected{listed}. To add another account, call "
+        f"{CONNECT_INTEGRATION_TOOL} with mode='{ConnectMode.ADD_ACCOUNT}'."
+    )
+
+
 @tool
 @with_doc(CONNECT_INTEGRATION)
 async def connect_integration(
@@ -295,13 +333,15 @@ async def connect_integration(
         "List of exact integration IDs to connect (e.g., ['gmail', 'notion', 'twitter']).",
     ],
     config: RunnableConfig,
-    force_reconnect: Annotated[
-        bool,
-        "Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected.",
-    ] = False,
+    mode: Annotated[
+        ConnectMode,
+        "'connect' (default) for integrations the user has not connected; 'add_account' to "
+        "connect another account to one they already have; 'reconnect' only when the user "
+        "explicitly asks to reconnect or refresh a connection.",
+    ] = ConnectMode.CONNECT,
 ) -> str:
     try:
-        log.set(tool={"name": "connect_integration", "action": "connect"})
+        log.set(tool={"name": CONNECT_INTEGRATION_TOOL, "action": "connect", "mode": mode})
         user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
@@ -318,7 +358,7 @@ async def connect_integration(
         writer = get_stream_writer()
 
         results = []
-        connections_to_initiate = []
+        connections_to_initiate: list[tuple[OAuthIntegration, ConnectMode]] = []
 
         for integration_id in integration_ids:
             integration = next(
@@ -338,22 +378,18 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            if not force_reconnect:
-                is_connected = await check_single_integration_status(integration.id, user_id)
-                if is_connected:
-                    results.append(f"✅ {integration.name} is already connected!")
-                    continue
+            step = await _connect_step(integration, user_id, mode)
+            # ConnectMode is a StrEnum, so it must be checked before plain str.
+            if isinstance(step, ConnectMode):
+                connections_to_initiate.append((integration, step))
+            else:
+                results.append(step)
 
-            connections_to_initiate.append(integration)
-
-        for integration in connections_to_initiate:
+        for integration, step in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
             results.append(
                 await request_integration_connection(
-                    integration.id,
-                    integration.name,
-                    str(user_id),
-                    force_reconnect=force_reconnect,
+                    integration.id, integration.name, str(user_id), mode=step
                 )
             )
 
@@ -402,10 +438,20 @@ async def check_integrations_status(
                 results.append(f"❓ {integration_name}: Not found")
                 continue
 
-            # Use unified status checker
             is_connected = await check_single_integration_status(integration.id, user_id)
             status = "✅ Connected" if is_connected else "⚪ Not Connected"
-            results.append(f"{integration.name}: {status}")
+            record = (
+                await get_account_record(user_id, integration.id)
+                if integration.composio_config
+                else None
+            )
+            accounts = (
+                "; accounts: "
+                + ", ".join(describe_account(a, record.primary_account_id) for a in record.accounts)
+                if record and record.accounts
+                else ""
+            )
+            results.append(f"{integration.name}: {status}{accounts}")
 
         return "\n".join(results)
 

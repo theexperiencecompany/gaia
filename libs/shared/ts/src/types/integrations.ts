@@ -61,6 +61,8 @@ export interface IntegrationConnectionData {
   // Lets the card render a header before the live catalog (/integrations/me)
   // loads. Optional: absent on messages streamed before the field existed.
   integration_name?: string;
+  // Adds another account to an integration that stays connected.
+  add_account?: boolean;
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";

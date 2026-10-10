@@ -7,7 +7,13 @@ reviewer can read without also reading the fetch logic around it.
 from typing import Final, NamedTuple
 
 from app.constants.execute import RAN_AS_ACCOUNT_KEY
-from app.constants.integrations import RENAME_INTEGRATION_ACCOUNT_TOOL
+from app.constants.integrations import (
+    CONNECT_INTEGRATION_TOOL,
+    DISCONNECT_INTEGRATION_TOOL,
+    RENAME_INTEGRATION_ACCOUNT_TOOL,
+    SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,
+    ConnectMode,
+)
 
 #: Sections within the stable block are single lines or short line groups, so
 #: they read as one block. Volatile sections are paragraphs and get a blank line.
@@ -100,7 +106,9 @@ EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER = (
 #: Shown wherever an integration's accounts are listed, only when the user has
 #: connected more than one account to it; single-account users never see it.
 MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
-    "Some integrations have several connected accounts, listed with the integration. Tools "
+    "Some integrations have several connected accounts, listed with the integration. That "
+    "list is live: it wins over anything remembered or in your task about which accounts are "
+    "connected, and an account on it never needs connecting again. Tools "
     "act as the primary account unless you pass `account` to execute with one of those "
     "names. When the user names an account (an address, a workspace, 'my work email') or "
     "the conversation makes clear which one they mean, use only that one. Otherwise be "
@@ -112,16 +120,22 @@ MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
     f"account it ran as ({RAN_AS_ACCOUNT_KEY}); check it is the one you meant before "
     "reporting it. If the account they named fails or needs reconnecting, tell them: never "
     "use another account in its place without asking, and never present another account's "
-    "results as the one they named. Be smart about the accounts over time: when one only "
-    "has a generic name (like 'Google Calendar account 2') and you learn whose it is, name "
-    f"it with {RENAME_INTEGRATION_ACCOUNT_TOOL}; when you learn how the user uses them "
-    "(which one is for work, where invoices or a client's mail arrive), save that pattern "
-    "with add_memory, and use the patterns you remember to pick the right account next time."
+    "results as the one they named. To add another account, call "
+    f"{CONNECT_INTEGRATION_TOOL} with mode='{ConnectMode.ADD_ACCOUNT}'; to remove one, "
+    f"{DISCONNECT_INTEGRATION_TOOL} with that account; to change the default, "
+    f"{SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL}. Be smart about the accounts over time: when "
+    "one only has a generic name (like 'Google Calendar account 2') and you learn whose it "
+    f"is, name it with {RENAME_INTEGRATION_ACCOUNT_TOOL}; when you learn how the user uses "
+    "them (which one is for work, where invoices or a client's mail arrive), save that "
+    "pattern with add_memory, and use the patterns you remember to pick the right account "
+    "next time."
 )
 
 #: The comms agent sees the same account lists but acts on none of them.
 COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
-    "Some integrations have several connected accounts, listed with the integration. "
+    "Some integrations have several connected accounts, listed with the integration. That "
+    "list is live and wins over anything remembered about which accounts are connected; "
+    "never tell the executor a listed account may need connecting. "
     "Anything about those accounts, using one or renaming them, is executor work: delegate "
     "it with call_executor. Pass on only what the user said about accounts: if they named "
     "one, include it; if they did not, do not choose one or tell the executor to avoid the "
@@ -138,7 +152,7 @@ COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
 ACTIVATION_MULTI_ACCOUNT_POINTER: Final[str] = (
     "The user has several {integration} accounts. The current list, refreshed every turn, "
     "is with {integration} in the connected integrations section of your context, along "
-    "with how to choose one. {tool} is bound for naming them."
+    "with how to choose and manage them. Bound for managing them: {tools}."
 )
 
 #: What every block of remembered history says about itself. A memory of the

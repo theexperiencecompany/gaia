@@ -54,9 +54,12 @@ def _make_integration(
     short_name: str = "",
     description: str = "Email",
     category: str = "email",
+    *,
+    composio: bool = False,
 ) -> MagicMock:
-    """Create a mock OAuthIntegration."""
+    """Create a mock OAuthIntegration; composio gives it the config that allows several accounts."""
     mock = MagicMock()
+    mock.composio_config = MagicMock() if composio else None
     mock.id = integration_id
     mock.name = name
     mock.available = available
@@ -605,7 +608,7 @@ class TestConnectIntegration:
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
-        assert "already connected" in result
+        assert result == "✅ Gmail is already connected!"
 
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
@@ -618,7 +621,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("posthog", "PostHog", short_name="posthog")],
     )
-    async def test_force_reconnect_bypasses_connected_status_and_renders_reconnect_card(
+    async def test_reconnect_mode_bypasses_connected_status_and_renders_reconnect_card(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
         writer = _writer()
@@ -632,7 +635,7 @@ class TestConnectIntegration:
             patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
         ):
             result = await connect_integration.ainvoke(
-                {"integration_ids": ["posthog"], "force_reconnect": True}, config=_cfg()
+                {"integration_ids": ["posthog"], "mode": "reconnect"}, config=_cfg()
             )
 
         assert "reconnect button" in result
@@ -670,9 +673,7 @@ class TestConnectIntegration:
 
         assert "already connected" in result
         mock_check.assert_any_call("gmail", FAKE_USER_ID)
-        mock_request.assert_awaited_once_with(
-            "posthog", "PostHog", FAKE_USER_ID, force_reconnect=False
-        )
+        mock_request.assert_awaited_once_with("posthog", "PostHog", FAKE_USER_ID, mode="connect")
 
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
@@ -695,7 +696,7 @@ class TestConnectIntegration:
 
         assert "not found" in result
         mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
-        mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, force_reconnect=False)
+        mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, mode="connect")
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])

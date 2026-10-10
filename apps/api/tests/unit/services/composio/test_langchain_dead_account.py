@@ -159,6 +159,7 @@ class TestDeadAccountReconciles:
             "integration_id": "gmail",
             "integration_name": "Gmail",
             "expired": True,
+            "add_account": False,
             "message": "Your Gmail connection expired. Sign in again to keep using it.",
         }
         assert result["successful"] is False

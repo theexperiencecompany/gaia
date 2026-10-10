@@ -125,3 +125,41 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     expect(screen.getByText("Integration")).toBeDefined();
   });
 });
+
+describe("IntegrationConnectionPrompt — adding another account", () => {
+  beforeEach(() => {
+    connectIntegration.mockReset();
+    integrations = [];
+  });
+
+  it("keeps an Add account button on an integration that is already connected", async () => {
+    connectIntegration.mockResolvedValue({ status: "redirecting" });
+    integrations = [
+      {
+        ...oauthIntegration(),
+        id: "gmail",
+        name: "Gmail",
+        status: "connected",
+        source: "platform",
+      },
+    ];
+    render(
+      <IntegrationConnectionPrompt
+        integration_connection_required={{
+          integration_id: "gmail",
+          message: "Add another Gmail account.",
+          expired: false,
+          add_account: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(screen.getByText("Add another Gmail account.")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    await waitFor(() =>
+      expect(connectIntegration).toHaveBeenCalledWith("gmail", undefined),
+    );
+  });
+});

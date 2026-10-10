@@ -1,4 +1,7 @@
-"""rename_integration_account through the real tool, the real lifecycle service and match_account."""
+"""The account tools through the real tool, the real lifecycle service and match_account.
+
+The account repository, Composio, the trigger registries and analytics are the mocked seams.
+"""
 
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -8,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import ValidationError
 import pytest
 
-from app.agents.tools.integration_account_tools import rename_integration_account
+from app.agents.tools.integration_account_tools import (
+    disconnect_integration,
+    rename_integration_account,
+    set_primary_integration_account,
+)
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.analytics_service import AnalyticsEvents
 from tests.integration_account_factories import (
@@ -20,6 +27,7 @@ from tests.integration_account_factories import (
 USER_ID = "user-1"
 CONFIG = {"metadata": {"user_id": USER_ID}}
 LIFECYCLE = "app.services.integrations.integration_account_lifecycle"
+TOOLS = "app.agents.tools.integration_account_tools"
 
 _record = partial(make_integration_record, user_id=USER_ID, integration_id="googlecalendar")
 
@@ -30,6 +38,11 @@ class Seams:
     save: AsyncMock
     name: AsyncMock
     capture: MagicMock
+    workflow_triggers: AsyncMock
+    revoke: AsyncMock
+    disconnect_all: AsyncMock
+    disconnect_one_connection: AsyncMock
+    tool_capture: MagicMock
 
 
 async def _persist(
@@ -50,12 +63,32 @@ def seams() -> Iterator[Seams]:
         patch(f"{LIFECYCLE}.save_accounts", AsyncMock(side_effect=_persist)) as save,
         patch(f"{LIFECYCLE}.set_account_nickname", AsyncMock()) as name,
         patch(f"{LIFECYCLE}.capture_event") as capture,
+        patch(f"{LIFECYCLE}.TriggerService") as trigger_service,
+        patch(f"{LIFECYCLE}.resync_subscriptions_for_trigger_names", AsyncMock()),
+        patch(f"{LIFECYCLE}.get_composio_service") as composio,
+        patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect_all,
+        patch(
+            f"{TOOLS}.integration_connection_service.disconnect_integration", AsyncMock()
+        ) as disconnect_one_connection,
+        patch(f"{TOOLS}.capture_event") as tool_capture,
         patch("app.agents.tools.core.mutations.log"),
     ):
         name.side_effect = lambda _u, _i, account_id, nickname: with_nickname(
             get_record.return_value, account_id, nickname
         )
-        yield Seams(get_record=get_record, save=save, name=name, capture=capture)
+        trigger_service.resync_user_workflow_triggers = AsyncMock()
+        composio.return_value.delete_connected_account = AsyncMock()
+        yield Seams(
+            get_record=get_record,
+            save=save,
+            name=name,
+            capture=capture,
+            workflow_triggers=trigger_service.resync_user_workflow_triggers,
+            revoke=composio.return_value.delete_connected_account,
+            disconnect_all=disconnect_all,
+            disconnect_one_connection=disconnect_one_connection,
+            tool_capture=tool_capture,
+        )
 
 
 def _two_calendars() -> UserIntegrationDocument:
@@ -150,3 +183,140 @@ class TestRenameIntegrationAccount:
             await _rename("Google Calendar account 2", "x" * 61)
 
         seams.get_record.assert_not_awaited()
+
+
+def _work_and_personal() -> UserIntegrationDocument:
+    return _record(
+        make_integration_account("ca_1", label="me@gmail.com", nickname="Personal"),
+        make_integration_account("ca_2", label="work@acme.com"),
+        primary="ca_1",
+    )
+
+
+class TestSetPrimaryIntegrationAccount:
+    async def test_the_named_account_becomes_primary(self, seams: Seams) -> None:
+        seams.get_record.return_value = _work_and_personal()
+
+        result = await set_primary_integration_account.ainvoke(
+            {"integration_id": "googlecalendar", "account": "WORK@acme.com"}, config=CONFIG
+        )
+
+        assert result == "work@acme.com is now the primary googlecalendar account."
+        seams.save.assert_awaited_once_with(
+            USER_ID, "googlecalendar", seams.get_record.return_value.accounts, "ca_2"
+        )
+        seams.workflow_triggers.assert_awaited_once()
+        seams.name.assert_not_awaited()
+
+    async def test_an_expired_account_cannot_become_primary(self, seams: Seams) -> None:
+        seams.get_record.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2", "expired")
+        )
+
+        result = await set_primary_integration_account.ainvoke(
+            {"integration_id": "googlecalendar", "account": "ca_2@acme.com"}, config=CONFIG
+        )
+
+        assert result == "Error: Reconnect this account before making it primary"
+        seams.save.assert_not_awaited()
+
+    async def test_an_unknown_account_lists_the_real_names(self, seams: Seams) -> None:
+        seams.get_record.return_value = _work_and_personal()
+
+        result = await set_primary_integration_account.ainvoke(
+            {"integration_id": "googlecalendar", "account": "School"}, config=CONFIG
+        )
+
+        assert result == (
+            "Error: No googlecalendar account is named 'School' "
+            "Fix: Use one of: Personal, work@acme.com"
+        )
+        seams.save.assert_not_awaited()
+
+
+async def _disconnect(integration_id: str, account: str | None = None) -> str:
+    args: dict[str, object] = {"integration_id": integration_id}
+    if account is not None:
+        args["account"] = account
+    return await disconnect_integration.ainvoke(args, config=CONFIG)
+
+
+class TestDisconnectIntegration:
+    async def test_the_named_account_is_revoked_and_the_rest_stay(self, seams: Seams) -> None:
+        seams.get_record.return_value = _work_and_personal()
+
+        result = await _disconnect("googlecalendar", "Personal")
+
+        assert result == "Disconnected Personal. The primary account is work@acme.com."
+        seams.revoke.assert_awaited_once_with("ca_1")
+        seams.save.assert_awaited_once()
+        assert seams.save.await_args.args[2:] == (
+            [seams.get_record.return_value.accounts[1]],
+            "ca_2",
+        )
+        seams.disconnect_all.assert_not_awaited()
+
+    async def test_with_several_accounts_and_none_named_nothing_is_removed(
+        self, seams: Seams
+    ) -> None:
+        seams.get_record.return_value = _work_and_personal()
+
+        result = await _disconnect("googlecalendar")
+
+        assert result == (
+            "Error: The user has 2 googlecalendar accounts Fix: Pass account as one of: "
+            "Personal, work@acme.com, or ask the user which one"
+        )
+        seams.revoke.assert_not_awaited()
+        seams.disconnect_all.assert_not_awaited()
+
+    async def test_the_only_account_goes_without_being_named_and_disconnects_it(
+        self, seams: Seams
+    ) -> None:
+        seams.get_record.return_value = _record(make_integration_account("ca_1"))
+
+        result = await _disconnect("googlecalendar")
+
+        assert result == (
+            "Disconnected ca_1@acme.com, the only googlecalendar account, "
+            "so googlecalendar is no longer connected."
+        )
+        seams.disconnect_all.assert_awaited_once_with(USER_ID, "googlecalendar")
+        seams.revoke.assert_not_awaited()
+
+    async def test_an_unknown_account_removes_nothing(self, seams: Seams) -> None:
+        seams.get_record.return_value = _work_and_personal()
+
+        result = await _disconnect("googlecalendar", "School")
+
+        assert result.startswith("Error: No googlecalendar account is named 'School'")
+        seams.revoke.assert_not_awaited()
+
+    async def test_a_single_connection_integration_is_disconnected_whole(
+        self, seams: Seams
+    ) -> None:
+        result = await _disconnect("deepwiki")
+
+        assert result == "Disconnected deepwiki."
+        seams.disconnect_one_connection.assert_awaited_once_with(USER_ID, "deepwiki")
+        seams.tool_capture.assert_called_once_with(
+            USER_ID, AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "deepwiki"}
+        )
+        seams.get_record.assert_not_awaited()
+
+    async def test_a_single_connection_integration_takes_no_account(self, seams: Seams) -> None:
+        result = await _disconnect("deepwiki", "Work")
+
+        assert result == (
+            "Error: deepwiki has one connection, not separate accounts "
+            "Fix: Omit account to disconnect it"
+        )
+        seams.disconnect_one_connection.assert_not_awaited()
+
+    async def test_an_unknown_integration_says_so(self, seams: Seams) -> None:
+        seams.disconnect_one_connection.side_effect = ValueError("Integration nope not found")
+
+        result = await _disconnect("nope")
+
+        assert result == "Error: Integration nope not found Fix: Check the integration_id"
+        seams.tool_capture.assert_not_called()

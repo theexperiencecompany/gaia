@@ -3,6 +3,7 @@
 from app.config.oauth_config import get_integration_by_tool_slug, get_integration_by_toolkit
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import (
@@ -37,6 +38,28 @@ def match_account(record: UserIntegrationDocument, name: str) -> IntegrationAcco
         if wanted in {n.strip().casefold() for n in names if n}:
             return account
     return None
+
+
+def describe_account(account: IntegrationAccount, primary_id: str | None) -> str:
+    """One account as the agent sees it: its names, then primary/expired tags."""
+    # Quoted, so a model passing one as `account` copies the name and not the tags after it.
+    # A nickname hides the address the user may name the account by, so both are names.
+    names = [account.display_name, *([account.label] if account.nickname else [])]
+    tags = ["primary"] if account.connected_account_id == primary_id else []
+    if account.status != "connected":
+        tags.append("expired")
+    suffix = f" ({', '.join(tags)})" if tags else ""
+    return " or ".join(f'"{name}"' for name in names) + suffix
+
+
+def at_account_limit(record: UserIntegrationDocument | None) -> bool:
+    """Whether a connect must be refused up front: only live accounts count here.
+
+    Reconnecting an expired account replaces it, so the callback, which knows the
+    identity, is where every account counts.
+    """
+    live = [a for a in record.accounts if a.status == "connected"] if record else []
+    return len(live) >= MAX_ACCOUNTS_PER_INTEGRATION
 
 
 def primary_account(record: UserIntegrationDocument) -> IntegrationAccount | None:

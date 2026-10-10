@@ -41,7 +41,6 @@ from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.integration_models import IntegrationAccount
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
@@ -50,6 +49,7 @@ from app.services.device.device_service import (
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.integration_accounts import (
+    describe_account,
     get_account_record,
     list_multi_account_records,
 )
@@ -472,7 +472,7 @@ async def _multi_account_rows(user_id: str) -> dict[str, str]:
         return {}
     return {
         record.integration_id: " [accounts: "
-        + ", ".join(_account_line(a, record.primary_account_id) for a in record.accounts)
+        + ", ".join(describe_account(a, record.primary_account_id) for a in record.accounts)
         + "]"
         for record in records
     }
@@ -541,17 +541,6 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
     return "\n".join(lines)
 
 
-def _account_line(account: IntegrationAccount, primary_id: str | None) -> str:
-    # Quoted, so a model passing one as `account` copies the name and not the tags after it.
-    # A nickname hides the address the user may name the account by, so both are names.
-    names = [account.display_name, *([account.label] if account.nickname else [])]
-    tags = ["primary"] if account.connected_account_id == primary_id else []
-    if account.status != "connected":
-        tags.append("expired")
-    suffix = f" ({', '.join(tags)})" if tags else ""
-    return " or ".join(f'"{name}"' for name in names) + suffix
-
-
 async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
     """Who the user is on this provider: the identity of one account, or the list of several.
 
@@ -584,7 +573,9 @@ async def build_provider_metadata_block(integration_id: str | None, user_id: str
             return ""
         lines = "\n".join(f"- {key}: {value}" for key, value in identity.items())
         return f"USER CONTEXT FOR {title}:\n{lines}"
-    lines = "\n".join(f"- {_account_line(a, record.primary_account_id)}" for a in record.accounts)
+    lines = "\n".join(
+        f"- {describe_account(a, record.primary_account_id)}" for a in record.accounts
+    )
     return f"USER'S {title} ACCOUNTS:\n{lines}\n{MULTI_ACCOUNT_INSTRUCTION}"
 
 

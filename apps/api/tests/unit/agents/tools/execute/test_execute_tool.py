@@ -76,7 +76,11 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         redeem.assert_awaited_once_with(
-            "ap_1", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1",
+            user_id="u1",
+            conversation_id="conv-1",
+            caller="executor_conv-1",
+            run_config=self._config(),
         )
         assert result.ok is True
         assert "Executed 'ap_1'" in str(result.output)

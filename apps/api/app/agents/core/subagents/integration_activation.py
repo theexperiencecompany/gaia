@@ -33,13 +33,24 @@ from app.agents.skills.discovery import get_available_skills_text
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import render_preload_block, split_startup_tools
 from app.agents.workspace.system_docs import integration_skills_block
-from app.constants.integrations import RENAME_INTEGRATION_ACCOUNT_TOOL
+from app.constants.integrations import (
+    DISCONNECT_INTEGRATION_TOOL,
+    RENAME_INTEGRATION_ACCOUNT_TOOL,
+    SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,
+)
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
 from app.services.integration_instructions_service import get_instructions
 from app.services.integrations.integration_accounts import get_account_record
 from shared.py.wide_events import log
+
+# Bound with an integration that has several accounts, so they are callable at once.
+ACCOUNT_TOOLS = (
+    RENAME_INTEGRATION_ACCOUNT_TOOL,
+    SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,
+    DISCONNECT_INTEGRATION_TOOL,
+)
 
 
 def _requires_per_user_tokens(subagent: Subagent) -> bool:
@@ -148,7 +159,7 @@ async def _activation_context(
             if several_accounts:
                 sections.append(
                     ACTIVATION_MULTI_ACCOUNT_POINTER.format(
-                        integration=integration_name, tool=RENAME_INTEGRATION_ACCOUNT_TOOL
+                        integration=integration_name, tools=", ".join(ACCOUNT_TOOLS)
                     )
                 )
             else:
@@ -332,7 +343,7 @@ async def activate_integration(
     tool_count, bind, preloaded, docs = await _activate_tools(subagent, user_id)
     several_accounts = await _has_several_accounts(integration_id, user_id)
     if several_accounts:
-        bind = [*bind, RENAME_INTEGRATION_ACCOUNT_TOOL]
+        bind = [*bind, *ACCOUNT_TOOLS]
     context = await _activation_context(integration_id, subagent.name, user_id, several_accounts)
     log.set(
         activation={
