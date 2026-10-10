@@ -1,11 +1,4 @@
-"""End-to-end contracts of the wide-event pipeline — one test per shipped bug class.
-
-Every test here is a regression lock on a bug that was proven in production
-code while the unit suite stayed green: each asserts a *cross-component
-contract* (facade × Starlette × sink × middleware order) using the real
-components, mocking only the final emit boundary. If one of these goes red,
-telemetry is silently broken in a way no per-function test can see.
-"""
+"""End-to-end contracts of the wide-event pipeline — one test per shipped bug class."""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -25,6 +18,7 @@ from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.core.app_factory import create_app
 from app.core.middleware import configure_middleware
+from app.models.user_models import AuthenticatedUser
 from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink, env_context
 from shared.py.wide_events import (
     _event_state,
@@ -34,6 +28,7 @@ from shared.py.wide_events import (
     spawn_logged_task,
     wide_task,
 )
+from tests.helpers import WideEventRecorder
 
 
 class _EmitRecorder:
@@ -65,19 +60,7 @@ def _app_with_logging() -> FastAPI:
 
 
 def test_app_code_cannot_clobber_the_service_identity(capsys):
-    """`env`/`service`/`commit` must equal this process's infra identity, always.
-
-    The shipped bug: env fields were merged BEFORE handler fields, so 16
-    service-layer callers doing log.set(service="notes_service") overwrote the
-    infra identity — `{service="gaia-backend"} | json | service="gaia-backend"`
-    stopped agreeing with itself and dashboards under-counted silently.
-
-    The guarantee now lives in the sink rather than in the middleware's dict
-    ordering: `_build_json_entry` stamps the identity on EVERY line (matching
-    what buildRecord does for the TypeScript bots) and re-emits a colliding app
-    field as ctx_<key>. So this asserts the sink, which also covers the
-    real-time lines the middleware never touched.
-    """
+    """env/service/commit must equal this process's infra identity even when app code sets those keys."""
     hijack = {"service": "HIJACKED", "env": "HIJACKED", "commit": "HIJACKED"}
     _json_stdout_sink(type("M", (), {"record": _record(hijack)})())
     line = json.loads(capsys.readouterr().out.strip())
@@ -91,12 +74,7 @@ def test_app_code_cannot_clobber_the_service_identity(capsys):
 
 
 def test_handler_fields_reach_the_emitted_event(emitted):
-    """Handler/service log.set, set_ns and errors[] must survive call_next.
-
-    The shipped bug: BaseHTTPMiddleware runs handlers in a copied context, and
-    the rebind-based accumulator dropped every handler field from the emitted
-    http_request line.
-    """
+    """Handler/service log.set, set_ns and errors[] must survive call_next."""
     app = _app_with_logging()
 
     @app.get("/t")
@@ -116,16 +94,7 @@ def test_handler_fields_reach_the_emitted_event(emitted):
 
 @pytest.mark.regression
 def test_a_second_set_of_a_namespace_merges_instead_of_replacing(emitted):
-    """`log.set(ns={...})` must accumulate, exactly like `set_ns`.
-
-    The shipped bug: `set` did a flat `fields.update()`, so a later whole-dict
-    write REPLACED the namespace instead of merging into it. In production
-    complete_execution's `log.set(workflow={...})` — the last write on a run, and
-    the one that carries no trigger_type — erased that field from 34,247 of
-    34,413 workflow fires, leaving no way to tell a scheduled fire from a webhook
-    one. Every layer of a request writes the same namespace; whichever wrote last
-    silently won.
-    """
+    """log.set(ns={...}) must accumulate like set_ns (once erased a field from 34,247/34,413 fires)."""
     app = _app_with_logging()
 
     @app.get("/t")
@@ -162,8 +131,7 @@ def test_set_and_set_ns_are_interchangeable(emitted):
 
 
 def test_a_non_dict_value_still_replaces(emitted):
-    """Only dict-into-dict merges. A scalar (or a scalar over a dict) overwrites —
-    merging is about accumulating a namespace, not about never overwriting."""
+    """Only dict-into-dict merges; a scalar (or a scalar over a dict) overwrites."""
     app = _app_with_logging()
 
     @app.get("/t")
@@ -183,7 +151,7 @@ def test_user_identity_attached_from_request_state(emitted):
 
     class FakeAuth(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            request.state.user = {"user_id": "u_state", "email": "s@x.com"}
+            request.state.user = AuthenticatedUser(user_id="u_state", email="s@x.com")
             return await call_next(request)
 
     # Auth INSIDE the boundary, as in production.
@@ -202,12 +170,7 @@ def test_user_identity_attached_from_request_state(emitted):
 
 
 def test_timed_out_request_emits_event_with_partial_context(emitted):
-    """A 504 must produce an http_request event carrying the handler's fields.
-
-    The shipped bug: the timeout middleware sat OUTSIDE the logging boundary;
-    anyio's cancellation killed the emit and the slowest requests were the
-    only ones with zero telemetry.
-    """
+    """A 504 must produce an http_request event carrying the handler's fields."""
     app = FastAPI()
     app.add_middleware(RequestTimeoutMiddleware, timeout=0.2)
     app.add_middleware(LoggingMiddleware)  # outermost, as in production
@@ -243,14 +206,7 @@ def test_rejections_by_inner_middleware_are_logged(emitted):
 
 
 def test_raised_http_exception_lands_in_errors_with_its_cause(emitted):
-    """`raise HTTPException(500, ...) from e` must reach errors[] with the real cause.
-
-    The shipped bug: Starlette's ExceptionMiddleware turns an HTTPException
-    into a response INSIDE call_next, so the boundary's except path never sees
-    it. Every one of the ~428 `raise HTTPException` sites emitted an event with
-    final_level=ERROR but no `errors` key at all — the real failure (the
-    exception the handler caught) was nowhere in the telemetry.
-    """
+    """Raise HTTPException(500, ...) from e must reach errors[] with the real cause."""
 
     @asynccontextmanager
     async def _noop_lifespan(app: FastAPI):
@@ -286,14 +242,7 @@ def test_raised_http_exception_lands_in_errors_with_its_cause(emitted):
 
 
 def test_production_middleware_order_keeps_logging_outermost():
-    """The wide-event boundaries must stay the outermost app middleware, timeout inside them.
-
-    Two boundaries, one per scope: ``WebSocketWideEventMiddleware`` (pure ASGI,
-    wraps websocket scope) must be outermost because ``LoggingMiddleware`` is a
-    ``BaseHTTPMiddleware`` that drops websocket scope; ``LoggingMiddleware``
-    (HTTP) sits just inside it. Both must stay outside the request timeout so a
-    timed-out request still gets a canonical event.
-    """
+    """The wide-event boundaries must stay outermost, timeout inside them, WebSocket above HTTP."""
     app = FastAPI()
     configure_middleware(app)
     names = [m.cls.__name__ for m in app.user_middleware]
@@ -304,12 +253,7 @@ def test_production_middleware_order_keeps_logging_outermost():
 
 
 def test_braces_in_message_with_kwargs_do_not_raise():
-    """The loguru format trap: dynamic message content must never be formatted.
-
-    The shipped bug: kwargs made loguru str.format the message at the call
-    site, so braces in exception text raised INSIDE log.error, masking the
-    real error and dropping the errors[] entry.
-    """
+    """The loguru format trap: dynamic message content must never be formatted."""
     log.reset()
     log.error("payload {bad json", error_type="X")
     log.error('failed: {"detail": "boom"}', user_id="u1")
@@ -351,12 +295,7 @@ def _record(extra: dict[str, Any]) -> dict[str, Any]:
     ids=["non-str-dict-key", "core-key-collision", "oversized-line"],
 )
 def test_json_sink_is_total(hostile_extra, capsys):
-    """Hostile values must degrade, never drop or corrupt the line.
-
-    The shipped bugs: a non-str dict key dropped the entire http_request
-    line; log.set(level=...) clobbered the line's real level; a huge value
-    produced a line Loki rejects.
-    """
+    """Hostile values must degrade, never drop or corrupt the line."""
     circular: dict[str, Any] = {}
     circular["self"] = circular
     _json_stdout_sink(type("M", (), {"record": _record({**hostile_extra, "circular": circular})})())
@@ -370,12 +309,7 @@ def test_json_sink_is_total(hostile_extra, capsys):
 
 
 def test_writes_outside_a_boundary_are_discarded_not_shared():
-    """No boundary → throwaway state: no accumulation, no shared ambient dict.
-
-    The shipped bug: a lazily bound ambient state was inherited by every task
-    spawned from the main context (WebSockets, ARQ jobs) — one process-global
-    dict that mixed users and grew forever.
-    """
+    """No boundary → throwaway state: no accumulation, no shared ambient dict."""
     _event_state.set(None)
     log.set(user={"id": "leak?"})
     log.error("orphan", error_type="X")
@@ -384,11 +318,7 @@ def test_writes_outside_a_boundary_are_discarded_not_shared():
 
 
 async def test_spawn_logged_task_emits_correlated_event():
-    """Fire-and-forget work must emit its own event with the spawner's trace_id.
-
-    The shipped bug: bare create_task work inherited an already-emitted
-    request state; its fields (LLM cost accounting included) vanished.
-    """
+    """Fire-and-forget work must emit its own event with the spawner's trace_id."""
     emitted: list[dict[str, Any]] = []
 
     class _Recorder:
@@ -456,38 +386,9 @@ async def test_interleaved_wide_tasks_stay_isolated():
     assert by_name["job_a"]["trace_id"] != by_name["job_b"]["trace_id"]
 
 
-class _EventRecorder:
-    """Captures every wide event a boundary flushes through the loguru sink."""
-
-    def __init__(self) -> None:
-        self.events: list[dict[str, Any]] = []
-
-    def bind(self, **kwargs: Any) -> "_EventRecorder":
-        self._ctx = kwargs
-        return self
-
-    def log(self, level: str, message: str) -> None:
-        self.events.append(dict(self._ctx))
-
-    def opt(self, **kwargs: Any) -> "_EventRecorder":
-        return self
-
-    def __getattr__(self, name: str) -> Any:
-        return lambda *a, **k: None
-
-
 async def test_a_nested_boundary_does_not_steal_the_outer_event():
-    """An inner boundary must not consume the event the outer one owes.
-
-    The shipped bug: `_wide_event_boundary` called `log.reset()` without
-    restoring the caller's accumulator, and an `asynccontextmanager` body runs
-    in the caller's context (no task copy). So an inner `log_context` left the
-    ContextVar pointed at its own state — the outer boundary then emitted the
-    INNER's fields a second time and silently lost every field of its own,
-    including anything set after the inner block. This is what makes a
-    per-iteration boundary inside a long-lived listener loop usable at all.
-    """
-    recorder = _EventRecorder()
+    """An inner boundary must not consume the event the outer one owes."""
+    recorder = WideEventRecorder()
 
     with patch("shared.py.wide_events._loguru", recorder):
         async with log_context("outer", outer_before=True):
@@ -509,15 +410,9 @@ async def test_a_nested_boundary_does_not_steal_the_outer_event():
 
 
 async def test_adopted_trace_id_reaches_spawned_child_work():
-    """`log.set(trace_id=...)` must move the ContextVar, not just the field.
-
-    The shipped bug: adopting an upstream `x-trace-id` wrote the FIELD only,
-    while `get_trace_id()` (and therefore every `spawn_logged_task` child) kept
-    returning the boundary's generated id — the parent event and its background
-    work landed under two different traces and could not be joined.
-    """
+    """log.set(trace_id=...) must move the ContextVar, not just the field."""
     upstream = "cafebabedeadbeef"
-    recorder = _EventRecorder()
+    recorder = WideEventRecorder()
 
     async def child() -> None:
         log.set(child_ran=True)

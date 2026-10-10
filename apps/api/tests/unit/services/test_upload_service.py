@@ -71,8 +71,7 @@ class TestUploadFileToCloudinary:
         mock_upload.assert_not_called()
 
     def test_raises_500_when_secure_url_missing(self, mock_upload):
-        """The missing-secure_url guard raises inside the try, so the generic
-        except rewraps it into the generic 500 — that is the observable contract."""
+        """The missing-secure_url guard raises inside the try, which the generic except rewraps into a 500."""
         mock_upload.return_value = {"url": "http://insecure.example"}
 
         with pytest.raises(HTTPException) as exc_info:

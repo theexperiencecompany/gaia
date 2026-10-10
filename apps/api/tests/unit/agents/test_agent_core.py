@@ -9,20 +9,35 @@ import pytest
 
 from app.agents.core import agent as agent_module
 from app.agents.core.agent import (
+    AgentRunOptions,
+    StreamMessageIds,
     _core_agent_logic,
     call_agent,
     call_agent_silent,
 )
-from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
+from app.config.settings import settings
+from app.constants.agents import (
+    PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    PLAYBOOK_REPLAYED_CALLS_KEY,
+    WORKFLOW_LOCK_CONTEXT_KEY,
+)
 from app.constants.llm import DEV_MODEL_OPTIONS
-from app.helpers.agent_helpers import recent_user_messages
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentTracing,
+    AgentTurn,
+    recent_user_messages,
+)
+from app.models.agent_models import SilentRunResult, agent_user_context
 from app.models.message_models import (
     MessageRequestWithHistory,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
 # ---------------------------------------------------------------------------
@@ -46,14 +61,14 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
     return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
-def _make_user(**overrides) -> dict:
-    defaults = {
+def _make_user(**overrides) -> AuthenticatedUser:
+    defaults: dict[str, object] = {
         "user_id": "user-123",
         "email": "test@example.com",
         "name": "Test User",
     }
     defaults.update(overrides)
-    return defaults
+    return AuthenticatedUser(**defaults)
 
 
 FAKE_HISTORY = [
@@ -80,8 +95,7 @@ FAKE_CONFIG = {
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
-    """Keep every test hermetic: agent lifecycle events are asserted through
-    this mock and never reach a real PostHog client."""
+    """Keep every test hermetic: agent lifecycle events are asserted through this mock and never reach a real PostHog client."""
     with patch("app.agents.core.agent.capture_event") as mock_capture:
         yield mock_capture
 
@@ -164,15 +178,11 @@ class TestCoreAgentLogic:
         mock_construct.assert_awaited_once()
         kwargs = mock_construct.call_args.kwargs
         assert kwargs["query"] == "custom query"
-        assert kwargs["user_name"] == "Alice"
+        assert kwargs["scope"].user_name == "Alice"
 
     @pytest.mark.asyncio
     async def test_the_users_onboarding_data_reaches_build_agent_config(self):
-        """``onboarding_preferences(user.get("onboarding"))`` is real, unmocked
-        code in ``_core_agent_logic`` — this proves the pair it derives actually
-        lands on the ``build_agent_config`` call (so the executor and every
-        subagent it hands off to can inherit it), not just that extraction
-        doesn't crash."""
+        """Onboarding_preferences(user.get("onboarding")) is real, unmocked code in _core_agent_logic — this proves the pair it derives actually lands on the build_agent_config call (so the executor and every subagent it hands off to can inherit it), not just that extraction doesn't crash."""
         user = _make_user(
             onboarding={
                 "preferences": {"profession": "engineer"},
@@ -190,8 +200,44 @@ class TestCoreAgentLogic:
             await _core_agent_logic(request=_make_request(), conversation_id="conv-1", user=user)
 
         kwargs = mock_build_config.call_args.kwargs
-        assert kwargs["user_preferences"] == {"profession": "engineer"}
-        assert kwargs["writing_style"] == {"summary": "terse"}
+        assert kwargs["turn"].user_preferences == {"profession": "engineer"}
+        assert kwargs["turn"].writing_style == {"summary": "terse"}
+
+    @pytest.mark.asyncio
+    async def test_a_workflow_fire_reaches_build_agent_config_on_the_turn(self):
+        """The id must arrive on the turn: the configurable is stamped only after this returns."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-brief"}),
+            )
+
+        assert mock_build_config.call_args.kwargs["turn"].workflow_id == "wf-brief"
+
+    @pytest.mark.asyncio
+    async def test_interactive_chat_carries_no_workflow_on_the_turn(self):
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(), conversation_id="conv-1", user=_make_user()
+            )
+
+        assert mock_build_config.call_args.kwargs["turn"].workflow_id is None
 
     @pytest.mark.asyncio
     async def test_passes_trigger_context(self):
@@ -208,7 +254,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context=trigger,
+                options=AgentRunOptions(trigger_context=trigger),
             )
 
         # build_initial_state gets the trigger_context
@@ -236,7 +282,7 @@ class TestCoreAgentLogic:
                 ),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context={"workflow_id": "wf-1"},
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-1"}),
             )
 
         mock_log.set.assert_called_once()
@@ -329,7 +375,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                stream_id="stream-abc",
+                ids=StreamMessageIds(stream_id="stream-abc"),
             )
 
             # The config passed to execute_graph_streaming should have stream_id
@@ -374,9 +420,7 @@ class TestCallAgent:
 
     @pytest.mark.asyncio
     async def test_bot_message_id_added_to_config(self):
-        """A HIL pause on this turn's executor resumes onto this SAME bot message.
-        Losing the id there mints a rival message and the user watches the wrong
-        one."""
+        """A HIL pause on this turn's executor resumes onto this SAME bot message."""
 
         async def _fake_stream(*args, **kwargs):
             yield "data: [DONE]\n\n"
@@ -407,7 +451,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                bot_message_id="bot-msg-7",
+                ids=StreamMessageIds(bot_message_id="bot-msg-7"),
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -661,7 +705,7 @@ class TestCallAgent:
             gen = await call_agent(
                 request=_make_request(),
                 conversation_id="conv-1",
-                user=_make_user(user_id=None),
+                user=_make_user(user_id=""),
             )
 
         chunks = [chunk async for chunk in gen]
@@ -698,12 +742,11 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        assert result == ("Hello!", {"tool": "data"})
+        assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
-        """A swallowed failure returned as a normal result reads as success to every
-        caller — which is how workflows reported success through the Gemini 429s."""
+        """A swallowed failure returned as a normal result reads as success to every caller — which is how workflows reported success through the Gemini 429s."""
         patches = _common_patches()
         with (
             patches["construct"],
@@ -744,11 +787,11 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context=trigger,
+                options=AgentRunOptions(trigger_context=trigger),
             )
 
-        # construct_langchain_messages should get trigger_context
-        assert mock_construct.call_args.kwargs["trigger_context"] == trigger
+        # construct_langchain_messages should get trigger_context via attachments
+        assert mock_construct.call_args.kwargs["attachments"].trigger_context == trigger
 
     @pytest.mark.asyncio
     async def test_usage_metadata_logging(self):
@@ -776,7 +819,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         # log.set should be called with token counts
@@ -813,7 +856,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         # usage_metadata is None -> or {} -> sums are 0
@@ -876,7 +919,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         log_calls = mock_log.set.call_args_list
@@ -1007,7 +1050,7 @@ class TestCallAgentSilent:
             await call_agent_silent(
                 request=_make_request(),
                 conversation_id="conv-1",
-                user=_make_user(user_id=None),
+                user=_make_user(user_id=""),
             )
 
         _no_real_analytics.assert_not_called()
@@ -1019,9 +1062,9 @@ class TestCallAgentSilent:
 
 
 def _fresh_config() -> dict:
-    """A config object this test owns.
+    """Build a config object this test owns.
 
-    ``_core_agent_logic`` MUTATES ``config["configurable"]``, so the shared
+    _core_agent_logic MUTATES config["configurable"], so the shared
     module-level FAKE_CONFIG cannot be used by anything that asserts on those
     writes — one test would see the previous test's key.
     """
@@ -1029,9 +1072,9 @@ def _fresh_config() -> dict:
 
 
 class TestTheLaneTheRunResolves:
-    """This is the top-level run: ``build_agent_config`` resolves the comms lane
-    here and the executor plus every subagent inherit it whole. Everything the run
-    is has to reach that one call — a blanked or dropped argument is a turn that
+    """Assemble the top-level run: build_agent_config resolves the comms lane here and the executor plus every subagent inherit it whole.
+
+    Everything the run is has to reach that one call — a blanked or dropped argument is a turn that
     silently loses its tool scope, its trace, or its identity.
     """
 
@@ -1046,9 +1089,8 @@ class TestTheLaneTheRunResolves:
             patches["get_graph"],
             patches["build_state"],
             # dev_option is None only in production: with ENV unpinned this passes
-            # in CI (no .env) and fails on every developer machine, where
-            # apps/api/.env sets ENV=development and the dev selector resolves an
-            # option. Pinned the same way TestTheDevModelSelector pins it.
+            # in CI (no .env) but fails on developer machines, where apps/api/.env
+            # sets ENV=development. Pinned like TestTheDevModelSelector.
             patch.object(agent_module.settings, "ENV", "production"),
             patch(
                 "app.agents.core.agent.build_agent_config",
@@ -1056,47 +1098,55 @@ class TestTheLaneTheRunResolves:
                 return_value=_fresh_config(),
             ) as build_config,
             patches["log"],
-            # Pinned, as the dev-selector classes below already do: the dev model
-            # menu is live only in development, and a developer's own .env sets
-            # ENV=development — so an unpinned run resolves DEV_DEFAULT_MODEL and
-            # this expectation holds in CI and nowhere else.
+            # Pinned as the dev-selector classes below do: the dev model menu is
+            # live only in development, and a developer's .env sets ENV=development,
+            # so an unpinned run resolves DEV_DEFAULT_MODEL and holds only in CI.
             patch.object(agent_module.settings, "ENV", "production"),
         ):
             await _core_agent_logic(
                 request=request,
                 conversation_id="conv-1",
                 user=user,
-                usage_metadata_callback=callback,
-                source="web",
-                langfuse_trace_id="trace-1",
-                langfuse_tags=["tag-a"],
+                options=AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    source="web",
+                    langfuse_trace_id="trace-1",
+                    langfuse_tags=["tag-a"],
+                ),
             )
 
         assert build_config.call_args.args == ()
+        # Dataclass equality, so this is exactly as strict as the flat-kwargs dict
+        # it replaced: every field of every group has to match, and an argument
+        # dropped on the floor shows up as a default that is not the value here.
         assert build_config.call_args.kwargs == {
-            "conversation_id": "conv-1",
-            "user": user,
-            "role": AgentRole.COMMS,
-            "dev_option": None,
-            "usage_metadata_callback": callback,
-            "agent_name": "comms_agent",
-            "selected_tool": "web_search",
-            "tool_category": "research",
-            "active_todo_id": None,
-            "execution_mode": "interactive",
-            "source": "web",
-            "user_messages": recent_user_messages(request.messages, request.message),
-            "user_request": request.message,
-            "user_preferences": None,
-            "writing_style": None,
-            "langfuse_trace_id": "trace-1",
-            "langfuse_tags": ["tag-a"],
+            "identity": AgentIdentity(
+                conversation_id="conv-1",
+                user=agent_user_context(user),
+                agent_name="comms_agent",
+            ),
+            "lane": AgentLane(role=AgentRole.COMMS, dev_option=None),
+            "turn": AgentTurn(
+                selected_tool="web_search",
+                tool_category="research",
+                active_todo_id=None,
+                execution_mode="interactive",
+                source="web",
+                user_messages=recent_user_messages(request.messages, request.message),
+                user_request=request.message,
+                user_preferences=None,
+                writing_style=None,
+            ),
+            "tracing": AgentTracing(
+                usage_metadata_callback=callback,
+                langfuse_trace_id="trace-1",
+                langfuse_tags=["tag-a"],
+            ),
         }
 
     @pytest.mark.asyncio
     async def test_a_background_trigger_run_says_so(self):
-        """The mode and the todo come from the trigger context, and the executor
-        inherits both — a wrong value here routes the result to the wrong place."""
+        """The mode and the todo come from the trigger context, and the executor inherits both — a wrong value here routes the result to the wrong place."""
         patches = _common_patches()
         with (
             patches["construct"],
@@ -1113,16 +1163,88 @@ class TestTheLaneTheRunResolves:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context={"execution_mode": "background", "todo_id": "todo-9"},
+                options=AgentRunOptions(
+                    trigger_context={"execution_mode": "background", "todo_id": "todo-9"}
+                ),
             )
 
-        assert build_config.call_args.kwargs["execution_mode"] == "background"
-        assert build_config.call_args.kwargs["active_todo_id"] == "todo-9"
+        assert build_config.call_args.kwargs["turn"].execution_mode == "background"
+        assert build_config.call_args.kwargs["turn"].active_todo_id == "todo-9"
+
+
+class TestTheBackgroundRunsStandingAuthorization:
+    """A scheduled run's human-written workflow and todo text reach the HIL judge as the turn's own words."""
+
+    @staticmethod
+    async def _run(request: MessageRequestWithHistory, trigger: dict[str, object]) -> MagicMock:
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=request,
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context=trigger),
+            )
+        return build_config
+
+    @pytest.mark.asyncio
+    async def test_the_workflow_card_and_todo_title_authorize_a_background_run(self):
+        request = _make_request(
+            selectedWorkflow=SelectedWorkflowData(
+                id="wf-1", title="Morning brief", description="Summarise my inbox", steps=[]
+            )
+        )
+
+        build_config = await self._run(
+            request, {"execution_mode": "background", "todo_title": "Pay rent"}
+        )
+
+        assert build_config.call_args.kwargs["turn"].user_messages == [
+            *recent_user_messages(request.messages, request.message),
+            "Scheduled workflow: Morning brief. Summarise my inbox",
+            "Tracked todo: Pay rent",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_background_run_with_no_card_or_todo_adds_nothing(self):
+        request = _make_request()
+
+        build_config = await self._run(request, {"execution_mode": "background"})
+
+        assert build_config.call_args.kwargs["turn"].user_messages == recent_user_messages(
+            request.messages, request.message
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_interactive_run_never_gains_schedule_authorization(self):
+        request = _make_request(
+            selectedWorkflow=SelectedWorkflowData(
+                id="wf-1", title="Morning brief", description="Summarise my inbox", steps=[]
+            )
+        )
+
+        build_config = await self._run(request, {"todo_title": "Pay rent"})
+
+        assert build_config.call_args.kwargs["turn"].user_messages == recent_user_messages(
+            request.messages, request.message
+        )
 
 
 class TestTheDevModelSelector:
-    """DEV-ONLY: the chat-header model picker. It wins over plan routing inside
-    resolve_lane, and must be inert in production."""
+    """DEV-ONLY: the chat-header model picker.
+
+    It wins over plan routing inside resolve_lane, and must be inert in production.
+    """
 
     async def _dev_option_for(self, request, env="development", dev_default=None):
         patches = _common_patches()
@@ -1137,10 +1259,10 @@ class TestTheDevModelSelector:
             ) as build_config,
             patches["log"],
             patch.object(agent_module.settings, "ENV", env),
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+            patch.object(settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
-        return build_config.call_args.kwargs["dev_option"]
+        return build_config.call_args.kwargs["lane"].dev_option
 
     @pytest.mark.asyncio
     async def test_an_explicit_comms_pick_becomes_the_runs_dev_option(self):
@@ -1152,8 +1274,7 @@ class TestTheDevModelSelector:
 
     @pytest.mark.asyncio
     async def test_expressing_no_preference_takes_the_env_configured_default(self):
-        """``use_default_models`` is what routes bots, scripts and plain requests
-        onto the dev model too, so it cannot be ignored here."""
+        """Use_default_models is what routes bots, scripts and plain requests onto the dev model too, so it cannot be ignored here."""
         option = await self._dev_option_for(
             _make_request(comms_model=None, use_default_models=True),
             dev_default="deepseek-v4",
@@ -1172,9 +1293,7 @@ class TestTheDevModelSelector:
 
 
 class TestTheExecutorsOwnDevModel:
-    """The executor builds its own configurable and would otherwise inherit
-    comms's lane, so its dev pick rides down on the configurable for
-    prepare_executor_execution to resolve."""
+    """The executor builds its own configurable and would otherwise inherit comms's lane, so its dev pick rides down on the configurable for prepare_executor_execution to resolve."""
 
     async def _configurable(self, request, env="development", dev_default=None):
         config = _fresh_config()
@@ -1190,7 +1309,7 @@ class TestTheExecutorsOwnDevModel:
             ),
             patches["log"],
             patch.object(agent_module.settings, "ENV", env),
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+            patch.object(settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
         return config["configurable"]
@@ -1229,3 +1348,238 @@ class TestTheExecutorsOwnDevModel:
         )
 
         assert "dev_executor_model" not in configurable
+
+
+# ---------------------------------------------------------------------------
+# what each entry point hands down
+# ---------------------------------------------------------------------------
+
+
+class TestTheWorkflowKeysTheRunStashes:
+    """A briefed workflow run writes its routing keys onto the live configurable.
+
+    The whole bag is asserted, not one key: the background executor's delivery
+    path reads these by name, so a key written under a different spelling — or
+    an extra one nobody reads — is a run whose result never reaches the
+    workflow-completion notification, and nothing raises to say so.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_briefed_run_stashes_its_playbook_fallback_under_that_exact_key(self):
+        config = _fresh_config()
+        trigger = {
+            "workflow_id": "wf-1",
+            "workflow_title": "Daily digest",
+            "workflow_notify_on_completion": False,
+            PLAYBOOK_FALLBACK_CONTEXT_KEY: "hash_drift at step 3",
+            WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
+            PLAYBOOK_REPLAYED_CALLS_KEY: [{"tool_name": "GMAIL_FETCH_EMAILS"}],
+        }
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context=trigger),
+            )
+
+        configurable = dict(config["configurable"])
+        # Env-derived: present only when the machine configures a dev model
+        # override; not part of the workflow-routing contract under test.
+        configurable.pop("dev_executor_model", None)
+        assert configurable == {
+            "thread_id": "conv-1",
+            "user_id": "user-123",
+            "model": "gpt-4o",
+            "workflow_id": "wf-1",
+            "workflow_title": "Daily digest",
+            "workflow_notify_on_completion": False,
+            "playbook_fallback": "hash_drift at step 3",
+            # The claim its fire took on this conversation, carried through so
+            # call_executor adopts it instead of queueing the run behind it. Read
+            # under a different spelling and every workflow run goes to a dead inbox.
+            "executor_lock_reservation": ":fire-task-1",
+            "playbook_replayed_calls": [{"tool_name": "GMAIL_FETCH_EMAILS"}],
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_playbook_brief_stashes_the_key_holding_none(self):
+        """Present-and-None, not absent: the runner distinguishes "no fallback was briefed" from "this run was never a workflow"."""
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-1"}),
+            )
+
+        configurable = dict(config["configurable"])
+        # Env-derived: present only when the machine configures a dev model
+        # override; not part of the workflow-routing contract under test.
+        configurable.pop("dev_executor_model", None)
+        assert configurable == {
+            "thread_id": "conv-1",
+            "user_id": "user-123",
+            "model": "gpt-4o",
+            "workflow_id": "wf-1",
+            "workflow_title": "",
+            "workflow_notify_on_completion": True,
+            "playbook_fallback": None,
+            "executor_lock_reservation": None,
+            "playbook_replayed_calls": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_todo_run_that_is_no_workflow_stashes_no_workflow_keys(self):
+        """A trigger context alone is not a workflow: its result must not route to a workflow-completion notification."""
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(
+                    trigger_context={"execution_mode": "background", "todo_id": "todo-9"}
+                ),
+            )
+
+        configurable = dict(config["configurable"])
+        configurable.pop("dev_executor_model", None)
+        assert configurable == {"thread_id": "conv-1", "user_id": "user-123", "model": "gpt-4o"}
+
+
+class TestTheOptionsEachEntryPointDerives:
+    """call_agent / call_agent_silent re-pack their own arguments into a fresh AgentRunOptions for _core_agent_logic.
+
+    Every field is a run property that has no second source: a blanked or dropped one is a turn
+    that loses its token accounting, its surface, or its Langfuse trace, and the run still
+    completes normally. The whole object is compared, so an extra or missing field fails too. The
+    stand-in carries _core_agent_logic's real signature so a dropped positional argument raises
+    here rather than quietly rebinding.
+    """
+
+    @staticmethod
+    def _recording_core(seen: list, config: dict):
+        async def _fake_core(
+            request,
+            conversation_id,
+            user,
+            options=None,
+        ):
+            seen.append(options)
+            return FAKE_GRAPH, FAKE_STATE, config
+
+        return _fake_core
+
+    @pytest.mark.asyncio
+    async def test_streaming_hands_core_the_callback_source_trace_and_tags(self):
+        async def _fake_stream(*args, **kwargs):
+            yield "data: [DONE]\n\n"
+
+        seen: list = []
+        callback = MagicMock(name="usage_metadata_callback")
+        patches = _common_patches()
+        with (
+            patches["log"],
+            patch(
+                "app.agents.core.agent._core_agent_logic",
+                new=self._recording_core(seen, _fresh_config()),
+            ),
+            patch("app.agents.core.agent.trace_id_for_message", return_value="trace-9"),
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ),
+        ):
+            await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(usage_metadata_callback=callback, source="whatsapp"),
+                ids=StreamMessageIds(bot_message_id="bot-7"),
+            )
+
+        assert seen == [
+            AgentRunOptions(
+                usage_metadata_callback=callback,
+                trigger_context=None,
+                source="whatsapp",
+                langfuse_trace_id="trace-9",
+                langfuse_tags=["comms_agent", settings.ENV],
+            )
+        ]
+
+    @pytest.mark.asyncio
+    async def test_silent_hands_core_the_callback_trigger_context_and_source(self):
+        seen: list = []
+        callback = MagicMock(name="usage_metadata_callback")
+        trigger = {"type": "cron", "schedule": "daily"}
+        patches = _common_patches()
+        with (
+            patches["log"],
+            patch(
+                "app.agents.core.agent._core_agent_logic",
+                new=self._recording_core(seen, _fresh_config()),
+            ),
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {"tool": "data"}),
+            ),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    trigger_context=trigger,
+                    source="cron",
+                ),
+            )
+
+        # The silent path deliberately does NOT forward the langfuse fields —
+        # it seeds no trace of its own.
+        assert seen == [
+            AgentRunOptions(
+                usage_metadata_callback=callback,
+                trigger_context=trigger,
+                source="cron",
+                langfuse_trace_id=None,
+                langfuse_tags=None,
+            )
+        ]

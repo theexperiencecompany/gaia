@@ -29,3 +29,12 @@ class LinearCommentAddedPayload(BaseModel):
     data: dict[str, Any] | None = Field(None, description="Comment data")
     type: str | None = Field(None, description="Type")
     url: str | None = Field(None, description="Comment URL")
+
+
+class LinearIssueUpdatedPayload(BaseModel):
+    """Payload for LINEAR_ISSUE_UPDATED_TRIGGER."""
+
+    action: str | None = Field(None, description="Action (update)")
+    data: dict[str, Any] | None = Field(None, description="Issue data")
+    type: str | None = Field(None, description="Issue type")
+    url: str | None = Field(None, description="Issue URL")

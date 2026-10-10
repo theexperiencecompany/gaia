@@ -4,14 +4,13 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
+import pytest
+
 from app.models.todo_models import Priority, TodoLabelCount, TodoStats
 
-# ---------------------------------------------------------------------------
-# Module-level patch: ensure tiered_limiter.check_and_increment returns a
-# plain dict so the @with_rate_limiting decorator doesn't crash when
-# iterating usage_info.items() on an AsyncMock.
-# ---------------------------------------------------------------------------
-
+# Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
+# @with_rate_limiting doesn't crash iterating usage_info.items().
 _rl_patch = patch(
     "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
     new_callable=AsyncMock,
@@ -29,12 +28,11 @@ MODULE = "app.agents.tools.todo_tool"
 
 
 class _UTCOnlyDateTime(datetime):
-    """datetime stand-in whose ``now(None)`` (local time) reads a different DATE
-    than ``now(UTC)``.
+    """datetime stand-in whose now(None) (local time) reads a different date than now(UTC).
 
-    The todo tools' day boundaries must follow the UTC calendar; this clock turns
-    a non-UTC read into a wrong window the exact-boundary assertions can see,
-    instead of relying on the run machine's timezone differing from UTC.
+    The todo tools' day boundaries must follow the UTC calendar; this clock makes a non-UTC read
+    produce a wrong window the exact-boundary assertions can see, without depending on the run
+    machine's own timezone differing from UTC.
     """
 
     @classmethod
@@ -114,7 +112,7 @@ class TestCreateTodo:
     """Tests for the create_todo tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
@@ -136,6 +134,9 @@ class TestCreateTodo:
         assert result["error"] is None
         assert result["todo"]["title"] == "Buy groceries"
         mock_service.assert_awaited_once()
+        created, owner = mock_service.await_args.args
+        assert created.title == "Buy groceries"
+        assert owner == FAKE_USER_ID
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")
@@ -155,7 +156,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure_returns_error(
         self,
@@ -176,7 +177,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_with_all_optional_params(
         self,
@@ -208,7 +209,7 @@ class TestCreateTodo:
         assert result["todo"]["priority"] == Priority.HIGH
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_workflow_included_in_response(
         self,
@@ -700,10 +701,9 @@ class TestGetTodayTodos:
 
         assert result["error"] is None
         assert result["count"] == 1
-        # The query window is the full day "now" falls on, as naive datetimes
-        # (datetime.combine keeps time.min/max's null tzinfo) on the UTC clock's
-        # calendar date — pinned exactly against a fake clock so a local-time or
-        # None bound cannot slip through.
+        # The query window is the full day "now" falls on, as naive datetimes (datetime.combine
+        # keeps time.min/max's null tzinfo) on the UTC clock's calendar date — pinned exactly so a
+        # local-time or None bound cannot slip through.
         (user_arg, start, end), _ = mock_service.await_args
         assert user_arg == FAKE_USER_ID
         assert start == datetime(2026, 6, 15, 0, 0)
@@ -1371,3 +1371,36 @@ class TestGetTodosSummary:
 
         assert "Error getting todos summary" in result["error"]
         assert result["summary"] is None
+
+
+# Prod, Sep 3 2026: "[TOOL] Error creating todo: 'normal' is not a valid Priority" — the
+# parameter was typed str, so the model only saw allowed values as prose and guessed a synonym;
+# the enum in the schema now refuses the call before the tool body runs.
+
+PRIORITY_TOOL_NAMES = ["create_todo", "list_todos", "update_todo", "semantic_search_todos"]
+
+
+class TestPriorityIsAnEnumInTheToolSchema:
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tool_name", PRIORITY_TOOL_NAMES)
+    def test_schema_enumerates_the_allowed_values(self, tool_name):
+        from app.agents.tools import todo_tool
+
+        schema = getattr(todo_tool, tool_name).tool_call_schema.model_json_schema()
+        enum = schema.get("$defs", {}).get("Priority", {}).get("enum")
+        assert enum == [p.value for p in Priority], schema["properties"]["priority"]
+
+    @pytest.mark.regression
+    async def test_unknown_priority_never_reaches_the_service(self):
+        from app.agents.tools.todo_tool import create_todo
+
+        with (
+            patch(f"{MODULE}.get_stream_writer"),
+            patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
+            patch(f"{MODULE}.get_user_id_from_config", return_value="u1"),
+        ):
+            with pytest.raises(ValidationError):
+                await create_todo.ainvoke(
+                    {"title": "x", "priority": "normal"}, config=_make_config()
+                )
+        svc.assert_not_awaited()

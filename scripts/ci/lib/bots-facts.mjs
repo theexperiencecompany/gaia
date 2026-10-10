@@ -2,7 +2,8 @@
  * AST facts for the bots evlog map — same-file function indexing and the
  * control-flow analysis that decides whether an entry point records the
  * caught error on its wide event. Pure AST helpers (Babel parser/traverse),
- * no knowledge of where entry points live (that is evlog-map-bots.mjs's job).
+ * no knowledge of where entry points live (that is evlog-map-bots.mjs's
+ * job, dispatched as `checks.mjs evlog-map-bots`).
  *
  * The repo's TypeScript compiler is the native port (tsgo, TS 7), which ships
  * no JS compiler API, so the AST comes from @babel/parser + @babel/traverse —
@@ -128,15 +129,10 @@ function catchBinding(clause) {
 }
 
 /**
- * Whether `throw <expr>` keeps the caught error alive.
- *
- * The JS analogue of tools/evlog_map's `_preserves_caught_error`. Python's
- * `raise X from e` sets `__cause__`; JS's equivalent is the `cause` option —
- * `throw new X(msg, { cause: err })` — which is what the log sink follows to
- * report what actually failed. `throw err` is the rethrow shape (JS has no
- * bare `throw`, so nothing maps to Python's bare `raise`). A `new X("...")`
- * that drops the caught error destroys its type and message before anything
- * reads them, exactly like `raise X(...)` with no `from`.
+ * Whether `throw <expr>` keeps the caught error alive — the JS twin of
+ * tools/evlog_map's `_preserves_caught_error`. Kept: `throw err` and
+ * `throw new X(msg, { cause: err })` (the log sink follows `cause`); a
+ * `new X("...")` without it drops the caught error like `raise X` without `from`.
  */
 function throwPreservesCause(expr, binding) {
   if (binding === null) return false;

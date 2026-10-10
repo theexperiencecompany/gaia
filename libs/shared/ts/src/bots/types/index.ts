@@ -43,11 +43,24 @@ export interface ChatRequest {
   /** Optional channel ID where the conversation is happening. */
   channelId?: string;
   /**
+   * Whether this conversation is a direct message. Discord and Slack DM
+   * channel ids differ from the user id, so the server cannot tell a DM from
+   * a channel without this.
+   */
+  isDm?: boolean;
+  /**
    * IDs of files the user has attached to this message. The agent loads each
    * file's metadata + content from MongoDB / ChromaDB and grounds its reply
    * in the file contents.
    */
   fileIds?: string[];
+  /**
+   * Platform-native id of the user's inbound message (WhatsApp wamid, Telegram
+   * message_id, Discord id, Slack ts, iMessage id). Persisted server-side so a
+   * later background reaction can anchor to the exact platform message.
+   * Absent when the trigger has no message id (slash-command interactions).
+   */
+  platformMessageId?: string;
   /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
@@ -85,7 +98,6 @@ export interface BotConfig {
 export interface AuthStatus {
   /** Whether the user is authenticated/linked. */
   authenticated: boolean;
-  /** The platform name. */
   platform: string;
   /**
    * The user ID on the platform.
@@ -103,6 +115,22 @@ export interface AuthStatus {
    * web and API events.
    */
   user_id?: string;
+}
+
+/**
+ * What `POST /bot/redeem-link-code` answers (`RedeemLinkCodeResponse` in
+ * `apps/api/app/models/bot_models.py`, which must change with this).
+ */
+export interface RedeemedLinkCode {
+  /** Whether the platform account is now linked. */
+  linked: boolean;
+  /**
+   * Whether GAIA's first contact is on its way on the outbound queue. When
+   * false the bot owes the user `firstContact` — nothing retries that publish.
+   */
+  delivered: boolean;
+  /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
+  firstContact: string[];
 }
 
 export interface BotWorkflow {
@@ -177,6 +205,7 @@ export interface BotUserContext {
 
 export type CommandContext = BotUserContext & {
   channelId?: string;
+  isDm?: boolean;
   /** Optional platform profile info, populated by the bot adapter when available. */
   profile?: { username?: string; displayName?: string };
 };
@@ -184,7 +213,7 @@ export type CommandContext = BotUserContext & {
 /**
  * Integration information for settings.
  */
-export interface IntegrationInfo {
+export interface BotIntegrationInfo {
   name: string;
   logoUrl: string | null;
   status: "created" | "connected";
@@ -205,7 +234,7 @@ export interface AuthenticatedSettingsResponse {
   userName: string | null;
   accountCreatedAt: string | null;
   profileImageUrl: string | null;
-  connectedIntegrations: IntegrationInfo[];
+  connectedIntegrations: BotIntegrationInfo[];
 }
 
 /**
@@ -265,6 +294,12 @@ export interface MessageTarget {
   userId: string;
   /** The channel/conversation where the command was invoked (absent for some DM contexts). */
   channelId?: string;
+  /**
+   * Whether this conversation is a direct message. Discord and Slack DM
+   * channel ids differ from the user id, so the server cannot tell a DM from
+   * a channel without this.
+   */
+  isDm?: boolean;
   /** Optional platform profile info (username, display name) from the bot adapter. */
   profile?: { username?: string; displayName?: string };
 }

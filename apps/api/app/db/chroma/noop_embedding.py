@@ -1,14 +1,14 @@
 """The shared no-op ChromaDB embedding function.
 
 ChromaStore computes its own embeddings (fastembed) and passes them
-explicitly to ``upsert(embeddings=...)``, so the collection-level embedding
+explicitly to upsert(embeddings=...), so the collection-level embedding
 function is never used for real. Registering a no-op prevents ChromaDB from
-loading its default ONNX model (``all-MiniLM-L6-v2``) in environments where
+loading its default ONNX model (all-MiniLM-L6-v2) in environments where
 it is unavailable (CI, minimal containers).
 
 One copy lives here because the two stores that need it (
-``app.db.chroma.chroma_store`` and ``app.memory.chroma_store``) drifted
-apart once already: the memory copy lost ``name()``/``get_config()`` and
+app.db.chroma.chroma_store and app.memory.chroma_store) drifted
+apart once already: the memory copy lost name()/get_config() and
 chromadb 1.x turned the missing methods into a hard deprecation error.
 """
 
@@ -39,26 +39,20 @@ class NoOpEmbeddingFunction(EmbeddingFunction[EmbeddingInput]):
 
     @staticmethod
     def name() -> str:
-        """ChromaDB requires embedding functions to declare a name (added in
-        0.5.x; a missing name() emits a deprecation warning and will become
-        a hard requirement). Called on the class during registration."""
+        """Name required by ChromaDB (0.5.x+); missing it emits a deprecation warning."""
         return NOOP_EMBEDDING_NAME
 
     def get_config(self) -> dict[str, str]:
-        """ChromaDB requires embedding functions to describe their config for
-        collection hashing (same deprecation path as name())."""
+        """Config for collection hashing, required by ChromaDB (same deprecation path as name())."""
         return {"name": NOOP_EMBEDDING_NAME}
 
     @staticmethod
     def build_from_config(config: dict) -> "NoOpEmbeddingFunction":
-        """Reconstruct the embedding function from its config dict; the config
-        only carries the name, so the no-op constructor suffices."""
+        """Reconstruct from config; the config only carries the name, so the no-op ctor suffices."""
         return NoOpEmbeddingFunction()
 
     def __call__(self, input: EmbeddingInput) -> Embeddings:
-        # chromadb's own EmbeddingFunction.__call__ contract declares
-        # list[numpy.ndarray], but ChromaDB accepts plain float lists at
-        # runtime just fine — do NOT convert this to numpy arrays; that broke
-        # collection initialization previously. cast() only changes what the
-        # type checker sees, not the actual returned values.
+        # `input` must keep this name: chromadb calls it as `input=input` (keyword).
+        # Do NOT convert to numpy arrays — that broke collection init previously,
+        # even though the declared type is list[numpy.ndarray].
         return cast(Embeddings, [[0.0] * EMBEDDING_DIM for _ in input])

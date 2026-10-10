@@ -106,16 +106,10 @@ function isDebianAptLinux(): boolean {
 }
 
 /**
- * Ensure Docker is installed and running, installing it when the user
- * confirms.
- *
- * Behavior by platform/situation:
- * - Linux (apt/Debian) + TTY: interactive confirm, then runs the official
- *   Docker install script (`get.docker.com`) via sudo/sh and re-checks.
- * - Linux + no TTY: fails loud — install Docker manually, then rerun.
- * - macOS: never auto-installs; points at OrbStack / Docker Desktop.
- * - Installed but daemon down: actionable start-Docker error.
- *
+ * Ensure Docker is installed and running, installing it when the user confirms.
+ * Linux apt + TTY runs the official script via sudo/sh; Linux non-TTY fails loud.
+ * macOS never auto-installs (points at OrbStack / Docker Desktop); a stopped
+ * daemon is an actionable start-Docker error.
  * @throws Error with remediation copy when Docker cannot be made available.
  */
 export async function ensureDocker(store: CLIStore): Promise<void> {

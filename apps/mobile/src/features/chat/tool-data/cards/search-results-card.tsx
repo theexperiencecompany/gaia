@@ -1,17 +1,11 @@
 import type { ImageResult, SearchResults, WebResult } from "@gaia/shared";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, Linking, Pressable, ScrollView, View } from "react-native";
-import Animated, {
-  FadeInRight,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeInRight } from "react-native-reanimated";
 import { Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { PulsingDot } from "@/features/chat/components/streaming/pulsing";
 import {
   FaviconImage,
   NewsResultCard,
@@ -22,12 +16,9 @@ import {
 } from "@/features/chat/tool-data/primitives";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
-// ---------------------------------------------------------------------------
-// SourcesPill — stacked favicons + "Search Results" label
-// Mirrors web's SourcesButton: HeroUI Button variant="flat" radius="full"
-// size="sm", 4 stacked favicons (-space-x-3, h-5 w-5 rounded-full border-2
-// border-zinc-900). Tapping opens the WebResultsSheet bottom-sheet.
-// ---------------------------------------------------------------------------
+// SourcesPill: stacked favicons + "Search Results" label. Mirrors web's
+// SourcesButton (flat/full/sm, 4 stacked favicons, h-5 w-5 rounded-full
+// border-2 border-zinc-900); tapping opens the WebResultsSheet bottom-sheet.
 
 const FAVICON_OUTER_SIZE = 20; // h-5 w-5
 const FAVICON_INNER_SIZE = 14; // sits inside the 2px border
@@ -88,11 +79,8 @@ function SourcesPill({
   );
 }
 
-// ---------------------------------------------------------------------------
-// WebResultsSheet — bottom-sheet popover equivalent
-// Mirrors web's PopoverContent → WebResults: rounded-2xl bg-zinc-800,
-// scrollable list of WebResultRow. Bottom-sheet handles the "popover" UX.
-// ---------------------------------------------------------------------------
+// WebResultsSheet: bottom-sheet popover equivalent of web's PopoverContent →
+// WebResults (rounded-2xl bg-zinc-800, scrollable WebResultRow list).
 
 function WebResultsSheet({
   web,
@@ -140,12 +128,9 @@ function WebResultsSheet({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ImageResults — horizontal scroll of 128×128 rounded tiles with alternating
-// ±8deg rotation. Web uses overlapping (-space-x-14) tiles with the same
-// rotation, but the overlap doesn't translate cleanly to RN, so we use a
-// horizontal ScrollView (tap-to-open) per port spec.
-// ---------------------------------------------------------------------------
+// ImageResults: horizontal scroll of 128×128 rounded tiles, alternating ±8deg
+// rotation. Web overlaps tiles (-space-x-14) with the same rotation, but that
+// doesn't translate cleanly to RN, so this uses a tap-to-open ScrollView instead.
 
 const IMAGE_TILE_SIZE = 128;
 
@@ -199,38 +184,9 @@ function ImageResults({ images }: { images: ImageResult[] }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Running / streaming state — kept from previous mobile implementation since
-// web doesn't have an explicit running view in SearchResultsTabs (it just
-// renders nothing until the data arrives). We keep a minimal running card so
-// the chat bubble shows progress instead of disappearing mid-stream.
-// ---------------------------------------------------------------------------
-
-function PulsingDot() {
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 600 }),
-        withTiming(1, { duration: 600 }),
-      ),
-      -1,
-      false,
-    );
-  }, [opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  return (
-    <Animated.View
-      style={[
-        animatedStyle,
-        { width: 6, height: 6, borderRadius: 3, backgroundColor: "#00bbff" },
-      ]}
-    />
-  );
-}
+// Running/streaming state: web has no explicit running view in SearchResultsTabs
+// (renders nothing until data arrives), so mobile keeps a minimal running card
+// to show progress instead of the bubble disappearing mid-stream.
 
 function SearchRunningCard({ data }: { data: SearchResults }) {
   const queryText = data.query;
@@ -241,7 +197,7 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
       <ToolCardHeader
         icon={Search01Icon}
         title="Web Search"
-        trailing={<PulsingDot />}
+        trailing={<PulsingDot size={6} color="#00bbff" />}
       />
       {!!queryText && (
         <ToolCardInner dense className="mb-2">
@@ -256,12 +212,9 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// SearchCompleteCard — flat stacked sections (no outer card chrome)
-// Mirrors web's SearchResultsTabs: <div className="space-y-6"> with three
-// optional sections (SourcesButton → ImageResults → NewsResults). No
-// ToolCardShell wrapping — the web version renders flat in the bubble area.
-// ---------------------------------------------------------------------------
+// SearchCompleteCard: flat stacked sections (no outer card chrome), mirroring
+// web's SearchResultsTabs (space-y-6 with three optional sections: SourcesButton
+// → ImageResults → NewsResults). No ToolCardShell — web renders flat too.
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
   const webResults = data.web ?? [];

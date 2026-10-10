@@ -13,6 +13,7 @@ import logging
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 os.environ.setdefault("ENV", "development")
 
@@ -22,17 +23,14 @@ APP_DIR = Path(__file__).resolve().parents[3] / "app"
 
 
 def _git_tracked_py_files() -> list[Path]:
-    """All app/**/*.py files tracked by git (never os.walk — untracked
-    experiments must not change what's asserted)."""
+    """Return all app/**/*.py files tracked by git (never os.walk — untracked experiments must not change what's asserted)."""
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     out = subprocess.check_output(["git", "ls-files", "apps/api/app"], text=True)
     return [root / p for p in out.splitlines() if p.endswith(".py")]
 
 
 def test_every_app_module_imports_cleanly() -> None:
-    """Every production module under app/ imports without error (Haystack's
-    test_imports pattern) — catches circular-import and import-side-effect
-    regressions in seconds."""
+    """Every production module under app/ imports without error (Haystack's test_imports pattern)."""
     failures: list[str] = []
     for path in _git_tracked_py_files():
         rel = path.relative_to(APP_DIR.parents[1])  # repo/apps/api
@@ -54,10 +52,7 @@ def test_every_app_module_imports_cleanly() -> None:
 
 
 def test_repository_boundaries() -> None:
-    """Only the repository layer may reach MongoDB collections directly.
-
-    Services/endpoints/agents must go through app.db.repositories (the
-    repository-boundaries rule, also enforced by tools/lints)."""
+    """Only the repository layer may reach MongoDB collections directly (the repository-boundaries rule, also enforced by tools/lints)."""
     offenders: list[str] = []
     pattern = (
         r"from app\.db\.mongodb\.collections import"
@@ -78,8 +73,7 @@ def test_repository_boundaries() -> None:
 
 
 def test_no_stateful_service_classes() -> None:
-    """No *Service class may have instance state or non-static methods (the
-    no-service-classes rule — services are module-level functions)."""
+    """No *Service class may have instance state or non-static methods (the no-service-classes rule)."""
     import re
 
     allowlist = {
@@ -112,3 +106,25 @@ def test_no_stateful_service_classes() -> None:
                 ):
                     offenders.append(f"{path}: class {name}")
     assert not offenders, "stateful service classes:\n" + "\n".join(offenders[:20])
+
+
+def test_the_embedding_sidecar_imports_without_settings() -> None:
+    """The sidecar boots with no API secrets, so its import graph must not reach settings."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.services.embedding_sidecar.server"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        env={"ENV": "test", "PATH": os.environ["PATH"], "LOG_LEVEL": "ERROR"},
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
+def test_the_configurable_key_matches_langgraphs() -> None:
+    """app.models.agent_config spells langgraph's CONF out to stay a leaf."""
+    from langgraph.constants import CONF
+
+    from app.models.agent_config import CONFIGURABLE_KEY
+
+    assert CONFIGURABLE_KEY == CONF

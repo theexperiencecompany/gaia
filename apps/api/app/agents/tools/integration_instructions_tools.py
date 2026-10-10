@@ -2,9 +2,9 @@
 
 These let the agent persist a user's durable preferences for an integration
 ("for Slack, focus on #eng, #design, #pm") so they survive across sessions.
-Writes go through the MongoDB source of truth exactly like
-``update_tracked_todo_canvas`` writes a todo's canvas — the read-only VFS
-projection and the subagent's context block both re-derive from it.
+Writes go through the MongoDB source of truth, the same way a tracked todo's
+canvas.md does: the read-only VFS projection and the subagent's context block
+both re-derive from it.
 
 Available to the executor and to every subagent. A subagent already has its own
 instructions injected into context, so it can call ``update_integration_instructions``
@@ -39,7 +39,7 @@ async def get_integration_instructions(
 
     Call this before update_integration_instructions when you intend to amend
     existing guidance (so you preserve what's already there). A subagent does
-    NOT need this for its own integration — its instructions are already in
+    NOT need this for its own integration: its instructions are already in
     context.
     """
     user_id = config.get("metadata", {}).get("user_id")
@@ -69,7 +69,7 @@ async def update_integration_instructions(
 ) -> str:
     """Persist the user's durable preferences for how an integration should be used.
 
-    Use when the user expresses a STABLE preference — focus areas, default
+    Use when the user expresses a STABLE preference: focus areas, default
     targets, conventions ("always cc me", "default to the Backend project").
     Do NOT use for one-off, task-specific corrections; those belong in the
     current turn, not in persistent instructions.

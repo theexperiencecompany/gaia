@@ -14,7 +14,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.agents.core.messages import construct_langchain_messages
+from app.agents.core.messages import (
+    MessageAttachments,
+    MessageScope,
+    construct_langchain_messages,
+)
 
 _EMPTY_DYNAMIC = AssembledContext(stable=SystemMessage(content=""), volatile=None)
 
@@ -33,9 +37,8 @@ class TestConstructMessagesReal:
         ):
             messages = await construct_langchain_messages(
                 messages=[{"role": "user", "content": "Hello"}],
-                user_id="test-user",
-                user_name="Test",
                 query="Hello",
+                scope=MessageScope(user_id="test-user", user_name="Test"),
             )
 
         assert len(messages) >= 2
@@ -55,10 +58,9 @@ class TestConstructMessagesReal:
         ):
             messages = await construct_langchain_messages(
                 messages=[{"role": "user", "content": "Search for cats"}],
-                user_id="test-user",
-                user_name="Test",
                 query="Search for cats",
-                selected_tool="web_search",
+                scope=MessageScope(user_id="test-user", user_name="Test"),
+                attachments=MessageAttachments(selected_tool="web_search"),
             )
 
         all_content = " ".join(str(m.content) for m in messages)
@@ -74,8 +76,8 @@ class TestConstructMessagesReal:
         ):
             messages = await construct_langchain_messages(
                 messages=[{"role": "user", "content": "What can you do?"}],
-                user_id="test-user",
                 query="What can you do?",
+                scope=MessageScope(user_id="test-user"),
             )
 
         assert len(messages) >= 1

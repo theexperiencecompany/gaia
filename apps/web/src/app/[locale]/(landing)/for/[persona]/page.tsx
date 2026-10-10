@@ -48,11 +48,11 @@ interface PersonaConfig {
 const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
     metaTitle:
-      "GAIA for Startup Founders — AI Chief of Staff & Proactive Automation",
+      "GAIA for Startup Founders: AI Chief of Staff & Proactive Automation",
     metaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building. Save 8-12 hours every week.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
     schemaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building.",
     keywords: [
       "AI for founders",
       "startup AI assistant",
@@ -80,11 +80,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "software-developers": {
     metaTitle:
-      "GAIA for Software Developers — AI Standup Generator & GitHub Automation",
+      "GAIA for Software Developers: AI Standup Generator & GitHub Automation",
     metaDescription:
-      "GAIA connects to GitHub, Linear, and Slack — then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
+      "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     schemaDescription:
-      "GAIA connects to GitHub, Linear, and Slack — then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
+      "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     keywords: [
       "AI assistant for developers",
       "developer productivity tool",
@@ -111,11 +111,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "sales-professionals": {
     metaTitle:
-      "GAIA for Sales Professionals — AI CRM Monitor & Follow-Up Automation",
+      "GAIA for Sales Professionals: AI CRM Monitor & Follow-Up Automation",
     metaDescription:
-      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call — automatically. Spend more time selling.",
+      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically. Spend more time selling.",
     schemaDescription:
-      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call — automatically.",
+      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically.",
     keywords: [
       "AI assistant for sales",
       "CRM automation AI",
@@ -142,11 +142,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "product-managers": {
     metaTitle:
-      "GAIA for Product Managers — Automate Stakeholder Updates & Sprint Reports",
+      "GAIA for Product Managers: Automate Stakeholder Updates & Sprint Reports",
     metaDescription:
-      "GAIA connects Linear, GitHub, Slack, and Notion — then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
+      "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     schemaDescription:
-      "GAIA connects Linear, GitHub, Slack, and Notion — then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
+      "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     keywords: [
       "AI assistant for product managers",
       "PM productivity tool",
@@ -172,11 +172,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "engineering-managers": {
     metaTitle:
-      "GAIA for Engineering Managers — 1:1 Prep, Sprint Reports & Team Analytics",
+      "GAIA for Engineering Managers: 1:1 Prep, Sprint Reports & Team Analytics",
     metaDescription:
-      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers — automatically.",
+      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     schemaDescription:
-      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers — automatically.",
+      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     keywords: [
       "AI assistant for engineering managers",
       "EM productivity tool",
@@ -204,11 +204,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "agency-owners": {
     metaTitle:
-      "GAIA for Agency Owners — Automate Client Reports & Portfolio Management",
+      "GAIA for Agency Owners: Automate Client Reports & Portfolio Management",
     metaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active — automatically. Scale your agency without scaling your overhead.",
+      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
     schemaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active — automatically.",
+      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically.",
     keywords: [
       "AI assistant for agency owners",
       "agency management automation",
@@ -276,64 +276,64 @@ export async function generateMetadata({
   };
 }
 
+const INTEGRATION_DOMAINS: Record<string, string> = {
+  github: "github.com",
+  linear: "linear.app",
+  slack: "slack.com",
+  "google-calendar": "calendar.google.com",
+  gmail: "gmail.com",
+  notion: "notion.so",
+  todoist: "todoist.com",
+  perplexity: "perplexity.ai",
+  deepwiki: "deepwiki.com",
+  context7: "context7.com",
+  figma: "figma.com",
+  jira: "jira.atlassian.com",
+  asana: "asana.com",
+  trello: "trello.com",
+  hubspot: "hubspot.com",
+  salesforce: "salesforce.com",
+  intercom: "intercom.com",
+  zendesk: "zendesk.com",
+  stripe: "stripe.com",
+  quickbooks: "quickbooks.intuit.com",
+  "google-docs": "docs.google.com",
+  "google-sheets": "sheets.google.com",
+  "google-drive": "drive.google.com",
+  dropbox: "dropbox.com",
+  airtable: "airtable.com",
+  monday: "monday.com",
+  clickup: "clickup.com",
+  discord: "discord.com",
+  zoom: "zoom.us",
+  teams: "teams.microsoft.com",
+  outlook: "outlook.com",
+  twitter: "x.com",
+  linkedin: "linkedin.com",
+  mailchimp: "mailchimp.com",
+  "google-analytics": "analytics.google.com",
+  semrush: "semrush.com",
+  canva: "canva.com",
+  wordpress: "wordpress.com",
+  shopify: "shopify.com",
+  amplitude: "amplitude.com",
+  mixpanel: "mixpanel.com",
+  datadog: "datadoghq.com",
+  sentry: "sentry.io",
+  vercel: "vercel.com",
+  netlify: "netlify.com",
+  aws: "aws.amazon.com",
+  "google-cloud": "cloud.google.com",
+  confluence: "confluence.atlassian.com",
+};
+
 function IntegrationBadge({ name }: { name: string }) {
   const displayName = name
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-  const domainMap: Record<string, string> = {
-    github: "github.com",
-    linear: "linear.app",
-    slack: "slack.com",
-    "google-calendar": "calendar.google.com",
-    gmail: "gmail.com",
-    notion: "notion.so",
-    todoist: "todoist.com",
-    perplexity: "perplexity.ai",
-    deepwiki: "deepwiki.com",
-    context7: "context7.com",
-    figma: "figma.com",
-    jira: "jira.atlassian.com",
-    asana: "asana.com",
-    trello: "trello.com",
-    hubspot: "hubspot.com",
-    salesforce: "salesforce.com",
-    intercom: "intercom.com",
-    zendesk: "zendesk.com",
-    stripe: "stripe.com",
-    quickbooks: "quickbooks.intuit.com",
-    "google-docs": "docs.google.com",
-    "google-sheets": "sheets.google.com",
-    "google-drive": "drive.google.com",
-    dropbox: "dropbox.com",
-    airtable: "airtable.com",
-    monday: "monday.com",
-    clickup: "clickup.com",
-    discord: "discord.com",
-    zoom: "zoom.us",
-    teams: "teams.microsoft.com",
-    outlook: "outlook.com",
-    twitter: "x.com",
-    linkedin: "linkedin.com",
-    mailchimp: "mailchimp.com",
-    "google-analytics": "analytics.google.com",
-    semrush: "semrush.com",
-    canva: "canva.com",
-    wordpress: "wordpress.com",
-    shopify: "shopify.com",
-    amplitude: "amplitude.com",
-    mixpanel: "mixpanel.com",
-    datadog: "datadoghq.com",
-    sentry: "sentry.io",
-    vercel: "vercel.com",
-    netlify: "netlify.com",
-    aws: "aws.amazon.com",
-    "google-cloud": "cloud.google.com",
-    confluence: "confluence.atlassian.com",
-  };
-
-  const domain = domainMap[name];
+  const domain = INTEGRATION_DOMAINS[name];
 
   return (
     <Link href={`/marketplace/${name}`}>
@@ -538,7 +538,7 @@ export default async function PersonaPage({ params }: PageProps) {
                 <Link
                   key={slug}
                   href={`/compare/${slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
                     GAIA vs{" "}
@@ -566,7 +566,7 @@ export default async function PersonaPage({ params }: PageProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
               href="/compare"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.see_how_compares")}
@@ -577,7 +577,7 @@ export default async function PersonaPage({ params }: PageProps) {
             </Link>
             <Link
               href="/learn"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.learn_ai_concepts")}

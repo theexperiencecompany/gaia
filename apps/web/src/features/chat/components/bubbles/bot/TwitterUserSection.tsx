@@ -13,6 +13,22 @@ import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { TwitterIcon } from "@/components/shared/icons";
 import type { TwitterUserData } from "@/types/features/twitterTypes";
 
+const formatNumber = (num: number | undefined) => {
+  if (!num) return "0";
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toString();
+};
+
+const formatJoinDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  try {
+    return format(parseISO(dateStr), "MMMM yyyy");
+  } catch {
+    return dateStr;
+  }
+};
+
 /**
  * Twitter User Card - Displays a user profile with metrics.
  * Styled to closely match the real Twitter/X profile card.
@@ -26,33 +42,26 @@ function TwitterUserCard({
 }) {
   const metrics = user.public_metrics || {};
 
-  const formatNumber = (num: number | undefined) => {
-    if (!num) return "0";
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  };
-
-  const formatJoinDate = (dateStr?: string) => {
-    if (!dateStr) return "";
-    try {
-      return format(parseISO(dateStr), "MMMM yyyy");
-    } catch {
-      return dateStr;
-    }
-  };
-
   const handleOpenProfile = () => {
     window.open(`https://twitter.com/${user.username}`, "_blank");
   };
 
   return (
-    <div
-      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70 cursor-pointer"
-      onClick={handleOpenProfile}
-    >
-      {/* Header Row */}
-      <div className="flex items-start justify-between">
+    <div className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70">
+      {/* Card-level action as a stretched overlay button: the card contains a
+          nested Follow button, so the card itself cannot be a <button>. The
+          overlay covers everything; ONLY the Follow button is raised above it,
+          so clicks on the rest of the card (avatar, name, bio…) open the
+          profile. */}
+      <button
+        type="button"
+        aria-label={`Open @${user.username} profile on X`}
+        className="absolute inset-0 z-10 cursor-pointer rounded-xl"
+        onClick={handleOpenProfile}
+      />
+
+      {/* Header Row — unraised so it stays click-through to the overlay. */}
+      <div className="relative flex items-start justify-between">
         <div className="flex items-start gap-3">
           <Avatar className="h-12 w-12 shrink-0 rounded-full overflow-hidden">
             <AvatarImage
@@ -80,12 +89,9 @@ function TwitterUserCard({
 
         {onFollow && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onFollow(user.id);
-            }}
             type="button"
-            className="rounded-full bg-foreground text-background px-4 py-1.5 text-sm font-semibold hover:bg-foreground/90 transition-colors"
+            onClick={() => onFollow(user.id)}
+            className="relative z-20 rounded-full bg-foreground text-background px-4 py-1.5 text-sm font-semibold hover:bg-foreground/90 transition-colors"
           >
             Follow
           </button>

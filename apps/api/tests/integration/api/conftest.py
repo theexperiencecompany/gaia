@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pytest
 
-from tests.factories import make_user
+from app.models.user_models import AuthenticatedUser
+from tests.factories import make_authenticated_user
 from tests.helpers import MockAuthMiddleware, NoAuthMiddleware
 
 
@@ -46,14 +47,32 @@ def _create_test_app() -> FastAPI:
 
 
 @pytest.fixture
-def test_user() -> dict:
-    return make_user(user_id="integration-test-user-1", email="test@test.com")
+def test_user() -> AuthenticatedUser:
+    return make_authenticated_user(user_id="integration-test-user-1", email="test@test.com")
 
 
 @pytest.fixture
 async def test_client(test_user):
     """Provide an httpx AsyncClient against the FastAPI app with auth mocked."""
     app = _create_test_app()
+    app.add_middleware(MockAuthMiddleware, user=test_user)
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",  # NOSONAR
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def gated_test_client(test_user):
+    """Build test_client with the real EntitlementMiddleware for routes whose 402 is the middleware's."""
+    from app.api.v1.middleware.entitlement import EntitlementMiddleware
+
+    app = _create_test_app()
+    app.add_middleware(EntitlementMiddleware)
+    # Added last so it runs first: the gate reads the user this one writes.
     app.add_middleware(MockAuthMiddleware, user=test_user)
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

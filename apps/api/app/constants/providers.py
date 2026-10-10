@@ -1,9 +1,9 @@
 """Provider catalog shared by the credentials service, setup API, and web UI.
 
 Single source of truth for user-configurable providers: display metadata,
-preset endpoints (so configuring OpenCode/Nous means pasting ONLY an API key),
-and default models. Brand icons are resolved client-side from Google's favicon
-service via ``favicon_domain``.
+preset endpoints (so configuring OpenCode or Nous means pasting only an API
+key), and default models. Brand icons resolve client-side from the favicon
+service via favicon_domain.
 """
 
 from typing import TypedDict

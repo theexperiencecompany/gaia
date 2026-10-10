@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "@/lib/toast";
 
 export interface ValidationRule<T> {
@@ -95,13 +95,17 @@ export function useModalForm<T extends object, R = void>({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
 
-  // Reset form data when initialData changes
-  useEffect(() => {
-    const newData =
-      typeof initialData === "function" ? initialData() : initialData;
-    setFormData(newData);
+  // Reset form data when initialData changes. Adjusted during render (React's
+  // documented alternative to an adjustment effect) so users never see a frame
+  // of stale form values: React re-renders immediately without committing.
+  const [prevInitialData, setPrevInitialData] = useState(() => initialData);
+  if (prevInitialData !== initialData) {
+    setPrevInitialData(initialData);
+    setFormData(
+      typeof initialData === "function" ? initialData() : initialData,
+    );
     setErrors({});
-  }, [initialData]);
+  }
 
   const validateField = useCallback(
     (field: keyof T): string | null => {

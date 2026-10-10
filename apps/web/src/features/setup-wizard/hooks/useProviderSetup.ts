@@ -20,13 +20,10 @@ export interface ProviderTestOutcome {
 }
 
 /**
- * State + connect flow for one provider card. The credential is TESTED first
- * (caller-supplied values via the test endpoint's body — the supported path
- * before anything is stored) and only persisted once the probe passes; a
- * failed test leaves the store untouched so a wrong key can never poison the
- * instance state. Providers the backend cannot probe (Tavily) skip straight
- * to saving. Field defaults come from the card config (and the selected
- * preset, for the Custom card).
+ * State + connect flow for one provider card. Credentials are tested via the
+ * test endpoint's body before anything is stored; untestable providers
+ * (Tavily) skip straight to saving. Field defaults come from the card
+ * config (and the selected preset, for Custom).
  */
 export function useProviderSetup(
   config: ProviderCardConfig,

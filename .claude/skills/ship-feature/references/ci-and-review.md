@@ -9,8 +9,9 @@ lane's exact command; don't trust memory or this file for specifics.
   (Python tests run the full suite against live services). Required check:
   **`quality-gate`**; skipped jobs pass it.
 - **Code Quality** (`code-quality.yml`) — many independent lint/analysis
-  lanes. A lane is enforced iff a marker file exists in
-  `.github/quality-gate/enforced/`. Required check:
+  lanes, every one flat-enforced via the `LANES` array in the `quality-gate`
+  verdict job (the old `.github/quality-gate/enforced/` marker-file ratchet
+  was removed — see `.github/quality-gate/README.md`). Required check:
   **`Quality gate (required)`**. In both gates a skipped lane passes (skipped
   = your diff didn't touch that lane's language).
 - **PR title check** (`pr-naming-conventions.yml`) — Conventional Commit
@@ -38,7 +39,7 @@ Mirror what CI will run, scoped to what you touched:
 - `mise tasks` lists the aggregate runners if you want one command per area.
 
 **The diff-scoping trap:** many Code Quality lanes run only on files changed
-vs the PR base (see `scripts/ci/changed-files.sh`). Locally the base-ref env
+vs the PR base (see `scripts/ci/changes.sh files`). Locally the base-ref env
 var is unset, so the same command runs repo-wide and can fail on files you
 never touched. Reproduce a lane exactly as CI sees it by exporting the
 base-ref variable the script reads (with `master` fetched), or by limiting

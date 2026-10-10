@@ -1,9 +1,9 @@
 """The tiered limiter's plan decision logic, with the real constants.
 
-The root conftest pins ``tiered_limiter.check_and_increment`` to a mock that
-always returns ``{}``, so no test exercises the real plan-to-limit decision or
-the limit-exceeded signal. These tests run the real ``TieredRateLimiter`` with
-the real ``FEATURE_LIMITS`` / ``get_limits_for_plan`` — only the Redis storage
+The root conftest pins tiered_limiter.check_and_increment to a mock that
+always returns {}, so no test exercises the real plan-to-limit decision or
+the limit-exceeded signal. These tests run the real TieredRateLimiter with
+the real FEATURE_LIMITS / get_limits_for_plan — only the Redis storage
 seam is mocked, following tests/unit/api/test_tiered_rate_limiter.py.
 """
 
@@ -19,6 +19,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import get_limits_for_plan
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 
 
@@ -107,8 +108,7 @@ class TestTieredLimiterRealDecision:
         assert result["day"].reset_time > datetime.now(UTC)
 
     async def test_free_at_daily_limit_raises_429_signal(self) -> None:
-        """generate_image free = 1/day: at 1 use, the limiter must raise the
-        signal the endpoint layer turns into a 429."""
+        """generate_image free = 1/day: at 1 use, the limiter must raise the signal the endpoint layer turns into a 429."""
         reset_time = datetime.now(UTC) + timedelta(days=1)
         self.limiter.redis.get = AsyncMock(return_value="1")
         with patch(
@@ -120,7 +120,7 @@ class TestTieredLimiterRealDecision:
 
         exc = exc_info.value
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"
+        assert exc.detail["code"] == "rate_limit_exceeded"
         assert exc.detail["feature"] == "generate_image"
         assert exc.detail["reset_time"] == reset_time.isoformat()
         # FREE has nonzero daily limits for generate_image, so it is an
@@ -158,8 +158,7 @@ class TestTieredLimiterRealDecision:
 
 
 class TestRateLimitHitAnalytics:
-    """Paid-plan hits are captured at the decorator seam; FREE hits are
-    already captured by the limit-upsell side effect (schedule_limit_upsell)."""
+    """Paid-plan hits are captured at the decorator seam; FREE hits are already captured by schedule_limit_upsell."""
 
     def _exceeded(self) -> RateLimitExceededException:
         return RateLimitExceededException("fake_feature")
@@ -251,8 +250,8 @@ class TestRateLimitHitAnalytics:
         subscription = MagicMock(plan_type=PlanType.PRO)
         with (
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
-                return_value={"user_id": "user-1"},
+                "app.core.request_context.get_authenticated_user",
+                return_value=AuthenticatedUser(user_id="user-1"),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -285,8 +284,8 @@ class TestRateLimitHitAnalytics:
         subscription = MagicMock(plan_type=PlanType.FREE)
         with (
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
-                return_value={"user_id": "user-1"},
+                "app.core.request_context.get_authenticated_user",
+                return_value=AuthenticatedUser(user_id="user-1"),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -312,10 +311,7 @@ class TestRateLimitHitAnalytics:
 
 
 class TestEnforceTieredLimit:
-    """``enforce_tiered_limit`` is what non-decorated callers (bot endpoints,
-    background paths) use to meter a feature, so the arguments it forwards to
-    the limiter are the whole contract — a dropped ``feature_key`` silently
-    meters the wrong bucket."""
+    """enforce_tiered_limit is what non-decorated callers use to meter a feature — a dropped feature_key silently meters the wrong bucket."""
 
     @pytest.mark.asyncio
     async def test_forwards_user_feature_and_resolved_plan_to_the_limiter(self) -> None:
@@ -345,8 +341,7 @@ class TestEnforceTieredLimit:
 
     @pytest.mark.asyncio
     async def test_a_planless_subscription_meters_as_free(self) -> None:
-        """No plan on the subscription record means FREE limits, not None —
-        passing None through would blow up limit lookup at the storage seam."""
+        """No plan on the subscription record means FREE limits, not None — passing None through would blow up limit lookup."""
         from app.decorators.rate_limiting import enforce_tiered_limit
 
         subscription = MagicMock(plan_type=None)
@@ -395,8 +390,7 @@ class TestEnforceTieredLimit:
 
     @pytest.mark.asyncio
     async def test_skips_the_free_hit_and_still_re_raises(self) -> None:
-        """FREE hits are captured by the limit-upsell seam — a second event
-        here would double-count every free user's wall."""
+        """FREE hits are captured by the limit-upsell seam — a second event here would double-count every free user's wall."""
         from app.decorators.rate_limiting import enforce_tiered_limit
 
         subscription = MagicMock(plan_type=PlanType.FREE)

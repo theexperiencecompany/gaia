@@ -20,9 +20,7 @@ from app.services.connect_link_service import (
 
 @pytest.fixture
 def fake_store() -> Generator[dict[str, object], None, None]:
-    """In-memory stand-in for the Redis single-use store: ``set_cache`` writes
-    (returning success), ``get_and_delete_cache`` reads-and-deletes (the
-    single-use guarantee)."""
+    """In-memory stand-in for the Redis single-use store: set_cache writes, get_and_delete_cache reads-and-deletes."""
     store: dict[str, object] = {}
 
     async def _set(
@@ -83,7 +81,6 @@ class TestConnectLinkCode:
         assert len(code) >= 16
 
     async def test_failed_store_returns_none(self) -> None:
-        """A failed write (Redis unavailable) → no link minted; callers degrade
-        to a generic connect prompt rather than handing out a dead link."""
+        """A failed write (Redis unavailable) means no link minted; callers degrade to a generic connect prompt."""
         with patch.object(svc, "set_cache", AsyncMock(return_value=False)):
             assert await build_connect_link_url("user1", "notion") is None

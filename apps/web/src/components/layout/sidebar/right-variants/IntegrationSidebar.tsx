@@ -7,7 +7,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { Settings01Icon } from "@icons";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
@@ -70,16 +70,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
         <div className="w-fit">
-          {getToolCategoryIcon(
-            integration.id,
-            {
-              size: 40,
-              width: 40,
-              height: 40,
-              showBackground: false,
-            },
-            integration.iconUrl,
-          )}
+          <IntegrationIcon
+            integrationId={integration.id}
+            iconUrl={integration.iconUrl}
+            category={integration.category}
+            size={40}
+          />
         </div>
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <IntegrationHeaderChips

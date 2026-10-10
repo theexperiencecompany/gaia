@@ -22,7 +22,7 @@ import {
   renderForPlatform,
   STREAMING_DEFAULTS,
   type StreamingOptions,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 
 export interface PlatformEmulation {
   platform: PlatformName;
@@ -33,14 +33,11 @@ export interface PlatformEmulation {
   /** Live from {@link renderForPlatform} — the platform's markdown converter. */
   render: (text: string) => string;
   /**
-   * Whether the platform edits a delivered bubble in place. `false` means an
-   * "edit" is really a new message (WhatsApp, whose Cloud API has no edit).
-   * Mirrors the real adapter's send wiring; locked by the conformance suite.
-   *
-   * - discord: `Message.edit` / `interaction.editReply` → true
-   * - slack: `chat.update` → true
-   * - telegram: `editMessageText` → true
-   * - whatsapp: no edit API, `sendWhatsAppText` sends new → false
+   * Whether the platform edits a delivered bubble in place (`false` = "edit" sends
+   * a new message, e.g. WhatsApp — no edit API). Mirrors the real adapter's send
+   * wiring; locked by the conformance suite: discord `Message.edit`/
+   * `interaction.editReply`, slack `chat.update`, telegram `editMessageText` all
+   * edit; whatsapp always sends new via `sendWhatsAppText`.
    */
   supportsEdit: boolean;
 }

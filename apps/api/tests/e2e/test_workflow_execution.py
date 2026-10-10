@@ -1,39 +1,42 @@
 """E2E tests: workflow execution, plus the agent-graph lifecycle it runs on.
 
-Sibling: ``tests/integration/test_workflow_execution.py`` covers the workflow
-service layer in isolation (mocked I/O); this file drives the real compiled
-agent graphs end to end.
+Sibling: tests/integration/test_workflow_execution.py covers the workflow service layer in
+isolation with mocked I/O; this file drives the real compiled agent graphs end to end.
 
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``execute_workflow_by_id`` / ``execute_workflow_as_chat`` from
-  ``app.workers.tasks.workflow_tasks`` — the real entry point a workflow fire
-  goes through — together with ``app.services.workflow.execution_service``:
-  a step that fails partway through a multi-step workflow must surface as a
-  ``failed`` execution record naming the failing step plus a user notification,
-  never as a silent success.
-- ``build_comms_graph`` / ``build_executor_graph`` from
-  ``app.agents.core.graph_builder.build_graph`` compile with the REAL middleware
-  stack (``create_comms_middleware`` / ``create_executor_middleware``) and that
-  stack is reachable at runtime: its hooks run and its tools are bound.
-- The GAIA ``State`` schema from ``app.override.langgraph_bigtool.utils``
-  contains the ``todos`` channel and ``selected_tool_ids``.
-- ``MemorySaver`` checkpointing accumulates state across multiple graph turns.
-- Graph thread isolation: separate thread_ids produce independent state.
-
-Mock surfaces (I/O edges only):
-- LLM: FakeMessagesListChatModel / a scripted stand-in for the agent turn
-- store: InMemoryStore (no ChromaDB), checkpointer: MemorySaver (no PostgreSQL)
-- Mongo repositories, Redis-backed scheduler, notification delivery
+Real: execute_workflow_by_id / execute_workflow_as_chat in app.workers.tasks.workflow_tasks (the
+entry point a workflow fire goes through) over app.services.workflow.execution_service -- a step
+that fails partway must surface as a failed execution record naming the failing step plus a user
+notification, never a silent success; build_comms_graph / build_executor_graph compiled with the
+real middleware stack, whose hooks run and whose tools are bound; the todos and selected_tool_ids
+channels of the GAIA State; MemorySaver accumulating state across turns; and thread isolation,
+where separate thread_ids keep independent state. Doubled at I/O edges only: the LLM, the store
+(InMemoryStore), the checkpointer (MemorySaver), Mongo repositories, the Redis-backed scheduler
+and notification delivery.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool as lc_tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core import agent as agent_module
+from app.agents.core.graph_builder.build_graph import (
+    EXECUTOR_INITIAL_TOOL_IDS,
+    build_comms_graph,
+    build_executor_graph,
+)
+from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+from app.api.v1.middleware import tiered_rate_limiter
+from app.db.repositories.playbooks import playbook_repository
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.agent_models import SilentRunResult
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
     WorkflowExecutionDocument,
     WorkflowExecutionUpdate,
@@ -45,6 +48,9 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
+from app.services.workflow.scheduler import WorkflowScheduler
+from app.workers.tasks import workflow_tasks
+from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -54,15 +60,7 @@ class TestWorkflowExecution:
     """E2E tests for GAIA graph lifecycle and state schema correctness."""
 
     async def test_todos_channel_uses_replace_reducer(self):
-        """The 'todos' channel must use last-write-wins (replace) semantics.
-
-        _replace_todos is the reducer for the State.todos channel. When two
-        successive updates arrive, the second list must completely replace the
-        first — not merge or append to it.
-
-        If _replace_todos is removed from utils.py or its semantics change,
-        this test will fail.
-        """
+        """The 'todos' channel's _replace_todos reducer must use last-write-wins semantics."""
         first_todos = ["Buy milk", "Call dentist"]
         second_todos = ["Submit report"]
 
@@ -75,13 +73,7 @@ class TestWorkflowExecution:
         assert "Buy milk" not in result, "Previous todos must be fully replaced, not merged."
 
     def test_selected_tool_ids_channel_deduplicates(self):
-        """dedupe_str_list must remove duplicate tool IDs while preserving order.
-
-        selected_tool_ids accumulates IDs across tool-retrieval turns. When the
-        same ID appears multiple times, only the first occurrence must be kept.
-
-        If dedupe_str_list is removed from utils.py, this test fails.
-        """
+        """dedupe_str_list must remove duplicate tool IDs while preserving first-seen order."""
         ids_with_duplicates = ["tool_a", "tool_b", "tool_a", "tool_c", "tool_b"]
 
         result = dedupe_str_list(ids_with_duplicates)
@@ -94,12 +86,7 @@ class TestWorkflowExecution:
     async def test_compiled_graph_returns_gaia_state_on_invoke(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """A compiled GAIA graph must return state with GAIA-specific channels.
-
-        When ainvoke() returns, the result dict must contain 'todos' and
-        'selected_tool_ids' — channels that exist only in the GAIA State schema,
-        not in generic LangGraph MessagesState.
-        """
+        """A compiled GAIA graph must return state with the 'todos' and 'selected_tool_ids' channels."""
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Workflow complete.")])
 
         graph = build_gaia_test_graph(
@@ -126,15 +113,7 @@ class TestWorkflowExecution:
     async def test_checkpointing_accumulates_messages_across_turns(
         self, in_memory_store, memory_saver
     ):
-        """MemorySaver checkpointing must accumulate messages across multiple invocations.
-
-        This tests GAIA's State schema + MemorySaver integration: the same
-        thread_id must produce accumulated state (messages from turn 1 remain
-        visible in turn 2) — the same pattern used by build_comms_graph in
-        production. It is NOT a test of MemorySaver in isolation; it proves
-        that the GAIA State channels (with their reducers) wire correctly with
-        LangGraph's checkpointing mechanism.
-        """
+        """MemorySaver checkpointing must accumulate GAIA State messages across turns on one thread_id."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(content="Response to first message."),
@@ -190,16 +169,7 @@ class TestWorkflowExecution:
         )
 
     async def test_different_thread_ids_have_independent_state(self, in_memory_store):
-        """Separate thread_ids must not share state (thread isolation).
-
-        This mirrors how the production comms agent handles concurrent users:
-        each conversation thread is completely isolated.
-
-        Each thread receives a unique sentinel phrase in its human message.
-        After both graphs run, we assert:
-        - Thread A's state contains only thread-A's sentinel (not thread B's).
-        - Thread B's state contains only thread-B's sentinel (not thread A's).
-        """
+        """Separate thread_ids must not share state (thread isolation), mirroring concurrent users."""
         checkpointer = MemorySaver()
 
         # Unique sentinel phrases that cannot appear in each other's thread
@@ -258,18 +228,7 @@ class TestWorkflowExecution:
         )
 
     async def test_comms_graph_runs_its_real_middleware_stack(self):
-        """build_comms_graph must wire the REAL comms middleware, and it must run.
-
-        The middleware stack is core orchestration, not an I/O edge, so it is
-        deliberately NOT mocked here: ``create_comms_middleware`` builds the real
-        stack and the graph is invoked for real. A spy that delegates to the real
-        ``LLMAccountingMiddleware.aafter_model`` proves the stack is actually
-        reached during the turn rather than merely constructed — replacing the
-        middleware list with ``[]`` (or dropping the MiddlewareExecutor wiring in
-        ``create_agent``) makes this test fail.
-        """
-        from app.agents.core.graph_builder.build_graph import build_comms_graph
-        from app.agents.middleware.accounting import LLMAccountingMiddleware
+        """build_comms_graph must wire the REAL, unmocked comms middleware, and it must run."""
 
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Comms agent response.")])
 
@@ -319,14 +278,7 @@ class TestWorkflowExecution:
         )
 
     async def test_comms_graph_binds_its_memory_tools(self):
-        """The comms agent's memory tools must be bound, not rejected as unbound.
-
-        ``search_memory`` is one of the three tools the comms agent is allowed to
-        call. If it were dropped from the registry / initial_tool_ids, the real
-        ``reject_unbound_tools`` node would answer the call with an "is not bound"
-        error instead of running it — which is what this asserts against.
-        """
-        from app.agents.core.graph_builder.build_graph import build_comms_graph
+        """The comms agent's memory tools (search_memory) must be bound, not rejected as unbound."""
 
         fake_llm = BindableToolsFakeModel(
             responses=[
@@ -383,23 +335,7 @@ class TestWorkflowExecution:
         )
 
     async def test_executor_graph_binds_the_real_subagent_middleware_tool(self):
-        """build_executor_graph must wire the REAL executor middleware stack.
-
-        ``spawn_subagent`` exists only because ``create_executor_middleware``
-        contributes a ``SubagentMiddleware`` whose tools ``create_agent`` binds.
-        Mocking the middleware factory to ``[]`` (as this test used to) hides that
-        wiring completely: the model's ``spawn_subagent`` call then falls through
-        to ``reject_unbound_tools``. Asserting the call is NOT rejected proves the
-        real middleware stack is present and its tool is reachable.
-        """
-        import ast
-        import inspect
-
-        from langchain_core.tools import tool as lc_tool
-
-        from app.agents.core.graph_builder.build_graph import build_executor_graph
-        from app.agents.tools.todo_tools import TODO_TOOL_NAMES
-
+        """Build_executor_graph must wire the REAL executor middleware stack."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -417,25 +353,21 @@ class TestWorkflowExecution:
         )
 
         def _make_stub(name: str):
-            async def _stub(input: str = "") -> str:
+            async def _stub(query: str = "") -> str:
                 return f"stub:{name}"
 
             _stub.__name__ = name
             _stub.__doc__ = f"Stub for {name}."
             return lc_tool(_stub)
 
-        # Dynamically read initial_tool_ids from the real source so the mock
-        # registry always provides stubs for every tool the graph expects.
-        src = inspect.getsource(build_executor_graph)
+        # Stub every tool the graph binds up front, so the mock registry always
+        # satisfies what build_executor_graph expects.
         injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
-        idx = src.find("initial_tool_ids=")
-        if idx != -1:
-            bracket_start = src.index("[", idx)
-            bracket_end = src.index("]", bracket_start) + 1
-            raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
-        else:
-            raw_ids = []
-        tool_dict = {tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph}
+        tool_dict = {
+            tid: _make_stub(tid)
+            for tid in EXECUTOR_INITIAL_TOOL_IDS
+            if tid not in injected_by_graph
+        }
 
         mock_registry = MagicMock()
         mock_registry.get_tool_dict.return_value = tool_dict
@@ -495,10 +427,10 @@ class TestWorkflowExecution:
 
 
 class _InMemoryExecutionRecords:
-    """Stand-in for the Mongo side of ``workflow_executions_repository``.
+    """Stand-in for the Mongo side of workflow_executions_repository.
 
     Only the three base CRUD primitives are replaced, so the repository's own
-    ``complete()`` (status/duration/error-message assembly) and both execution
+    complete() (status/duration/error-message assembly) and both execution
     service functions still run for real.
     """
 
@@ -518,7 +450,12 @@ class _InMemoryExecutionRecords:
         existing = self.records.get(execution_id)
         if existing is None:
             return None
-        updated = existing.model_copy(update=update.model_dump(exclude_unset=True))
+        # Re-validate rather than model_copy: Mongo stores the $set dicts and the
+        # repository validates them back into the document model on read, so a
+        # copy that skips validation would hand tests shapes production never sees.
+        updated = WorkflowExecutionDocument.model_validate(
+            {**existing.model_dump(), **update.model_dump(exclude_unset=True)}
+        )
         self.records[execution_id] = updated
         return updated
 
@@ -545,12 +482,14 @@ def _make_multi_step_workflow(user_id: str) -> Workflow:
 
 
 @pytest.mark.e2e
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowExecutionFailurePropagation:
     """E2E tests for the real workflow-execution path.
 
-    Drives ``execute_workflow_by_id`` — the function an actual workflow fire
+    Drives execute_workflow_by_id — the function an actual workflow fire
     (manual "run now", a schedule, or an integration trigger) lands on — through
-    ``execute_workflow_as_chat`` and ``app.services.workflow.execution_service``.
+    execute_workflow_as_chat and app.services.workflow.execution_service.
     Only I/O edges are replaced: the Redis-backed scheduler, the Mongo side of the
     execution/workflow repositories, notification delivery, and the agent turn
     that stands in for the LLM.
@@ -559,11 +498,9 @@ class TestWorkflowExecutionFailurePropagation:
     @pytest.fixture
     def workflow_execution_env(self, monkeypatch):
         """Patch every I/O edge of the execution path and expose the observable ones."""
-        from app.api.v1.middleware import tiered_rate_limiter
-        from app.db.repositories.workflow_executions import workflow_executions_repository
-        from app.db.repositories.workflows import workflow_repository
-        from app.services.workflow.scheduler import WorkflowScheduler
-        from app.workers.tasks import workflow_tasks
+
+        # Stubbed explicitly so the "no playbook" branch runs, not the lookup-failure fallback.
+        monkeypatch.setattr(playbook_repository, "get_for_workflow", AsyncMock(return_value=None))
 
         records = _InMemoryExecutionRecords()
         monkeypatch.setattr(workflow_executions_repository, "create", records.create)
@@ -594,15 +531,26 @@ class TestWorkflowExecutionFailurePropagation:
             "get_or_create_workflow_conversation",
             AsyncMock(return_value="conv-workflow-1"),
         )
+        # The fire claims that conversation before it spends anything. Stubbed
+        # so the tier stays offline: the claim is Redis, and its own behaviour
+        # is proven in tests/unit/agents/test_executor_queue.py.
+        monkeypatch.setattr(workflow_tasks, "try_acquire_lock", AsyncMock(return_value=True))
+        monkeypatch.setattr(workflow_tasks, "release_lock_if_owned", AsyncMock())
         monkeypatch.setattr(
             workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
         )
         monkeypatch.setattr(
-            workflow_tasks, "get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})
+            workflow_tasks, "get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         )
+        # The checkpoint reset is Postgres; its own behaviour is proven in
+        # tests/unit/services/workflow/test_thread_reset.py.
+        monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
+        # These tests are about the execution path, not the paid-only gate —
+        # default the owner to an active subscription so it stays out of the way.
+        monkeypatch.setattr(workflow_tasks, "is_paid", AsyncMock(return_value=True))
 
         return {
             "records": records,
@@ -617,17 +565,28 @@ class TestWorkflowExecutionFailurePropagation:
         Returns the list the stand-in appends each completed step title to, so a
         test can prove the run stopped *partway* rather than after every step.
         """
-        from app.agents.core import agent as agent_module
 
         completed: list[str] = []
 
-        async def _run_steps(request, conversation_id, user, trigger_context):
+        async def _run_steps(request, conversation_id, user, options=None):
+            tool_data: list[dict[str, object]] = []
             for step in request.selectedWorkflow.steps:
-                if step["title"] == failing_step_title:
+                if step.title == failing_step_title:
                     raise RuntimeError(
-                        f"Step '{step['title']}' failed: Gmail API returned 503 Service Unavailable"
+                        f"Step '{step.title}' failed: Gmail API returned 503 Service Unavailable"
                     )
-                completed.append(step["title"])
+                completed.append(step.title)
+                tool_data.append(
+                    {
+                        "tool_name": "tool_calls_data",
+                        "data": {
+                            "tool_name": step.title,
+                            "inputs": {"step_id": step.id},
+                            "output": "ok",
+                        },
+                    }
+                )
+            return SilentRunResult(message="", tool_data=tool_data)
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
         return completed
@@ -635,21 +594,12 @@ class TestWorkflowExecutionFailurePropagation:
     async def test_step_failure_records_a_failed_execution_naming_the_step(
         self, monkeypatch, workflow_execution_env
     ):
-        """A step that fails partway through must surface as a failed execution.
-
-        The user-visible outcome of a broken workflow run is its execution record
-        and the failure notification. Both must say the run failed and carry the
-        failing step's identity — a swallowed step error (``execute_workflow_as_chat``
-        returning instead of re-raising) would silently record 'success'.
-        """
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+        """A step that fails partway through must surface as a failed execution naming the step."""
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         completed = self._install_stepwise_agent(
             monkeypatch, failing_step_title="Summarize the thread"
         )
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
 
@@ -695,17 +645,10 @@ class TestWorkflowExecutionFailurePropagation:
     async def test_all_steps_succeeding_records_a_successful_execution(
         self, monkeypatch, workflow_execution_env
     ):
-        """Control for the failure test: an uneventful run must record success.
-
-        Without this, a mutation that hard-codes 'failed' everywhere would still
-        leave the failure test green.
-        """
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+        """Control for the failure test: an uneventful run must record success."""
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         completed = self._install_stepwise_agent(monkeypatch, failing_step_title=None)
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
 
@@ -723,6 +666,11 @@ class TestWorkflowExecutionFailurePropagation:
         assert execution.conversation_id == "conv-workflow-1", (
             "A successful run must link the conversation holding its messages"
         )
+        assert [call.tool_name for call in execution.trace] == completed, (
+            "A successful run must record what it did — the next run reads this "
+            "instead of replaying the conversation's checkpoints"
+        )
+        assert execution.trace[0].args == {"step_id": "s1"}
         assert workflow_execution_env["recorded_stats"] == [True]
         assert workflow_execution_env["notifications"] == [], (
             "A successful run must not raise a failure notification"
@@ -732,18 +680,10 @@ class TestWorkflowExecutionFailurePropagation:
     async def test_execution_record_is_completed_even_when_notification_delivery_fails(
         self, monkeypatch, workflow_execution_env
     ):
-        """Notification delivery is best-effort; it must not lose the failure record.
-
-        If the notification service is down, the user still needs the execution
-        history to show the run failed.
-        """
-        from app.workers.tasks import workflow_tasks
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+        """Notification delivery is best-effort; it must not lose the failure record."""
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         self._install_stepwise_agent(monkeypatch, failing_step_title="Post to Slack")
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
         monkeypatch.setattr(
@@ -764,8 +704,6 @@ class TestWorkflowExecutionFailurePropagation:
         self, monkeypatch, workflow_execution_env
     ):
         """A fire for a deleted workflow must not leave a dangling 'running' record."""
-        from app.services.workflow.scheduler import WorkflowScheduler
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=None))
 

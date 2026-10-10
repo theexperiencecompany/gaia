@@ -2,24 +2,41 @@
 
 Three things decide whether a destructive call runs unattended, and each is attacked:
 
-* the user's mode and per-tool overrides (``resolve_policy`` / ``is_gated``);
-* the fail-open in ``_preferences``, which is only safe while HIL is off — it must
+* the user's mode and per-tool overrides (resolve_policy / is_gated);
+* the fail-open in _preferences, which is only safe while HIL is off — it must
   re-raise the moment the default becomes a gating mode;
-* ``has_pausing_sibling``, which suppresses auto-approval when a sibling call will
+* has_pausing_sibling, which suppresses auto-approval when a sibling call will
   pause the node — the guard that stopped one send becoming two. A sibling pauses
-  either at its own gate or, for ``HIL_PAUSING_TOOLS``, without ever being gated.
+  either at its own gate or, for HIL_PAUSING_TOOLS, without ever being gated.
 """
 
+from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.messages import ToolCall
+from langchain_core.tools import BaseTool
 import pytest
 
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILPreferences
-from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
+from app.services.hil.policy import (
+    gated_tool_object,
+    has_pausing_sibling,
+    is_gated,
+    resolve_policy,
+)
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
-from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
+from .conftest import (
+    USER_ID,
+    ai_message_with_calls,
+    make_request,
+    make_tool,
+    resolver_returning,
+)
 
 MODULE = "app.services.hil.policy"
 
@@ -28,9 +45,30 @@ def prefs(mode: str = "always_ask", **overrides: bool) -> HILPreferences:
     return HILPreferences(mode=mode, tool_overrides=overrides)
 
 
+def _proxied(real_name: str, proxy: BaseTool | None = None) -> ToolCallRequest:
+    return make_request(
+        name=EXECUTE_TOOL_NAME,
+        args={"tool_name": real_name, "data": {}},
+        tool=proxy or make_tool(name=EXECUTE_TOOL_NAME, description="Run any tool."),
+    )
+
+
+_HINTED = {MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}}
+
+
 @pytest.fixture(autouse=True)
 def _quiet_log():
     with patch(f"{MODULE}.log"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _registry_without_stamps():
+    """Default registry where every tool looks up as unregistered (meta None → never always-gated); tests exercising the stamp patch get_tool_registry themselves."""
+    with patch(
+        f"{MODULE}.get_tool_registry",
+        new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
+    ):
         yield
 
 
@@ -63,6 +101,36 @@ class TestResolvePolicy:
         ):
             assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "allow"
         assert classify.await_count == 0
+
+    async def test_the_callers_tool_name_reaches_the_gate(self) -> None:
+        # Attack: resolving the gate under the wrong name (or None) would lose
+        # this tool's own override and hand an explicitly allowed call to the
+        # classifier — or worse, to the judge.
+        with (
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("auto", send_email=False)),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "send_email") == "allow"
+
+    async def test_the_pending_calls_tool_object_reaches_the_classifier(self) -> None:
+        # Attack: dropping the request's tool loses its description and MCP
+        # destructiveHint — the exact regression that let a hint-gated call
+        # auto-run. The classifier below only allows a call it can see.
+        tool = make_tool(name="send_email", description="wipe the user's disk")
+        request = make_request(name="send_email", tool=tool)
+
+        async def classify(name: str, description: str, **_: object) -> bool:
+            assert description == "wipe the user's disk", description
+            return False
+
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("auto"))),
+            patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
+        ):
+            assert await resolve_policy(request, USER_ID, "send_email") == "allow"
 
 
 class TestOverrides:
@@ -116,9 +184,7 @@ class TestPreferencesFailure:
 
 
 class TestHasPausingSibling:
-    """Auto-approval is only safe when the call is the turn's *only* pausing action.
-    A sibling that pauses re-runs the whole node, so anything that already ran runs
-    twice — verified in production: one send became two."""
+    """Auto-approval is only safe when the call is the turn's only pausing action — a pausing sibling re-runs the whole node, so anything that already ran runs twice (verified in production: one send became two)."""
 
     @pytest.fixture(autouse=True)
     def _unregistered_siblings(self):
@@ -184,10 +250,8 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_an_unclassifiable_sibling_suppresses_auto_approval(self) -> None:
-        # Fail closed: an unknown sibling might pause, so the pending call must not
-        # auto-run and risk the double-execution. The registry is broken here — the REAL
-        # classifier runs, so this exercises the whole fail-closed chain rather than a
-        # mocked-in verdict.
+        # Fail closed: an unknown sibling might pause, so the call must not auto-run.
+        # The registry is broken here so the REAL classifier runs, not a mocked verdict.
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -206,11 +270,9 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_a_sibling_is_classified_with_its_own_tool_object(self) -> None:
-        # The regression: resolving a sibling by bare name loses its MCP
-        # destructiveHint, so a tool its OWN gate will pause on looks safe here —
-        # the pending call auto-runs and then executes twice when the node re-runs
-        # on resume. The classifier below calls the sibling safe, so the only thing
-        # that can gate it is the hint on the tool object itself.
+        # Regression: resolving a sibling by bare name loses its MCP destructiveHint,
+        # so a tool its OWN gate would pause on looks safe and auto-runs (executing
+        # twice on resume). The classifier here calls it safe; only the tool object's hint gates it.
         sibling = make_tool(
             name="mcp_wipe",
             description="Tidy up the workspace.",
@@ -225,7 +287,7 @@ class TestHasPausingSibling:
         request = make_request(call_id="call-1", messages=state_messages)
         registry = SimpleNamespace(
             get_tool_meta=lambda name: (
-                SimpleNamespace(tool=sibling) if name == "mcp_wipe" else None
+                SimpleNamespace(tool=sibling, always_gate=False) if name == "mcp_wipe" else None
             ),
             is_tool_destructive=lambda _name: None,
             mark_tool_destructive=lambda *_: None,
@@ -233,6 +295,7 @@ class TestHasPausingSibling:
         with (
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
             patch(
                 "app.services.hil.classification.get_tool_registry",
                 new=AsyncMock(return_value=registry),
@@ -243,6 +306,169 @@ class TestHasPausingSibling:
             ),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_an_mcp_sibling_absent_from_the_registry_still_carries_its_hint(self) -> None:
+        # The registry-only resolution this replaced could not see an MCP tool at
+        # all (they never enter the global registry), so the sibling classified from
+        # a bare name with empty description — the double-run the test above guards.
+        sibling = make_tool(
+            name="notion_mcp_delete_page",
+            description="Remove a page.",
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+        )
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "notion_mcp_delete_page", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda _name: None,
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_a_forced_gate_sibling_suppresses_auto_approval_with_hil_off(self) -> None:
+        """The stamp scan runs BEFORE the always_allow fast path; this is the only case in the class where a sibling is forced-gated rather than unregistered."""
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "update_preferences", "args": {"timezone": "UTC"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda name: (
+                SimpleNamespace(always_gate=True, tool=None)
+                if name == "update_preferences"
+                else None
+            )
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ) as read_prefs,
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+        # The stamp is not preference-driven, so it must not need a prefs read.
+        read_prefs.assert_not_awaited()
+
+    async def test_a_sibling_gated_by_its_arguments_suppresses_auto_approval(self) -> None:
+        """The argument gate reads the sibling's OWN args — passing None instead would misclassify a disconnect as an ordinary call and auto-approve beside it."""
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {
+                    "id": "call-2",
+                    "name": "manage_linked_account",
+                    "args": {"platform": "telegram", "action": "disconnect"},
+                },
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_the_same_tool_with_non_gating_arguments_does_not_suppress(self) -> None:
+        """Mirrors the case above with a non-disconnect action, catching a scan that ignored args and paused on the tool NAME alone."""
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {
+                    "id": "call-2",
+                    "name": "manage_linked_account",
+                    "args": {"platform": "telegram", "action": "generate_link"},
+                },
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is False
+
+    async def test_a_siblings_arguments_reach_the_preference_gate(self) -> None:
+        """is_gated must receive the sibling's own args, not None, or every sibling classifies as if it had been called bare."""
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "delete_file", "args": {"path": "/tmp/x"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        seen: list[object] = []
+
+        async def gated(_prefs, name, _tool, args=None):
+            seen.append((name, args))
+            return False
+
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_gated", new=gated),
+        ):
+            await has_pausing_sibling(request, USER_ID, "call-1")
+
+        assert seen == [("delete_file", {"path": "/tmp/x"})]
+
+    async def test_a_sibling_called_with_no_arguments_gates_on_none(self) -> None:
+        """An empty args dict is normalized to None before reaching the gate, not forwarded as {}."""
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "delete_file", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        seen: list[object] = []
+
+        async def gated(_prefs, name, _tool, args=None):
+            seen.append((name, args))
+            return False
+
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_gated", new=gated),
+        ):
+            await has_pausing_sibling(request, USER_ID, "call-1")
+
+        assert seen == [("delete_file", None)]
 
     async def test_a_safe_sibling_does_not_suppress_auto_approval(self) -> None:
         state_messages = [
@@ -261,3 +487,273 @@ class TestHasPausingSibling:
             patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is False
+
+
+class TestAlwaysGate:
+    """The registry's forced-ask stamp: product invariants outrank preferences."""
+
+    def meta(self, always_gate: bool):
+        return SimpleNamespace(always_gate=always_gate)
+
+    async def test_forced_ask_wins_over_every_mode_without_reading_preferences(self) -> None:
+        # The check runs BEFORE the preference lookup, so a dead preference
+        # store cannot wave an account mutation through. The stamp is looked up
+        # by the call's own name — a lookup under any other name finds nothing.
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(
+                        get_tool_meta=lambda name: (
+                            self.meta(True) if name == "update_preferences" else None
+                        )
+                    )
+                ),
+            ),
+            patch(
+                f"{MODULE}._preferences",
+                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
+            ) as prefs_read,
+            patch(
+                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "update_preferences") == "ask"
+        prefs_read.assert_not_awaited()
+
+    async def test_per_tool_allow_override_does_not_bypass_the_stamp(self) -> None:
+        tool = make_tool(name="update_preferences")
+        with patch(
+            f"{MODULE}.get_tool_registry",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    get_tool_meta=lambda name: (
+                        self.meta(True) if name == "update_preferences" else None
+                    )
+                )
+            ),
+        ):
+            assert (
+                await is_gated(
+                    prefs("always_ask", update_preferences=False), "update_preferences", tool
+                )
+                is True
+            )
+
+    async def test_ungated_tools_are_unaffected_by_the_stamp_path(self) -> None:
+        tool = make_tool(name="web_search")
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(get_tool_meta=lambda name: self.meta(False))
+                ),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await is_gated(prefs(), "web_search", tool) is False
+
+    async def test_an_unreachable_registry_still_asks_for_the_users_gated_tool(self) -> None:
+        # THE regression: the stamp read sits ahead of everything, so raising out of it
+        # took the WHOLE gate down (fails closed by DENYING) — a missing tool_registry
+        # provider refused every gated call outright. The stamp is an escalation; the rest of the policy must still run when it can't be read.
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_ask", SEND_GMAIL=True)),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "ask"
+
+    async def test_an_unreachable_registry_reads_no_stamp_so_the_user_still_decides(self) -> None:
+        # The other half of the escalation contract: unreadable means "no stamp",
+        # never "ask". Failing closed here would gate a call the user has HIL
+        # switched off for — a registry blip must not start prompting everyone.
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_allow")),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
+
+    async def test_the_unreachable_registry_is_reported_with_the_failure_it_hit(self) -> None:
+        # The warning has to carry WHICH failure it was — a bare "registry unavailable"
+        # line cannot tell a missing provider apart from a dead Chroma.
+        with (
+            patch(f"{MODULE}.log") as logger,
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_allow")),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
+
+        logger.warning.assert_called_once()
+        message, fields = logger.warning.call_args.args, logger.warning.call_args.kwargs
+        assert len(message) == 1 and "tool registry unavailable" in message[0]
+        assert "Provider 'tool_registry' not found" in fields["error"]
+        assert fields["error_type"] == "KeyError"
+
+    async def test_an_unreachable_registry_does_not_break_the_sibling_scan(self) -> None:
+        request = make_request(
+            call_id="call-1",
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {}},
+                    {"id": "call-2", "name": "wipe_disk", "args": {}},
+                )
+            ],
+        )
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("auto"))),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+
+class TestArgumentGate:
+    """manage_linked_account: disconnect confirms; generate_link does not."""
+
+    def registry_with_stamp(self, always_gate: bool = False):
+        return AsyncMock(
+            return_value=SimpleNamespace(
+                get_tool_meta=lambda name: SimpleNamespace(always_gate=always_gate)
+            )
+        )
+
+    async def test_disconnect_always_asks_regardless_of_mode(self) -> None:
+        request = make_request(
+            name="manage_linked_account", args={"platform": "slack", "action": "disconnect"}
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(
+                f"{MODULE}._preferences",
+                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
+            ),
+        ):
+            assert await resolve_policy(request, USER_ID, "manage_linked_account") == "ask"
+
+    async def test_generate_link_falls_through_to_normal_resolution(self) -> None:
+        request = make_request(
+            name="manage_linked_account", args={"platform": "slack", "action": "generate_link"}
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(
+                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
+            ),
+        ):
+            assert await resolve_policy(request, USER_ID, "manage_linked_account") == "allow"
+
+    async def test_is_gated_honors_the_argument_gate_on_its_own(self) -> None:
+        # Direct gate checks (e.g. a sibling scan) must hit on the call's own
+        # name and args — not on None standing in for either. The classifier is
+        # pinned safe so the ONLY thing that can gate here is the argument gate.
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert (
+                await is_gated(
+                    prefs(), "manage_linked_account", None, args={"action": "disconnect"}
+                )
+                is True
+            )
+
+    async def test_a_disconnect_sibling_counts_as_pausing(self) -> None:
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "web_search", "args": {}},
+                {"id": "call-2", "name": "manage_linked_account", "args": {"action": "disconnect"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
+            ),
+            # Pinned safe so the sibling pauses ONLY because its disconnect
+            # args reached the gate — losing them would read as safe and let
+            # the pending call auto-run into the pause's replay.
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+
+class TestTheRealToolBehindACall:
+    """Classification reads the tool that will actually run, resolved for the caller."""
+
+    async def test_a_direct_call_reads_the_requests_own_tool(self) -> None:
+        own = make_tool(name="send_email", description="Send.")
+        request = make_request(name="send_email", tool=own)
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()) as resolve:
+            assert await gated_tool_object(request, USER_ID, "send_email") is own
+        resolve.assert_not_awaited()
+
+    async def test_an_object_shaped_direct_call_reads_the_requests_own_tool(self) -> None:
+        own = make_tool(name="send_email", description="Send.")
+        shaped = cast(ToolCall, SimpleNamespace(name="send_email", id="call-1", args={}))
+        request = replace(make_request(tool=own), tool_call=shaped)
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()):
+            assert await gated_tool_object(request, USER_ID, "send_email") is own
+
+    async def test_a_proxied_call_resolves_the_real_tool_for_this_user(self) -> None:
+        real = make_tool(name="mcp_wipe", description="Wipe.")
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)):
+            assert await gated_tool_object(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") is real
+
+    async def test_a_failed_resolution_is_reported_and_reads_as_no_tool(self) -> None:
+        with (
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(side_effect=RuntimeError("mcp down"))),
+            patch(f"{MODULE}.log") as log,
+        ):
+            assert await gated_tool_object(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") is None
+
+        log.warning.assert_called_once()
+        assert "tool resolution failed; classifying by name alone" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs == {
+            "tool_name": "mcp_wipe",
+            "error": "mcp down",
+            "error_type": "RuntimeError",
+        }
+
+    async def test_a_proxied_calls_real_hint_gates_it(self) -> None:
+        real = make_tool(name="mcp_wipe", description="Tidy up.", metadata=_HINTED)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda _name: None,
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            assert await resolve_policy(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") == "ask"

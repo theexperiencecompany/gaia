@@ -33,7 +33,7 @@ async def create_note_endpoint(
     """Create a new note for the authenticated user."""
     log.set(operation="create_note")
     try:
-        result = await create_note_service(note, user["user_id"])
+        result = await create_note_service(note, user.user_id)
         capture_context_event(AnalyticsEvents.NOTE_CREATED)
         log.set(outcome="success")
         return result
@@ -42,7 +42,7 @@ async def create_note_endpoint(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error creating note",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -59,7 +59,7 @@ async def get_note_endpoint(
     """Retrieve a single note by its ID."""
     log.set(operation="get_note")
     try:
-        result = await get_note(note_id, user["user_id"])
+        result = await get_note(note_id, user.user_id)
         log.set(note_id=note_id)
         log.set(outcome="success")
         return result
@@ -69,7 +69,7 @@ async def get_note_endpoint(
         log.error(
             f"{LogTag.API} Error getting note",
             note_id=note_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -86,7 +86,7 @@ async def get_all_notes_endpoint(
     """Retrieve all notes for the authenticated user."""
     log.set(operation="list_notes")
     try:
-        notes = await get_all_notes(user["user_id"])
+        notes = await get_all_notes(user.user_id)
         log.set(result_count=len(notes))
         log.set(outcome="success")
         return notes
@@ -95,7 +95,7 @@ async def get_all_notes_endpoint(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error listing notes",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -115,7 +115,7 @@ async def update_note_endpoint(
     """Update an existing note by its ID."""
     log.set(operation="update_note")
     try:
-        result = await update_note(note_id, note, user["user_id"])
+        result = await update_note(note_id, note, user.user_id)
         capture_context_event(AnalyticsEvents.NOTE_UPDATED)
         log.set(note_id=note_id)
         log.set(outcome="success")
@@ -126,7 +126,7 @@ async def update_note_endpoint(
         log.error(
             f"{LogTag.API} Error updating note",
             note_id=note_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -145,7 +145,7 @@ async def delete_note_endpoint(
     """Delete a note by its ID."""
     log.set(operation="delete_note")
     try:
-        await delete_note(note_id, user["user_id"])
+        await delete_note(note_id, user.user_id)
         capture_context_event(AnalyticsEvents.NOTE_DELETED)
         log.set(note_id=note_id)
         log.set(outcome="success")
@@ -155,7 +155,7 @@ async def delete_note_endpoint(
         log.error(
             f"{LogTag.API} Error deleting note",
             note_id=note_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

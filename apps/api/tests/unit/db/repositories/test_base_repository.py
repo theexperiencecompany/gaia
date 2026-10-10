@@ -1,4 +1,4 @@
-"""Hermetic unit tests for ``_BaseRepository.__init_subclass__`` validation.
+"""Hermetic unit tests for _BaseRepository.__init_subclass__ validation.
 
 The base rejects a concrete subclass whose required ClassVars are missing or
 whose models are not pydantic BaseModel subclasses — at class-definition time,
@@ -27,7 +27,7 @@ class _Update(BaseModel):
 
 
 def _concrete(**overrides: Any) -> type[_BaseRepository]:
-    """A minimally valid concrete repository, with ClassVars replaced by overrides."""
+    """Build a minimally valid concrete repository, with ClassVars replaced by overrides."""
     classvars: dict[str, Any] = {
         "collection_name": "things",
         "document_model": _Doc,
@@ -69,3 +69,24 @@ def test_a_non_pydantic_document_model_raises() -> None:
 def test_an_abstract_subclass_needs_no_classvars() -> None:
     class AbstractRepo(_BaseRepository, abstract=True):
         pass
+
+
+def test_a_filter_naming_one_id_reports_it_as_the_targeted_doc() -> None:
+    """_apply_raw_update evicts this id when the write matches nothing."""
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"_id": "abc", "user_id": "u1"}) == "abc"
+
+
+def test_a_filter_that_names_no_id_targets_no_doc() -> None:
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"user_id": "u1"}) is None
+
+
+def test_an_operator_valued_id_targets_no_single_doc() -> None:
+    """An operator-valued id matches a set, so stringifying it would evict a key that exists for nobody and leave real entities stale."""
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"_id": {"$in": ["a", "b"]}}) is None
+    assert repo._filter_doc_id({"_id": {"$ne": "a"}}) is None

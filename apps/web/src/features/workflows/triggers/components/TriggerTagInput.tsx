@@ -45,6 +45,9 @@ export function TriggerTagInput({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
+      // IME users press Enter to confirm a candidate mid-composition; don't
+      // commit a half-typed tag until the composition is finished.
+      if (e.nativeEvent.isComposing) return;
       e.preventDefault();
       handleAdd();
     } else if (e.key === "Backspace" && !input && values.length > 0) {

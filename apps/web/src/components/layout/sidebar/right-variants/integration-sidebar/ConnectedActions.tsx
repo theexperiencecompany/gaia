@@ -10,19 +10,29 @@ import {
 } from "@icons";
 import Link from "next/link";
 
+import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import type { Integration } from "@/features/integrations/types";
+
+/** The disconnect/remove action; presence decides whether the button renders. */
+interface DisconnectAction {
+  label: string;
+  icon: React.ReactNode;
+  isPending: boolean;
+  onDisconnect: () => void;
+}
+
+/** The publish/unpublish action; presence decides whether the button renders. */
+interface PublishAction {
+  isPending: boolean;
+  onPublish: () => void;
+}
 
 interface ConnectedActionsProps {
   integration: Integration;
+  /** Collapse buttons to icon-only when three or more actions are visible. */
   useIconOnly: boolean;
-  isOwnIntegration: boolean;
-  hasDisconnect: boolean;
-  disconnectLabel: string;
-  disconnectIcon: React.ReactNode;
-  isDisconnecting: boolean;
-  isPublishing: boolean;
-  onDisconnect: () => void;
-  onPublish: () => void;
+  disconnect?: DisconnectAction | null;
+  publish?: PublishAction | null;
   onShare: () => void;
 }
 
@@ -30,31 +40,27 @@ interface ConnectedActionsProps {
 export function ConnectedActions({
   integration,
   useIconOnly,
-  isOwnIntegration,
-  hasDisconnect,
-  disconnectLabel,
-  disconnectIcon,
-  isDisconnecting,
-  isPublishing,
-  onDisconnect,
-  onPublish,
+  disconnect = null,
+  publish = null,
   onShare,
 }: ConnectedActionsProps) {
+  const { isOwnIntegration } = useIntegrationOwnership(integration);
+
   return (
     <ButtonGroup variant="flat" className="w-full" fullWidth>
-      {hasDisconnect && (
-        <Tooltip content={`${disconnectLabel} this integration`}>
+      {disconnect && (
+        <Tooltip content={`${disconnect.label} this integration`}>
           <Button
             isIconOnly={useIconOnly}
             className="w-full"
             color="danger"
-            onPress={onDisconnect}
-            isLoading={isDisconnecting}
-            isDisabled={isDisconnecting}
-            aria-label={disconnectLabel}
-            startContent={isDisconnecting ? undefined : disconnectIcon}
+            onPress={disconnect.onDisconnect}
+            isLoading={disconnect.isPending}
+            isDisabled={disconnect.isPending}
+            aria-label={disconnect.label}
+            startContent={disconnect.isPending ? undefined : disconnect.icon}
           >
-            {!useIconOnly && disconnectLabel}
+            {!useIconOnly && disconnect.label}
           </Button>
         </Tooltip>
       )}
@@ -81,18 +87,18 @@ export function ConnectedActions({
         </Tooltip>
       )}
 
-      {isOwnIntegration && integration.isPublic && (
+      {isOwnIntegration && integration.isPublic && publish && (
         <Tooltip content="Unpublish from Marketplace">
           <Button
             isIconOnly={useIconOnly}
             color="warning"
             className="w-full"
-            onPress={onPublish}
-            isLoading={isPublishing}
-            isDisabled={isPublishing}
+            onPress={publish.onPublish}
+            isLoading={publish.isPending}
+            isDisabled={publish.isPending}
             aria-label="Unpublish"
             startContent={
-              !isPublishing ? (
+              !publish.isPending ? (
                 <RemoveCircleIcon
                   width={18}
                   height={18}
@@ -106,18 +112,20 @@ export function ConnectedActions({
         </Tooltip>
       )}
 
-      {isOwnIntegration && !integration.isPublic && (
+      {isOwnIntegration && !integration.isPublic && publish && (
         <Tooltip content="Publish to Community Marketplace">
           <Button
             isIconOnly={useIconOnly}
             className="w-full"
             color="primary"
-            onPress={onPublish}
-            isLoading={isPublishing}
-            isDisabled={isPublishing}
+            onPress={publish.onPublish}
+            isLoading={publish.isPending}
+            isDisabled={publish.isPending}
             aria-label="Publish"
             startContent={
-              !isPublishing ? <GlobalIcon width={18} height={18} /> : undefined
+              !publish.isPending ? (
+                <GlobalIcon width={18} height={18} />
+              ) : undefined
             }
           >
             {!useIconOnly && "Publish"}

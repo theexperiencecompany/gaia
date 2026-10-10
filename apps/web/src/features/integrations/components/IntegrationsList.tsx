@@ -1,267 +1,87 @@
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { RedoIcon } from "@icons";
-import {
-  CONNECT_ACTION_LABEL,
-  formatRelativeTime,
-  INTEGRATION_STATE_ORDER,
-  integrationConnectionState,
-} from "@shared/utils";
+import { Skeleton } from "@heroui/skeleton";
 import type React from "react";
-import { useMemo } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { useIntegrationModalStore } from "@/stores/integrationModalStore";
-import { useIntegrationsStore } from "@/stores/integrationsStore";
-import { useUserStore } from "@/stores/userStore";
-import {
-  getCategoryLabel,
-  getUniqueCategories,
-  sortCategories,
-} from "../constants/categories";
-import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
-import { useIntegrations } from "../hooks/useIntegrations";
-import type { Integration } from "../types";
+import { useIntegrationModalActions } from "@/stores/uiStore";
+import { getCategoryLabel } from "../constants/categories";
+import { useIntegrationsList } from "../hooks/useIntegrationsList";
 import { CategoryFilter } from "./CategoryFilter";
+import { IntegrationSection } from "./IntegrationSection";
 import { MarketplaceBanner } from "./MarketplaceBanner";
 
-const IntegrationRow: React.FC<{
-  integration: Integration;
-  onConnect: (id: string) => void;
-  onClick: (id: string) => void;
-}> = ({ integration, onConnect, onClick }) => {
-  const state = integrationConnectionState(integration.status);
-  const isConnected = state === "connected";
-  // Custom integrations are always available, platform integrations use available field
-  const isAvailable = integration.source === "custom" || integration.available;
-  const needsAttention = state === "pending" || state === "expired";
-  // How long the grant has been dead — the difference between "I never set this
-  // up" and "this broke while I wasn't looking".
-  const disconnectedAgo =
-    state === "expired" && integration.expiredAt
-      ? formatRelativeTime(integration.expiredAt)
-      : null;
+// Distinct keys for the initial catalog placeholders (also serve as React keys).
+const INTEGRATION_SKELETON_KEYS = [
+  "int-a",
+  "int-b",
+  "int-c",
+  "int-d",
+  "int-e",
+  "int-f",
+];
 
-  const handleClick = () => {
-    onClick(integration.id);
-  };
-
-  return (
-    <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
-      onClick={handleClick}
-    >
-      <div className="shrink-0">
-        {getToolCategoryIcon(
-          integration.id,
-          {
-            size: 32,
-            width: 32,
-            height: 32,
-            showBackground: false,
-          },
-          integration.iconUrl,
-        )}
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="font-medium">{integration.name}</div>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate text-sm font-light text-zinc-400">
-            {integration.description}
-          </div>
-          {disconnectedAgo && (
-            <span className="shrink-0 text-xs text-zinc-500">
-              Disconnected {disconnectedAgo}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="shrink-0">
-        {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
-            Connected
-          </Chip>
-        )}
-
-        {(isAvailable || needsAttention) && !isConnected && (
-          <Button
-            variant="flat"
-            size="sm"
-            color={needsAttention ? "warning" : "primary"}
-            startContent={
-              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
-            }
-            onPress={() => {
-              onConnect(integration.id);
-            }}
-          >
-            {CONNECT_ACTION_LABEL[state]}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface IntegrationSectionProps {
-  title: string;
-  integrations: Integration[];
-  chipColor?: "primary" | "default";
-  onConnect: (id: string) => void;
-  onIntegrationClick?: (id: string) => void;
+interface NoIntegrationsFoundProps {
+  searchQuery: string;
+  selectedCategory: string;
+  clearFilters: () => void;
 }
 
-const IntegrationSection: React.FC<IntegrationSectionProps> = ({
-  title,
-  integrations,
-  chipColor = "default",
-  onConnect,
-  onIntegrationClick,
-}) => {
-  if (integrations.length === 0) return null;
+const NoIntegrationsFound: React.FC<NoIntegrationsFoundProps> = ({
+  searchQuery,
+  selectedCategory,
+  clearFilters,
+}) => (
+  <div className="py-16 text-center space-y-2">
+    <p className="text-sm text-zinc-400">
+      {searchQuery
+        ? `No integrations found for "${searchQuery}"`
+        : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
+    </p>
+    <Button onPress={clearFilters} variant="light" color="primary" size="sm">
+      Clear filters
+    </Button>
+  </div>
+);
 
-  return (
-    <div className="mb-8">
-      <div className="mb-4 flex items-center gap-3 pl-4">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <Chip size="sm" variant="flat" color={chipColor}>
-          {integrations.length}
-        </Chip>
-      </div>
-      <div className="flex flex-col gap-2">
-        {integrations.map((integration) => (
-          <IntegrationRow
-            key={integration.id}
-            integration={integration}
-            onConnect={onConnect}
-            onClick={(id) => onIntegrationClick?.(id)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-};
-
-export const IntegrationsList: React.FC<{
+interface IntegrationsListProps {
   onIntegrationClick?: (integrationId: string) => void;
-}> = ({ onIntegrationClick }) => {
-  const openModal = useIntegrationModalStore((state) => state.openModal);
-  const { integrations, connectIntegration } = useIntegrations();
+  searchQuery: string;
+  selectedCategory: string;
+  setSelectedCategory: (category: string) => void;
+  clearFilters: () => void;
+}
 
-  // Get state from store
-  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
-  const selectedCategory = useIntegrationsStore(
-    (state) => state.selectedCategory,
-  );
-  const setSelectedCategory = useIntegrationsStore(
-    (state) => state.setSelectedCategory,
-  );
-  const clearFilters = useIntegrationsStore((state) => state.clearFilters);
-  const currentUserId = useUserStore((state) => state.userId);
-
-  const { filteredIntegrations } = useIntegrationSearch(integrations);
-
-  const handleConnect = async (integrationId: string) => {
-    const integration = integrations.find((i) => i.id === integrationId);
-    // API-key (bearer) integrations collect their key in the detail sidebar —
-    // open it instead of connecting directly (same as clicking the row).
-    if (integration?.authType === "bearer" && integration.requiresAuth) {
-      onIntegrationClick?.(integrationId);
-      return;
-    }
-    try {
-      await connectIntegration(integrationId);
-    } catch (error) {
-      console.error("Failed to connect integration:", error);
-    }
-  };
-
-  // Derive categories from backend integrations data
-  const availableCategories = useMemo(() => {
-    const uniqueCategories = getUniqueCategories(integrations);
-    const sorted = sortCategories(uniqueCategories);
-    // Add "created_by_you" at the start if user has custom integrations they created
-    const hasCreatedByYou = integrations.some(
-      (i) => i.createdBy === currentUserId,
-    );
-    if (hasCreatedByYou) {
-      return ["created_by_you", ...sorted];
-    }
-    return sorted;
-  }, [integrations, currentUserId]);
-
-  // Integrations created by the current user
-  const createdByYouIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
-  }, [filteredIntegrations, currentUserId]);
-
-  // Separate featured integrations
-  const featuredIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.isFeatured && i.available);
-  }, [filteredIntegrations]);
-
-  // Group ALL integrations by category, sorted: connected first, then alphabetically
-  // When a search query is active, preserve Fuse.js relevance order instead of sorting alphabetically
-  const integrationsByCategory = useMemo(() => {
-    const grouped: Record<string, Integration[]> = {};
-
-    for (const category of availableCategories) {
-      const items = filteredIntegrations.filter((i) => i.category === category);
-      grouped[category] = searchQuery.trim()
-        ? items
-        : items.toSorted((a, b) => {
-            // Needs-attention (expired, pending) first, then connected
-            const orderA =
-              INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
-            const orderB =
-              INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
-            if (orderA !== orderB) return orderA - orderB;
-            // Then alphabetically
-            return a.name.localeCompare(b.name);
-          });
-    }
-
-    return grouped;
-  }, [filteredIntegrations, availableCategories, searchQuery]);
-
-  // When searching, order categories by which one contains the top-ranked result
-  const searchOrderedCategories = useMemo(() => {
-    const cats = availableCategories.filter(
-      (cat) => cat !== "created_by_you" && cat !== "custom",
-    );
-    if (!searchQuery.trim()) return cats;
-
-    return cats.toSorted((a, b) => {
-      const aIndex = filteredIntegrations.findIndex((i) => i.category === a);
-      const bIndex = filteredIntegrations.findIndex((i) => i.category === b);
-      if (aIndex !== -1 && bIndex !== -1) {
-        return aIndex - bIndex;
-      }
-      if (aIndex !== -1) return -1;
-      if (bIndex !== -1) return 1;
-      return 0;
-    });
-  }, [availableCategories, filteredIntegrations, searchQuery]);
-
-  // For when a specific category is selected
-  const integrationsInSelectedCategory = useMemo(() => {
-    if (selectedCategory === "created_by_you") {
-      return createdByYouIntegrations;
-    }
-    return filteredIntegrations.filter((i) => i.category === selectedCategory);
-  }, [filteredIntegrations, selectedCategory, createdByYouIntegrations]);
-
-  const hasResults =
-    selectedCategory === "created_by_you"
-      ? createdByYouIntegrations.length > 0
-      : filteredIntegrations.length > 0;
+export const IntegrationsList: React.FC<IntegrationsListProps> = ({
+  onIntegrationClick,
+  searchQuery,
+  selectedCategory,
+  setSelectedCategory,
+  clearFilters,
+}) => {
+  const { openIntegrationModal } = useIntegrationModalActions();
+  const {
+    isPending,
+    handleConnect,
+    availableCategories,
+    createdByYouIntegrations,
+    featuredIntegrations,
+    integrationsByCategory,
+    searchOrderedCategories,
+    integrationsInSelectedCategory,
+    isAllCategories,
+    showFilteredEmptyState,
+    showCatalogEmptyState,
+    showFeatured,
+    showCreatedByYou,
+  } = useIntegrationsList({
+    searchQuery,
+    selectedCategory,
+    onIntegrationClick,
+  });
 
   return (
     <div>
       {/* Marketplace Banner */}
       <div className="my-8">
-        <MarketplaceBanner onCreateCustomIntegration={openModal} />
+        <MarketplaceBanner onCreateCustomIntegration={openIntegrationModal} />
       </div>
 
       <div className="mb-6">
@@ -272,26 +92,25 @@ export const IntegrationsList: React.FC<{
         />
       </div>
 
-      {/* No Results State */}
-      {!hasResults && (searchQuery || selectedCategory !== "all") && (
-        <div className="py-16 text-center space-y-2">
-          <p className="text-sm text-zinc-400">
-            {searchQuery
-              ? `No integrations found for "${searchQuery}"`
-              : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
-          </p>
-          <Button
-            onPress={clearFilters}
-            variant="light"
-            color="primary"
-            size="sm"
-          >
-            Clear filters
-          </Button>
+      {/* The catalog is still loading — placeholders, never the empty state. */}
+      {isPending && (
+        <div className="flex flex-col gap-2">
+          {INTEGRATION_SKELETON_KEYS.map((key) => (
+            <Skeleton key={key} className="h-16 w-full rounded-2xl" />
+          ))}
         </div>
       )}
 
-      {!hasResults && !searchQuery && integrations.length === 0 && (
+      {/* No Results State */}
+      {showFilteredEmptyState && (
+        <NoIntegrationsFound
+          searchQuery={searchQuery}
+          selectedCategory={selectedCategory}
+          clearFilters={clearFilters}
+        />
+      )}
+
+      {showCatalogEmptyState && (
         <div className="py-16 text-center">
           <p className="text-sm text-zinc-400">No integrations available</p>
           <p className="mt-1 text-xs text-zinc-500">
@@ -301,19 +120,17 @@ export const IntegrationsList: React.FC<{
       )}
 
       {/* Featured Section */}
-      {featuredIntegrations.length > 0 &&
-        !searchQuery &&
-        selectedCategory === "all" && (
-          <IntegrationSection
-            title="Featured"
-            integrations={featuredIntegrations}
-            chipColor="primary"
-            onConnect={handleConnect}
-            onIntegrationClick={onIntegrationClick}
-          />
-        )}
+      {showFeatured && (
+        <IntegrationSection
+          title="Featured"
+          integrations={featuredIntegrations}
+          chipColor="primary"
+          onConnect={handleConnect}
+          onIntegrationClick={onIntegrationClick}
+        />
+      )}
 
-      {createdByYouIntegrations.length > 0 && selectedCategory === "all" && (
+      {showCreatedByYou && (
         <IntegrationSection
           title="Created by You"
           integrations={createdByYouIntegrations}
@@ -322,26 +139,19 @@ export const IntegrationsList: React.FC<{
         />
       )}
 
-      {selectedCategory === "all" ? (
-        // Exclude "created_by_you" virtual category (shown above) and "custom" category.
-        // Custom integrations with createdBy set are shown in "Created by You" section.
-        // Note: This assumes all user-created integrations have createdBy property set.
-        // If createdBy is missing, the integration would appear in duplicate sections.
-        searchOrderedCategories.map((category) => {
-          const categoryIntegrations = integrationsByCategory[category];
-          if (!categoryIntegrations || categoryIntegrations.length === 0)
-            return null;
-
-          return (
-            <IntegrationSection
-              key={category}
-              title={getCategoryLabel(category)}
-              integrations={categoryIntegrations}
-              onConnect={handleConnect}
-              onIntegrationClick={onIntegrationClick}
-            />
-          );
-        })
+      {isAllCategories ? (
+        // Excludes "created_by_you" (shown above) and "custom" (shown there when
+        // createdBy is set). Assumes every user-created integration has createdBy —
+        // if missing, it would appear in both sections.
+        searchOrderedCategories.map((category) => (
+          <IntegrationSection
+            key={category}
+            title={getCategoryLabel(category)}
+            integrations={integrationsByCategory[category] ?? []}
+            onConnect={handleConnect}
+            onIntegrationClick={onIntegrationClick}
+          />
+        ))
       ) : (
         <IntegrationSection
           title={getCategoryLabel(selectedCategory)}

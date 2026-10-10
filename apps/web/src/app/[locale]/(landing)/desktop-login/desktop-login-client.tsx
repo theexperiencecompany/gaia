@@ -49,10 +49,8 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
     return () => clearTimeout(timeout);
   }, [isElectron, router]);
 
-  // Already signed in? The wos_session cookie persists across launches,
-  // so skip the login screen entirely when the session is still valid.
-  // Works in both auth modes: the API authenticates whichever session
-  // cookie its mode uses on /user/me.
+  // Skip login when the persisted session is still valid (checked via /user/me).
+  // Works in both auth modes — the API authenticates whichever session cookie it uses.
   useEffect(() => {
     if (!isElectron) return;
     let cancelled = false;

@@ -60,12 +60,9 @@ export const chatKeys = {
 async function fetchMessagesFromApi(
   conversationId: string,
 ): Promise<Message[]> {
-  // Always hit the API — instant render is handled by the React Query cache
-  // (pre-warmed from AsyncStorage in ChatProvider). This call is the
-  // background-revalidation half of stale-while-revalidate: cached messages
-  // stay on screen while we fetch, and React Query swaps them in seamlessly
-  // once fresh data lands. The new messages are persisted so the next launch
-  // hydrates from the latest snapshot.
+  // Always hit the API: cached messages (pre-warmed from AsyncStorage) stay on
+  // screen while this background-revalidation fetch runs, and React Query swaps
+  // in fresh data seamlessly; the new messages persist for the next launch.
   const messages = await chatApi.fetchMessages(conversationId);
   if (messages.length > 0) {
     chatDb.saveMessages(conversationId, messages).catch((err) => {

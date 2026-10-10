@@ -1,7 +1,7 @@
 import { getLocale } from "next-intl/server";
 import { cache } from "react";
 import { loadFeatureTranslations } from "@/i18n/loadFeatureTranslations";
-import { getAllPersonas, getPersona, type PersonaData } from "./personasData";
+import { getPersona, type PersonaData } from "./personasData";
 
 type TranslationOverrides = Partial<
   Pick<
@@ -41,16 +41,3 @@ export const getTranslatedPersona = cache(
     return { ...base, ...t };
   },
 );
-
-export async function getAllTranslatedPersonas(
-  locale?: string,
-): Promise<PersonaData[]> {
-  const [all, translations] = await Promise.all([
-    getAllPersonas(),
-    loadPersonaTranslations(locale),
-  ]);
-  return all.map((persona) => {
-    const t = translations[persona.slug];
-    return t ? { ...persona, ...t } : persona;
-  });
-}

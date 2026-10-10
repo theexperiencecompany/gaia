@@ -214,10 +214,9 @@ export function writeDockerComposeEnv(
   const envPath = path.join(repoRoot, "infra", "docker", ".env");
   backupIfExists(envPath);
 
-  // Merge-don't-clobber: preserve existing custom ports, domains and unknown
-  // keys. Rerunning `gaia up` with no new conflicts (portOverrides={}) must not
-  // erase a previous `CHROMADB_HOST_PORT=18080` or a hand-edited
-  // `NEXT_PUBLIC_APP_URL=https://gaia.example.com`.
+  // Merge-don't-clobber: preserve existing ports, domains and unknown keys so a
+  // rerun with no new conflicts never erases a prior `CHROMADB_HOST_PORT=18080`
+  // or hand-edited `NEXT_PUBLIC_APP_URL`.
   const existingValues: EnvValues = fs.existsSync(envPath)
     ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))
     : {};
@@ -231,11 +230,9 @@ export function writeDockerComposeEnv(
     }
   }
 
-  // In selfhost mode, write the web runtime URL so docker-compose.selfhost.yml
-  // passes it to the container, whose entrypoint rewrites the baked-in
-  // placeholder API URL inside the JS bundle at start (single mechanism —
-  // local builds bake the placeholder, runtime always wins).
-  // Preserve an explicit non-localhost domain (reverse-proxy) across reruns.
+  // In selfhost mode, write the web runtime URL for the entrypoint's placeholder
+  // rewrite (runtime always wins). Preserve an explicit non-localhost domain
+  // (reverse-proxy) across reruns.
   if (mode === "selfhost") {
     const existingUrl = existingValues["NEXT_PUBLIC_APP_URL"];
     const isCustomDomain =
@@ -249,7 +246,9 @@ export function writeDockerComposeEnv(
           ? Number(existingValues["WEB_HOST_PORT"])
           : 3000);
       const safePort =
-        Number.isFinite(webPort) && webPort > 0 && webPort <= 65535 ? webPort : 3000;
+        Number.isFinite(webPort) && webPort > 0 && webPort <= 65535
+          ? webPort
+          : 3000;
       merged["NEXT_PUBLIC_APP_URL"] = `http://localhost:${safePort}`;
     }
   }

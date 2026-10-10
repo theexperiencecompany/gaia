@@ -1,16 +1,9 @@
 """Integration tests for the GAIA comms agent flow patterns.
 
-Imports and exercises the ACTUAL production build_comms_graph function.
-Complements test_real_comms_agent.py with additional scenarios focused on:
-- Streaming interface (astream)
-- Edge cases (empty content, minimal input)
-- Graph structural invariants (expected nodes present)
-- Additional tool invocations (add_memory, search_memory)
-- Multi-turn conversation accumulation (3+ turns)
-
-Unlike the previous version of this file which built fake echo/agent graphs,
-every test here imports from the production module. Deleting build_comms_graph
-breaks all tests immediately.
+Exercises the production build_comms_graph, complementing test_real_comms_agent.py with the
+scenarios it does not cover: the streaming interface (astream), edge cases (empty content, minimal
+input), graph structural invariants, the memory tool invocations, and multi-turn accumulation over
+three or more turns.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -59,10 +52,8 @@ def _make_memory_mock() -> MagicMock:
     return memory_mock
 
 
-# Shared patches that prevent all external I/O from being attempted.
-# Identical to the patch set in test_real_comms_agent.py.
-# Pass a pre-built memory_mock if you need to assert on it after execution;
-# otherwise a default one is created internally.
+# Shared patches that prevent all external I/O; identical to test_real_comms_agent.py.
+# Pass a pre-built memory_mock to assert on it after execution.
 def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
     if memory_mock is None:
         memory_mock = _make_memory_mock()
@@ -143,10 +134,7 @@ class TestCommsAgentFlow:
     # ------------------------------------------------------------------
 
     async def test_compiled_graph_has_required_nodes(self):
-        """build_comms_graph must include agent, tools, and end_graph_hooks nodes.
-
-        Fails if the node wiring in build_comms_graph is changed or removed.
-        """
+        """build_comms_graph must include agent, tools, and end_graph_hooks nodes."""
         fake_llm = create_fake_llm(["ok"])
         store_mock = _make_chroma_store_mock()
 
@@ -175,16 +163,7 @@ class TestCommsAgentFlow:
         )
 
     async def test_comms_graph_tool_registry_includes_required_tools(self):
-        """build_comms_graph must register call_executor, add_memory, search_memory.
-
-        Verifies that the tool registry passed to create_agent includes all three
-        comms agent tools. Tested by checking that the 'tools' node is reachable
-        for each tool name — if the registry is missing a tool, DynamicToolNode
-        would not be able to execute it.
-
-        This test invokes add_memory via the fake LLM. A ToolMessage appearing proves
-        the tool is in the registry. Fails if any of the required tools are removed.
-        """
+        """build_comms_graph must register call_executor, add_memory, search_memory."""
         tool_call = {
             "name": "search_memory",
             "args": {"query": "dark mode preference"},
@@ -222,10 +201,7 @@ class TestCommsAgentFlow:
     # ------------------------------------------------------------------
 
     async def test_astream_yields_chunks(self):
-        """build_comms_graph must support astream — the streaming interface used in production.
-
-        Fails if the compiled graph is not iterable via astream.
-        """
+        """build_comms_graph must support astream — the streaming interface used in production."""
         fake_llm = create_fake_llm(["Streaming response."])
         store_mock = _make_chroma_store_mock()
         chunks = []
@@ -275,10 +251,7 @@ class TestCommsAgentFlow:
     # ------------------------------------------------------------------
 
     async def test_empty_message_content_does_not_crash(self, comms_graph):
-        """Invoking the graph with an empty string message must not raise.
-
-        Validates that filter_messages_node and the model node handle '' gracefully.
-        """
+        """Invoking the graph with an empty string message must not raise."""
         config = _thread_config()
         result = await comms_graph.ainvoke(
             {"messages": [HumanMessage(content="")]},
@@ -298,10 +271,7 @@ class TestCommsAgentFlow:
         )
 
     async def test_minimal_invocation_no_system_message(self, comms_graph):
-        """Invoking the graph with only a HumanMessage (no SystemMessage) must work.
-
-        manage_system_prompts_node should handle no system prompt gracefully.
-        """
+        """Invoking the graph with only a HumanMessage (no SystemMessage) must work."""
         config = _thread_config()
         result = await comms_graph.ainvoke(
             {"messages": [HumanMessage(content="Just a plain message.")]},
@@ -316,10 +286,7 @@ class TestCommsAgentFlow:
     # ------------------------------------------------------------------
 
     async def test_three_turn_conversation_accumulates_state(self):
-        """Three sequential turns must accumulate messages via InMemorySaver.
-
-        Fails if checkpointing breaks between turns in the real comms graph.
-        """
+        """Three sequential turns must accumulate messages via InMemorySaver."""
         from tests.helpers import BindableToolsFakeModel
 
         fake_llm = BindableToolsFakeModel(
@@ -374,15 +341,7 @@ class TestCommsAgentFlow:
     # ------------------------------------------------------------------
 
     async def test_add_memory_tool_call_executes_and_produces_tool_message(self):
-        """When the LLM calls add_memory, a ToolMessage must appear and store_memory must be called.
-
-        Verifies that:
-        1. add_memory is wired into the DynamicToolNode for the comms agent.
-        2. The tool actually invokes memory_service.store_memory with the correct content.
-
-        Fails if the tool is removed from the comms agent tool_registry, or if the
-        tool silently fails to persist the memory (e.g. missing user_id extraction).
-        """
+        """When the LLM calls add_memory, a ToolMessage must appear and store_memory must be called."""
         tool_call = {
             "name": "add_memory",
             "args": {"content": "User likes dark mode", "category": "preference"},
@@ -405,10 +364,8 @@ class TestCommsAgentFlow:
             patches[6],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
-                # add_memory reads user_id from config["metadata"]["user_id"], NOT
-                # config["configurable"]["user_id"].  Both keys must be present: LangGraph
-                # requires "configurable" for checkpointing while the tool requires
-                # "metadata" for the user identity lookup.
+                # add_memory reads user_id from config["metadata"], not config["configurable"];
+                # both keys must be present since LangGraph itself requires "configurable".
                 user_id = str(uuid4())
                 config = {
                     "configurable": {"thread_id": str(uuid4()), "user_id": user_id},

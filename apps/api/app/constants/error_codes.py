@@ -11,3 +11,13 @@ INVALID_CREDENTIALS = "invalid_credentials"
 
 # 403 — self-host instance already has its administrator account; signup closed.
 REGISTRATION_CLOSED = "registration_closed"
+
+# 401 — the bot request's X-Bot-API-Key is missing or wrong (bot misconfigured).
+BOT_API_KEY_INVALID = "BOT_API_KEY_INVALID"
+
+# 401 — the platform account is not linked to a GAIA user; the bot offers /auth.
+# Both bot codes are mirrored in libs/shared/ts/src/bots/utils/failure-reasons.ts.
+BOT_ACCOUNT_NOT_LINKED = "BOT_ACCOUNT_NOT_LINKED"
+
+# 409 — a user-facing feature flag is killed for everyone; the choice cannot be changed now.
+FEATURE_KILLED = "FEATURE_KILLED"

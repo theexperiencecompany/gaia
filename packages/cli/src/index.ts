@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { runBackupCommand } from "./commands/backup/handler.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
+import { connectCommand } from "./commands/connect/command.js";
 import { runDev } from "./commands/dev/handler.js";
 import { runDoctor } from "./commands/doctor/handler.js";
 import { runInit } from "./commands/init/handler.js";
@@ -13,8 +14,8 @@ import { runStart } from "./commands/start/handler.js";
 import { runStatus } from "./commands/status/handler.js";
 import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
-import { runUpdate } from "./commands/update/handler.js";
 import { runUp } from "./commands/up/handler.js";
+import { runUpdate } from "./commands/update/handler.js";
 import { CLI_VERSION } from "./lib/version.js";
 
 const program = new Command();
@@ -39,6 +40,7 @@ program
   .version(CLI_VERSION);
 
 program.addCommand(bridgeCommand);
+program.addCommand(connectCommand);
 
 program
   .command("init")

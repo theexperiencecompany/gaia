@@ -26,6 +26,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
               src={blog.image}
               alt={blog.title}
               fill
+              sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
               className="rounded-2xl object-cover"
             />
             <GrainOverlay className="rounded-2xl" />

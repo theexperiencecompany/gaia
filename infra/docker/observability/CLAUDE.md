@@ -1,28 +1,34 @@
 # infra/docker/observability
 
-Prometheus, Loki, Promtail, Blackbox and Grafana config for the production
-stack. Grafana provisioning is **baked into an image** (`grafana/Dockerfile`),
-not bind-mounted — so any change here ships only via a rebuild of
+Alert rules for the production stack. **Only `grafana/provisioning/alerting/alert-rules.yaml`
+lives here.** The rest of the observability config — `prometheus.yml`,
+`loki-config.yaml`, `promtail-config.yaml`, `blackbox.yml`, `grafana/Dockerfile`,
+the dashboards, datasources, contact points, notification policies and
+templates — moved to the private `theexperiencecompany/gaia-infra` repo, because
+this repo is public and prod topology is not.
+
+Grafana provisioning is **baked into an image** (`grafana/Dockerfile`, in
+gaia-infra), not bind-mounted — so any change ships only via a rebuild of
 `ghcr.io/theexperiencecompany/gaia-grafana`.
 
 ## Layout
 
-| Path | What it is |
-|---|---|
-| `prometheus.yml` | Scrape jobs. Adding a target here is a prerequisite for alerting on it. |
-| `blackbox.yml` | Blackbox exporter modules (`http_2xx`: 5s timeout, only 200 counts as success) |
-| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules |
-| `grafana/provisioning/alerting/contact-points.yaml` | Slack + email receivers |
-| `grafana/provisioning/alerting/notification-policies.yaml` | Routing and repeat cadence |
-| `grafana/provisioning/alerting/templates.yaml` | Slack message templates |
-| `grafana/provisioning/dashboards/*.json` | Dashboards (uid is referenced by alert rules) |
+| Path | What it is | Where |
+|---|---|---|
+| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules | here |
+| `prometheus.yml` | Scrape jobs. Adding a target here is a prerequisite for alerting on it. | gaia-infra |
+| `blackbox.yml` | Blackbox exporter modules (`http_2xx`: 5s timeout, only 200 counts as success) | gaia-infra |
+| `grafana/provisioning/alerting/contact-points.yaml` | Slack + email receivers | gaia-infra |
+| `grafana/provisioning/alerting/notification-policies.yaml` | Routing and repeat cadence | gaia-infra |
+| `grafana/provisioning/alerting/templates.yaml` | Slack message templates | gaia-infra |
+| `grafana/provisioning/dashboards/*.json` | Dashboards (uid is referenced by alert rules) | gaia-infra |
 
 ## Adding an alert rule
 
 ### 1. Confirm the metric actually exists
 
 Before writing anything, prove the metric is emitted **by the exporter version
-pinned in `docker-compose.prod.yml`**. A rule built on a metric nothing exports
+pinned in the prod compose (`gaia-infra`)**. A rule built on a metric nothing exports
 provisions cleanly, never fires, and never complains — it is worse than no rule,
 because it reads as coverage. Run that exporter locally and scrape it with a
 local Prometheus (or read the exporter's docs for the exact version), then prove
@@ -149,7 +155,8 @@ checks below catch the Grafana-side silent failures the rule test cannot
 (provisioning, annotation survival, template rendering):
 
 ```bash
-docker build -t gaia-grafana infra/docker/observability/grafana
+# from a gaia-infra checkout:
+docker build -t gaia-grafana docker/observability/grafana
 docker run --rm -p 3000:3000 \
   -e GF_SECURITY_ADMIN_PASSWORD=admin \
   -e GRAFANA_ALERT_EMAIL=dev@example.com \
@@ -210,9 +217,10 @@ that catches a rule built on a metric nothing exports, and it needs a live
 server.** So do the online pass against a LOCAL Prometheus before merging a new
 rule — no prod access needed.
 
-Boot a local Prometheus that scrapes the pinned exporters from
-`docker-compose.prod.yml`, or that holds representative series for the metrics
-the new rule needs, on `localhost:9090`, then lint against it:
+Boot a local Prometheus that scrapes the pinned exporters from the prod compose
+(`docker/docker-compose.prod.yml` in the private `gaia-infra` repo), or that
+holds representative series for the metrics the new rule needs, on
+`localhost:9090`, then lint against it:
 
 ```bash
 # extract the rules, then prove the server is up before trusting promql/series

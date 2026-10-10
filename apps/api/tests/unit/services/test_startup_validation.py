@@ -1,11 +1,11 @@
 """validate_startup_requirements must HALT startup when setup is incomplete.
 
-It is a ``strategy=ERROR`` lazy provider, so raising propagates through the
-strict auto-initializer and aborts a blocking boot. A prior broad ``except``
-swallowed its own ``RuntimeError`` and the check never halted anything.
+It is a strategy=ERROR lazy provider, so raising propagates through the
+strict auto-initializer and aborts a blocking boot. A prior broad except
+swallowed its own RuntimeError and the check never halted anything.
 
 Only payment plans are checked: model pricing moved into code
-(``app/config/model_pricing.py``), so there is no models collection left to
+(app/config/model_pricing.py), so there is no models collection left to
 seed or to gate on.
 """
 
@@ -75,11 +75,9 @@ class TestValidateStartupRequirements:
             assert await validate_startup_requirements() is None
 
     async def test_remediation_names_a_script_that_actually_exists(self) -> None:
-        # The guidance is the whole value of this check — it previously pointed at
-        # ./scripts/setup.sh, which does not exist in the repo, so an operator who
-        # followed it got "no such file" instead of a seeded database.
-        # Dodo configured so the payment remedy stays in play for the
-        # unseeded-payment cases (without a Dodo key the seeder is the remedy).
+        # The guidance is the value of this check: it once named a missing
+        # script. Dodo stays configured so the payment remedy is in play
+        # for the unseeded-payment cases.
         dodo_settings = MagicMock()
         dodo_settings.DODO_PAYMENTS_API_KEY = "dodo_key"
         with (
@@ -101,10 +99,8 @@ class TestValidateStartupRequirements:
             assert (API_ROOT / script).is_file(), f"error points at missing {script}"
 
     def test_remediation_script_still_resolves_its_app_imports(self) -> None:
-        # payment_setup.py imported PlanDB long after it was renamed to PlanDocument,
-        # so the command this error recommends died on ImportError and
-        # subscription_plans stayed empty — making the check fail forever. Nothing
-        # imports these scripts, so only running them surfaced the drift.
+        # Regression: payment_setup.py imported the since-renamed PlanDB, so the recommended
+        # command died on ImportError; nothing else imports these scripts to catch it.
         command = startup_validation.SEED_PLANS_COMMAND
         script = API_ROOT / re.search(r"scripts/[\w./-]+\.py", command).group()
         tree = ast.parse(script.read_text())

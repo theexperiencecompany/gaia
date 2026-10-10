@@ -34,8 +34,19 @@ export function NotificationCenter({
     [activeTab],
   );
 
-  const { notifications, unreadCount, loading, markAsRead, bulkMarkAsRead } =
-    useNotifications(notificationOptions);
+  const {
+    notifications,
+    unreadCount,
+    hasMoreUnseen,
+    loading,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications(notificationOptions);
+
+  // The loaded page can undercount unread notifications, so gating on
+  // unreadCount alone could hide the button even though an older delivered
+  // notification exists beyond what's loaded.
+  const canMarkAllAsRead = unreadCount > 0 || hasMoreUnseen;
 
   const handleMarkAsRead = async (notificationId: string) => {
     trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
@@ -46,13 +57,10 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications
-      .filter((n) => n.status === NotificationStatus.DELIVERED)
-      .map((n) => n.id);
-    if (unreadIds.length === 0) return;
+    if (!canMarkAllAsRead) return;
     setIsMarkingAllRead(true);
     try {
-      await bulkMarkAsRead(unreadIds);
+      await markAllAsRead();
     } finally {
       setIsMarkingAllRead(false);
     }
@@ -82,7 +90,7 @@ export function NotificationCenter({
                 aria-label="Notifications"
                 tooltip="Notifications"
               >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
               </SidebarHeaderButton>
             </Badge>
           </div>
@@ -152,7 +160,7 @@ export function NotificationCenter({
 
           {/* Footer */}
           <div className="flex w-full items-center justify-evenly gap-3 p-3">
-            {unreadCount > 0 && (
+            {canMarkAllAsRead && (
               <Button
                 size="sm"
                 fullWidth
@@ -167,7 +175,7 @@ export function NotificationCenter({
             <Button
               fullWidth
               size="sm"
-              variant={unreadCount > 0 ? "bordered" : "solid"}
+              variant={canMarkAllAsRead ? "bordered" : "solid"}
               onPress={() => {
                 router.push("/notifications");
               }}

@@ -12,6 +12,7 @@ import pytest
 from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
 from app.constants.email import CONTACT_EMAIL, FOUNDER_SENDER
+from app.constants.log_tags import LogTag
 from app.services.email import (
     add_marketing_contact,
     send_inactive_user_email,
@@ -22,6 +23,9 @@ from app.services.email.senders import (
     send_limit_reached_email,
     send_workflows_paused_email,
 )
+from tests.helpers import captured_wide_event
+
+SENDER_USER_ID = "507f1f77bcf86cd799439011"
 
 SENDERS = "app.services.email.senders"
 RESEND_PROVIDER = "app.services.email.providers.resend_provider"
@@ -35,7 +39,7 @@ class TestSendWelcomeEmail:
     @patch(f"{SENDERS}.send_email")
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Welcome</h1>")
     async def test_success(self, mock_render, mock_send):
-        await send_welcome_email("user@example.com", "Alice")
+        await send_welcome_email("user@example.com", "Alice", user_id=SENDER_USER_ID)
 
         assert mock_render.call_args[0][0] == "welcome.html"
         assert mock_render.call_args[1]["user_name"] == "Alice"
@@ -45,16 +49,36 @@ class TestSendWelcomeEmail:
         assert message.subject == "From the founder of GAIA, personally"
         assert message.html == "<h1>Welcome</h1>"
 
-    @patch(f"{SENDERS}.send_email", side_effect=Exception("API error"))
+    @pytest.mark.regression
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Welcome</h1>")
+    async def test_carries_a_per_user_idempotency_key(self, mock_render, mock_send):
+        """A sweep re-run after an unstamped send reuses the key; a changed key would re-mail."""
+        await send_welcome_email("user@example.com", "Alice", user_id=SENDER_USER_ID)
+
+        assert mock_send.call_args[0][0].idempotency_key == f"welcome-email:{SENDER_USER_ID}"
+
+    @patch(f"{SENDERS}.send_email", side_effect=RuntimeError("API error"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>ok</h1>")
     async def test_propagates_send_exception(self, mock_render, mock_send):
-        with pytest.raises(Exception, match="API error"):
-            await send_welcome_email("user@example.com")
+        """The failure is recorded against the user ID — the field every dashboard groups by — and carries no email address."""
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError, match="API error"):
+                await send_welcome_email("user@example.com", user_id=SENDER_USER_ID)
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.MAIL} Failed to send welcome email to",
+                "user": {"id": SENDER_USER_ID},
+                "error": "API error",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     @patch(f"{SENDERS}.send_email")
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Hi</h1>")
     async def test_no_name_passed_through(self, mock_render, mock_send):
-        await send_welcome_email("user@example.com")
+        await send_welcome_email("user@example.com", user_id=SENDER_USER_ID)
         assert mock_render.call_args[1]["user_name"] is None
 
 
@@ -69,9 +93,11 @@ class TestAddMarketingContact:
 
     @pytest.fixture(autouse=True)
     def _stored_resend_key(self):
-        """Bind the provider's credential-store seam: the key resolves through
-        provider_credentials_service (Mongo) at send time, which no unit test
-        may touch."""
+        """Bind the provider's credential-store seam.
+
+        The key resolves through provider_credentials_service (Mongo) at send
+        time, which no unit test may touch.
+        """
         config = {"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
         with patch(f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)):
             yield
@@ -80,7 +106,7 @@ class TestAddMarketingContact:
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_with_full_name(self, mock_create, mock_settings):
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("alice@example.com", "Alice Smith")
+        await add_marketing_contact("alice@example.com", "Alice Smith", user_id=SENDER_USER_ID)
 
         mock_create.assert_called_once()
         params = mock_create.call_args[0][0]
@@ -93,7 +119,7 @@ class TestAddMarketingContact:
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_without_name(self, mock_create, mock_settings):
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("bob@example.com")
+        await add_marketing_contact("bob@example.com", user_id=SENDER_USER_ID)
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == ""
@@ -103,7 +129,7 @@ class TestAddMarketingContact:
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_single_word_name(self, mock_create, mock_settings):
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("user@example.com", "Alice")
+        await add_marketing_contact("user@example.com", "Alice", user_id=SENDER_USER_ID)
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
@@ -113,7 +139,7 @@ class TestAddMarketingContact:
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_three_word_name(self, mock_create, mock_settings):
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("user@example.com", "Alice Marie Smith")
+        await add_marketing_contact("user@example.com", "Alice Marie Smith", user_id=SENDER_USER_ID)
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
@@ -122,19 +148,29 @@ class TestAddMarketingContact:
     @patch(f"{RESEND_PROVIDER}.settings")
     @patch(
         f"{RESEND_PROVIDER}.resend.Contacts.create",
-        side_effect=Exception("network error"),
+        side_effect=RuntimeError("network error"),
     )
-    async def test_exception_swallowed(self, mock_create, mock_settings):
-        """add_marketing_contact swallows exceptions so user creation still succeeds."""
+    async def test_provider_failure_is_recorded_and_re_raised(self, mock_create, mock_settings):
+        """A rejected contact must reach the caller — the worker's except branch logs it added/settled anyway — and stays queryable keyed on the user ID, never the email."""
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        # Should NOT raise
-        await add_marketing_contact("user@example.com", "Alice")
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError, match="network error"):
+                await add_marketing_contact("user@example.com", "Alice", user_id=SENDER_USER_ID)
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.MAIL} Failed to add marketing contact for",
+                "user": {"id": SENDER_USER_ID},
+                "error": "network error",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     @patch(f"{RESEND_PROVIDER}.settings")
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_whitespace_name_trimmed(self, mock_create, mock_settings):
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("user@example.com", "  Alice  ")
+        await add_marketing_contact("user@example.com", "  Alice  ", user_id=SENDER_USER_ID)
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
@@ -145,7 +181,7 @@ class TestAddMarketingContact:
     async def test_empty_string_name(self, mock_create, mock_settings):
         """An empty string name is falsy, so first/last should be empty."""
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
-        await add_marketing_contact("user@example.com", "")
+        await add_marketing_contact("user@example.com", "", user_id=SENDER_USER_ID)
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == ""
@@ -178,13 +214,24 @@ class TestSendInactiveUserEmail:
 
     @patch(f"{SENDERS}.build_unsubscribe_headers", return_value={})
     @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://unsub")
-    @patch(f"{SENDERS}.send_email", side_effect=Exception("send failed"))
+    @patch(f"{SENDERS}.send_email", side_effect=RuntimeError("send failed"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>ok</h1>")
     async def test_propagates_exception(
         self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers
     ):
-        with pytest.raises(Exception, match="send failed"):
-            await send_inactive_user_email("user@example.com", "user-123")
+        """The failure is recorded against the user ID — the field every dashboard groups by — and carries no email address."""
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError, match="send failed"):
+                await send_inactive_user_email("user@example.com", SENDER_USER_ID)
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.MAIL} Failed to send inactive user email to",
+                "user": {"id": SENDER_USER_ID},
+                "error": "send failed",
+                "error_type": "RuntimeError",
+            }
+        ]
 
 
 # ===========================================================================
@@ -295,7 +342,7 @@ class TestSendLimitReachedEmail:
         message = mock_send.call_args[0][0]
         assert message.sender == FOUNDER_SENDER
         assert message.to == ["user@example.com"]
-        assert message.subject == "You hit your GAIA limit today — here's what Pro unlocks"
+        assert message.subject == "You hit your GAIA limit today, here's what Pro unlocks"
         assert message.html == "<h1>Upsell</h1>"
         assert message.reply_to == CONTACT_EMAIL
         claim.assert_awaited_once()
@@ -336,9 +383,7 @@ class TestTheWeeklyWindowIsClaimedNotJustRead:
     async def test_the_claim_names_the_user_and_a_window_that_has_passed(
         self, _mock_render, _mock_send
     ) -> None:
-        """The claim's arguments ARE the dedupe. A stale_before in the future
-        makes every user look eligible and mails them daily; the wrong id
-        claims someone else's window."""
+        """The claim's arguments ARE the dedupe: a future stale_before mails every user daily, the wrong id claims another's window."""
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
             patch(
@@ -381,8 +426,7 @@ class TestTheWeeklyWindowIsClaimedNotJustRead:
 
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
     async def test_a_failed_send_hands_the_slot_back(self, _mock_render) -> None:
-        """Otherwise a failed send burns the whole week: the marker claims an
-        email went out when none did, and the user hears nothing for 7 days."""
+        """Otherwise a failed send burns the whole week: the marker claims an email went out and the user hears nothing for 7 days."""
         previously = datetime.now(UTC) - timedelta(days=30)
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,

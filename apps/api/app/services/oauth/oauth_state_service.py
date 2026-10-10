@@ -1,5 +1,5 @@
 """
-OAuth State Management Service
+OAuth State Management Service.
 
 Provides secure state token management for OAuth flows to prevent:
 - Open redirect vulnerabilities
@@ -10,6 +10,7 @@ Uses Redis for temporary state storage with automatic expiration.
 """
 
 import secrets
+from typing import TypedDict, cast
 
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.constants.log_tags import LogTag
@@ -17,22 +18,23 @@ from app.db.redis import redis_cache
 from shared.py.wide_events import OAuthContext, log
 
 
-async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
+class OAuthState(TypedDict):
+    """The state-token payload stored for one OAuth flow.
+
+    Named once so a renamed key becomes a type error instead of a silently
+    empty string; a TypedDict because nothing validates or coerces it.
     """
-    Create a secure state token for OAuth flow.
 
-    Args:
-        user_id: The user ID initiating the OAuth flow
-        redirect_path: The frontend path to redirect to after OAuth completes
-        integration_id: The integration being connected
+    user_id: str
+    redirect_path: str
+    integration_id: str
 
-    Returns:
-        A secure random state token
 
-    Security:
-        - Uses cryptographically secure random token (32 bytes = 256 bits)
-        - Stores state server-side with automatic expiration
-        - Validates redirect path against allowlist
+async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
+    """Create a secure state token for OAuth flow, stored in Redis with expiration.
+
+    Uses a 32-byte cryptographically secure random token and validates the
+    redirect path against an allowlist.
     """
     log.set(
         auth={"user_id": user_id, "provider": integration_id},
@@ -57,13 +59,14 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
     redis_client = redis_cache.client
     state_key = f"{STATE_KEY_PREFIX}:{state_token}"
 
-    state_data = {
-        "user_id": user_id,
-        "redirect_path": redirect_path,
-        "integration_id": integration_id,
-    }
+    state_data = OAuthState(
+        user_id=user_id,
+        redirect_path=redirect_path,
+        integration_id=integration_id,
+    )
 
-    await redis_client.hset(state_key, mapping=state_data)
+    # Redis hashes store strings; the cast bridges the typed mapping protocol.
+    await redis_client.hset(state_key, mapping=cast(dict[str, str], state_data))
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
     log.info(
@@ -76,38 +79,29 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
 
 async def validate_and_consume_oauth_state(
     state_token: str,
-) -> dict[str, str] | None:
-    """
-    Validate and consume an OAuth state token.
+) -> OAuthState | None:
+    """Validate an OAuth state token and delete it to prevent replay, or return None.
 
-    Args:
-        state_token: The state token to validate
-
-    Returns:
-        Dictionary containing user_id, redirect_path, and integration_id if valid,
-        None if invalid or expired
-
-    Security:
-        - Token is consumed (deleted) after validation to prevent replay attacks
-        - Returns None for invalid/expired tokens
+    Returns user_id, redirect_path, and integration_id when valid.
     """
     try:
         redis_client = redis_cache.client
         state_key = f"{STATE_KEY_PREFIX}:{state_token}"
 
-        # Get state data
-        state_data = await redis_client.hgetall(state_key)
+        # Hgetall returns untyped fields; read each defensively so a partial
+        # hash becomes empty strings rejected by the completeness check.
+        stored: OAuthState = cast(OAuthState, await redis_client.hgetall(state_key))
 
-        if not state_data:
+        if not stored:
             log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token")
             return None
 
         # Decode bytes to strings
-        result = {
-            "user_id": state_data.get("user_id", ""),
-            "redirect_path": state_data.get("redirect_path", ""),
-            "integration_id": state_data.get("integration_id", ""),
-        }
+        result: OAuthState = OAuthState(
+            user_id=stored.get("user_id", ""),
+            redirect_path=stored.get("redirect_path", ""),
+            integration_id=stored.get("integration_id", ""),
+        )
 
         log.set(auth={"user_id": result["user_id"], "provider": result["integration_id"]})
         log.set_ns("oauth", operation="callback", integration_id=result["integration_id"])
@@ -137,22 +131,7 @@ async def validate_and_consume_oauth_state(
 
 
 def is_safe_redirect_path(path: str) -> bool:
-    """
-    Validate that a redirect path is safe.
-
-    Args:
-        path: The path to validate
-
-    Returns:
-        True if the path is safe, False otherwise
-
-    Security checks:
-        - No absolute URLs (must be relative paths)
-        - No protocol-relative URLs (//example.com or /\\example.com)
-        - Must start with /
-        - No javascript: or data: URLs
-        - No path traversal attempts
-    """
+    """Return True if path is a safe relative redirect (no protocol-relative or traversal tricks)."""
     if not path:
         return False
 

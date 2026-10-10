@@ -8,25 +8,44 @@ import {
   CircleArrowRight02Icon,
   RedoIcon,
 } from "@icons";
-import { useRouter } from "next/navigation";
+import * as m from "motion/react-m";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { PaymentBackdrop } from "@/features/pricing/components/PaymentBackdrop";
+import { PostPaymentReceipt } from "@/features/pricing/components/PostPaymentReceipt";
 import { LAST_CHECKOUT_PRODUCT_KEY } from "@/features/pricing/constants";
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
+import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
+import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type PaymentStatus = "verifying" | "success" | "error";
 
+/** Why a verified-looking return ended without a subscription. */
+type VerificationFailureReason = "confirmation_timeout" | "verification_error";
+
+const trackFailure = (reason: VerificationFailureReason): void => {
+  trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
+    source: "payment_success_page",
+    reason,
+  });
+};
+
 export default function PaymentSuccessPage() {
   const router = useRouter();
-  const { verifyPayment } = usePricing();
+  // Dodo appends the subscription id to the return URL. It is a hint the
+  // server verifies against Dodo before trusting, and it lets verification
+  // recover a paid user whose webhook never landed.
+  const subscriptionId = useSearchParams().get("subscription_id") ?? undefined;
+  const { plans, subscriptionStatus, verifyPayment } = usePricing();
   const { createSubscriptionAndRedirect, isLoading: isRestarting } =
     useDodoPayments();
-  const user = useUser();
+  const user = useCurrentUser();
 
   // Send the user straight to onboarding when we already know it's incomplete,
   // so they don't land on /c and get bounced by the onboarding guard a couple
@@ -36,116 +55,175 @@ export default function PaymentSuccessPage() {
 
   const [status, setStatus] = useState<PaymentStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastProductId, setLastProductId] = useState<string | null>(null);
   const hasVerified = useRef(false);
 
+  // The remembered checkout product is browser-only state; read it after mount
+  // so the server-rendered pass doesn't touch localStorage.
   useEffect(() => {
+    setLastProductId(localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY));
+  }, []);
+
+  const printerStage = useReceiptPrinterStage(status === "success");
+
+  useEffect(() => {
+    // Verified once per load via `hasVerified` alone — deliberately no
+    // cancel-on-cleanup flag, since StrictMode's double-invoke would cancel
+    // the single run while the ref blocks the replacement, stranding the spinner.
     if (hasVerified.current) return;
     hasVerified.current = true;
 
-    const run = async () => {
-      try {
-        const result = await verifyPayment();
+    // The Dodo redirect can beat the webhook, so a single "not completed" is
+    // not a failure: retry with growing delays while the printer shows
+    // "Processing your order", and only then give up.
+    verifyPaymentWithRetry(() => verifyPayment(subscriptionId))
+      .then((result) => {
         if (result.payment_completed) {
-          trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
-        } else {
-          setStatus("error");
-          setErrorMessage(
-            "Your payment hasn't completed yet. You can try checking out again.",
-          );
+          return;
         }
-      } catch (error) {
+        // Client-only by necessity (like `useCheckoutReturn`): a webhook
+        // that never lands produces no server-side event, so without this
+        // capture the funnel never sees a paying customer's failed confirmation.
+        trackFailure("confirmation_timeout");
+        setStatus("error");
+        setErrorMessage(
+          "We haven't received your payment confirmation yet. You can try checking out again.",
+        );
+      })
+      .catch((error: unknown) => {
         console.error("Payment verification failed:", error);
+        // Every attempt failed — a network the server never heard from, or a
+        // verify that kept erroring. Same reason it belongs here.
+        trackFailure("verification_error");
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
         );
-      }
-    };
-    run();
-  }, [verifyPayment]);
+      });
+  }, [verifyPayment, subscriptionId]);
 
-  // Celebrate an active subscription.
+  // Celebrate an active subscription — confetti fires as the receipt starts
+  // printing.
   useEffect(() => {
-    if (status === "success") UseCreateConfetti(3500);
+    if (status !== "success") return;
+    const interval = UseCreateConfetti(3500);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [status]);
 
-  // Restart checkout for the plan the user last tried, falling back to pricing.
+  // Restart checkout for the plan the user last tried. Mid-onboarding the
+  // checkout lives in the wizard, so that is where a retry goes; otherwise
+  // fall back to pricing.
   const handleTryAgain = () => {
+    if (continueDestination === "/onboarding") {
+      router.push("/onboarding");
+      return;
+    }
     const productId = localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY);
-    if (productId) createSubscriptionAndRedirect(productId);
+    if (productId)
+      createSubscriptionAndRedirect(productId, { source: "payment_retry" });
     else router.push("/pricing");
   };
 
+  const previewPlan = plans.find(
+    (plan) => plan.dodo_product_id === lastProductId,
+  );
+  const receipt = buildReceiptDetails(subscriptionStatus, previewPlan);
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative flex min-h-screen items-center justify-center px-4 pt-24 pb-16">
       <PaymentBackdrop />
 
-      <div className="relative z-10 w-full max-w-md rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
-        {status === "verifying" && (
-          <>
-            <Spinner size="lg" className="mb-5" />
-            <h1 className="mb-2 text-xl font-semibold text-white">
-              Verifying payment
-            </h1>
-            <p className="text-balance text-sm font-light text-zinc-400">
-              Hang tight while we confirm your payment with Dodo.
-            </p>
-          </>
-        )}
+      {status !== "error" && (
+        <div className="relative z-10 mt-8 w-full max-w-sm">
+          <div className="rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
+            {status === "verifying" ? (
+              <>
+                <Spinner size="lg" className="mb-5" />
+                <h1 className="mb-2 text-xl font-semibold text-white">
+                  Verifying payment
+                </h1>
+                <p className="text-balance text-sm font-light text-zinc-400">
+                  Hang tight while we confirm your payment with Dodo.
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
+                <h1 className="mb-2 text-2xl font-semibold text-white">
+                  Welcome to GAIA
+                </h1>
+                <p className="mb-6 text-balance text-sm font-light text-zinc-400">
+                  You're all set, everything's unlocked. Let's go!
+                </p>
+                <RaisedButton
+                  color="#00bbff"
+                  className="w-full text-black!"
+                  onClick={() => router.push(continueDestination)}
+                >
+                  Continue to chat
+                  <CircleArrowRight02Icon className="size-4" />
+                </RaisedButton>
+              </>
+            )}
+          </div>
+          {status === "success" && (
+            <m.div
+              animate={{ opacity: 1, transform: "translateY(0px)" }}
+              className="mt-6"
+              initial={{ opacity: 0, transform: "translateY(8px)" }}
+              transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}
+            >
+              <PostPaymentReceipt
+                billingPeriod={receipt.billingPeriod}
+                amount={receipt.amount}
+                currency={receipt.currency}
+                nextBillingDate={receipt.nextBillingDate}
+                planName={receipt.planName}
+                purchasedAt={receipt.purchasedAt}
+                customerEmail={user.email || undefined}
+                quantity={receipt.quantity}
+                stage={printerStage}
+                subscriptionRef={receipt.subscriptionRef}
+              />
+            </m.div>
+          )}
+        </div>
+      )}
 
-        {status === "success" && (
-          <>
-            <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
-            <h1 className="mb-2 text-2xl font-semibold text-white">
-              Welcome to GAIA Pro!
-            </h1>
-            <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-              You're all set. Every Pro feature is unlocked. Let's get to work.
-            </p>
+      {status === "error" && (
+        <div className="relative z-10 w-full max-w-md rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
+          <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-red-500/15">
+            <Alert02Icon className="size-8 text-red-400" />
+          </div>
+          <h1 className="mb-2 text-2xl font-semibold text-white">
+            Payment not completed
+          </h1>
+          <p className="mb-6 text-balance text-sm font-light text-zinc-400">
+            {errorMessage ?? "Something went wrong with your payment."}
+          </p>
+          <div className="flex flex-col gap-2">
             <RaisedButton
               color="#00bbff"
               className="w-full text-black!"
-              onClick={() => router.push(continueDestination)}
+              onClick={handleTryAgain}
+              disabled={isRestarting}
             >
-              Continue to chat
-              <CircleArrowRight02Icon className="size-4" />
+              {isRestarting ? "Starting checkout" : "Try again"}
+              {!isRestarting && <RedoIcon className="size-4" />}
             </RaisedButton>
-          </>
-        )}
-
-        {status === "error" && (
-          <>
-            <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-red-500/15">
-              <Alert02Icon className="size-8 text-red-400" />
-            </div>
-            <h1 className="mb-2 text-2xl font-semibold text-white">
-              Payment not completed
-            </h1>
-            <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-              {errorMessage ?? "Something went wrong with your payment."}
-            </p>
-            <div className="flex flex-col gap-2">
-              <RaisedButton
-                color="#00bbff"
-                className="w-full text-black!"
-                onClick={handleTryAgain}
-                disabled={isRestarting}
-              >
-                {isRestarting ? "Starting checkout" : "Try again"}
-                {!isRestarting && <RedoIcon className="size-4" />}
-              </RaisedButton>
-              <Button
-                variant="flat"
-                className="w-full rounded-xl"
-                onPress={() => router.push("/pricing")}
-              >
-                Back to pricing
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
+            <Button
+              variant="flat"
+              className="w-full rounded-xl"
+              onPress={() => router.push("/pricing")}
+            >
+              Back to pricing
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

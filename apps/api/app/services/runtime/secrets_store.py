@@ -1,19 +1,8 @@
 """Instance secret: the machine-local root secret for a GAIA deployment.
 
-Resolution order (contract in ``.agents/plans/selfhost-contracts.md``):
-
-1. ``settings.INSTANCE_SECRET`` env override — wins unconditionally, so an
-   operator can pin the secret explicitly.
-2. The persisted secret in Mongo (``instance_settings`` doc ``key="secrets"``),
-   generated once on first need and reused forever — it must survive container
-   recreation because everything derived from it (local session JWTs, Fernet
-   keys for stored provider credentials) breaks if it changes.
-3. Generate ``secrets.token_urlsafe(48)`` and persist it atomically; pods
-   losing the insert race adopt the winner's value so all replicas agree.
-
-The Fernet key for stored credentials is derived from the instance secret via
-:func:`fernet_key_from` — rotating the secret invalidates every stored
-credential ciphertext and local session token.
+Resolution order is env override, then the persisted Mongo secret, then
+generate and persist atomically with race losers adopting the winner.
+Rotating the secret invalidates every stored credential and session token.
 """
 
 from base64 import urlsafe_b64encode
@@ -35,7 +24,7 @@ def fernet_key_from(instance_secret: str) -> bytes:
 
 
 async def get_instance_secret() -> str:
-    """The instance's root secret: env override → persisted value → generate+persist."""
+    """Return the instance's root secret: env override → persisted value → generate+persist."""
     # Annotated locally: settings attrs resolve to Any for mypy without the
     # pydantic plugin's help.
     env_secret: str | None = settings.INSTANCE_SECRET
@@ -94,7 +83,7 @@ async def get_instance_secret() -> str:
 
 
 def _secret_value(value: dict[str, object]) -> str | None:
-    """The instance secret out of a settings-doc value dict, or None when absent/blank."""
+    """Return the instance secret out of a settings-doc value dict, or None when absent/blank."""
     candidate = value.get(_INSTANCE_SECRET_FIELD)
     if isinstance(candidate, str) and candidate:
         return candidate

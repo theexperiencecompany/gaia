@@ -31,20 +31,26 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
+    WorkflowCreator,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
     WorkflowMessageResponse,
     WorkflowResponse,
     WorkflowStatusResponse,
+    as_read_view,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.oauth.oauth_service import get_all_integrations_status
+from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
-from app.services.workflow.generation_service import WorkflowGenerationService
+from app.services.workflow.generation_service import (
+    WorkflowGenerationService,
+    WorkflowPromptRequest,
+    WorkflowStepGenerationError,
+)
 from app.services.workflow.service import (
     WorkflowService,
     ensure_public_workflow_slug,
@@ -66,7 +72,7 @@ async def create_workflow(
 ) -> WorkflowResponse:
     """Create a new workflow with automatic timezone detection."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(
             operation="create",
             title=request.title,
@@ -82,7 +88,7 @@ async def create_workflow(
         # Default integration_ids to the user's connected integrations so
         # step generation is grounded in tools the user can actually use.
         if request.integration_ids is None:
-            status_map = await get_all_integrations_status(user["user_id"])
+            status_map = await get_all_integrations_status(user.user_id)
             request.integration_ids = [
                 integration_id
                 for integration_id, is_connected in status_map.items()
@@ -90,12 +96,11 @@ async def create_workflow(
             ] or None
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
-            request, user["user_id"], user_timezone=user_timezone
+            request, user.user_id, user_timezone=user_timezone
         )
-        # The trigger type lives on the REQUEST (the pre-create log above reads
-        # request.trigger_config.type) — the created Workflow model does not
-        # carry a trigger_type attribute, so reading it off the workflow would
-        # always yield None. Both fields are required, so no guard needed.
+        # trigger_type lives on the REQUEST — the created Workflow model has no
+        # trigger_type attribute, so reading it off the workflow would always
+        # yield None.
         trigger_type = request.trigger_config.type.value
         log.set(
             workflow=WorkflowContext(
@@ -114,7 +119,9 @@ async def create_workflow(
                 "generated_immediately": request.generate_immediately,
             },
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow created successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -127,7 +134,7 @@ async def create_workflow(
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error creating workflow",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -146,22 +153,22 @@ async def list_workflows(
 ) -> WorkflowListResponse:
     """List all workflows for the current user."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="list"),
     )
 
     try:
-        workflows, _total = await WorkflowService.list_workflows(user["user_id"])
+        workflows, _total = await WorkflowService.list_workflows(user.user_id)
         log.set(
             workflow=WorkflowContext(result_count=len(workflows)),
             outcome="success",
         )
-        return WorkflowListResponse(workflows=workflows)
+        return WorkflowListResponse(workflows=[as_read_view(w) for w in workflows])
 
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error listing workflows",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -180,12 +187,12 @@ async def execute_workflow(
 ) -> WorkflowExecutionResponse:
     """Execute a workflow (run now)."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="execute", id=workflow_id),
     )
 
     try:
-        result = await WorkflowService.execute_workflow(workflow_id, request, user["user_id"])
+        result = await WorkflowService.execute_workflow(workflow_id, request, user.user_id)
         # execute_workflow is typed to return WorkflowExecutionResponse, whose
         # execution_id is required — the hasattr guard was dead defensive code.
         log.set(
@@ -203,7 +210,7 @@ async def execute_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error executing workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -224,7 +231,7 @@ async def get_workflow_executions(
 ) -> WorkflowExecutionsResponse:
     """Get execution history for a workflow."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="list_executions", id=workflow_id),
     )
 
@@ -233,7 +240,7 @@ async def get_workflow_executions(
         offset = max(0, offset)
         result = await get_executions(
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             limit=limit,
             offset=offset,
         )
@@ -250,7 +257,7 @@ async def get_workflow_executions(
         log.error(
             f"{LogTag.WORKFLOW} Error getting executions for workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -266,12 +273,12 @@ async def get_workflow_status(
 ) -> WorkflowStatusResponse:
     """Get the current status of a workflow (for polling)."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="status", id=workflow_id),
     )
 
     try:
-        status_response = await WorkflowService.get_workflow_status(workflow_id, user["user_id"])
+        status_response = await WorkflowService.get_workflow_status(workflow_id, user.user_id)
         log.set(
             workflow=WorkflowContext(
                 execution_id=str(status_response.execution_id)
@@ -288,7 +295,7 @@ async def get_workflow_status(
         log.error(
             f"{LogTag.WORKFLOW} Error getting workflow status",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -306,13 +313,13 @@ async def activate_workflow(
 ) -> WorkflowResponse:
     """Activate a workflow (enable its trigger)."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
         workflow = await WorkflowService.activate_workflow(
-            workflow_id, user["user_id"], user_timezone=user_timezone
+            workflow_id, user.user_id, user_timezone=user_timezone
         )
         if not workflow:
             raise HTTPException(
@@ -322,7 +329,9 @@ async def activate_workflow(
 
         log.set(outcome="success")
         capture_context_event(AnalyticsEvents.WORKFLOW_ACTIVATED)
-        return WorkflowResponse(workflow=workflow, message="Workflow activated successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow activated successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -342,7 +351,7 @@ async def activate_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error activating workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -360,13 +369,13 @@ async def deactivate_workflow(
 ) -> WorkflowResponse:
     """Deactivate a workflow (disable its trigger)."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
         workflow = await WorkflowService.deactivate_workflow(
-            workflow_id, user["user_id"], user_timezone=user_timezone
+            workflow_id, user.user_id, user_timezone=user_timezone
         )
         if not workflow:
             raise HTTPException(
@@ -375,7 +384,10 @@ async def deactivate_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow deactivated successfully")
+        capture_context_event(AnalyticsEvents.WORKFLOW_DEACTIVATED)
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow deactivated successfully"
+        )
 
     except HTTPException:
         raise
@@ -383,7 +395,7 @@ async def deactivate_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error deactivating workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -401,14 +413,14 @@ async def regenerate_workflow_steps(
 ) -> WorkflowResponse:
     """Regenerate steps for an existing workflow with optional parameters."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="regenerate_steps", id=workflow_id),
     )
 
     try:
         workflow = await WorkflowService.regenerate_workflow_steps(
             workflow_id,
-            user["user_id"],
+            user.user_id,
             regeneration_reason=request.reason,
             force_different_tools=request.force_different_tools,
             integration_ids=request.integration_ids,
@@ -420,15 +432,43 @@ async def regenerate_workflow_steps(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow regeneration started")
+        capture_context_event(
+            AnalyticsEvents.WORKFLOW_STEPS_REGENERATED,
+            {
+                "force_different_tools": request.force_different_tools,
+                "steps_count": len(workflow.steps) if workflow.steps else 0,
+            },
+        )
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow regeneration started"
+        )
 
+    except HTTPException:
+        # The 404 above is raised inside this try; without this the bare
+        # ``except Exception`` below re-wrapped it into a 500 and the modal
+        # showed "Failed to regenerate workflow steps" for a missing workflow.
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except WorkflowStepGenerationError as e:
+        # The model lane failed; this is not a bug in the request, so it must
+        # not read as one — the modal shows this detail verbatim, unlike the
+        # unactionable generic "Failed to regenerate workflow steps".
+        log.error(
+            f"{LogTag.WORKFLOW} Step generation failed",
+            workflow_id=workflow_id,
+            user_id=user.user_id,
+            reason=e.reason,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Step generation failed: {e.reason}",
+        ) from e
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error regenerating workflow steps",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -447,7 +487,7 @@ async def create_workflow_from_todo(
 ) -> WorkflowResponse:
     """Create a workflow from a todo item with automatic timezone detection."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="create"),
     )
 
@@ -471,7 +511,7 @@ async def create_workflow_from_todo(
         )
 
         workflow = await WorkflowService.create_workflow(
-            workflow_request, user["user_id"], user_timezone=user_timezone
+            workflow_request, user.user_id, user_timezone=user_timezone
         )
 
         log.set(
@@ -482,8 +522,12 @@ async def create_workflow_from_todo(
             ),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.WORKFLOW_CREATED,
+            {"from_todo": True},
+        )
         return WorkflowResponse(
-            workflow=workflow, message="Workflow created from todo successfully"
+            workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )
 
     except HTTPException:
@@ -491,7 +535,7 @@ async def create_workflow_from_todo(
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error creating workflow from todo",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -508,12 +552,12 @@ async def publish_workflow(
 ) -> PublishWorkflowResponse:
     """Publish a workflow to the community marketplace."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="publish", id=workflow_id),
     )
 
     try:
-        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
+        workflow = await workflow_repository.get_for_user(workflow_id, user.user_id)
 
         if not workflow:
             raise HTTPException(
@@ -532,7 +576,9 @@ async def publish_workflow(
                 slug = await generate_unique_workflow_slug(workflow.title, exclude_id=workflow_id)
             try:
                 await workflow_repository.publish(
-                    workflow_id, created_by=user["user_id"], slug=slug or ""
+                    workflow_id,
+                    created_by=user.user_id,
+                    slug=slug or "",  # pragma: no mutate — slug is never empty here
                 )
                 break
             except DuplicateKeyError:
@@ -549,7 +595,7 @@ async def publish_workflow(
         log.info(
             f"{LogTag.WORKFLOW} Published workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
         )
         capture_context_event(AnalyticsEvents.WORKFLOW_PUBLISHED)
 
@@ -565,7 +611,7 @@ async def publish_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error publishing workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -582,13 +628,13 @@ async def unpublish_workflow(
 ) -> WorkflowMessageResponse:
     """Remove a workflow from the community marketplace."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
         # Check if workflow exists and belongs to user
-        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
+        workflow = await workflow_repository.get_for_user(workflow_id, user.user_id)
 
         if not workflow:
             raise HTTPException(
@@ -602,8 +648,9 @@ async def unpublish_workflow(
         log.info(
             f"{LogTag.WORKFLOW} Unpublished workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
         )
+        capture_context_event(AnalyticsEvents.WORKFLOW_UNPUBLISHED)
 
         return WorkflowMessageResponse(message="Workflow unpublished successfully")
 
@@ -613,7 +660,7 @@ async def unpublish_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error unpublishing workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -706,7 +753,7 @@ async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowRe
                 detail="Public workflow not found",
             )
 
-        creator = format_creator(workflow)
+        creator: WorkflowCreator = format_creator(workflow)
         await ensure_public_workflow_slug(workflow)
         # The row IS-A Workflow; creator_info is excluded from serialization, so
         # handing it straight back emits the plain Workflow shape plus `creator`.
@@ -717,11 +764,13 @@ async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowRe
                 "id": workflow.id,
                 "slug": workflow.slug,
                 "creator_id": workflow.created_by,
-                "creator_name": creator.get("name") if isinstance(creator, dict) else None,
+                "creator_name": creator["name"],
                 "step_count": len(workflow.steps) if workflow.steps else 0,
             }
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow retrieved successfully"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -744,25 +793,27 @@ async def generate_workflow_prompt_endpoint(
 ) -> GenerateWorkflowPromptResponse:
     """Generate or improve workflow instructions using AI."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="generate_prompt"),
     )
 
     try:
         result = await WorkflowGenerationService.generate_workflow_prompt(
-            title=request.title,
-            description=request.description,
-            trigger_config=request.trigger_config,
-            existing_prompt=request.existing_prompt,
-            integration_ids=request.integration_ids,
-            user_id=user["user_id"],
+            WorkflowPromptRequest(
+                title=request.title,
+                description=request.description,
+                trigger_config=request.trigger_config,
+                existing_prompt=request.existing_prompt,
+                integration_ids=request.integration_ids,
+            ),
+            user_id=user.user_id,
         )
         log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error generating workflow prompt",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -782,12 +833,12 @@ async def get_workflow(
 ) -> WorkflowResponse:
     """Get a specific workflow by ID."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="get", id=workflow_id),
     )
 
     try:
-        workflow = await WorkflowService.get_workflow(workflow_id, user["user_id"])
+        workflow = await WorkflowService.get_workflow(workflow_id, user.user_id)
         if not workflow:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -803,7 +854,9 @@ async def get_workflow(
             ),
             outcome="success",
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow retrieved successfully"
+        )
 
     except HTTPException:
         raise
@@ -811,7 +864,7 @@ async def get_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error getting workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -830,13 +883,13 @@ async def update_workflow(
 ) -> WorkflowResponse:
     """Update an existing workflow with automatic timezone detection."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="update", id=workflow_id),
     )
 
     try:
         workflow = await WorkflowService.update_workflow(
-            workflow_id, request, user["user_id"], user_timezone=user_timezone
+            workflow_id, request, user.user_id, user_timezone=user_timezone
         )
         if not workflow:
             raise HTTPException(
@@ -845,7 +898,10 @@ async def update_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow updated successfully")
+        capture_context_event(AnalyticsEvents.WORKFLOW_UPDATED)
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow updated successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -859,7 +915,7 @@ async def update_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error updating workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -921,12 +977,12 @@ async def delete_workflow(
 ) -> WorkflowMessageResponse:
     """Delete a workflow."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         workflow=WorkflowContext(operation="delete", id=workflow_id),
     )
 
     try:
-        success = await WorkflowService.delete_workflow(workflow_id, user["user_id"])
+        success = await WorkflowService.delete_workflow(workflow_id, user.user_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -934,6 +990,7 @@ async def delete_workflow(
             )
 
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.WORKFLOW_DELETED)
         return WorkflowMessageResponse(message="Workflow deleted successfully")
 
     except HTTPException:
@@ -942,7 +999,7 @@ async def delete_workflow(
         log.error(
             f"{LogTag.WORKFLOW} Error deleting workflow",
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

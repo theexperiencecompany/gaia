@@ -3,7 +3,7 @@ import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
+import { resetUser } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
 
@@ -46,32 +46,32 @@ export const useLogout = () => {
     try {
       const databases = await indexedDB.databases();
 
-      const deletePromises = databases
-        .filter((dbInfo) => dbInfo.name) // Filter out undefined names
-        .map(
-          (dbInfo) =>
-            new Promise<void>((resolve, reject) => {
-              const request = indexedDB.deleteDatabase(dbInfo.name!);
+      const deletePromises: Promise<void>[] = [];
+      for (const dbInfo of databases) {
+        const name = dbInfo.name;
+        if (!name) continue; // Filter out undefined names
 
-              request.onerror = () => {
-                console.error(
-                  `Error deleting database: ${dbInfo.name}`,
-                  request.error,
-                );
-                reject(request.error);
-              };
+        deletePromises.push(
+          new Promise<void>((resolve, reject) => {
+            const request = indexedDB.deleteDatabase(name);
 
-              request.onblocked = () => {
-                console.warn(`Blocked deleting database: ${dbInfo.name}`);
-                // Still resolve because we tried
-                resolve();
-              };
+            request.onerror = () => {
+              console.error(`Error deleting database: ${name}`, request.error);
+              reject(request.error);
+            };
 
-              request.onsuccess = () => {
-                resolve();
-              };
-            }),
+            request.onblocked = () => {
+              console.warn(`Blocked deleting database: ${name}`);
+              // Still resolve because we tried
+              resolve();
+            };
+
+            request.onsuccess = () => {
+              resolve();
+            };
+          }),
         );
+      }
 
       await Promise.allSettled(deletePromises);
     } catch (error) {
@@ -88,17 +88,14 @@ export const useLogout = () => {
 
     await clearAllStorage();
 
-    // Capture before resetting so the event stays attributed to the user
-    // who logged out, then reset the PostHog identity.
-    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
+    // Logout is tracked server-side (POST /user/logout emits
+    // user:logged_out with the stable distinct_id). Emitting here too would
+    // double-count every logout, so just reset the client identity.
     resetUser();
 
-    // Redirection will be handled by the authApi.logout method
-    // but in case it doesn't (for example, if there's no logout_url),
-    // we redirect to the post-logout landing. In Electron the marketing
-    // homepage lives in the (landing) group, which has no ElectronRouteGuard
-    // to bounce logged-out users — so send desktop users straight to the
-    // desktop login screen instead of the public landing page.
+    // Fallback redirect if authApi.logout doesn't (no logout_url) — in
+    // Electron, (landing) has no ElectronRouteGuard to bounce logged-out
+    // users, so desktop goes to the desktop login screen instead of "/".
     router.push(isElectron ? "/desktop-login" : "/");
   }, [clearAllStorage, router, isElectron]);
 

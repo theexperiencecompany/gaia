@@ -1,9 +1,9 @@
-import type { WorkflowStep } from "../../demo/WorkflowsDemoBase";
+import type { DemoWorkflowStep } from "../../demo/WorkflowsDemoBase";
 
 interface WorkflowDemoConfig {
   title: string;
   schedule: string;
-  steps: WorkflowStep[];
+  steps: DemoWorkflowStep[];
 }
 
 export const WORKFLOW_DEMO_CONFIGS: Record<string, WorkflowDemoConfig> = {

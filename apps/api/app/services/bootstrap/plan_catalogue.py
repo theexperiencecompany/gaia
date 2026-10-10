@@ -4,6 +4,12 @@ Both writers share it so they produce identical rows: scripts/payment_setup.py
 provisions the full catalogue against Dodo product ids, and
 services/bootstrap/plan_seeder.py seeds the Free row on instances that have no
 payment provider.
+
+Hosted GAIA is paid-only: the Dodo-provisioned catalogue carries no Free row,
+and payment_setup.py deactivates any leftover one. A self-hosted instance has no
+payment provider at all, so it needs a Free row to exist for the startup gate —
+and because billing_enabled is False there, every plan limit is tracked but
+never enforced, which is what makes that instance effectively unlimited.
 """
 
 from datetime import UTC, datetime
@@ -12,8 +18,14 @@ from app.constants.memory import FREE_MEMORY_FACT_LIMIT
 from app.models.payment_models import PlanDocument, PlanDuration
 
 
-def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
-    """The subscription plans GAIA offers, as they should exist in the database."""
+def build_plan_catalogue(
+    monthly_product_id: str, yearly_product_id: str, *, include_free: bool = False
+) -> list[PlanDocument]:
+    """Return the subscription plans GAIA offers, as they should exist in the database.
+
+    Include_free adds the zero-price row a self-hosted instance needs; it defaults
+    off because the hosted catalogue is paid-only.
+    """
     now = datetime.now(UTC)
     # Ordered to line up row-for-row with the Free card's list below, so each
     # upgrade sits on the same line as the limit it replaces.
@@ -27,7 +39,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
         "Early access to new features",
     ]
 
-    return [
+    free_plans = [
         PlanDocument(
             dodo_product_id="",  # Free plan doesn't need Dodo product ID
             name="Free",
@@ -48,6 +60,8 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             created_at=now,
             updated_at=now,
         ),
+    ]
+    paid_plans = [
         PlanDocument(
             dodo_product_id=monthly_product_id,
             name="Pro",
@@ -96,3 +110,5 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             updated_at=now,
         ),
     ]
+
+    return [*free_plans, *paid_plans] if include_free else paid_plans

@@ -3,10 +3,12 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
+from app.models.stream_events import EmojiAckPayload
+from app.schemas.common import ResponseModel
 from app.services.platform_link_service import Platform
 
 # Shared field docs — the same platform identity fields recur across the
@@ -24,6 +26,14 @@ class BotChatRequest(BaseModel):
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    is_dm: bool = Field(
+        False,
+        description=(
+            "Whether this conversation is a direct message. Discord and Slack DM "
+            "channel ids differ from the user id, so the server cannot tell a DM "
+            "from a channel without this."
+        ),
+    )
     file_ids: list[str] | None = Field(
         None,
         description="IDs of files attached to this message (uploaded via /api/v1/upload).",
@@ -33,6 +43,14 @@ class BotChatRequest(BaseModel):
         description=(
             "Full metadata for attached files. Mirrors the web chat payload so "
             "the agent can resolve URL/filename without an extra DB lookup."
+        ),
+    )
+    platform_message_id: str | None = Field(
+        None,
+        description=(
+            "Platform-native id of the user's message (WhatsApp wamid, Telegram "
+            "message_id, Discord id, Slack ts). Persisted on the saved user "
+            "message so a later background reaction can anchor to it."
         ),
     )
 
@@ -93,12 +111,67 @@ class CreateLinkTokenResponse(BaseModel):
     auth_url: str = Field(..., description="Full auth URL for the user to visit")
 
 
+class RedeemLinkCodeRequest(BaseModel):
+    """Request model for redeeming a web-minted one-tap link code."""
+
+    platform: str = Field(..., description=_PLATFORM_DESC)
+    platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
+    code: str = Field(..., description="Single-use code minted by the web at onboarding")
+    username: str | None = Field(None, description=_USERNAME_DESC)
+    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+    first_message: str | None = Field(
+        None,
+        description=(
+            "What the user actually sent alongside the code, with the code "
+            "stripped. Absent on Telegram, where the deep link carries no text: "
+            "a tap is not a message and none is stored."
+        ),
+    )
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
+        if not Platform.is_valid(v):
+            raise ValueError(f"Invalid platform '{v}'")
+        return v
+
+
+class RedeemLinkCodeResponse(BaseModel):
+    """Response model for a redeemed one-tap link code."""
+
+    linked: bool = Field(..., description="Whether the platform account is now linked")
+    delivered: bool = Field(
+        ...,
+        description=(
+            "Whether GAIA's first contact is on its way on the outbound queue. "
+            "When false the bot owes the user the bubbles in first_contact."
+        ),
+    )
+    first_contact: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Ordered bubbles the bot must send itself because delivery failed. "
+            "Empty whenever delivered is true, because sending them then would say "
+            "everything twice."
+        ),
+    )
+
+
 class ResetSessionRequest(BaseModel):
     """Request model for resetting a bot session (starting a new conversation)."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    is_dm: bool = Field(
+        False,
+        description=(
+            "Whether this conversation is a direct message. Discord and Slack DM "
+            "channel ids differ from the user id, so the server cannot tell a DM "
+            "from a channel without this."
+        ),
+    )
 
     @field_validator("platform")
     @classmethod
@@ -117,15 +190,16 @@ class ResetSessionResponse(BaseModel):
 
 
 class LinkTokenRecord(BaseModel):
-    """The display fields read from the Redis hash ``create_link_token`` writes
-    for a pending platform link (the hash also carries ``platform_user_id``,
-    which this read path never surfaces).
+    """The Redis hash ``create_link_token`` writes for a pending platform link.
 
     Validated immediately after ``HGETALL`` returns the raw hash (see the API
-    CLAUDE.md Type Safety rules on external boundaries).
+    CLAUDE.md Type Safety rules on external boundaries). ``platform_user_id``
+    defaults to empty so a hash missing it is rejected by the link route as
+    invalid token data rather than failing validation.
     """
 
     platform: str = Field(..., description=_PLATFORM_DESC)
+    platform_user_id: str = Field("", description=_PLATFORM_USER_ID_DESC)
     username: str | None = Field(None, description=_USERNAME_DESC)
     display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
 
@@ -138,7 +212,7 @@ class LinkTokenRecord(BaseModel):
         return v
 
 
-class LinkTokenInfoResponse(BaseModel):
+class LinkTokenInfoResponse(ResponseModel):
     """Response model for the link-token confirmation page's display metadata."""
 
     platform: str = Field(..., description="Platform name")
@@ -187,10 +261,11 @@ class BotSessionDocument(MongoDocument):
     """A bot chat session — the mapping from a platform conversation to a GAIA
     ``conversation_id``, keyed by a unique ``session_key``.
 
-    Only the fields the app reads are modelled. ``created_at``/``updated_at`` are
-    stored as ISO-format strings for the collection's TTL and are written raw by
-    the repository (never surfaced here), so the base's ``updated_at`` datetime
-    auto-stamp does not apply — preserving the existing on-disk string shape.
+    ``created_at``/``updated_at`` are ISO-format STRINGS (the collection's TTL
+    anchor), written raw by the repository rather than as BSON dates. Modelling
+    them as ``str`` is what lets the DM-session merge compare recency across the
+    typed boundary; the repository sets ``auto_stamp_timestamps = False`` so the
+    base never replaces them with a ``datetime`` and breaks the TTL.
     """
 
     session_key: str
@@ -198,9 +273,58 @@ class BotSessionDocument(MongoDocument):
     platform: str
     platform_user_id: str
     channel_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class BotSessionUpdate(BaseModel):
     """Bot sessions are claimed via an atomic upsert, never typed-updated."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class BotStreamToolCard(BaseModel):
+    """A web stream payload's ``tool_data`` card, as far as bot translation reads it.
+
+    ``data`` stays free-form JSON: an approval card's ``data`` is forwarded to
+    the bot verbatim, and only a rate-limit card's is read further
+    (``BotRateLimitCardData``).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: JsonValue = None
+    data: JsonValue = None
+
+
+class BotRateLimitCardData(BaseModel):
+    """The ``data`` of a ``rate_limit_data`` card (``build_rate_limit_card``) a bot notice reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    feature: JsonValue = None
+    current_plan: JsonValue = None
+
+
+class BotWebStreamPayload(BaseModel):
+    """One parsed web SSE ``data:`` payload, as the bot stream translates it.
+
+    Every field is optional because a payload carries one frame kind; which
+    keys were *present* (``model_fields_set``) is what picks the bot frame, so
+    an explicit ``null`` still counts. Keys bots never read are ignored.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    keepalive: JsonValue = None
+    tool_data: JsonValue = None
+    message_boundary: JsonValue = None
+    response: str | None = None
+    error: str | None = None
+    emoji_ack: EmojiAckPayload | None = None
+    conversation_description: JsonValue = None
+    user_message_id: JsonValue = None
+    bot_message_id: JsonValue = None
+    stream_id: JsonValue = None
+    tool_output: JsonValue = None
+    follow_up_actions: JsonValue = None

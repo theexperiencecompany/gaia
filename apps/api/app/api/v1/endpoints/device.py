@@ -12,14 +12,17 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.constants.auth import AUDIT_ACTOR_DEVICE_DAEMON
+from app.constants.log_tags import LogTag
 from app.schemas.device.requests import (
     ApprovePairingRequest,
     DeviceTokenRequest,
     PollPairingRequest,
     RegisterServerRequest,
+    SelfPairRequest,
     StartPairingRequest,
 )
 from app.schemas.device.responses import (
+    DeregisterServerResponse,
     DeviceListResponse,
     DevicePairApproveResponse,
     DeviceResponse,
@@ -29,13 +32,17 @@ from app.schemas.device.responses import (
     DeviceTokenResponse,
     PollPairingResponse,
     RegisterServerResponse,
+    SelfPairResponse,
     StartPairingResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_auth import create_device_token, verify_device_token
 from app.services.device.device_service import (
     PairingError,
     approve_pairing,
+    deregister_device_server,
+    enqueue_device_server_warmup,
     get_active_device,
     list_device_servers,
     list_devices,
@@ -43,6 +50,7 @@ from app.services.device.device_service import (
     register_device_server,
     revoke_device,
     rotate_refresh_token,
+    self_pair_device,
     start_pairing,
 )
 from shared.py.wide_events import log
@@ -98,12 +106,9 @@ async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     log.set(device={"operation": "pair_poll"})
     result = await poll_pairing(payload.device_code)
     log.set_ns("device", pairing_status=result.status)
-    # Audited on the terminal transition only. `approved` is where the pairing is
-    # consumed and the refresh credential is handed over, exactly once; the other
-    # statuses are the daemon's PAIRING_POLL_INTERVAL_SECONDS heartbeat, up to
-    # ~180 of them per pairing. Auditing those would bury the one real credential
-    # issuance under no-ops — every poll already emits its own wide event
-    # carrying device.pairing_status, so the polling itself stays queryable.
+    # Audited on the terminal transition only: `approved` hands over the
+    # refresh credential exactly once, vs up to ~180 heartbeat polls per
+    # pairing that would bury it — polling stays queryable via the wide event.
     if result.status == "approved":
         log.audit(
             "device credential issued",
@@ -133,7 +138,32 @@ async def pair_approve(
         )
         raise HTTPException(status_code=400, detail=str(e)) from e
     log.audit("device pairing approved", actor=user_id, resource=device_id)
+    capture_event(user_id, AnalyticsEvents.DEVICE_APPROVED)
     return DevicePairApproveResponse(device_id=device_id, name=name)
+
+
+@router.post("/self-pair", status_code=200)
+async def self_pair(
+    payload: SelfPairRequest, user_id: str = Depends(get_user_id)
+) -> SelfPairResponse:
+    """Pair the authenticated host as its own device in one call (no user_code).
+
+    A UX collapse of start→approve→poll for a host that already holds the user's
+    session (the desktop app). The JSON body is the CSRF control — it forces a
+    CORS preflight the allowlist rejects.
+    """
+    log.set(device={"operation": "self_pair", "client": payload.client}, user={"id": user_id})
+    device_id, refresh_token = await self_pair_device(
+        user_id, payload.name, payload.platform, payload.client, payload.daemon_version
+    )
+    log.set_ns("device", device_id=device_id)
+    log.audit("device credential issued", actor=user_id, resource=device_id, flow="self_pair")
+    capture_event(
+        user_id,
+        AnalyticsEvents.DEVICE_SELF_PAIRED,
+        {"client": payload.client, "platform": payload.platform},
+    )
+    return SelfPairResponse(device_id=device_id, refresh_token=refresh_token, name=payload.name)
 
 
 @router.post("/token")
@@ -174,11 +204,45 @@ async def register_server(
         user={"id": device["user_id"]},
     )
     server = await register_device_server(
-        device["user_id"], device["device_id"], payload.server_key, payload.display_name
+        device["user_id"],
+        device["device_id"],
+        payload.server_key,
+        payload.display_name,
+        payload.kind,
     )
+    # Warm-connect off the request path so the server's tools get indexed and
+    # become discoverable. Best-effort: registration must still succeed if Redis
+    # is down (the device-online transition re-drives it).
+    try:
+        await enqueue_device_server_warmup(device["device_id"], [server.server_key])
+    except Exception as e:
+        log.warning(
+            f"{LogTag.API} Failed to enqueue device server warmup",
+            device_id=device["device_id"],
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     return RegisterServerResponse(
         integration_id=server.integration_id, server_key=server.server_key
     )
+
+
+@router.delete("/servers/{server_key}", status_code=200)
+async def deregister_server(
+    server_key: str, device: DeviceTokenClaims = Depends(_current_device)
+) -> DeregisterServerResponse:
+    """Remove one MCP server the device no longer exposes; authed by the device JWT.
+
+    The daemon calls this right after dropping the server from its local config,
+    so it does not need to be told to remove it again (notify_device=False)."""
+    log.set(
+        device={"operation": "deregister_server", "id": device["device_id"]},
+        user={"id": device["user_id"]},
+    )
+    removed = await deregister_device_server(
+        device["user_id"], device["device_id"], server_key, notify_device=False
+    )
+    return DeregisterServerResponse(server_key=server_key, removed=removed)
 
 
 @router.get("/list")
@@ -208,6 +272,7 @@ async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListRe
                         server_key=s.server_key,
                         display_name=s.display_name,
                         integration_id=s.integration_id,
+                        kind=s.kind,
                         status=s.status.value,
                         tools_synced_at=s.tools_synced_at,
                     )
@@ -225,4 +290,5 @@ async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> DeviceR
     log.set(device={"operation": "revoke", "device_id": device_id}, user={"id": user_id})
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
+    capture_event(user_id, AnalyticsEvents.DEVICE_REVOKED)
     return DeviceRevokeResponse(device_id=device_id, status="revoked")

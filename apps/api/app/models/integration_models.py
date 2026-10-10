@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
-from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
@@ -27,11 +27,22 @@ AuthType = Literal["none", "oauth", "bearer"]
 UserIntegrationStatus = Literal["created", "connected", "expired"]
 
 
-class IntegrationTool(BaseModel):
+class StoredIntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
 
     name: str
     description: str | None = None
+
+
+class PublicIntegrationSearchHit(BaseModel):
+    """One semantic-search hit over public integrations (``search_public_integrations``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str
+    relevance_score: float
+    # Read by retrieve_tools to label its integration: entries; the store does not return it yet.
+    name: str | None = None
 
 
 class IntegrationToolsSlice(BaseModel):
@@ -39,7 +50,7 @@ class IntegrationToolsSlice(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class IntegrationToolsRecord(BaseModel):
@@ -50,7 +61,7 @@ class IntegrationToolsRecord(BaseModel):
     integration_id: str
     name: str | None = None
     icon_url: str | None = None
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class ComposioConfigDoc(BaseModel):
@@ -102,15 +113,14 @@ class Integration(MongoDocument):
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
 
-    # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
-    # its auth flags at the document root for older documents. IntegrationResolver
-    # reconciles them against mcp_config (and self-heals drift). Defaults match the
-    # historical ``.get("requires_auth", False)`` / ``.get("auth_type", "none")`` reads.
+    # Legacy top-level auth mirror: mcp_config is authoritative, these duplicate
+    # its flags for older documents (IntegrationResolver reconciles and self-heals
+    # drift). Defaults match the historical .get("requires_auth"/"auth_type") reads.
     requires_auth: bool = False
     auth_type: AuthType | None = None
 
     # Frontend display metadata
-    tools: list[IntegrationTool] = Field(
+    tools: list[StoredIntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
     )
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
@@ -226,13 +236,15 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: str | None = Field(None, max_length=500)
+    # default= (not positional) so mypy's pydantic plugin treats these as
+    # optional at construction — callers may omit them.
+    description: str | None = Field(default=None, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
-    requires_auth: bool = Field(False)
-    auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
-    is_public: bool = Field(False)
-    bearer_token: str | None = Field(None)
+    requires_auth: bool = Field(default=False)
+    auth_type: Literal["none", "oauth", "bearer"] | None = Field(default=None)
+    is_public: bool = Field(default=False)
+    bearer_token: str | None = Field(default=None)
 
 
 class UpdateCustomIntegrationRequest(BaseModel):
@@ -265,7 +277,7 @@ class IntegrationResponse(BaseModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
 
     # Tool metadata for frontend display
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
     # Icon URL for custom integrations (favicon from MCP server)
     icon_url: str | None = None

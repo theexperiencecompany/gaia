@@ -168,8 +168,9 @@ const MultiDayEventBar: React.FC<MultiDayEventBarProps> = ({
         height: "28px",
       }}
     >
-      <div
-        className="sti flex h-7 cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
+      <button
+        type="button"
+        className="sti flex h-7 w-full cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
         style={{
           backgroundColor: `${eventColor}40`,
           borderTopLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
@@ -199,7 +200,7 @@ const MultiDayEventBar: React.FC<MultiDayEventBarProps> = ({
             <span className="ml-1 text-xs opacity-70">→</span>
           )}
         </div>
-      </div>
+      </button>
     </div>
   );
 };
@@ -250,8 +251,12 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   return (
     <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
-      <div
-        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-primary-bg transition-colors hover:bg-zinc-800/50"
+      <button
+        type="button"
+        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-primary-bg text-left transition-colors hover:bg-zinc-800/50"
+        aria-label={
+          isExpanded ? "Collapse all-day events" : "Expand all-day events"
+        }
         onClick={() => setIsExpanded((prev) => !prev)}
       >
         <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
@@ -268,7 +273,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
             </span>
           )}
         </div>
-      </div>
+      </button>
 
       {/* All-day events container */}
       {isExpanded ? (

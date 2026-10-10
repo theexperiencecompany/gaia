@@ -1,4 +1,4 @@
-"""Tests for app/api/v1/endpoints/integrations/custom.py"""
+"""Tests for app/api/v1/endpoints/integrations/custom.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -175,7 +175,7 @@ class TestCreateCustomIntegration:
             resp = await client.post(BASE, json=_create_payload())
 
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "bad request"
+        assert resp.json()["message"] == "bad request"
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
@@ -190,7 +190,7 @@ class TestCreateCustomIntegration:
             resp = await client.post(BASE, json=_create_payload())
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to create integration"
+        assert resp.json()["message"] == "Failed to create integration"
 
     @pytest.mark.asyncio
     async def test_requires_auth_without_auth_type_returns_422(self, client: AsyncClient) -> None:
@@ -250,7 +250,7 @@ class TestUpdateCustomIntegration:
             resp = await client.patch(f"{BASE}/i1", json={"name": "Renamed"})
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found or you are not the owner"
+        assert resp.json()["message"] == "Integration not found or you are not the owner"
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
@@ -262,7 +262,7 @@ class TestUpdateCustomIntegration:
             resp = await client.patch(f"{BASE}/i1", json={"name": "Renamed"})
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to update integration"
+        assert resp.json()["message"] == "Failed to update integration"
 
     @pytest.mark.asyncio
     async def test_private_ip_server_url_returns_422(self, client: AsyncClient) -> None:
@@ -293,7 +293,7 @@ class TestDeleteCustomIntegration:
             resp = await client.delete(f"{BASE}/i1")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found or you are not the owner"
+        assert resp.json()["message"] == "Integration not found or you are not the owner"
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
@@ -305,7 +305,7 @@ class TestDeleteCustomIntegration:
             resp = await client.delete(f"{BASE}/i1")
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to delete integration"
+        assert resp.json()["message"] == "Failed to delete integration"
 
 
 class TestPublishIntegration:
@@ -314,10 +314,7 @@ class TestPublishIntegration:
     @pytest.mark.asyncio
     async def test_happy_path(self, client: AsyncClient) -> None:
         with patch(f"{_CUSTOM}.publish_custom_integration", new_callable=AsyncMock) as mock_publish:
-            mock_publish.return_value = {
-                "integration_id": "i1",
-                "public_url": "/marketplace/my-tool",
-            }
+            mock_publish.return_value = "/marketplace/my-tool"
             resp = await client.post(f"{BASE}/i1/publish")
 
         assert resp.status_code == 200
@@ -338,7 +335,7 @@ class TestPublishIntegration:
             resp = await client.post(f"{BASE}/i1/publish")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found"
+        assert resp.json()["message"] == "Integration not found"
 
     @pytest.mark.asyncio
     async def test_publish_error_forbidden_returns_403(self, client: AsyncClient) -> None:
@@ -350,7 +347,7 @@ class TestPublishIntegration:
             resp = await client.post(f"{BASE}/i1/publish")
 
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "You can only publish integrations you created"
+        assert resp.json()["message"] == "You can only publish integrations you created"
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
@@ -362,7 +359,7 @@ class TestPublishIntegration:
             resp = await client.post(f"{BASE}/i1/publish")
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to publish integration"
+        assert resp.json()["message"] == "Failed to publish integration"
 
 
 class TestUnpublishIntegration:
@@ -373,7 +370,6 @@ class TestUnpublishIntegration:
         with patch(
             f"{_CUSTOM}.unpublish_custom_integration", new_callable=AsyncMock
         ) as mock_unpublish:
-            mock_unpublish.return_value = {"integration_id": "i1"}
             resp = await client.post(f"{BASE}/i1/unpublish")
 
         assert resp.status_code == 200
@@ -393,7 +389,7 @@ class TestUnpublishIntegration:
             resp = await client.post(f"{BASE}/i1/unpublish")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found"
+        assert resp.json()["message"] == "Integration not found"
 
     @pytest.mark.asyncio
     async def test_unpublish_error_not_published_returns_400(self, client: AsyncClient) -> None:
@@ -405,7 +401,7 @@ class TestUnpublishIntegration:
             resp = await client.post(f"{BASE}/i1/unpublish")
 
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Integration is not currently published"
+        assert resp.json()["message"] == "Integration is not currently published"
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
@@ -417,4 +413,4 @@ class TestUnpublishIntegration:
             resp = await client.post(f"{BASE}/i1/unpublish")
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to unpublish integration"
+        assert resp.json()["message"] == "Failed to unpublish integration"

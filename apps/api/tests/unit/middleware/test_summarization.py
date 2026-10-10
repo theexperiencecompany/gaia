@@ -63,9 +63,9 @@ def _humans(count: int) -> list[AnyMessage]:
 
 
 def _graph_config(**configurable: Any) -> AbstractContextManager[None]:
-    """Stand in for LangGraph's runnable context var, which `get_config()` reads.
+    """Stand in for LangGraph's runnable context var, which get_config() reads.
 
-    The `runtime` object a middleware hook receives deliberately carries no
+    The runtime object a middleware hook receives deliberately carries no
     config, so this — not the runtime — is where the archive's user and
     conversation come from.
     """
@@ -73,7 +73,7 @@ def _graph_config(**configurable: Any) -> AbstractContextManager[None]:
 
 
 def _runtime() -> Runtime[Any]:
-    """The real object LangGraph passes to a middleware hook."""
+    """Build the real object LangGraph passes to a middleware hook."""
     return Runtime(context=None)
 
 
@@ -257,10 +257,8 @@ async def test_archive_refuses_to_run_on_an_empty_configurable() -> None:
 async def test_the_archive_does_not_read_its_config_off_the_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Regression: this used to read `runtime.config`, which LangGraph's Runtime
-    # deliberately does not have. Every real run therefore raised "requires
-    # 'user_id'" into the caller's except handler and no history was ever
-    # archived. Passing the real, config-less Runtime must still archive.
+    # Regression: runtime.config doesn't exist on LangGraph's Runtime, so real
+    # runs raised "requires 'user_id'" and no history was ever archived.
     captured: dict[str, Any] = {}
 
     async def fake_write(**kwargs: Any) -> tuple[str, str]:

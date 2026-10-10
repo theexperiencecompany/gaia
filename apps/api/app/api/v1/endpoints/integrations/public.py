@@ -3,6 +3,7 @@
 import contextlib
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -13,10 +14,16 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
 from app.helpers.integration_helpers import (
     format_public_integration_response,
-    generate_integration_slug,
     parse_integration_slug,
 )
-from app.models.workflow_models import PublicWorkflowsResponse
+from app.helpers.slug_helpers import generate_integration_slug
+from app.models.integration_models import PublicIntegrationSearchHit, StoredIntegrationTool
+from app.models.workflow_models import (
+    PublicWorkflowCard,
+    PublicWorkflowsResponse,
+    public_workflow_steps,
+)
+from app.schemas.errors import error_responses
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
@@ -31,10 +38,16 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
+from app.services.workflow.service import ensure_public_workflow_slug
 from app.utils.creator import format_creator
 from shared.py.wide_events import log
 
 router = APIRouter()
+
+# The stored-tool and search-hit services hand back plain dicts; the route
+# validates them into their models once, where they enter the handler.
+_STORED_TOOLS = TypeAdapter(list[StoredIntegrationTool])
+_SEARCH_HITS = TypeAdapter(list[PublicIntegrationSearchHit])
 
 
 @router.get("/public/{identifier}", response_model=PublicIntegrationDetailResponse)
@@ -58,10 +71,9 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
-            stored_tools = await get_integration_tools(native.id)
+            stored_tools = _STORED_TOOLS.validate_python(await get_integration_tools(native.id))
             integration_tools = [
-                IntegrationTool(name=t["name"], description=t.get("description"))
-                for t in stored_tools
+                IntegrationTool(name=t.name, description=t.description) for t in stored_tools
             ]
 
             log.set(integration_name=native.name)
@@ -90,7 +102,7 @@ async def get_public_integration(
         # Fallback: legacy hash-based lookup
         if not integration:
             slug_parts = parse_integration_slug(identifier)
-            short_id = slug_parts.get("shortid")
+            short_id = slug_parts.shortid
             if short_id:
                 integration = await integration_repository.get_public_by_id_prefix(short_id)
 
@@ -98,9 +110,9 @@ async def get_public_integration(
             raise HTTPException(status_code=404, detail="Integration not found")
 
         response_data = format_public_integration_response(integration)
-        log.set(integration_name=response_data.get("name"))
+        log.set(integration_name=response_data.name)
         log.set(outcome="success")
-        return PublicIntegrationDetailResponse(**response_data)
+        return response_data
 
     except HTTPException:
         raise
@@ -230,13 +242,15 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
             log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
-        results = await search_public_integrations(query=q.strip(), limit=20)
+        results = _SEARCH_HITS.validate_python(
+            await search_public_integrations(query=q.strip(), limit=20)
+        )
         if not results:
             log.set(result_count=0)
             log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
-        relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
+        relevance_map = {r.integration_id: r.relevance_score for r in results}
         integration_ids = list(relevance_map.keys())
 
         integrations = await integration_repository.find_public_by_ids(integration_ids)
@@ -282,9 +296,11 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
 
 @router.get(
     "/public/{identifier}/workflows",
-    responses={
-        500: {"description": "Failed to fetch related workflows"},
-    },
+    responses=error_responses(
+        {
+            500: "Failed to fetch related workflows",
+        }
+    ),
 )
 async def get_related_workflows(
     identifier: str,
@@ -307,30 +323,22 @@ async def get_related_workflows(
         )
         total = await workflow_repository.count_public_by_step_category(identifier)
 
-        formatted_workflows = []
         for row in rows:
-            normalized_steps = [
-                {
-                    "id": step.id,
-                    "title": step.title,
-                    "description": step.description,
-                    "category": step.category or "general",
-                }
-                for step in row.steps
-            ]
-            formatted_workflows.append(
-                {
-                    "id": row.id,
-                    "title": row.title,
-                    "description": row.description,
-                    "slug": row.slug,
-                    "prompt": row.prompt,
-                    "steps": normalized_steps,
-                    "total_executions": row.total_executions,
-                    "created_at": row.created_at,
-                    "creator": format_creator(row),
-                }
+            await ensure_public_workflow_slug(row)
+        formatted_workflows = [
+            PublicWorkflowCard(
+                id=row.id,
+                title=row.title,
+                description=row.description,
+                slug=row.slug,
+                prompt=row.prompt,
+                steps=public_workflow_steps(row),
+                total_executions=row.total_executions,
+                created_at=row.created_at,
+                creator=format_creator(row),
             )
+            for row in rows
+        ]
 
         log.set(result_count=len(formatted_workflows))
         log.set(outcome="success")

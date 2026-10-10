@@ -285,12 +285,12 @@ curl -sG http://localhost:3100/loki/api/v1/query_range \
 command) statically scores every FastAPI/ARQ entry point and the LiveKit voice
 worker on wide-event instrumentation. The TypeScript bots run on their own
 logging stack and are scored by the matching port,
-`scripts/ci/evlog-map-bots.mjs`:
+`scripts/ci/checks.mjs evlog-map-bots`:
 
 ```bash
 python3 tools/evlog_map            # full report (apps/api + apps/voice-agent)
 python3 tools/evlog_map --all      # per-entry check matrix
-node scripts/ci/evlog-map-bots.mjs # bots surface (apps/bots + libs/shared/ts)
+node scripts/ci/checks.mjs evlog-map-bots # bots surface (apps/bots + libs/shared/ts)
 ```
 
 CI runs both on every PR (`observability` lane in code-quality.yml): changed

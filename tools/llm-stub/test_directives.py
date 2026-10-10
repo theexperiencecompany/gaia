@@ -92,6 +92,15 @@ def test_parse_ordered_multi_directive():
     ]
 
 
+def test_a_quoted_script_is_text_to_the_end_of_its_string():
+    """A recorded task quoting its own script back, escaped, is text — not a real directive."""
+    quoted = (
+        'earlier: "[[tool:create_todo {\\"title\\": \\"sim\\"}]] [[tool:list_todos]] '
+        '[[say:old]]" then [[say:new]]'
+    )
+    assert parse_directives(quoted) == [SayDirective(text="new")]
+
+
 def test_parse_malformed_json_raises():
     with pytest.raises(DirectiveError) as exc:
         parse_directives('[[tool:create_reminder {"when": tomorrow}]]')
@@ -139,7 +148,7 @@ def test_parse_json_string_may_contain_literal_close_delimiter():
 
 
 def test_parse_nested_directive_one_level():
-    """comms → executor → subagent: handoff carries the subagent's script."""
+    """Comms → executor → subagent: handoff carries the subagent's script."""
     inner = _tool_directive("fetch_emails", {"max_results": 5})
     script = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner})
     assert parse_directives(script) == [
@@ -208,8 +217,7 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
 
 
 def test_trailing_context_user_message_does_not_hide_script():
-    """The graph injects context slots as trailing user-role messages; the stub
-    must script from the newest user message that carries directives."""
+    """The stub must script from the newest user message that carries directives."""
     messages = [
         _user("[[say:SCRIPTED]]"),
         _user("=== dynamic context ===\ncurrent todos: none"),
@@ -218,8 +226,7 @@ def test_trailing_context_user_message_does_not_hide_script():
 
 
 def test_bigtool_executor_retrieves_then_calls():
-    """Unbound scripted tool + retrieve_tools available → bind first, call second,
-    and the retrieval turn never advances the script cursor."""
+    """Bind first, call second; the retrieval turn never advances the script cursor."""
     script = '[[tool:create_todo {"title": "x"}]] [[say:Done]]'
     bigtool = frozenset({"retrieve_tools"})
 
@@ -432,3 +439,188 @@ def test_stream_chunks_content_assembly():
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
     assert all("finish_reason" in c["choices"][0] for c in chunks)
+
+
+# --------------------------------------------------------------------------- #
+# Multiple steers folded into one work run, and echoed-directive filtering.
+# These pin the fix for the burst + cancel gaps: a run keeps its plan while
+# folding every <user_interjection> steer, and never re-executes directives a
+# cancel record (or any other internal-tag payload) quotes verbatim.
+# --------------------------------------------------------------------------- #
+
+WORK_TOOLS = frozenset({"create_todo"})
+
+
+def _interjection(text: str) -> dict:
+    return {"role": "user", "content": f"<user_interjection>\n{text}\n</user_interjection>"}
+
+
+def _cancelled_record(quoted_task: str) -> dict:
+    return {
+        "role": "user",
+        "content": (
+            f"<executor_cancelled>\nThe background task 42 ('{quoted_task}') was "
+            f"cancelled by the user before it completed.\n</executor_cancelled>"
+        ),
+    }
+
+
+def test_steer_does_not_drop_the_original_plan():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " "
+        + _tool_directive("create_todo", {"title": "C"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection("also " + _tool_directive("create_todo", {"title": "STEER"})),
+    ]
+    # After A, with a steer folded in, the next step is the plan's B — not the steer.
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "B"}
+    )
+
+
+def test_plan_and_all_steers_run_in_one_pass_then_say():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _interjection(_tool_directive("create_todo", {"title": "X"})),
+        _interjection(_tool_directive("create_todo", {"title": "Y"})),
+    ]
+    order: list[tuple[str, str]] = []
+    for _ in range(10):
+        got = resolve_response(messages, WORK_TOOLS)
+        if isinstance(got, SayResponse):
+            order.append(("say", got.text))
+            break
+        order.append(("tool", got.args["title"]))
+        messages.append(_assistant_tool_call("create_todo", got.args))
+        messages.append(_tool_result("create_todo"))
+    assert order == [
+        ("tool", "A"),
+        ("tool", "B"),
+        ("tool", "X"),
+        ("tool", "Y"),
+        ("say", "done"),
+    ]
+
+
+def test_interjection_directive_is_executed_after_plan():
+    task = "task " + _tool_directive("create_todo", {"title": "A"}) + " [[say:done]]"
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection(_tool_directive("create_todo", {"title": "REAL"})),
+    ]
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "REAL"}
+    )
+
+
+def test_cancelled_record_not_re_executed_work_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], WORK_TOOLS)
+    assert isinstance(got, SayResponse)  # the quoted GHOST directive is not run
+
+
+def test_cancelled_record_not_forwarded_comms_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], COMMS_TOOLS)
+    assert isinstance(got, SayResponse)  # comms does not forward a quoted cancel record
+
+
+def test_interrupt_note_with_quoted_directive_is_ignored():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    note = {
+        "role": "user",
+        "content": f"<executor_interrupted>\nStopped; it was doing {ghost}\n</executor_interrupted>",
+    }
+    assert isinstance(resolve_response([note], WORK_TOOLS), SayResponse)
+
+
+def test_an_unbound_internal_tool_is_retrieved_even_when_execute_is_exposed():
+    """Internal tools bind through retrieve_tools; an execute call would skip the tool yet advance the script."""
+    script = '[[tool:create_todo {"title": "x"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    assert resolve_response([_user(script)], executor) == ToolCallResponse(
+        name="retrieve_tools", args={"query": "create_todo", "exact_tool_names": ["create_todo"]}
+    )
+
+    after_retrieval = [
+        _user(script),
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["create_todo"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    assert resolve_response(after_retrieval, executor | {"create_todo"}) == ToolCallResponse(
+        name="create_todo", args={"title": "x"}
+    )
+
+
+def test_a_tool_retrieval_left_unbound_runs_through_execute_once():
+    """Retrieval returns an integration tool's schema instead of binding it, so execute runs it."""
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    assert resolve_response([_user(script)], executor) == ToolCallResponse(
+        name="retrieve_tools",
+        args={"query": "GMAIL_SEND_EMAIL", "exact_tool_names": ["GMAIL_SEND_EMAIL"]},
+    )
+
+    after_retrieval = [
+        _user(script),
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["GMAIL_SEND_EMAIL"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    execute_call = resolve_response(after_retrieval, executor)
+    assert execute_call == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run GMAIL_SEND_EMAIL",
+            "tool_name": "GMAIL_SEND_EMAIL",
+            "data": {"recipient_email": "a@b.c"},
+        },
+    )
+
+    after_execute = after_retrieval + [
+        _assistant_tool_call("execute", execute_call.args),
+        _tool_result("execute"),
+    ]
+    assert resolve_response(after_execute, executor) == SayResponse(text="Done")
+
+
+def test_an_unbound_tool_runs_through_execute_when_nothing_can_bind_it():
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    first = resolve_response([_user(script)], frozenset({"execute"}))
+    assert isinstance(first, ToolCallResponse)
+    assert first.name == "execute"
+
+
+def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
+    """A quoted, escaped copy of prior calls must neither run nor fail a message with a real script."""
+    quoted = 'Last run: call_executor({"task": "[[tool:create_todo {\\"title\\": \\"sim\\"}]]"})'
+    script = '[[tool:create_todo {"title": "sim"}]] [[say:done]]'
+    directives = parse_directives(f"{quoted}\n\n{script}")
+    assert directives == [
+        ToolDirective(name="create_todo", args={"title": "sim"}),
+        SayDirective(text="done"),
+    ]
+
+
+def test_a_malformed_directive_still_fails_loud():
+    with pytest.raises(DirectiveError):
+        parse_directives("[[tool:create_todo {bad}]]")

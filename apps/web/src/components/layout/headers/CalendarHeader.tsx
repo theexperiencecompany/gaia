@@ -125,7 +125,7 @@ export default function CalendarHeader() {
             tooltip="Create new calendar event"
             onClick={createEventAction}
           >
-            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
           </SidebarHeaderButton>
         )}
       </div>

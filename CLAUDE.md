@@ -144,7 +144,7 @@ The full agent architecture — comms → executor → subagents, bots, voice, s
 Quick map:
 - **Comms agent** (user-facing, no work tools) → `apps/api/app/agents/core/graph_builder/build_graph.py` (`build_comms_*`)
 - **Executor agent** (worker tier, all tools) → same file (`build_executor_*`) + `apps/api/app/agents/tools/executor_tool.py`
-- **Subagents** (per-integration) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
+- **Subagents** (per-user MCP workers + spawned isolation) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
 - **Bots** → `apps/bots/{telegram,whatsapp,discord,slack}/` + `libs/shared/ts/src/bots/`
 - **Voice** → `apps/voice-agent/src/worker.py`
 - **Skills** → `apps/api/app/agents/skills/`
@@ -270,7 +270,7 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
-- **Observability** (Prometheus scrape config, Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md`
+- **Observability** (Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md` — the rest of the prod observability config lives in the private `gaia-infra` repo
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
 - **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
@@ -281,6 +281,25 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 ### Subagents & Parallelism
 
 **Always spawn subagents wherever possible** — for research, exploration, or independent tasks, use the Agent tool with specialized subagents in parallel. Don't do sequentially what can be done concurrently.
+
+**One writer per working tree, and commit only between phases.** The commit
+hooks (`prek`) stash every unstaged change in the tree before running and
+restore them afterwards — that is how hooks see exactly the staged snapshot,
+and prek has no option to skip it. Under a live edit that rewind-and-reapply
+drops or duplicates hunks, and a whole-file `git checkout --` / `git restore` /
+`git stash` by any agent wipes every other agent's uncommitted work outright
+(both happened in one session: ~280 lines of workflow edits lost, three agents'
+changes gone from one file). So:
+
+- Agents that edit files run in their own worktree (`isolation: worktree` on
+  the Agent tool) and their work is merged back — or, if several must share
+  one checkout, they use targeted edits only and never a whole-file restore or
+  rewrite of a file another agent touches.
+- The orchestrator commits in a phase: only when every agent that edits the
+  tree has reported idle, never on the assumption that one is done. Confirm
+  with `ListAgents` (state `idle`) before any git command that touches the
+  working tree; a mid-commit `F821` that changes between hook runs means a file
+  is still moving.
 
 ### Deep Exploration
 
@@ -313,6 +332,8 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
+**Running tests locally: one file at a time, never with xdist.** The nx suite targets run with `-n 4`, and every xdist worker is a full import of the app with its own memory; a single agent running a few suites in parallel has taken a 24 GB laptop down. Always run `mise test:one <test file> [more files]` from the repo root (from anywhere else it is `mise run //:test:one …` — the task lives at the workspace root) — it is `uv run pytest -p no:xdist -q` with `pytest.ini`'s real `addopts` intact. Do **not** pass `-o addopts=""`: that drops `--strict-markers` and the `-m` deselection, so an unregistered marker or a `composio` test passes locally and fails collection in CI (this shipped). Run files back to back in one command rather than in separate concurrent calls, never start a second test, type-check or mutation process while one is running, and count subagents' tool runs as load. Full suites, mutation runs and the coverage lanes are CI's job (`mise ci:local` when you must, with `--only <lane>`).
+
 Tests are first-class: every new feature/refactor ships a test at the right tier; every bug ships a failing-then-passing test (see `apps/api/tests/CLAUDE.md` for which tier).
 
 **The bug loop — every bug ships a failing-then-passing test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
@@ -327,17 +348,39 @@ A bug that ships without a failing-then-passing test is a bug that will come bac
 
 ### After Major Changes
 
-Always run type-check and lint for every affected layer before considering work complete:
+One-shot gate mirror: `mise ci:local` runs the same quality lanes CI runs (pinned versions, per-lane results, logs in `verify-logs/`). Iterate with `mise ci:local --only <lane,…>`, go full with `mise ci:local --all --with-heavy`, machine-readable via `--json`. Lane table: scripts/dev/verify-lanes.json — edit it in the same commit as any workflow lane change. For PR review state: `mise pr:comments` (read-only; unresolved threads + exact resolve/reply syntax). When a PR is red, `mise ci:remote [branch|PR#]` is the only command you need: it prints the PR header (mergeable, review decision, unresolved threads, check counts), then for every non-green lane the failure itself — the lane's `verdict-*` artifact when it uploaded one (artifacts are readable while the run is still in progress; job logs are not), else the job log windowed on the last `##[error]` with timestamp prefixes and ANSI stripped — then the `gh stack`, warning when a PR's GitHub base differs from its stack parent. A red mutation shard additionally gets its `mutation-log-N` record read, so each failing module reads either `survivors: <file>:<line> — <change>` or, where mutmut produced no state, whether tests were being killed at the per-test cap (safe to re-run) or the suite simply failed in the mutation workdir (a re-run will not help); `--rerun-timeouts` re-runs the failed jobs only in the first case. Run on the box it also prints one line of `runner.sh health`, which says whether the queue is a thrashing box or a full GitHub listener pool. `--verbose` for full finding detail and passing lanes, `--json` to parse it, `--watch` to poll, `--no-stack` to skip the stack section, and `--stack` for the stack alone — one line per PR with its head sha, mergeable/mergeStateStatus, unresolved threads, check counts, failing lane names and the latest Greptile score next to the commit it actually reviewed.
+
+### Verify with the CI command, not a lookalike
+
+**Run the gate the lane actually runs.** A local command that merely resembles CI's is worse than no check, because it reports green over work CI will reject — and the rejection costs a CI round trip, a runner, and a fix cycle. `nx run-many -t lint` is the canonical example: it lints the 15 Nx projects and **no Python at all**, while the `python-static` lane runs 11 tools over every `.py` in the repo. An agent that runs it after editing `apps/api/app/**.py` has verified nothing.
+
+Use these, which are CI's exact commands at CI's exact pins:
 
 ```bash
-# Backend
-nx type-check api
-nx lint api
-
-# Frontend
-nx run-many -t type-check --projects=web,desktop
-nx run-many -t lint --projects=web,desktop
+mise run lint:py            # ruff check . && ruff format --check . — CI's python-ruff lane,
+                            # repo-wide, so it covers scripts/ and tools/ too (nx does not)
+mise run lint:py:fix        # same, autofixing
+mise run lint               # nx run-many -t lint --parallel=3   (TS + the Nx projects)
+mise run type-check         # nx run-many -t type-check --parallel=3
+mise run format             # nx run-many -t format --parallel=3
+mise ci:local --only <lane> # any single CI lane, by name (--list prints them)
 ```
+
+Why the repo-wide ruff task exists rather than relying on `nx run-many -t format`: CI formats `.` from the repo root, which includes the ~161 Python files under `scripts/`, `tools/`, `.agents/skills/`, `docs/` and `libs/wake-word/` that **belong to no Nx project**. Two of them (`scripts/ci/tests/test_workflow_suites.py`, `scripts/test/mutation_classify.py`) sat unformatted for a week and surfaced only as a red `python-static` lane — the single most common CI failure in this repo's recent history.
+
+**Before pushing, run the gates your change can break.** Cheap and specific beats a broad guess:
+
+| Changed | Run |
+|---|---|
+| any `.py` | `mise run lint:py` and `mise ci:local --only python-mypy` |
+| `apps/api/app/**` | the above, plus `--only custom-lints --only lint-imports` |
+| any `.ts`/`.tsx` | `mise run lint` and `mise run type-check` |
+| `apps/api` routes or models | `mise api:types` (the `api-schema` lane fails on drift) |
+| new/changed dependency | `mise ci:local --only dead-code --only package-hygiene` |
+
+Commit hooks catch most of this automatically (ruff, biome, custom lints, api-types, doc-comments) — **if they are installed**. `mise run pre-commit:install` must have been run in this clone; `core.hooksPath` pointing at a shared hooks dir makes `prek install` refuse, and the symptom is that nothing local ever fails while CI keeps failing. If a local gate you expected to catch something passes cleanly, confirm the hooks exist before trusting it.
+
+For a full pre-push equivalent on the lanes that are actually reproducible offline, `mise ci:local --all` (without `--with-heavy`) runs the fast set; the heavy lanes (mutation, py-tests, ts-tests, semgrep) need Docker or hours and are CI's job — go read the red PR with `mise ci:remote` instead of re-running them locally.
 
 ## Environment Variables
 
@@ -385,6 +428,7 @@ Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-in
 - **`master` is the single base branch.** All feature branches are created from and merged into `master`. There is no `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `master` as the base.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
+- **Stacked PRs are managed with `gh stack`, and only `gh stack` makes a stack.** Read `gh stack view --json` (never bare `gh stack view` — it opens a TUI) before assuming any PR's base; link with `gh stack link <pr> <pr> ...` bottom to top. A chain of `baseRefName`s and a hand-written "Stacked on #N" in a PR body is not a stack: GitHub shows no stack, and a PR left on `master` scopes every diff-driven gate to the whole stack (119 modules instead of 11, one CI round wasted). Retargeting a PR fires `edited`, which re-runs nothing — push a commit after restacking.
 - **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/master`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
   git fetch origin
@@ -404,23 +448,31 @@ rm -f file             # NOT: rm file
 rm -rf directory       # NOT: rm -r directory
 ```
 
+`cd` is aliased to zoxide's `z` in the interactive shell, so in a non-interactive tool shell `cd <path>` fails with `command not found: z`. Use `builtin cd <path>`, or `git -C <path>` / `--project` flags and skip the `cd`.
+
+Two sources of noise that cost an agent context on every command:
+
+- **In a secondary worktree**, `mise` has not re-activated, so every `uv run` warns `VIRTUAL_ENV=... does not match the project environment path`. Prefix `env -u VIRTUAL_ENV` (or run through `mise -C <worktree> exec --`) and the line goes away.
+- **Any `python -c` that imports `app.*` boots settings** — Infisical plus ~20 startup lines. `LOG_LEVEL=ERROR` silences the lines (the "Missing configuration" entries are warnings, so `WARNING` is not enough); the secrets fetch itself still costs ~3s and is unavoidable.
+
 ## CI Parallelism & Caching — Rules
 
 Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly — CI is the gate.
 
-- **Use local `.nx/cache` via `actions/cache@v4`, not Nx Cloud.** Restore at job start, save if miss. Key: `nx-${os}-${hashFiles(pnpm-lock.yaml,nx.json,**/project.json)}-${hashFiles(apps/**,libs/**)}`. Never use `restore-keys` without a hash — prevents cache poisoning.
-- **Single `pnpm install` / `uv sync` per workflow.** One `setup` job installs and caches (`pnpm-store-${hashFiles(pnpm-lock.yaml)}` + `~/.cache/uv` via `setup-uv` with `enable-cache` + `prune-cache: true`). Downstream jobs `needs: setup` — never reinstall per lane/job.
+- **Never Nx Cloud (`NX_NO_CLOUD=true`).** There is no remote Nx cache on GitHub-hosted lanes: `.nx/cache` is local to the job. On the home box the workspace and its `.nx/cache` persist between jobs, plus the shared Nx cache service in `self-hosted-runner/nx-cache-server/` in the private `gaia-infra` repo. Where a cache IS keyed through `actions/cache` (Next.js compiler cache, uv), key on a hash — never `restore-keys` without one.
+- **Install through the composites, never by hand.** `./.github/actions/setup-node-pnpm` and `./.github/actions/setup-python-test-env` own every install: they cache the pnpm store / `~/.cache/uv` on GitHub-hosted runners and reuse the persistent ones on the home box. A lane that inlines its own `pnpm install` / `uv sync` bypasses both.
 - **Docker layer cache lives in GHCR (`type=registry`), per-image `:buildcache` tag.** Every `docker/build-push-action` and `nx docker:build` uses `cache-from/cache-to: type=registry,ref=ghcr.io/theexperiencecompany/<repo>:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd`. The GHA cache service was the bottleneck, not the network: `type=gha,mode=max` export measured 449s of a 951s docker-web build (~10MB/s writes) while the actual GHCR image push was ~40s. Free on a public repo, no 10 GB eviction pressure. Never `mode=min` alone. All images (web, grafana, api, voice-agent, all five bots) use this scheme — no `type=gha` remains.
 - **Parallelize Docker builds.** `api` and `voice-agent` build in a matrix, not serially.
 - **Coalesce master merges — final deploy wins.** `code-quality.yml` / `main.yml` use `cancel-in-progress: true` on `refs/heads/master` so 5 rapid merges cancel to 1 final verification. `build.yml` keeps `cancel-in-progress: false` so a running deploy never dies. Final SHA via `nrwl/nx-set-shas` with base = last successful master verifies the union of all 5.
-- **Single affected detection.** One `detect` job runs `nrwl/nx-set-shas` and exports `base`/`head`; all lanes reuse it via `nx show projects --affected` / `nx affected`. Never duplicate `changed-files.sh` greps.
+- **`scripts/ci/` is one script per concept, not one file per verb.** A new CI responsibility joins the script for its concept as a subcommand (`pytest.sh slice`, `changes.sh files`, `deploy.sh retag`) and never becomes a new file. `scripts/ci/CLAUDE.md` holds the concept→script table and the conventions; read it before adding anything there.
+- **Single affected detection.** One `detect` job runs `nrwl/nx-set-shas` and exports `base`/`head`; all lanes reuse it via `nx show projects --affected` / `nx affected`. Never duplicate `changes.sh files` greps.
 - **Use `nx affected -t <target>` with `cache: true`, not raw tools.** Lanes run `nx affected -t lint type-check build` so unaffected projects hit cache and skip. Do not call `biome`, `ruff`, or `tsc` directly outside Nx unless wrapped via `nx run-many`.
 - **Keep `nx.json` inputs correct.** `api:build` (and similar) must list `pyproject.toml`, `uv.lock`, `libs/shared/py/**` etc. A missing input causes false cache hits that hide real changes.
-- **Shard the bottleneck.** `test-python` (~10 m) is sharded into 2 via `pytest-split` (`--splits 2 --group N`). `test-fast` stays a non-blocking budget probe — never gate the PR on it alone.
+- **Split the bottleneck by directory, not by count.** `main.yml: test-python` is a four-slice matrix — `unit-a` (`tests/unit/{services,agents,storage}`) and `unit-b` (the rest of `tests/unit` + `tests/meta`), neither needing services/Node, `integration` (real/e2e/stress/integration/contracts, services + Node), `bridge` (`test_device_bridge_e2e.py` alone, serial). Slices run concurrently, so wall clock is `max(slice)` not the sum. Each slice sets its own worker share; do not reintroduce `pytest-split` count-based sharding.
 - **Next.js cache key is minimal.** `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
 - **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
 - **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
-- **Move heavy scans to cron.** `trivy`, `pip-audit`, and mutation testing (2–3 runners, skip modules <5 lines) run weekly in `security-cron.yml`, not on every PR.
+- **Heavy scans stay on the PR, bounded instead of deferred.** `trivy` (advisory, self-hosted DB on local disk), `pip-audit` and the mutation lane all run per PR — the home box absorbs them. Bound them by scope (`skip-dirs`, changed-module matrix, `max-parallel: 4` plus the host CPU governor), never by moving them to a cron nobody reads.
 - **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in the PR body (images on the `pr-assets` branch) or `.agents/ci-report.html` (gitignored) — never commit metrics files into the source tree. Never claim CI is faster without measured runs.
 
 ## CI Discrepancies & Conventions — What Was Fixed and How To Keep It Fixed
@@ -431,7 +483,8 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 
 - **Every external `uses:` is SHA-pinned with a trailing `# vX.Y.Z` comment.** Tags are mutable — a moved tag changes CI without a commit (supply-chain risk, zizmor `unpinned-uses` / `artipacked`).
 - Pinned examples: `docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0`, `astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0`, `pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10`, `gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0`, `amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1`.
-- **Also pin inside composites** — `setup-node-pnpm` (`pnpm/action-setup` is pinned, `actions/setup-node@v7` must also be pinned), `restore-nextjs-cache` (`actions/cache@v6`), `setup-python-test-env` (`actions/cache/restore@v6` / `save@v6`). A pinned workflow that calls an unpinned composite is still unpinned.
+- **Also pin inside composites** — `setup-node-pnpm` (`actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1`), `restore-nextjs-cache` (`actions/cache@v6`), `setup-python-test-env` (`actions/cache/restore@v6` / `save@v6`). A pinned workflow that calls an unpinned composite is still unpinned.
+- **`setup-node-pnpm` installs pnpm through corepack, not `pnpm/action-setup`.** The action bootstraps pnpm with `npm ci` against the registry, which stalled 4+ minutes on both the home box and GitHub-hosted runners (2026-09-04, four runs in one day) and tipped the 5-minute `changes` / `changelog-sync` jobs over cap before a single test ran — which is what the `timeout-minutes: 5 → 8` bumps in `code-quality.yml` and `main.yml` are also for. corepack fetches one tarball into `COREPACK_HOME` and reuses it. Do not "restore" `pnpm/action-setup` there. It is still used (and still SHA-pinned) in `desktop-release.yml` and `publish-cli.yml`, which do not run on that hot path.
 - Exception: **local composites** (`./.github/actions/*`) are referenced by path, not SHA — intentional, not a gap.
 - **How to bump:** resolve the SHA for the tag (`gh api repos/<owner>/<repo>/git/refs/tags/<tag>` or `git ls-remote`), update SHA + comment together. Renovate/Dependabot bumps SHA+comment atomically — do not bump comment alone.
 
@@ -439,8 +492,8 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 
 - **One cache key fragment reused everywhere:** `hashFiles('pnpm-lock.yaml','nx.json','**/project.json')` for the infra shape. Secondary hash is source-scoped: `hashFiles('apps/**','libs/**')` (repo-wide) or `hashFiles('apps/web/**','libs/shared/ts/**')` (web-only jobs like `deploy-web.yml`). Never invent a third hashing scheme.
 - **Next.js cache is minimal** — `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
-- **Use local `.nx/cache` via `actions/cache@v4`, not Nx Cloud.** Restore at job start, save if miss. Key: `nx-${os}-${hashFiles(pnpm-lock.yaml,nx.json,**/project.json)}-${hashFiles(apps/**,libs/**)}`. Never use `restore-keys` without a hash — prevents cache poisoning.
-- **Single `pnpm install` / `uv sync` per workflow.** One `setup` job installs and caches (`pnpm-store-${hashFiles(pnpm-lock.yaml)}` + `~/.cache/uv` via `setup-uv` with `enable-cache: true` + `prune-cache: true`). Downstream jobs `needs: setup` — never reinstall per lane/job.
+- **Never Nx Cloud (`NX_NO_CLOUD=true`).** There is no remote Nx cache on GitHub-hosted lanes: `.nx/cache` is local to the job. On the home box the workspace and its `.nx/cache` persist between jobs, plus the shared Nx cache service in `self-hosted-runner/nx-cache-server/` in the private `gaia-infra` repo. Where a cache IS keyed through `actions/cache` (Next.js compiler cache, uv), key on a hash — never `restore-keys` without one.
+- **Install through the composites, never by hand.** `./.github/actions/setup-node-pnpm` and `./.github/actions/setup-python-test-env` own every install: they cache the pnpm store / `~/.cache/uv` on GitHub-hosted runners and reuse the persistent ones on the home box. A lane that inlines its own `pnpm install` / `uv sync` bypasses both.
 - **Docker layer cache is `type=registry` per image (`<repo>:buildcache` in GHCR), zstd-compressed.** Superseded the `type=gha,scope=<image>` scheme: the GHA cache API wrote large layers at ~10MB/s (449s of the 951s docker-web build, measured run 32599902431) while GHCR pushes the same layers in ~40s. `mode=max` preserves intermediate layers; `image-manifest=true,oci-mediatypes=true` keeps GHCR compatible; one `:buildcache` tag per image repo so parallel builds never clobber each other.
 - **Do not mix `actions/cache` majors.** All workflows + composites use the same major (now `v5`/`v6` on `node24`; legacy `v4` was `node20`). Mixing `v5` vs `v6` creates separate namespaces and audit drift.
 
@@ -450,38 +503,41 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 - Upgrades that already landed: `nrwl/nx-set-shas@v4→v5`, `astral-sh/setup-uv@v5.4.2→v9.0.0` (12 occurrences), `gitleaks-action@v2→v3`, `docker/login-action@v3→v4`, `aquasecurity/trivy-action@0.35→0.36`, `actions/cache@v4→v5/v6`, `actions/upload-artifact@v4→v6/v7`, `actions/download-artifact@v4→v7`. `actions/github-script@v7→v8` where used.
 - **When adding a new `uses:`:** fetch its `action.yml` via `raw.githubusercontent.com/<owner>/<repo>/<tag>/action.yml` and verify `runs.using: node24`. If it is `node20`, bump the tag until it is `node24` before merging. Pin the SHA at that tag.
 
-### 4. Coverage — 70% Temporary, Target 80%
+### 4. Coverage — 80% Combined on Master, Report-Only on PRs
 
-- `main.yml: test-python-coverage` enforces `--cov-fail-under=70` on the **merged** shard coverage (not per-shard). Per-shard runs use `--cov-fail-under=0` — a single shard covers a subset and must not gate.
-- **Why 70:** repo TOTAL is 78% today; the long-standing gate is 80%. `da968e1ca` relaxed 80→70 to unblock PRs (TOTAL 78% < 80 would red every PR for pre-existing debt, not the PR's change). The gate header and `quality-gate` job both carry `TODO: bump to 80% when coverage improves`.
-- **Do not raise to 80** until TOTAL is ≥80 and stays there. When you do, update both the `coverage report --fail-under` line and the `quality-gate` comment in the same PR. Diff-cover (`--fail-under=90` on changed lines) stays at 90 regardless.
+- Coverage is its own `main.yml: coverage` job, off the test lanes' critical path. Each `test-python` slice writes `.coverage.<slice>` with `--cov-fail-under=0` — a single slice covers a subset and must not gate. The `coverage` job downloads all four artifacts, runs `coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge`, then `coverage report --fail-under=$FAIL_UNDER`.
+- **The `coverage` job is master/dispatch only; `FAIL_UNDER` is 80.** PR lanes trace no coverage at all (`COVERAGE` is empty on `pull_request`, because the C tracer the test-impact map needs costs the lane time), so there is nothing to gate — and test-impact selection would make 80 unreachable by construction anyway. 80 matches `fail_under` in `apps/api/pyproject.toml`: change both in the same PR.
+- There is **no diff-cover step** in `main.yml` — do not document or lint for one.
 
-### 5. Trivy — Blocking (Was Advisory)
+### 5. Trivy — Advisory, With A TODO To Make It Blocking
 
-- `main.yml: trivy-scan` is now **blocking**: `scan-type: fs`, `severity: CRITICAL,HIGH`, `scan-ref: .`, `exit-code: 1`, `ignore-unfixed: false`, `format: table`. `continue-on-error: false` (no silent pass). The job is in `quality-gate.needs` — a HIGH/CRITICAL fails the gate.
-- **Was advisory:** `continue-on-error: true` with 12 known HIGH in `pnpm-lock.yaml` (axios, brace-expansion, fast-uri, next CVEs, postcss, sharp) — flipping to blocking then would red every PR for pre-existing findings.
-- **Now:** lock already has overrides for those 12; trivy currently reports ~25 HIGH (axios 1.19.0, undici 6.28/7.29, tar 7.5.22, adm-zip 0.5.18, brace-expansion 5.0.9, etc.) — those must be fixed via `pnpm.overrides` before trivy goes green. **Do not set `ignore-unfixed: true`** to hide them; fix the package or add a per-finding allowlist with a linked CVE and expiry, reviewed in the same PR.
+- `main.yml: trivy-scan` runs `scan-type: fs`, `severity: CRITICAL,HIGH`, `scan-ref: .`, `format: table`, `ignore-unfixed: false`, and **`exit-code: "0"` — advisory, it cannot red a PR**. On the home box it sets `skip-setup-trivy: true` (the pinned binary is installed by `self-hosted-runner/setup.sh` in the private `gaia-infra` repo), keeps the vuln DB on local disk instead of `actions/cache`, and `skip-dirs` the persistent `node_modules`/`.venv`/`.nx` trees — lockfiles already carry the dependency truth. The job is nonetheless in `quality-gate.needs`, so the gate fails if the job itself errors or is cancelled; findings alone do not.
+- **Why still advisory:** ~25 HIGH from `pnpm-lock.yaml` (axios, undici, tar, adm-zip, brace-expansion, …) would red every PR for pre-existing debt. The workflow carries the TODO: flip `exit-code` to `1` once `chore/trivy-npm-audit` lands. Do that in the same PR that fixes the findings — and update this section then.
+- **Do not set `ignore-unfixed: true`** to hide findings; fix the package via `pnpm.overrides` or add a per-finding allowlist with a linked CVE and expiry, reviewed in the same PR.
 
 ### 6. Dead-Code — `wrangler` Is an Ignored Binary (Not Dead Code)
 
 - `deploy-web.yml` switched from `cloudflare/wrangler-action@v3` to `pnpm exec wrangler deploy` / `versions upload` (wrangler is already in `pnpm-lock.yaml` at 4.110.0; `wrangler-action` tried `npm i wrangler@3.90.0`/`pnpm add` without `-w` and failed with `ERESOLVE` / `ERR_PNPM_ADDING_TO_ROOT` in the pnpm workspace).
-- `knip` then flagged `wrangler` as an unlisted binary. Fix: `config/knip.config.ts: ignoreBinaries: ["wrangler", ...]` — correct, because wrangler is provided by the monorepo root `pnpm-lock.yaml` and invoked via `pnpm exec`, not listed per `apps/web/package.json`. `wrangler` is already in the root-deps allowlist comment ("Binaries provided by monorepo root, mise, Nx, or pnpm scripts").
+- `knip` then flagged `wrangler` as an unlisted binary. Fix: `config/knip.config.ts: ignoreBinaries: ["wrangler", ...]` — correct, because wrangler is a CLI invoked from CI (declared in `apps/web/package.json`, executed via `pnpm --filter ./apps/web exec`), not a runtime import. `wrangler` is already in the root-deps allowlist comment ("Binaries provided by monorepo root, mise, Nx, or pnpm scripts").
 - **Do not remove `wrangler` from `ignoreBinaries`** and do not add it to `apps/web` `dependencies` to silence knip — it is a CLI invoked from CI, not a runtime import. Same rule applies to `biome`, `nx`, `uv`, `tsx`, `playwright` etc. already listed.
 
-### 7. Preview Deploy — `pnpm exec wrangler` (Not `wrangler-action`)
+### 7. Preview Deploy — `pnpm --filter ./apps/web exec wrangler` (Not `wrangler-action`)
 
 - **Build:** `pnpm --filter ./apps/web cf:build` (path filter; `pnpm-workspace.yaml` globs resolve `./apps/web` — package name is `gaia` but path filter is canonical in this repo). Keep the `--filter ./apps/web` form; `pnpm --filter gaia` also works but is not the convention here.
-- **Prod deploy:** `pnpm exec wrangler deploy --config apps/web/wrangler.jsonc` with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `env:` (not inline `${{ }}`). Minimal token scopes: `Workers Scripts Write + R2 Write/Read + Routes Write` on `d65fe47d…`, expires 2027-08-21.
-- **Preview deploy:** `pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc` — not `wrangler-action` `packageManager: npm` workaround (removed in `45632ba66`). Preview reuses `setup-node-pnpm` + built `.open-next` artifact (`path: apps/web/.open-next`, `include-hidden-files: true`).
+- **Prod deploy:** `pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc` with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `env:` (not inline `${{ }}`). Minimal token scopes: `Workers Scripts Write + R2 Write/Read + Routes Write` on `d65fe47d…`, expires 2027-08-21.
+- **Preview deploy:** `pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc` — not `wrangler-action` `packageManager: npm` workaround (removed in `45632ba66`). Preview reuses `setup-node-pnpm` + built `.open-next` artifact (`path: apps/web/.open-next`, `include-hidden-files: true`).
+- **Why the `--filter`:** wrangler is a dependency of `apps/web`, and under pnpm's isolated linker a package's bins live only in that package's `node_modules/.bin` — a bare `pnpm exec wrangler` from the repo root fails with `Command "wrangler" not found`. The filtered form runs inside `apps/web`, so `--config` is relative to it.
 - **Why not `wrangler-action`:** it auto-detects `pnpm` and runs `pnpm add wrangler` without `-w` in a workspace root, which fails; forcing `packageManager: npm` then fails with peer `react@19.1.0 vs 19.2.3` `ERESOLVE`. `pnpm exec wrangler` avoids both by using the already-installed binary.
 
 ### 8. Skipped / Non-Gated Lanes — Intentional, Not Forgotten
 
+- **`main.yml` and `code-quality.yml` carry NO `branches:` filter on `pull_request`.** That key matches the PR's **base**, so the old `branches: [master]` silently exempted every stacked PR: #1175 sat for three days with neither the test lanes nor the mutation gate having ever run, showing a green tick in the PR list because the only workflows that did run were the PR-title check and React Doctor. A stacked PR is the one that most needs the gate — its diff is what lands. Do not reintroduce the filter to save runner time; `push:` stays master-only, and the deploy/coverage jobs keep their own `github.ref == 'refs/heads/master'` guards, so nothing ships off a stacked branch.
+
 - **`main.yml: quality-gate` deliberately excludes `changelog-sync`.** That job auto-opens a fix PR (`fix/changelog-sync-<branch>`) when `docs/release-notes/` is stale — it is non-blocking by design and must not red the gate.
-- **`main.yml: trivy-scan` is now included** (was excluded when advisory). Keep it in `quality-gate.needs` while blocking.
-- **`code-quality.yml: quality-gate` enforces 20 lanes** (biome, deps, circular, file-size, types-location, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + escape-hatch whys + xenon + interrogate + bandit + pip-audit, each step `continue-on-error` behind an aggregating verdict), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 12`, per-module `timeout-minutes: 20`) is the gated lane.
+- **`main.yml: trivy-scan` is in `quality-gate.needs`** even though it is advisory (`exit-code: "0"`): the gate catches a job that errors or is cancelled, not the findings. Keep it there when it flips to blocking.
+- **`code-quality.yml: quality-gate` enforces 22 lanes** (biome, deps, circular, file-size, types-location, doc-comments, components-per-file, duplicates, package-hygiene, go-connect (`tools/gaia-connect`: go vet + test + build, path-scoped), type-check, python-static (ruff + custom lints + escape-hatch whys + ratchets + xenon + interrogate + bandit, each step `continue-on-error` behind an aggregating verdict), python-audit (pip-audit + import cost, split out so the slow tools do not hold the fast ratchets' verdict back), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 4` — `MAX_SHARDS` in `scripts/ci/mutation.sh plan` is **6**, deliberately above the wave size so a large diff runs as 4 + 2 rather than overfilling four shards; step `timeout-minutes: 30` under a job cap of 35) is the gated lane. Size the shard count by what one shard can finish, not by what one wave can start: a 110-module diff at 4 shards timed out with 25 of 28 modules done and every one clean — red on the clock, not on a survivor (run 34476365942). How many shards really run at once is then the host CPU governor's call, not the matrix's: a shard takes exactly its `MUTMUT_MAX_CHILDREN` mutant workers (`nproc/2` = 8 on the home box) from a `GAIA_CPU_TOKENS` pool defaulting to `nproc * 3 / 2` = 24, so three shards overlap and the rest queue. Both numbers are measured (2026-09-17): at the old `nproc-2` = 14 tokens per shard against a 16-token pool exactly ONE shard ran at a time on an idle box, and at 32 tokens four shards drove the loadavg to 34 and still tripped the per-mutant pytest timeout. See `scripts/ci/CLAUDE.md` for the full measurement trail.
 - **`build.yml: docker-grafana` is not a quality gate gate** — it publishes `gaia-grafana:latest` unconditionally; the Swarm deploy pins `grafana_image_tag` only when that lane succeeded. Do not add it to `main.yml:quality-gate`.
-- **`main.yml: trigger-build` is `always() && quality-gate == success && github.ref == refs/heads/master`** — `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes but `quality-gate` is still success). `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
+- **`main.yml: trigger-build` is `always() && github.ref == 'refs/heads/master'`** — it does *not* require `quality-gate == success`. `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes); the gate's verdict is passed down as the `gate_result` input, so `deploy.sh plan` decides whether to deploy and a failed gate still fires the publish-without-deploy orphan alert instead of silently skipping. `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
 
 ### 9. How To Bump Packages Safely — The `chore/pip-audit-aiohttp` Pattern
 

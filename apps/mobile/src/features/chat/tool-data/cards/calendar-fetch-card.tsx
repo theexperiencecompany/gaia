@@ -1,9 +1,14 @@
+import { formatDateWithRelative, formatTimeRange } from "@gaia/shared";
 import { useRouter } from "expo-router";
-import { Card, Chip, PressableFeedback } from "heroui-native";
+import { Chip, PressableFeedback } from "heroui-native";
 import { useMemo } from "react";
 import { ScrollView, View } from "react-native";
-import { AppIcon, Calendar03Icon } from "@/components/icons";
+import { Calendar03Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
 
@@ -17,73 +22,6 @@ export interface CalendarFetchItem {
 
 interface CalendarFetchCardProps {
   data: CalendarFetchItem[];
-}
-
-// -- Date helpers (mirrors web utils/date/calendarDateUtils.ts) --------------
-
-function formatDateWithRelative(dateString: string): string {
-  const date = new Date(dateString);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-
-  const fullDate = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
-  if (compareDate.getTime() === today.getTime()) {
-    return `${fullDate} (Today)`;
-  }
-  if (compareDate.getTime() === tomorrow.getTime()) {
-    return `${fullDate} (Tomorrow)`;
-  }
-  if (compareDate.getTime() === yesterday.getTime()) {
-    return `${fullDate} (Yesterday)`;
-  }
-  return fullDate;
-}
-
-function formatTimeString(date: Date): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  const minuteStr = minutes.toString().padStart(2, "0");
-
-  if (minutes === 0) {
-    return `${hour12} ${ampm}`;
-  }
-  return `${hour12}:${minuteStr} ${ampm}`;
-}
-
-function formatTimeRange(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  const startStr = formatTimeString(start);
-  const endStr = formatTimeString(end);
-
-  if (start.getHours() < 12 && end.getHours() >= 12) {
-    return `${startStr} – ${endStr}`;
-  }
-  if (start.getHours() >= 12 && end.getHours() >= 12) {
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
-  }
-  if (start.getHours() < 12 && end.getHours() < 12) {
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
-  }
-
-  return `${startStr} – ${endStr}`;
 }
 
 // -- Grouping helpers (mirrors web utils/calendar/eventGrouping.ts) ----------
@@ -204,18 +142,12 @@ export function CalendarFetchCard({ data }: CalendarFetchCardProps) {
   const dayEntries = Object.entries(eventsByDay);
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-7 h-7 rounded-xl bg-[#00bbff]/15 items-center justify-center">
-            <AppIcon icon={Calendar03Icon} size={14} color="#00bbff" />
-          </View>
-          <View className="flex-1 min-w-0">
-            <Text className="text-sm font-semibold text-foreground">
-              {data.length} Event{data.length !== 1 ? "s" : ""}
-            </Text>
-          </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Calendar03Icon}
+        iconColor="#00bbff"
+        title={`${data.length} Event${data.length !== 1 ? "s" : ""}`}
+        trailing={
           <Chip
             size="sm"
             variant="soft"
@@ -224,53 +156,53 @@ export function CalendarFetchCard({ data }: CalendarFetchCardProps) {
           >
             <Chip.Label>Calendar</Chip.Label>
           </Chip>
-        </View>
+        }
+      />
 
-        {data.length === 0 ? (
-          <Text className="text-muted text-sm">No events found</Text>
-        ) : (
-          <>
-            <ScrollView
-              style={{ maxHeight: 400 }}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-            >
-              {dayEntries.map(([dateString, dayEvents]) => (
-                <View key={dateString} className="mb-3">
-                  {/* Date divider */}
-                  <View className="flex-row items-center mb-2">
-                    <View className="flex-1 h-px bg-white/8" />
-                    <Text className="px-3 text-xs text-muted">
-                      {formatDateWithRelative(dateString)}
-                    </Text>
-                    <View className="flex-1 h-px bg-white/8" />
-                  </View>
-
-                  {/* Events for this day */}
-                  <View className="gap-2">
-                    {dayEvents.map((event) => (
-                      <EventRow
-                        key={`${event.start_time}-${event.summary}`}
-                        event={event}
-                      />
-                    ))}
-                  </View>
+      {data.length === 0 ? (
+        <Text className="text-muted text-sm">No events found</Text>
+      ) : (
+        <>
+          <ScrollView
+            style={{ maxHeight: 400 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            {dayEntries.map(([dateString, dayEvents]) => (
+              <View key={dateString} className="mb-3">
+                {/* Date divider */}
+                <View className="flex-row items-center mb-2">
+                  <View className="flex-1 h-px bg-white/8" />
+                  <Text className="px-3 text-xs text-muted">
+                    {formatDateWithRelative(dateString)}
+                  </Text>
+                  <View className="flex-1 h-px bg-white/8" />
                 </View>
-              ))}
-            </ScrollView>
 
-            {/* Open Calendar button */}
-            <PressableFeedback
-              onPress={() => router.push("/(app)/calendar")}
-              className="mt-2 rounded-xl bg-[#00bbff]/15 py-2.5 items-center"
-            >
-              <Text className="text-sm font-medium text-[#00bbff]">
-                Open Calendar
-              </Text>
-            </PressableFeedback>
-          </>
-        )}
-      </Card.Body>
-    </Card>
+                {/* Events for this day */}
+                <View className="gap-2">
+                  {dayEvents.map((event) => (
+                    <EventRow
+                      key={`${event.start_time}-${event.summary}`}
+                      event={event}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Open Calendar button */}
+          <PressableFeedback
+            onPress={() => router.push("/(app)/calendar")}
+            className="mt-2 rounded-xl bg-[#00bbff]/15 py-2.5 items-center"
+          >
+            <Text className="text-sm font-medium text-[#00bbff]">
+              Open Calendar
+            </Text>
+          </PressableFeedback>
+        </>
+      )}
+    </ToolCardShell>
   );
 }

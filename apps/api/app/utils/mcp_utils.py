@@ -5,13 +5,19 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from functools import wraps
 import inspect
+import re
 
 from langchain_core.tools import BaseTool
 
 from app.constants.log_tags import LogTag
+from app.constants.mcp import (
+    MCP_TOOL_NAME_MAX_CHARS,
+    MCP_TOOL_NAME_SEPARATOR,
+    MCP_UNNAMED_SOURCE_PREFIX,
+)
 from shared.py.wide_events import log
 
 
@@ -24,6 +30,24 @@ def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
     LLM call misses the strict bound-set membership check.
     """
     return {n.replace("-", "_"): n for n in names}
+
+
+def source_prefixed_tool_name(source_name: str, tool_name: str, taken: Collection[str]) -> str:
+    """Name a tool after its source, not in taken: ("Dodo Payments", "execute") -> "dodo_payments_execute".
+
+    A name already taken gets a numeric suffix (dodo_payments_execute_2).
+    """
+    sep = MCP_TOOL_NAME_SEPARATOR
+    slug = re.sub(r"[^a-z0-9]+", sep, source_name.lower()).strip(sep)
+    attempt = 1
+    while True:
+        suffix = f"{sep}{attempt}" if attempt > 1 else ""
+        budget = MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - len(sep) - len(suffix)
+        prefix = slug[:budget].rstrip(sep)
+        name = f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}{sep}{tool_name}{suffix}"
+        if name not in taken:
+            return name
+        attempt += 1
 
 
 _CONNECTION_ERROR_PATTERNS = (
@@ -55,24 +79,14 @@ def wrap_tool_with_null_filter(
 ) -> BaseTool:
     """Wrap a LangChain MCP tool with null-arg filtering and transparent reconnect.
 
-    Three behaviors:
-    1. Filter `None`-valued args before calling the underlying tool (MCP servers
-       reject `null` for optional fields; they want them omitted).
-    2. On a connection-loss OR 401/unauthorized error (both mean a dead/expired
-       session), evict the stale session via `on_connection_error` and — if
-       `reconnect_and_retry` is provided — rebuild the connector (refreshing the
-       token) and retry once. A 401 that survives the refresh is re-raised so the
-       user can re-authenticate.
-
-    The underlying tool's `_arun` is stashed on the wrapped tool as `_original_arun`
-    so the reconnect path can bypass this wrapper when invoking the fresh tool
-    (otherwise a second failure would recurse).
+    Filters None-valued args (MCP servers reject null for optional fields).
+    On connection-loss or 401, evicts the stale session and, if
+    reconnect_and_retry is given, rebuilds the connector and retries once —
+    a 401 surviving the refresh is re-raised.
     """
-    # mcp_use's McpToLangChainAdapter sets handle_tool_error=True by default,
-    # which swallows exceptions and returns a formatted error string. That
-    # hides connection-loss errors from our wrapper — we'd never see the
-    # exception, just a result string we couldn't react to. Flip it off so
-    # the inner _arun re-raises and we can run the reconnect path.
+    # mcp_use's adapter sets handle_tool_error=True by default, swallowing
+    # exceptions as a formatted string; flip it off so _arun re-raises and
+    # the reconnect path can run.
     if hasattr(tool, "handle_tool_error"):
         tool.handle_tool_error = False
 
@@ -112,7 +126,7 @@ def wrap_tool_with_null_filter(
                     if inspect.iscoroutinefunction(on_connection_error):
                         raise TypeError(
                             "on_connection_error must be a synchronous callable, not a coroutine function"
-                        )
+                        ) from None
                     log.warning(
                         f"{LogTag.MCP} MCP tool session error, evicting session",
                         name=tool.name,
@@ -151,10 +165,8 @@ def wrap_tool_with_null_filter(
                     f"request. This is typically a bug in the MCP server implementation. "
                     f"Error: {error_msg}"
                 )
-            # Match real network/asyncio timeout exceptions (e.g. TimeoutError,
-            # ReadTimeout, asyncio.TimeoutError) by type rather than a string
-            # substring — "timeout" inside a tool error message would otherwise
-            # get rebranded as an MCP server timeout.
+            # Matched by type, not substring — "timeout" inside a tool error
+            # message would otherwise get rebranded as an MCP server timeout.
             if isinstance(e, TimeoutError) or "timeouterror" in type(e).__name__.lower():
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
             return f"MCP tool error: {error_msg}"

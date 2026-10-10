@@ -4,6 +4,25 @@ description: "Release history for GAIA's Discord, Slack, Telegram, and WhatsApp 
 icon: "robot"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Bots v1.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.6.0)
+
+### Features
+- **iMessage**: GAIA is now available on iMessage for Pro users, joining Discord, Slack, Telegram, and WhatsApp.
+
+### Bug Fixes
+- **Whole Replies, Every Time**: Long answers are no longer truncated or split into lost bubbles — every platform now uses one message splitter.
+- **Long Turns Stay Connected**: The bot connection survives a slow turn behind a proxy instead of dropping the reply.
+- **Usage Counts Everywhere**: Messages sent through a bot now count against your plan the same way web chat does, and hitting the limit hands you a working upgrade link instead of telling you to go find the web app.
+- **Fewer Dropped Turns**: Fixed an authentication mismatch that made almost every bot message retry before it went through.
+
+### Infrastructure
+- **Every Bot Ships Like a Real Service**: All the bots, iMessage included, now release under exact version tags a deploy can pin to.
+- **A Dead Bot Gets Noticed**: The iMessage bot is health-checked like the others, so if it goes down we hear about it before you do.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [Bots v1.5.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.5.0)
@@ -87,7 +106,7 @@ icon: "robot"
 
 ## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
 
-### Foundation
+### Infrastructure
 - **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
 - **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
 - **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets

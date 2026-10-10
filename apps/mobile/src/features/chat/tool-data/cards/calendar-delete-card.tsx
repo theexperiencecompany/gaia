@@ -1,5 +1,11 @@
+import {
+  bucketDate,
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@gaia/shared";
+import { Button } from "heroui-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
@@ -26,56 +32,13 @@ interface CalendarDeleteCardProps {
   onDeleteAll?: (events: CalendarDeleteOption[]) => Promise<void>;
 }
 
-// -- Date / time helpers ------------------------------------------------------
-
-function formatTimeString(date: Date): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  if (minutes === 0) return `${hour12} ${ampm}`;
-  return `${hour12}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-}
-
-function formatTimeRange(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return "All day";
-  }
-  return `${formatTimeString(start)} – ${formatTimeString(end)}`;
-}
-
-function formatDateWithRelative(dateString: string): string {
-  const date = new Date(`${dateString}T12:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const dayMs = 86_400_000;
-  const diff = target.getTime() - today.getTime();
-  const full = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-  if (diff === 0) return `${full} (Today)`;
-  if (diff === dayMs) return `${full} (Tomorrow)`;
-  if (diff === -dayMs) return `${full} (Yesterday)`;
-  return full;
-}
+// -- Event-time helpers -------------------------------------------------------
 
 function getEventTimeDisplay(event: CalendarDeleteOption): string {
   if (event.start?.dateTime && event.end?.dateTime) {
     return formatTimeRange(event.start.dateTime, event.end.dateTime);
   }
   return "All day";
-}
-
-function bucketDate(input: string): string {
-  const t = new Date(input);
-  if (Number.isNaN(t.getTime())) return new Date().toISOString().slice(0, 10);
-  return t.toISOString().slice(0, 10);
 }
 
 function groupByDate(
@@ -137,27 +100,23 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
         </View>
       </View>
 
-      {/* Action button — HeroUI `color="danger" size="sm"` equivalent */}
-      <Pressable
-        onPress={isCompleted || isLoading ? undefined : onDelete}
-        disabled={isCompleted || isLoading}
-        className="flex-shrink-0 rounded-xl px-3 py-1.5 items-center justify-center flex-row gap-1"
-        style={{
-          backgroundColor: isCompleted ? "#3f3f46" : "#ef4444",
-          opacity: isCompleted ? 0.6 : 1,
-        }}
+      {/* Action button */}
+      <Button
+        size="sm"
+        variant={isCompleted ? "secondary" : "danger"}
+        isDisabled={isCompleted || isLoading}
+        onPress={onDelete}
+        className="flex-shrink-0 rounded-xl"
       >
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#ffffff" />
-        ) : isCompleted ? (
+        {isCompleted ? (
           <>
             <AppIcon icon={Tick02Icon} size={14} color="#a1a1aa" />
-            <Text className="text-xs font-semibold text-zinc-300">Deleted</Text>
+            <Button.Label>Deleted</Button.Label>
           </>
         ) : (
-          <Text className="text-xs font-semibold text-white">Confirm</Text>
+          <Button.Label>{isLoading ? "Deleting…" : "Confirm"}</Button.Label>
         )}
-      </Pressable>
+      </Button>
     </View>
   );
 }
@@ -274,36 +233,25 @@ export function CalendarDeleteCard({
         </View>
       </ScrollView>
 
-      {/* Bulk delete footer — full-width solid danger button */}
+      {/* Bulk delete footer */}
       {data.length > 1 ? (
-        <Pressable
-          onPress={
-            allCompleted || isConfirmingAll
-              ? undefined
-              : () => void handleDeleteAll()
-          }
-          disabled={allCompleted || isConfirmingAll}
-          className="mt-3 w-full rounded-xl py-2.5 items-center justify-center flex-row gap-2"
-          style={{
-            backgroundColor: allCompleted ? "#3f3f46" : "#ef4444",
-            opacity: allCompleted ? 0.6 : 1,
-          }}
+        <Button
+          variant={allCompleted ? "secondary" : "danger"}
+          isDisabled={allCompleted || isConfirmingAll}
+          onPress={() => void handleDeleteAll()}
+          className="mt-3 w-full rounded-xl"
         >
-          {isConfirmingAll ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : allCompleted ? (
+          {allCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={18} color="#a1a1aa" />
-              <Text className="text-sm font-semibold text-zinc-300">
-                All Deleted
-              </Text>
+              <AppIcon icon={Tick02Icon} size={16} color="#a1a1aa" />
+              <Button.Label>All Deleted</Button.Label>
             </>
           ) : (
-            <Text className="text-sm font-semibold text-white">
+            <Button.Label>
               {someCompleted ? "Delete Remaining" : "Delete All Events"}
-            </Text>
+            </Button.Label>
           )}
-        </Pressable>
+        </Button>
       ) : null}
     </View>
   );

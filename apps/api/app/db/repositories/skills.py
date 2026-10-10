@@ -1,9 +1,9 @@
-"""Repository for the ``skills`` collection — the installed-skills registry.
+"""Repository for the skills collection — the installed-skills registry.
 
-Global (system skills, ``user_id="system"``, are shared across all users), keyed
-by a caller-minted UUID stored as the string ``_id``. Timestamps are stored as
+Global (system skills, user_id="system", are shared across all users), keyed
+by a caller-minted UUID stored as the string _id. Timestamps are stored as
 ISO-format strings, so the base's datetime auto-stamp is turned off and the
-repository writes ``updated_at`` itself.
+repository writes updated_at itself.
 """
 
 from datetime import UTC, datetime
@@ -51,8 +51,7 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         return await self._find(query, sort=[("installed_at", -1)], limit=500)
 
     async def for_agent(self, user_id: str, agent_name: str) -> list[Skill]:
-        """Enabled skills targeting ``agent_name`` — the user's own plus the
-        shared system skills (``user_id="system"``)."""
+        """Return enabled skills targeting agent_name — the user's own plus shared system skills."""
         return await self._find(
             {
                 "enabled": True,
@@ -64,9 +63,7 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         )
 
     async def set_enabled(self, user_id: str, skill_id: str, enabled: bool) -> bool:
-        """Flip a skill's enabled flag. Returns whether it actually changed — the
-        ``$ne`` guard makes a no-op toggle report ``False`` (matches the old
-        ``modified_count`` check)."""
+        """Flip a skill's enabled flag; the $ne guard makes a no-op toggle report False."""
         matched = await self._apply_raw_update_unfetched(
             {"_id": skill_id, "user_id": user_id, "enabled": {"$ne": enabled}},
             {"$set": {"enabled": enabled, "updated_at": datetime.now(UTC).isoformat()}},
@@ -75,8 +72,7 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         return matched > 0
 
     async def patch(self, user_id: str, skill_id: str, *, update: SkillUpdate) -> Skill | None:
-        """Apply a metadata patch (always stamping ``updated_at``); ``None`` if no
-        matching skill exists for the user."""
+        """Apply a metadata patch, stamping updated_at; None if no matching skill exists for the user."""
         set_fields = update.model_dump(exclude_unset=True)
         set_fields["updated_at"] = datetime.now(UTC).isoformat()
         return await self._apply_raw_update(

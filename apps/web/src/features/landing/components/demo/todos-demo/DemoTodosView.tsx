@@ -86,8 +86,9 @@ function DemoTodoItem({
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
   return (
-    <div
-      className={`w-full cursor-pointer p-4 pl-5 transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-primary/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
+    <button
+      type="button"
+      className={`block w-full cursor-pointer p-4 pl-5 text-left transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-primary/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
       onClick={onClick}
     >
       <div className="flex h-full items-start gap-3">
@@ -232,7 +233,7 @@ function DemoTodoItem({
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 

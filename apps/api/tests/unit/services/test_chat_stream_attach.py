@@ -2,41 +2,43 @@
 
 Pins the two live-path persistence fixes:
 1. _attach_executor_tool_data runs on CANCELLED streams too — reintroducing the
-   old `if state.is_cancelled: return` early-exit makes every stopped turn lose
+   old if state.is_cancelled: return early-exit makes every stopped turn lose
    its executor cards and fails these tests.
 2. _finalize_stream tears the session down only AFTER the fallback save — the
    backstop attach drains the session, so teardown-first turns it into dead
    code (this exact bug existed and was caught by writing these tests).
 
-The persist itself goes through ``conversation_repository.append_message_tool_data``;
+The persist itself goes through conversation_repository.append_message_tool_data;
 these tests mock that repository method (never the DB).
 """
 
+from collections.abc import AsyncGenerator
+import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 import pytest
 
-from app.agents.core.background import session as sess
+from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
     _attach_executor_tool_data,
+    _consume_agent_stream,
     _finalize_stream,
+    _recent_history,
     _resolve_pending_approval_turn,
+    _set_stream_log_context,
     _StreamState,
+    _TurnContext,
 )
 
 
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
-
-
 def _ready_session_with_cards(stream_id: str) -> None:
-    """A live session whose executor finished after producing one tool card."""
+    """Create a live session whose executor finished after producing one tool card."""
     session = create_session(stream_id, RunKind.LIVE)
     session.executor_spawned = True
     session.done_event.set()  # executor already signalled completion
@@ -45,19 +47,18 @@ def _ready_session_with_cards(stream_id: str) -> None:
     )
 
 
-def _state(*, cancelled: bool, saved: bool = False) -> _StreamState:
+def _state(*, cancelled: bool, saved: bool = False, attached: bool = False) -> _StreamState:
     state = _StreamState()
     state.is_cancelled = cancelled
     state.saved = saved
+    state.attached = attached
     return state
 
 
 class TestAttachExecutorToolData:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_attaches_cards_regardless_of_cancellation(self, cancelled) -> None:
-        """THE regression test for 'stop the stream → all tool_data is gone':
-        the comms path owns a live run's cards, so it must push them onto the
-        saved message even when the user cancelled."""
+        """Regression: cancelling the stream must not drop a live run's tool_data cards."""
         _ready_session_with_cards("s1")
         state = _state(cancelled=cancelled)
 
@@ -66,7 +67,9 @@ class TestAttachExecutorToolData:
 
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
-            await _attach_executor_tool_data("s1", body, {"user_id": "u1"}, "conv-1", state)
+            await _attach_executor_tool_data(
+                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", state
+            )
 
         repo.append_message_tool_data.assert_awaited_once()
         kwargs = repo.append_message_tool_data.await_args.kwargs
@@ -85,7 +88,7 @@ class TestAttachExecutorToolData:
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
             await _attach_executor_tool_data(
-                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
             )
 
         repo.append_message_tool_data.assert_not_awaited()
@@ -99,18 +102,11 @@ class TestAttachExecutorToolData:
             repo.append_message_tool_data = AsyncMock(side_effect=RuntimeError("mongo down"))
             # best-effort: must not raise into the stream orchestrator
             await _attach_executor_tool_data(
-                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=True)
+                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=True)
             )
 
     async def test_a_write_that_matched_no_message_is_reported(self) -> None:
-        """``append_message_tool_data`` returns False when its
-        ``messages.message_id`` filter matched nothing — nothing was written and
-        nothing raised. Swallowing that means every executor tool card the user
-        watched live is missing after a reload, with no trace in the logs.
-
-        The sibling write in ``result_delivery._persist_follow_up_actions``
-        already checks the same flag and logs; this path must not be quieter.
-        """
+        """A silently-unmatched write must be logged (see result_delivery._persist_follow_up_actions)."""
         _ready_session_with_cards("s1")
         body = MagicMock()
         body.voice_mode = False
@@ -121,14 +117,13 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=False)
             await _attach_executor_tool_data(
-                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
             )
 
         assert log.error.called, "a silently dropped tool_data write was never reported"
 
     async def test_a_successful_write_is_not_reported_as_a_failure(self) -> None:
-        """Control: without it, unconditionally logging an error would satisfy
-        the test above."""
+        """Control: unconditionally logging an error would also satisfy the test above."""
         _ready_session_with_cards("s1")
         body = MagicMock()
         body.voice_mode = False
@@ -139,7 +134,7 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=True)
             await _attach_executor_tool_data(
-                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
             )
 
         assert not log.error.called
@@ -155,12 +150,13 @@ class TestFinalizeStreamBackstop:
         ):
             repo.append_message_tool_data = AsyncMock()
             sm.cleanup = AsyncMock()
-            await _finalize_stream("s1", MagicMock(), {"user_id": "u1"}, "conv-1", state, None)
+            await _finalize_stream(
+                "s1", MagicMock(), AuthenticatedUser(user_id="u1"), "conv-1", state, None
+            )
         return persist, repo
 
     async def test_unsaved_turn_gets_fallback_save_and_attach(self) -> None:
-        """The error path must still drain the session: teardown happening
-        before the backstop attach silently produced an empty drain."""
+        """Teardown before the backstop attach must not happen — it silently emptied the drain."""
         _ready_session_with_cards("s1")
         state = _state(cancelled=True, saved=False)
 
@@ -170,11 +166,33 @@ class TestFinalizeStreamBackstop:
         repo.append_message_tool_data.assert_awaited_once()  # cards drained and pushed
         assert get_session("s1") is None  # session torn down afterwards
 
-    async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
-        """The happy path saved early and attached already — the backstop must
-        never double-persist or double-attach."""
-        _ready_session_with_cards("s1")
+    async def test_the_final_event_names_each_distinct_tool_the_turn_used(self) -> None:
         state = _state(cancelled=False, saved=True)
+        state.tool_entries.extend(
+            [
+                {"tool_name": "search", "data": {}},
+                {"tool_name": "search", "data": {}},
+                {"data": {}},
+            ]
+        )
+
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(chat_stream, "flush_fs_metrics", return_value={}),
+            patch.object(chat_stream, "log") as log,
+        ):
+            sm.cleanup = AsyncMock()
+            await _finalize_stream(
+                "s1", MagicMock(), AuthenticatedUser(user_id="u1"), "conv-1", state, None
+            )
+
+        assert log.set.call_args.kwargs["tool_types"] == ["search"]
+        assert log.set.call_args.kwargs["tool_calls_count"] == 3
+
+    async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
+        """The backstop must never double-persist or double-attach a turn already saved and attached."""
+        _ready_session_with_cards("s1")
+        state = _state(cancelled=False, saved=True, attached=True)
 
         persist, repo = await self._finalize(state)
 
@@ -182,11 +200,91 @@ class TestFinalizeStreamBackstop:
         repo.append_message_tool_data.assert_not_awaited()
         assert get_session("s1") is None  # cleanup still happens
 
+    async def test_saved_but_interrupted_attach_still_attaches_cards(self) -> None:
+        """Regression: gating the attach on saved (the old behavior) skipped it when cancelled mid-wait; the backstop must still drain and persist the cards."""
+        _ready_session_with_cards("s1")
+        state = _state(cancelled=True, saved=True, attached=False)
+
+        persist, repo = await self._finalize(state)
+
+        persist.assert_not_awaited()  # already saved — no double save
+        repo.append_message_tool_data.assert_awaited_once()  # cards STILL attached
+        assert get_session("s1") is None
+
+
+class TestRecentHistory:
+    def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
+        messages = [
+            {"role": "user", "content": "draft it"},
+            {"role": "assistant", "content": "drafted"},
+            {"role": "user", "content": "send it"},
+        ]
+
+        assert _recent_history(messages) == messages[:2]
+
+    def test_a_trailing_assistant_turn_is_kept(self) -> None:
+        messages = [
+            {"role": "user", "content": "draft it"},
+            {"role": "assistant", "content": "drafted"},
+        ]
+
+        assert _recent_history(messages) == messages
+
+
+class TestSetStreamLogContext:
+    def _user_message_length(self, body: MessageRequestWithHistory) -> object:
+        with patch.object(chat_stream, "log") as log:
+            _set_stream_log_context(body, "u1", "conv-1", "stream-1", False)
+        return log.set.call_args.kwargs["user_message_length"]
+
+    def test_the_last_turns_length_is_recorded(self) -> None:
+        body = MessageRequestWithHistory(
+            message="hello", messages=[{"role": "user", "content": "hello"}]
+        )
+
+        assert self._user_message_length(body) == 5
+
+    def test_a_request_with_no_messages_records_zero_length(self) -> None:
+        body = MessageRequestWithHistory(message="hello", messages=[])
+
+        assert self._user_message_length(body) == 0
+
+
+class TestResolvePendingApprovalTurnApproves:
+    async def test_a_bot_yes_is_classified_for_this_user_and_resolves_the_turn(self) -> None:
+        body = MessageRequestWithHistory(
+            message="yes",
+            messages=[
+                {"role": "assistant", "content": "Send the email?"},
+                {"role": "user", "content": "yes"},
+            ],
+            conversation_id="conv-1",
+        )
+        classifier = AsyncMock(return_value="approve")
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
+            patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
+        ):
+            sm.publish_chunk = AsyncMock()
+            sm.complete_stream = AsyncMock()
+            result = await _resolve_pending_approval_turn(
+                body,
+                AuthenticatedUser(user_id="u1"),
+                "conv-1",
+                "stream-1",
+                _StreamState(),
+                "whatsapp",
+            )
+
+        assert result is True
+        classifier.assert_awaited_once_with(
+            "conv-1", "u1", "yes", [{"role": "assistant", "content": "Send the email?"}]
+        )
+
 
 class TestResolvePendingApprovalTurnDegradesOnFailure:
-    """A bot-channel classifier lookup failing must not take chat down —
-    ``_resolve_pending_approval_turn`` must return False so the message runs
-    as a normal turn (see the docstring on the guarded except block)."""
+    """A failing classifier lookup must not take chat down — _resolve_pending_approval_turn returns False so the message runs as a normal turn."""
 
     def _bot_reply_body(self) -> MessageRequestWithHistory:
         return MessageRequestWithHistory(
@@ -203,7 +301,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
         ):
             result = await _resolve_pending_approval_turn(
                 self._bot_reply_body(),
-                {"user_id": "u1"},
+                AuthenticatedUser(user_id="u1"),
                 "conv-1",
                 "stream-1",
                 _StreamState(),
@@ -213,8 +311,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
         assert result is False
 
     async def test_classifier_failure_does_not_publish_or_persist(self) -> None:
-        """The degraded path must skip the ack/persist steps entirely — those
-        only belong to a genuinely resolved approve/deny."""
+        """The degraded path must skip the ack/persist steps — those belong only to a resolved approve/deny."""
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock) as persist,
@@ -227,7 +324,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
             sm.publish_chunk = AsyncMock()
             await _resolve_pending_approval_turn(
                 self._bot_reply_body(),
-                {"user_id": "u1"},
+                AuthenticatedUser(user_id="u1"),
                 "conv-1",
                 "stream-1",
                 _StreamState(),
@@ -236,3 +333,206 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
 
         sm.publish_chunk.assert_not_awaited()
         persist.assert_not_awaited()
+
+
+class TestConsumeAgentStreamCallsTheAgent:
+    """_consume_agent_stream is the only place the turn identity reaches call_agent; a dropped keyword streams normally but misattributes the turn."""
+
+    async def test_the_turn_identity_reaches_call_agent_intact(self) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _no_chunks() -> AsyncGenerator[str, None]:
+            return
+            yield ""  # pragma: no cover - makes this an async generator
+
+        # The real ``call_agent`` signature, so a dropped positional/keyword
+        # raises TypeError here instead of silently shifting an argument.
+        async def fake_call_agent(
+            request: MessageRequestWithHistory,
+            conversation_id: str,
+            user: AuthenticatedUser,
+            options: AgentRunOptions | None = None,
+            ids: StreamMessageIds | None = None,
+        ) -> AsyncGenerator[str, None]:
+            captured.update(
+                request=request,
+                conversation_id=conversation_id,
+                user=user,
+                options=options,
+                ids=ids,
+            )
+            return _no_chunks()
+
+        body = MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        user = AuthenticatedUser(user_id="u1")
+        state = _StreamState(turn_id="turn-1")
+        usage_callback = UsageMetadataCallbackHandler()
+        turn = _TurnContext(
+            conversation_id="conv-1",
+            stream_id="stream-1",
+            source="whatsapp",
+            usage_callback=usage_callback,
+        )
+
+        with patch.object(chat_stream, "call_agent", fake_call_agent):
+            left_over = await _consume_agent_stream(body, user, turn, None, state)
+
+        assert left_over is None
+        assert captured["request"] is body
+        assert captured["user"] is user
+        assert captured["conversation_id"] == "conv-1"
+
+        options = captured["options"]
+        assert isinstance(options, AgentRunOptions)
+        assert options.usage_metadata_callback is usage_callback
+        assert options.source == "whatsapp"
+
+        assert captured["ids"] == StreamMessageIds(
+            stream_id="stream-1",
+            user_message_id=state.user_message_id,
+            bot_message_id=state.bot_message_id,
+        )
+
+
+class TestConsumeAgentStreamAccumulatesAcrossChunks:
+    """Accumulators carry todos/chips across chunks; a chunk with neither must leave both intact or the saved turn silently loses them."""
+
+    async def _consume(self, chunks: list[dict[str, Any]]) -> _StreamState:
+        async def _chunks() -> AsyncGenerator[str, None]:
+            for chunk in chunks:
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        async def fake_call_agent(**_: Any) -> AsyncGenerator[str, None]:
+            return _chunks()
+
+        state = _StreamState(turn_id="turn-1")
+        turn = _TurnContext(
+            conversation_id="conv-1",
+            stream_id="stream-1",
+            source=None,
+            usage_callback=UsageMetadataCallbackHandler(),
+        )
+        sm = AsyncMock()
+        sm.is_cancelled = AsyncMock(return_value=False)
+
+        with (
+            patch.object(chat_stream, "call_agent", fake_call_agent),
+            patch.object(chat_stream, "stream_manager", sm),
+            patch("app.services.chat.chunks.stream_manager", sm),
+            patch("app.utils.stream_publishers.stream_manager", sm),
+        ):
+            await _consume_agent_stream(
+                MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1"),
+                AuthenticatedUser(user_id="u1"),
+                turn,
+                None,
+                state,
+            )
+        return state
+
+    async def test_an_error_frame_is_recorded_on_the_turn(self) -> None:
+        state = await self._consume([{"error": "model unavailable"}])
+
+        assert state.error == "model unavailable"
+
+    async def test_todo_snapshots_are_merged_into_the_turns_own_accumulator(self) -> None:
+        snapshot = {"source": "executor", "todos": [{"id": "t1", "status": "done"}]}
+        state = await self._consume([{"todo_progress": snapshot}])
+
+        assert state.todo_progress_accumulated == {"executor": snapshot}
+
+    async def test_chips_from_an_earlier_chunk_survive_a_later_plain_chunk(self) -> None:
+        """A later chip-less chunk must not blank out chips accumulated from an earlier chunk."""
+        state = await self._consume(
+            [
+                {"follow_up_actions": ["Draft a reply", "Add to calendar"]},
+                {"response": "Anything else?"},
+            ]
+        )
+
+        assert state.follow_up_actions == ["Draft a reply", "Add to calendar"]
+
+
+class TestRunChatStreamTurnDerivations:
+    """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
+
+    async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
+        seen: dict[str, Any] = {}
+
+        async def fake_publish_init(
+            body_: MessageRequestWithHistory,
+            user_: AuthenticatedUser,
+            conversation_id_: str,
+            stream_id_: str,
+            state_: _StreamState,
+            is_new_conversation_: bool,
+        ) -> None:
+            seen["is_new_conversation"] = is_new_conversation_
+
+        async def fake_consume(
+            body_: MessageRequestWithHistory,
+            user_: AuthenticatedUser,
+            turn_: _TurnContext,
+            description_task_: object,
+            state_: _StreamState,
+        ) -> None:
+            seen["turn"] = turn_
+            seen["state"] = state_
+
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(chat_stream, "register_executor_capture"),
+            patch.object(chat_stream, "_set_stream_log_context"),
+            patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
+            patch.object(
+                chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
+            ),
+            patch.object(chat_stream, "schedule_last_active_touch"),
+            patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
+            patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
+            patch.object(chat_stream, "_consume_agent_stream", fake_consume),
+            patch.object(chat_stream, "_log_usage_summary"),
+            patch.object(chat_stream, "_persist_turn", AsyncMock()),
+            patch.object(chat_stream, "_attach_executor_tool_data", AsyncMock()),
+            patch.object(chat_stream, "_finalize_description", AsyncMock()),
+            patch.object(chat_stream, "capture_event"),
+            patch.object(chat_stream, "_finalize_stream", AsyncMock()),
+        ):
+            sm.publish_chunk = AsyncMock()
+            sm.complete_stream = AsyncMock()
+            sm.is_cancelled = AsyncMock(return_value=False)
+            await chat_stream._run_chat_stream(
+                "stream-1", body, AuthenticatedUser(user_id="u1"), "conv-1", "whatsapp"
+            )
+
+        return seen
+
+    async def test_the_clients_send_id_is_the_turns_user_message_id(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="hi", messages=[], conversation_id="conv-1", turn_id="turn-abc"
+            )
+        )
+
+        state = seen["state"]
+        assert state.user_message_id == "turn-abc"
+
+        turn = seen["turn"]
+        assert turn.conversation_id == "conv-1"
+        assert turn.stream_id == "stream-1"
+        assert turn.source == "whatsapp"
+        assert isinstance(turn.usage_callback, UsageMetadataCallbackHandler)
+
+    async def test_a_request_without_a_conversation_id_is_a_new_conversation(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id=None)
+        )
+
+        assert seen["is_new_conversation"] is True
+
+    async def test_a_request_with_a_conversation_id_is_not_a_new_conversation(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        )
+
+        assert seen["is_new_conversation"] is False

@@ -1,5 +1,6 @@
 """Shared fixtures for unit tests."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.language_models.fake_chat_models import (
@@ -7,8 +8,19 @@ from langchain_core.language_models.fake_chat_models import (
 )
 import pytest
 
+from app.agents.core.background import session as stream_session
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+
+
+@pytest.fixture(autouse=True)
+def _isolate_stream_registries() -> Iterator[None]:
+    # Module-global: a stream id another test left abandoned makes finalize skip delivery.
+    stream_session._sessions.clear()
+    stream_session._abandoned.clear()
+    yield
+    stream_session._sessions.clear()
+    stream_session._abandoned.clear()
 
 
 @pytest.fixture

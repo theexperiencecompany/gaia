@@ -27,7 +27,7 @@ _NOW = datetime.now(UTC)
 
 
 class TestGetPlans:
-    """GET /api/v1/payments/plans"""
+    """GET /api/v1/payments/plans."""
 
     async def test_list_plans(self, client: AsyncClient):
         from app.models.payment_models import PlanResponse
@@ -58,7 +58,7 @@ class TestGetPlans:
 
 
 class TestCreateSubscription:
-    """POST /api/v1/payments/subscriptions"""
+    """POST /api/v1/payments/subscriptions."""
 
     async def test_create_subscription(self, client: AsyncClient):
         mock_resp = CreateSubscriptionResponse(
@@ -91,7 +91,7 @@ class TestCreateSubscription:
 
 
 class TestVerifyPayment:
-    """POST /api/v1/payments/verify-payment"""
+    """POST /api/v1/payments/verify-payment."""
 
     async def test_verify_payment(self, client: AsyncClient):
         mock_result = PaymentVerificationResponse(
@@ -111,13 +111,13 @@ class TestVerifyPayment:
 
 
 class TestSubscriptionStatus:
-    """GET /api/v1/payments/subscription-status"""
+    """GET /api/v1/payments/subscription-status."""
 
     async def test_get_status(self, client: AsyncClient):
         from app.models.payment_models import UserSubscriptionStatus
 
         mock_status = UserSubscriptionStatus(
-            user_id=FAKE_USER["user_id"],
+            user_id=FAKE_USER.user_id,
             is_subscribed=True,
             days_remaining=25,
         )
@@ -137,7 +137,7 @@ class TestSubscriptionStatus:
 
 
 class TestDodoWebhook:
-    """POST /api/v1/payments/webhooks/dodo"""
+    """POST /api/v1/payments/webhooks/dodo."""
 
     async def test_valid_webhook(self, client: AsyncClient):
         mock_result = MagicMock(
@@ -187,7 +187,7 @@ class TestDodoWebhook:
             )
 
         assert resp.status_code == 401
-        assert "Invalid webhook signature" in resp.json()["detail"]
+        assert "Invalid webhook signature" in resp.json()["message"]
 
     async def test_missing_webhook_headers(self, client: AsyncClient):
         """Webhook endpoint requires signature headers."""

@@ -10,27 +10,76 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty
-  lanes (Biome, tsc, `python-static` = ruff + custom AST lints + complexity +
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-one
+  lanes (Biome, tsc, the Go tool `tools/gaia-connect`, `python-static` = ruff + custom AST lints + complexity +
   docstrings + security in one job, mypy, dead code, evlog-map observability
   score, wide-event cross-runtime conformance, semgrep, sharded mutation
   testing, …) behind the
-  ratcheted `Quality gate (required)` check.
+  `Quality gate (required)` check.
 
 
 **Never add a check to both.** Every static check lives in code-quality.yml
 only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
 every PR — pure duplicate spend with zero added enforcement.
 
+## Where jobs run: home box first, GitHub-hosted fallback
+
+Both gate workflows open with a `select-runner` job (`ubuntu-latest`, no
+Tailscale needed) that probes the Actions runners API via
+`scripts/ci/runner.sh select` through the `./.github/actions/select-runner`
+composite. Online + a free instance on the `gaia-home` box → every compute lane
+gets `runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}`; anything
+else → `["ubuntu-latest"]`. The fallback is total — no job ever carries a bare
+`runs-on: [self-hosted]`, so an offline box degrades to slower CI, never to a
+queue that never drains. `build.yml` and the deploy workflows are deliberately
+NOT routed through it: release images and deploys stay GitHub-hosted.
+
+Consequences to keep in mind when editing a lane:
+
+- **The workspace persists.** Every self-hosted checkout uses `fetch-depth: 0`
+  (`clean:` only off self-hosted): a depth-1 checkout marks the persistent
+  clone shallow and the next depth-0 fetch re-unshallows over a residential
+  uplink (measured 21-104 s).
+- **Service containers are shared, not per job** — `scripts/ci/test-services.sh`
+  namespaces one shared container set per runner instance; every lane that
+  starts them must release its namespace in an `if: always()` teardown step
+  (`test-services.sh down`). The script decides shared-vs-per-job itself from
+  `RUNNER_ENVIRONMENT`/`RUNNER_INDEX` — no caller branches on runner kind.
+- **Concurrency is per SHA** (`ci-<ref>-<sha>`): cancelling a self-hosted job
+  wedges its worker for the listener's 5-minute cancellation timeout, so
+  superseded runs are cancelled through the API instead
+  (`scripts/ci/runner.sh cancel-superseded`).
+- `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
+  box, the twenty runner instances (eleven `gaia-home` for main.yml, nine
+  `gaia-home-lint` for code-quality.yml), and the install/teardown path. It
+  lives there, not here, because this repo is public and the box's topology is
+  not.
+- **What actually keeps fork code off the box is the repo's fork-PR approval
+  policy** (all outside collaborators require approval before any workflow
+  runs). `runner.sh select` does send a PR whose head repo is not this one to
+  `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
+  security boundary: on `pull_request` a fork supplies its own workflow file,
+  so it can choose not to call the composite at all. Do not weaken the approval
+  policy on the strength of that check. What keeps the box's PAT away from fork
+  code is that GitHub passes no Actions secrets to a fork's `pull_request` run
+  at all — `select-runner` states that in its `github-token:` expression rather
+  than relying on the default. (Pinning that job's checkout to master would be
+  better still, but the composite and `runner.sh` do not exist there yet; it
+  fails with exit 127 until they land.) The repo is public and the runner
+  user's workspace, caches and network are shared state.
+
 ## Workflow files are thin orchestration — nothing else
 
 A workflow step is one command line. Any logic beyond that — computing file
 lists, parsing output, loops, multi-line shell — lives in a script under
-`scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
+`scripts/ci/` (or `scripts/test/` for tooling), and the step calls it.
+**`scripts/ci/CLAUDE.md` is the contract for that directory** — one script per
+concept, a new responsibility joins the script for its concept as a subcommand
+and never becomes a new file. Read it before adding anything there:
 
 ```yaml
 - name: Compute the mutation matrix
-  run: bash scripts/ci/mutation-plan.sh
+  run: bash scripts/ci/mutation.sh plan
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
@@ -46,7 +95,7 @@ to check is `gh pr view --json mergeable`. Keep the branch merged with
 
 ## Skipping work that isn't needed
 
-Three layers, from cheap to precise:
+Four layers, from cheap to precise:
 
 1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
    and skips whole language lanes (Python lanes on a TS-only PR and vice
@@ -55,14 +104,27 @@ Three layers, from cheap to precise:
    that includes workflow/config files (yaml/yml/toml/lock/json): a
    workflow-only (`.yml`) PR lights every lane up so changes to CI itself
    get validated, but each lane self-skips via its own narrower
-   `changed-files.sh` list — lane lists NEVER include yml.
+   `changes.sh files` list — lane lists NEVER include yml.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
    `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
-3. **`scripts/ci/changed-files.sh` inside lanes** — scopes each tool to the
+3. **`scripts/ci/changes.sh files` inside lanes** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (PR with no relevant changes → skip & pass), or one path
    per line. Lanes using it need `fetch-depth: 0` checkouts.
+4. **`verdict.py reuse-plan` in `changes`** — across pushes to the same PR.
+   A code-quality job whose last `success` on this PR (same base, not a
+   manual re-run) is still valid — nothing in the union of its lanes'
+   `verify-lanes.json` scopes and nothing under `.github/`, `scripts/`,
+   `tools/`, `config/`, `patches/`, the repo root or any config manifest
+   (`GLOBAL_INVALIDATORS` in verdict.py) changed between that pass and this
+   run, on the head OR on the base it was merged into — is skipped and
+   labelled `reused` in the gate. A pull_request run checks the merge, so each
+   plan annotates the base tip it validated on its `changes` job
+   (`::notice title=reuse-plan base`) and the next run diffs base tip to base
+   tip as well as head to head; a run without that note never anchors. A lane
+   needs `ci_job` in the lane table to be reusable; one without it always
+   runs. Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.
@@ -72,9 +134,15 @@ could silently skip production deploys).
 
 ## Python tests: runner-native against live services
 
+**A PR has no coverage gate.** diff-cover was retired with the slice split: a
+PR's slices run a test-impact selection, and a coverage percentage measured
+over a subset is not a coverage percentage. The full suite and the 80%
+combined gate run on master, which is the backstop — do not restore diff-cover
+to a PR lane.
+
 `test-python` (and master-only `coverage`) run pytest directly on the runner
 against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by
-`scripts/ci/start-test-services.sh` via the composite action
+`scripts/ci/test-services.sh` via the composite action
 `actions/setup-python-test-env`. Plain `docker run`, not GitHub `services:`,
 because Redis needs a command override (`--databases 32` for xdist isolation)
 which `services:` cannot express.
@@ -85,13 +153,23 @@ ephemeral runner cost ~5 min per run, its exit code needed a session-cleanup
 workaround (grep for a `GAIA_PYTEST_EXIT` sentinel), and its engine-image pull
 was flaky enough to need a retry loop. **The Dagger module (`.dagger/`) is the
 local harness** — `dagger call test-python` gives you the identical topology
-on a dev machine; keep the two in sync (images, credentials, env vars).
+on a dev machine; keep the two in sync (images, credentials, env vars). The
+browser slice (`engines: true` in `test-slices.json`) is the one slice a bare
+`dagger call test-python` leaves out: it needs Chromium and an Obscura build, so
+it runs only by name, `dagger call test-python --slice-name browser`, which
+builds Obscura from the Dockerfile's `obscura-bin` stage and installs Chromium.
+In CI the engine slices run as their own job, `test-python-engines` (test-python's
+steps by YAML alias), which needs `obscura-bin`: that job builds Obscura through
+`.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
+scope) under a 60-minute cap, so a cold build never spends the slice's 15. The
+slice finds both engines through `scripts/ci/browser.sh locate` and fails, never
+skips, when either is missing.
 
-Gotcha that will bite conversions: the repo `.npmrc` sets
-`node-linker=hoisted`, but the Dagger env never mounts `.npmrc`, so containers
-get pnpm's isolated layout. Consequence: per-package `node_modules/.bin` exists
-under Dagger but NOT on runners/dev machines (only the repo-root bin does).
-The device-bridge e2e test resolves `tsx` from both locations for this reason.
+Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's
+default isolated linker is what runners, dev machines and the Dagger env all
+get, so a package's bins live in ITS `node_modules/.bin`, not only the repo
+root. The device-bridge e2e test resolves `tsx` from both locations, and
+`deploy-web.yml` must run wrangler as `pnpm --filter ./apps/web exec`.
 
 ## Dead code: tests are NOT live references
 
@@ -107,7 +185,7 @@ intended semantic, keep it:
 
 ## The mutation lane's shard count
 
-`scripts/ci/mutation-plan.sh` fans the changed modules across a matrix, capped
+`scripts/ci/mutation.sh plan` fans the changed modules across a matrix, capped
 at **the matrix's own `max-parallel`**. Do not raise the cap to "get more
 parallelism" — GitHub runs only `max-parallel` jobs at a time regardless, so a
 wider matrix cannot finish sooner. What it does cost is one check row per job
@@ -129,8 +207,19 @@ them — keep `MAX_SHARDS` and `max-parallel` in step.
 `success` nor `skipped` (the `changes` job proved its language untouched)
 fails the merge. The old marker-file ratchet (`quality-gate/enforced/<lane>`)
 is gone — the rollout it enabled is complete and the two sources of truth had
-drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
-map, and its name to the `LANES` array; it is enforced from the first run.
+drifted.
+
+Both gates now reach that verdict through `scripts/ci/verdict.py consolidate`
+rather than a hand-rolled result loop, so the gate prints what each lane
+actually FOUND (file, line, message) instead of the word `failure`, and a lane
+that merely ran out of clock reads `timed_out` rather than `failure`. **New
+lane: add the job to the gate's `needs:`, add `<lane>=${{ needs.<lane>.result }}`
+to the gate's `EXPECT` env, and end the job with the
+`./.github/actions/upload-verdict` composite under `if: always()`.** It is
+enforced from the first run, and `scripts/ci/tests/test_workflow_verdicts.py`
+fails if you forget either half. The full contract — the JSON shape, why a
+missing verdict is itself a failure, why the job result travels with the lane
+name — is in `scripts/ci/CLAUDE.md` under "The verdict contract".
 
 ## Suppression hygiene (every inline suppression carries its why)
 
@@ -168,7 +257,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
-  nx.json `installation`, uv 0.8.17, `uvx ruff@<uv.lock version>` in the ruff
+  nx.json `installation`, uv 0.10.6 (same as the Dockerfiles), `uvx ruff@<uv.lock version>` in the ruff
   lane, pnpm/action-setup + docker/login-action by SHA).
   `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float on major
   tags — pin them from a machine with GitHub API access.
@@ -176,8 +265,9 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
   red with zero code changes. Pin to the uv.lock version; bump deliberately.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
-  `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
-  bump both together; the tag part is a readability label, the digest is
+  `scripts/ci/lib/service-images.sh` AND `.dagger/src/gaia_ci/main.py` —
+  those two files are the ONLY places a service image reference may appear,
+  and they are bumped together; the tag part is a readability label, the digest is
   what's pulled. The readiness wait recreates a container once on
   timeout (a genuine boot flake costs ~90s instead of a red build); a second
   timeout fails loud with container logs.
@@ -188,8 +278,11 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   (docker-library/rabbitmq#318). This bit us as an intermittent-looking
   failure that was actually a race our own probe caused — restart-retry
   couldn't save it because the recreated container got re-poisoned instantly.
-- Wall-clock per PR ≈ the `test-python` job; everything else finishes earlier
-  in parallel. pytest ~2.5 min for ~7.5k tests via xdist.
+- Wall-clock per PR ≈ the slowest `test-python` slice; the four slices
+  (`unit-a`, `unit-b`, `integration`, `bridge`) run concurrently on separate
+  runner instances, so the lane costs `max(slice)`, not their sum. Worker
+  shares are static per slice and sum to the box — a runtime probe sees zero
+  neighbours because the lanes start together.
 - `pnpm install --filter <pkg>` does NOT meaningfully shrink installs here:
   with our lockfile it still materializes the full virtual store (verified:
   filtered install still unpacked `next`, ~1.4 GB). Don't reach for it as a
@@ -197,5 +290,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - Wall-clock perf assertions in tests must budget for shared-runner jitter
   (a 500ms bound flaked at 506ms; use order-of-magnitude tripwires, ~2x the
   observed worst case).
-- GitHub-hosted runners: 4 vCPU — `pytest -n auto` / `--parallel=3` are sized
-  for that.
+- Parallelism is detected, not hardcoded: `scripts/ci/runner.sh parallel`
+  sizes `--parallel` / `-n` from the runner it lands on (16 threads on the home
+  box, 4 vCPU on GitHub-hosted). Do not write a bare `-n auto` or
+  `--parallel=3` into a lane.

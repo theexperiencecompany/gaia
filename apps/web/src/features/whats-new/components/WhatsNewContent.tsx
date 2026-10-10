@@ -8,20 +8,12 @@ interface WhatsNewContentProps {
 }
 
 /**
- * Processes raw RSS HTML to inject Tailwind classes directly into elements.
- * Using string injection instead of CSS arbitrary variants because Tailwind's
- * preflight resets list-style/padding on ul/ol at higher specificity.
+ * Injects Tailwind classes directly into raw RSS HTML elements via string
+ * injection (not CSS arbitrary variants), since Tailwind's preflight resets
+ * ul/ol list-style/padding at higher specificity.
  *
- * HTML structure from feed:
- *   <p>           — intro paragraph
- *   <h2><a>v0.2.0</a></h2>   — monorepo version (linked to GitHub)
- *   <hr>
- *   <h2><a>API v0.16.0</a></h2>  — package version
- *   <h3>Features</h3>
- *   <ul><li><strong>Name</strong>: description</li></ul>
- *   <hr>
- *   <h2><a>Web v0.17.0</a></h2>
- *   ...
+ * Expects the feed's structure: intro <p>, then repeating <h2><a>version</a></h2>
+ * blocks (per package) separated by <hr>, each with <h3> sections of <ul><li>.
  */
 function injectClasses(html: string): string {
   return (

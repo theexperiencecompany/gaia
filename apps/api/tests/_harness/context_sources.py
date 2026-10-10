@@ -19,7 +19,7 @@ from app.services.gaia_knowledge_service import KnowledgeResult
 
 
 def memory(content: str, *, mentioned: str | None = None) -> MemoryEntry:
-    """A recalled memory. ``mentioned`` fixes the date ``entry_to_note`` renders."""
+    """Build a recalled memory; mentioned fixes the date entry_to_note renders."""
     return MemoryEntry(
         content=content,
         mentioned_at=datetime.fromisoformat(mentioned).replace(tzinfo=UTC) if mentioned else None,
@@ -53,11 +53,9 @@ class ContextSources:
     onboarding_prompt: str | None = None
 
 
-#: The real clients underneath the faked edges. Every one of these is reachable
-#: from some context section's call graph, so leaving them live would let a
-#: section that grows a new read pass by silently hitting a store instead of a
-#: declared fake. Fenced rather than stubbed: a hit is a bug in the harness's
-#: coverage, not a value to guess at.
+#: The real clients underneath the faked edges, reachable from some context
+#: section's call graph; fenced rather than stubbed so a section that grows
+#: a new read fails loudly instead of silently hitting a real store.
 _FENCED_CLIENTS = (
     "app.db.mongodb.collections.get_async_collection",
     "app.db.redis.get_cache",
@@ -122,9 +120,18 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=list(sources.connected_integrations)),
             )
         )
+        # The device manifest is a cached live read (Postgres) behind @Cacheable.
+        # The fixture declares no devices, so pin the empty manifest rather than
+        # letting the snapshot depend on whatever devices the environment holds.
         enter(
             patch(
-                "app.agents.context.sections.get_provider_metadata",
+                "app.agents.context.fetchers.get_device_manifest",
+                AsyncMock(return_value=[]),
+            )
+        )
+        enter(
+            patch(
+                "app.agents.context.fetchers.get_provider_metadata",
                 AsyncMock(return_value=dict(sources.provider_metadata)),
             )
         )
@@ -155,16 +162,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.onboarding_prompt),
             )
         )
-        # The tracked-todos summary sits behind @Cacheable, which would reach a
-        # real Redis. Patched at the cached wrapper so the harness stays
-        # hermetic and the value is the declared one rather than whatever a
-        # previous run happened to leave in the cache.
-        enter(
-            patch(
-                "app.agents.context.fetchers._cached_tracked_todos_summary",
-                AsyncMock(return_value=sources.tracked_todos),
-            )
-        )
         enter(_patch_executor_lock(sources.executor_busy_task_id))
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
@@ -173,10 +170,10 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
 
 @contextmanager
 def _patch_executor_lock(task_id: str | None) -> Iterator[None]:
-    """Pin the comms executor-busy lock ``executor_status_hook`` reads.
+    """Pin the comms executor-busy lock executor_status_hook reads.
 
     The hook treats a missing client as "not busy", which is the same observable
-    state as an unheld lock — so ``None`` covers both without a Redis server.
+    state as an unheld lock — so None covers both without a Redis server.
     """
     with patch("app.agents.core.nodes.executor_status.redis_cache") as fake_cache:
         if task_id is None:

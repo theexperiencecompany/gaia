@@ -1,4 +1,8 @@
-import { chunkResponse, parseTextArgs, renderForPlatform } from "@gaia/shared";
+import {
+  chunkResponse,
+  parseTextArgs,
+  renderForPlatform,
+} from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 /** A wide GFM table — renders to a Telegram <pre> block whose column padding
@@ -114,10 +118,9 @@ describe("chunkResponse — brutal edges", () => {
   });
 
   it("degrades a table too wide to ever fit into sendable chunks (no hang, no loss)", () => {
-    // One table row whose rendered form already exceeds the limit. It can't be
-    // kept intact AND fit, so the last-resort hard cut splits it — better than
-    // emitting one mega-chunk the platform would reject. The contract that
-    // matters: terminate, every chunk is sendable, and no content is lost.
+    // One table row already exceeds the limit; the last-resort hard cut splits it
+    // rather than emitting one mega-chunk the platform would reject. Contract:
+    // terminate, every chunk is sendable, no content lost.
     const monsterCells = Array.from({ length: 20 }, (_, i) =>
       `col${i}`.padEnd(300, "z"),
     ).join(" | ");

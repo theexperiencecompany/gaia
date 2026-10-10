@@ -4,15 +4,15 @@ Why
 - Avoid importing/connecting providers at startup; defer until first use.
 
 Flow
-- Register providers via `providers.register(...)` or `@lazy_provider(...)`.
-- Provide `required_keys` (usually env-backed fields from `settings`).
-- On first `get()/aget()`, initialize the provider; warn or error if keys are missing.
+- Register providers via providers.register(...) or @lazy_provider(...).
+- Provide required_keys (usually env-backed fields from settings).
+- On first get()/aget(), initialize the provider; warn or error if keys are missing.
 - Supports async, sync, and global side-effect configuration (e.g., Cloudinary).
 
 Add a new provider
-1) Ensure env fields exist in `app.config.settings` (and optionally groups in `config/settings_validator.py`).
-2) Create a factory function and decorate with `@lazy_provider(name=..., required_keys=[...])`.
-3) Resolve the provider via `providers.get(...)` or `await providers.aget(...)`.
+1) Ensure env fields exist in app.config.settings (and optionally groups in config/settings_validator.py).
+2) Create a factory function and decorate with @lazy_provider(name=..., required_keys=[...]).
+3) Resolve the provider via providers.get(...) or await providers.aget(...).
 """
 
 import asyncio
@@ -38,7 +38,7 @@ T = TypeVar("T")
 
 
 class MissingKeyStrategy(Enum):
-    """Strategy for handling missing keys"""
+    """Strategy for handling missing keys."""
 
     ERROR = "error"  # Raise exception on get() call
     WARN = "warn"  # Log warning on registration and return None on get()
@@ -65,20 +65,10 @@ class LazyLoader(Generic[T]):
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
     ) -> None:
-        """
-        Initialize lazy loader.
+        """Initialize the lazy loader.
 
-        Args:
-            loader_func: Function that creates the provider instance or configures global context (can be sync or async)
-            required_keys: List of direct values that are required (can be None individually).
-                Typed ``object``: these are already-resolved settings values (API keys,
-                URLs, ints) and the loader only ever checks them for None/emptiness.
-            strategy: How to handle missing values
-            warning_message: Custom warning message
-            provider_name: Name for logging/error messages
-            validate_values_func: Custom validation function for the values
-            is_global_context: If True, provider configures global context instead of returning instance
-            auto_initialize: If True, automatically initialize at registration time when values are available
+        required_keys are already-resolved settings values (API keys, URLs,
+        ints); the loader only checks them for None/emptiness.
         """
         self.loader_func = loader_func
         self.required_keys = required_keys or []
@@ -114,10 +104,9 @@ class LazyLoader(Generic[T]):
                     )
                 else:
                     self._initialize_sync()
-                    # Only claim success if it actually initialized. A non-ERROR
-                    # provider whose loader RAISED is swallowed to None by
-                    # _initialize_sync (which already logged the failure) — logging
-                    # "Auto-initialized" here too would report a broken provider as up.
+                    # Only claim success if it actually initialized — a non-ERROR
+                    # provider whose loader raised is swallowed to None by
+                    # _initialize_sync, which already logged the failure.
                     if self.is_initialized():
                         log.info(
                             f"{LogTag.STARTUP} Auto-initialized provider at registration time",
@@ -401,9 +390,9 @@ class LazyLoader(Generic[T]):
         return self._instance is not None
 
     async def areset(self) -> None:
-        """Awaitable reset that takes the async lock, so it cannot race ``aget()``.
+        """Awaitable reset that takes the async lock, so it cannot race aget().
 
-        The async initializer holds ``_async_lock`` while ``loader_func`` runs;
+        The async initializer holds _async_lock while loader_func runs;
         clearing the fields without that lock lets an in-flight initialization
         repopulate the instance after the reset, silently undoing it. Await this
         whenever a loop is already running.
@@ -417,11 +406,9 @@ class LazyLoader(Generic[T]):
     def reset(self) -> None:
         """Reset the loader (useful for testing)."""
         if self.is_async:
-            # get_running_loop() succeeds only INSIDE a running loop. There,
-            # a plain synchronous clear races any in-flight aget(): the
-            # initializer holds _async_lock and would write _instance right
-            # back after this reset — the reset would silently not happen.
-            # Fail loud and require the awaited API instead.
+            # get_running_loop() succeeds only inside a running loop, where a
+            # sync clear races any in-flight aget() and could be silently
+            # overwritten. Fail loud and require the awaited API instead.
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
@@ -506,15 +493,8 @@ class ProviderRegistry:
     ) -> None:
         """Initialize all providers marked for auto-initialization.
 
-        This is intended to be called during startup (blocking) or during a
-        background warmup phase (non-blocking).
-
-        Behavior:
-        - Providers that are not available (missing required keys / validation
-          fails) are skipped.
-        - In strict mode, any failure (or unavailable ERROR-strategy provider)
-          raises after all tasks complete.
-        - In non-strict mode, errors are logged and startup can continue.
+        Unavailable providers are skipped; in strict mode, any failure (or
+        unavailable ERROR-strategy provider) raises after all tasks complete.
         """
 
         semaphore = asyncio.Semaphore(max(1, concurrency))
@@ -578,16 +558,10 @@ class ProviderRegistry:
         concurrency: int = 5,
         strict: bool = False,
     ) -> None:
-        """Warm up (initialize) all registered providers.
+        """Warm up (initialize) all registered providers, for background warmup in production.
 
-        This is designed for background warmup in production.
-
-        Key guarantees / gotchas:
-        - It uses `aget()` which is safe for both sync and async providers.
-        - If a request handler calls `providers.aget(name)` while warmup is
-          initializing the same provider, the request will wait on the same
-          per-provider lock (no double initialization).
-        - Providers that are not available are skipped (missing required keys).
+        Uses aget(), so a concurrent request for the same provider waits on its
+        lock instead of double-initializing. Unavailable providers are skipped.
         """
 
         semaphore = asyncio.Semaphore(max(1, concurrency))
@@ -655,9 +629,9 @@ class ProviderRegistry:
     def get(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name synchronously - only works for sync providers.
 
-        Returns ``Any`` because the registry is keyed by name, not by type: the
+        Returns Any because the registry is keyed by name, not by type: the
         concrete provider type is only knowable at the call site. Callers narrow
-        with ``cast(TheProvider, ...)`` rather than ``isinstance`` (Type Safety
+        with cast(TheProvider, ...) rather than isinstance (Type Safety
         item 12) — the registered value is correct by construction.
         """
         if name not in self._providers:
@@ -677,7 +651,7 @@ class ProviderRegistry:
     async def aget(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name asynchronously - works for both sync and async providers.
 
-        Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.
+        Returns Any for the same reason as get(); narrow with cast.
         """
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
@@ -711,17 +685,16 @@ class ProviderRegistry:
     def reset(self, name: str) -> None:
         """Reset a provider so the next aget()/get() re-initializes it from scratch.
 
-        For testing only: a process-lifetime resource (e.g. an asyncpg engine)
-        that gets disposed but not reset here would otherwise be handed back,
-        already-closed, to a later test running under a different event loop.
-        Inside a running event loop use :meth:`areset` instead — a sync reset
-        of an async provider there could be overwritten by an in-flight init.
+        Testing only: a disposed process-lifetime resource (e.g. an asyncpg
+        engine) would otherwise be handed back already-closed to a later test.
+        Inside a running event loop use areset() instead, to avoid an
+        in-flight init overwriting it.
         """
         if name in self._providers:
             self._providers[name].reset()
 
     async def areset(self, name: str) -> None:
-        """Awaited variant of :meth:`reset` — safe inside a running event loop."""
+        """Awaited variant of reset() — safe inside a running event loop."""
         if name in self._providers:
             await self._providers[name].areset()
 
@@ -731,16 +704,16 @@ providers = ProviderRegistry()
 
 
 class _ProviderDecorator(Protocol):
-    """What ``lazy_provider(...)`` hands back — a decorator that keeps ``T``.
+    """What lazy_provider(...) hands back — a decorator that keeps T.
 
-    A ``Protocol`` with an overloaded ``__call__`` rather than a plain
-    ``Callable[...]`` return: a two-step decorator factory has nothing to solve
-    ``T`` against at the *outer* call, so a plain annotation collapses every
-    decorated provider to ``LazyLoader[Any]`` (Type Safety item 9). Deferring
-    inference to ``__call__`` recovers the provider's real type. The overloads
+    A Protocol with an overloaded __call__ rather than a plain
+    Callable[...] return: a two-step decorator factory has nothing to solve
+    T against at the *outer* call, so a plain annotation collapses every
+    decorated provider to LazyLoader[Any] (Type Safety item 9). Deferring
+    inference to __call__ recovers the provider's real type. The overloads
     (async first — a coroutine function also matches the sync form, with
-    ``T`` bound to the coroutine) are what makes ``async def`` factories infer;
-    a single union parameter leaves mypy solving ``T`` to ``Never``.
+    T bound to the coroutine) are what makes async def factories infer;
+    a single union parameter leaves mypy solving T to Never.
     """
 
     @overload
@@ -761,59 +734,10 @@ def lazy_provider(
     auto_initialize: bool = False,
     dependencies: list[str] | None = None,
 ) -> _ProviderDecorator:
-    """
-    Decorator to register a function as a lazy provider.
-    Supports both sync and async functions.
+    """Decorate a function to register it as a lazy provider (sync or async).
 
-    Returns a callable that, when called, registers the provider.
-    This allows you to control when registration happens (e.g., in FastAPI lifespan).
-
-    Examples:
-        # Sync instance-based provider
-        @lazy_provider("gemini", required_keys=[settings.GOOGLE_API_KEY])
-        def create_gemini_client():
-            return GeminiClient(api_key=settings.GOOGLE_API_KEY)
-
-        # Async instance-based provider
-        @lazy_provider("async_db", required_keys=[settings.DATABASE_URL])
-        async def create_async_db():
-            db = AsyncDatabase(settings.DATABASE_URL)
-            await db.connect()
-            return db
-
-        # Global context provider (configures global state) with auto-initialization
-        @lazy_provider(
-            "cloudinary",
-            required_keys=[settings.CLOUDINARY_CLOUD_NAME, settings.CLOUDINARY_API_KEY],
-            is_global_context=True,
-            auto_initialize=True
-        )
-        def configure_cloudinary():
-            import cloudinary
-            cloudinary.config(
-                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
-                api_key=settings.CLOUDINARY_API_KEY,
-                api_secret=settings.CLOUDINARY_API_SECRET
-            )
-
-        # Async global context provider
-        @lazy_provider(
-            "async_cache",
-            required_keys=[settings.REDIS_URL],
-            is_global_context=True,
-        )
-        async def configure_async_cache():
-            import aioredis
-            global redis_client
-            redis_client = await aioredis.from_url(settings.REDIS_URL)
-
-        # Usage:
-        # Sync providers:
-        client = providers.get("gemini")
-
-        # Async providers:
-        db = await providers.aget("async_db")
-        cache_configured = await providers.aget("async_cache")
+    Returns a callable that performs the registration when called, so callers
+    control when that happens (e.g. during FastAPI lifespan).
     """
 
     def decorator(

@@ -1,19 +1,25 @@
 """Unit tests for the mail service (app/services/mail/mail_service.py)."""
 
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from composio.utils.shared import json_schema_to_model
+from langchain_core.tools import StructuredTool
 import pytest
 
-# ---------------------------------------------------------------------------
-# All public symbols imported directly from the module under test.
-# Deleting mail_service.py will break every test in this file.
-# ---------------------------------------------------------------------------
+from app.constants.log_tags import LogTag
 from app.models.mail_models import (
     GmailDraftsResponse,
+    GmailMessageResource,
     GmailMessagesResponse,
+    GmailMessageSummary,
     GmailToolResult,
 )
 from app.services.mail.mail_service import (
+    EmailContent,
+    LabelChanges,
+    MessageFetchOptions,
     _process_attachments,
     apply_labels,
     archive_messages,
@@ -43,6 +49,8 @@ from app.services.mail.mail_service import (
     update_draft,
     update_label,
 )
+from app.utils.composio_hooks.registry import master_schema_modifier
+from shared.py.wide_events import MailContext
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -69,10 +77,10 @@ def mock_invoke_gmail_tool():
 
 @pytest.fixture
 def mock_transform():
-    """Patch transform_gmail_message to return its input unchanged."""
+    """Patch transform_gmail_message to wrap its input unchanged."""
     with patch(
         "app.services.mail.mail_service.transform_gmail_message",
-        side_effect=lambda m: m,
+        side_effect=lambda m: GmailMessageSummary.model_validate({"id": "", **m}),
     ) as mock_fn:
         yield mock_fn
 
@@ -94,8 +102,14 @@ class TestGetGmailTool:
             "GMAIL_SEND_EMAIL",
             use_before_hook=False,
             use_after_hook=False,
+            use_schema_modifier=True,
             user_id=USER_ID,
         )
+
+    def test_native_schema_is_requested_when_asked(self, mock_composio_service):
+        get_gmail_tool("GMAIL_SEND_EMAIL", USER_ID, use_schema_modifier=False)
+
+        assert mock_composio_service.get_tool.call_args.kwargs["use_schema_modifier"] is False
 
     def test_returns_none_on_exception(self, mock_composio_service):
         mock_composio_service.get_tool.side_effect = RuntimeError("service down")
@@ -120,6 +134,27 @@ class TestInvokeGmailTool:
 
         assert result.as_payload() == {"successful": True, "id": "msg1"}
         fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"})
+        # The tool is fetched for this user, by name, with the agent-facing
+        # schema — a wrong value here silently sends the call to another
+        # mailbox or strips arguments off it.
+        assert mock_composio_service.get_tool.call_args.args == ("GMAIL_SEND_EMAIL",)
+        assert mock_composio_service.get_tool.call_args.kwargs == {
+            "use_before_hook": False,
+            "use_after_hook": False,
+            "use_schema_modifier": True,
+            "user_id": USER_ID,
+        }
+
+    async def test_native_schema_request_reaches_the_tool_fetch(self, mock_composio_service):
+        fake_tool = AsyncMock()
+        fake_tool.ainvoke = AsyncMock(return_value={"successful": True})
+        mock_composio_service.get_tool.return_value = fake_tool
+
+        await invoke_gmail_tool(
+            USER_ID, "GMAIL_SEND_EMAIL", {"subject": "Hi"}, use_schema_modifier=False
+        )
+
+        assert mock_composio_service.get_tool.call_args.kwargs["use_schema_modifier"] is False
 
     async def test_returns_error_dict_when_tool_not_found(self, mock_composio_service):
         mock_composio_service.get_tool.return_value = None
@@ -148,7 +183,7 @@ class TestInvokeGmailTool:
 
 
 class TestProcessAttachments:
-    def test_converts_upload_files_to_dicts(self):
+    def test_uploads_upload_files_to_composio(self):
         import io
 
         upload = MagicMock()
@@ -156,12 +191,38 @@ class TestProcessAttachments:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"PDF content")
 
-        result = _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            result = _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
-        assert len(result) == 1
-        assert result[0]["filename"] == "report.pdf"
-        assert result[0]["content"] == b"PDF content"
-        assert result[0]["content_type"] == "application/pdf"
+        # Raw bytes + filename + content-type are handed to the Composio uploader,
+        # scoped to the invoking tool/toolkit.
+        assert mock_upload.call_args.args == (b"PDF content", "report.pdf", "application/pdf")
+        assert mock_upload.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+        assert result == [{"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
+
+    def test_falls_back_to_generic_name_when_filename_missing(self):
+        import io
+
+        upload = MagicMock()
+        upload.filename = None
+        upload.content_type = "application/octet-stream"
+        upload.file = io.BytesIO(b"x")
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={
+                "name": "attachment",
+                "mimetype": "application/octet-stream",
+                "s3key": "k",
+            },
+        ) as mock_upload:
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
+
+        # A missing filename becomes the literal "attachment".
+        assert mock_upload.call_args.args[1] == "attachment"
 
     def test_resets_file_pointer_after_read(self):
         upload = MagicMock()
@@ -170,13 +231,17 @@ class TestProcessAttachments:
         upload.file = MagicMock()
         upload.file.read.return_value = b"hello"
 
-        _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "file.txt", "mimetype": "text/plain", "s3key": "k/2"},
+        ):
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
         # seek(0) should have been called on the mock's file attribute
         upload.file.seek.assert_called_once_with(0)
 
     def test_handles_empty_list(self):
-        result = _process_attachments([])
+        result = _process_attachments([], "GMAIL_SEND_EMAIL")
         assert result == []
 
 
@@ -194,8 +259,7 @@ class TestSendEmail:
         result = await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hello",
-            body="Test body",
+            content=EmailContent(subject="Hello", body="Test body"),
         )
 
         assert result.as_payload() == {"successful": True, "messageId": "abc"}
@@ -213,8 +277,7 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Re: Hello",
-            body="Reply body",
+            content=EmailContent(subject="Re: Hello", body="Reply body"),
             thread_id="thread_xyz",
         )
 
@@ -232,10 +295,9 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
-            cc_list=["cc@example.com"],
-            bcc_list=["bcc@example.com"],
+            content=EmailContent(
+                subject="Hi", body="Body", cc_list=["cc@example.com"], bcc_list=["bcc@example.com"]
+            ),
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
@@ -248,8 +310,7 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
+            content=EmailContent(subject="Hi", body="Body"),
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
@@ -259,7 +320,9 @@ class TestSendEmail:
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("quota exceeded")
 
-        result = await send_email(user_id=USER_ID, to="bob@example.com", subject="Hi", body="Body")
+        result = await send_email(
+            user_id=USER_ID, to="bob@example.com", content=EmailContent(subject="Hi", body="Body")
+        )
 
         assert result.successful is False
         assert result.error is not None
@@ -274,17 +337,164 @@ class TestSendEmail:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"data")
 
+        # Composio's Gmail tools take a singular attachment of {name, mimetype,
+        # s3key} (a pre-uploaded file), not a plural attachments of raw bytes.
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=[upload],
+            )
+
+        # The bytes read off the UploadFile are handed to the Composio uploader,
+        # scoped to the send tool so the upload lands in the right toolkit namespace.
+        assert mock_upload.call_args.args[0] == b"data"
+        assert mock_upload.call_args.kwargs["tool"] == "GMAIL_SEND_EMAIL"
+        params = mock_invoke_gmail_tool.call_args[0][2]
+        assert "attachments" not in params
+        # One file -> a single FileUploadable object (the pinned Gmail toolkit
+        # version rejects a list), not a one-element list.
+        assert params["attachment"] == {
+            "name": "doc.pdf",
+            "mimetype": "application/pdf",
+            "s3key": "k/1",
+        }
+
+    async def test_rejects_multiple_attachments_without_uploading(self, mock_invoke_gmail_tool):
+        import io
+
+        uploads = []
+        for name in ("a.pdf", "b.pdf"):
+            up = MagicMock()
+            up.filename, up.content_type, up.file = name, "application/pdf", io.BytesIO(b"x")
+            uploads.append(up)
+
+        with patch("app.services.mail.mail_service.upload_bytes_sync") as mock_upload:
+            result = await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=uploads,
+            )
+
+        # Composio types Gmail's `attachment` as a single object, so a second file
+        # is rejected up front — nothing is uploaded and no send is attempted.
+        assert result.successful is False
+        assert "one attachment" in (result.error or "")
+        mock_upload.assert_not_called()
+        mock_invoke_gmail_tool.assert_not_called()
+
+
+class TestAttachmentsSurviveArgumentValidation:
+    """attachment is Gmail's own param, and only the tool's own schema has it.
+
+    Shaping the parameter correctly is not enough: LangChain validates the call
+    against the schema the tool was bound with and silently drops anything that
+    schema does not declare. Under the agent-facing schema — where the modifier
+    has replaced attachment with the reference-based attachments — the
+    file is dropped between here and Composio and the mail sends without it.
+    """
+
+    def _gmail_send_schema(self) -> SimpleNamespace:
+        # The native shape: FileUploadable emits `file_uploadable` onto its own
+        # schema node, alongside the s3key object it stands for.
+        return SimpleNamespace(
+            description="Send an email",
+            input_parameters={
+                "title": "GmailSendEmail",
+                "properties": {
+                    "recipient_email": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"},
+                    "attachment": {
+                        "type": "object",
+                        "file_uploadable": True,
+                        "properties": {
+                            "name": {"type": "string"},
+                            "mimetype": {"type": "string"},
+                            "s3key": {"type": "string"},
+                        },
+                    },
+                },
+                "required": [],
+            },
+        )
+
+    def _args_reaching_the_tool(self, schema: SimpleNamespace, call: dict) -> dict:
+        """Return what Composio's executor receives, through the real LangChain plumbing."""
+        received: dict = {}
+
+        def _execute(**kwargs: object) -> str:
+            received.update(kwargs)
+            return "ok"
+
+        tool = StructuredTool.from_function(
+            name="GMAIL_SEND_EMAIL",
+            description="Send an email",
+            args_schema=json_schema_to_model(schema.input_parameters),
+            func=_execute,
+        )
+        tool.invoke(call)
+        return received
+
+    def test_agent_facing_schema_drops_the_attachment_argument(self):
+        call = {
+            "recipient_email": "bob@example.com",
+            "subject": "Hi",
+            "body": "Body",
+            "attachment": {"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        }
+        native = self._gmail_send_schema()
+        # Composio coerces the object into its generated model; the s3key — the
+        # only part that identifies the uploaded file — arrives intact.
+        delivered = self._args_reaching_the_tool(native, call)["attachment"]
+        assert delivered.s3key == "k/1"
+
+        agent_facing = master_schema_modifier(
+            "GMAIL_SEND_EMAIL", "gmail", self._gmail_send_schema()
+        )
+        assert "attachment" not in self._args_reaching_the_tool(agent_facing, call)
+
+    async def test_send_with_attachments_asks_for_the_native_schema(self, mock_invoke_gmail_tool):
+        import io
+
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        upload = MagicMock()
+        upload.filename, upload.content_type, upload.file = (
+            "d.pdf",
+            "application/pdf",
+            io.BytesIO(b"x"),
+        )
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "d.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ):
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=[upload],
+            )
+
+        assert mock_invoke_gmail_tool.call_args.kwargs["use_schema_modifier"] is False
+
+    async def test_send_without_attachments_keeps_the_agent_facing_schema(
+        self, mock_invoke_gmail_tool
+    ):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
-            attachments=[upload],
+            content=EmailContent(subject="Hi", body="Body"),
         )
 
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "attachments" in params
-        assert len(params["attachments"]) == 1
+        assert mock_invoke_gmail_tool.call_args.kwargs["use_schema_modifier"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +652,22 @@ class TestTrashUntrash:
         tool_names = [c[0][1] for c in mock_invoke_gmail_tool.call_args_list]
         assert all(n == "GMAIL_TRASH_MESSAGE" for n in tool_names)
 
+    async def test_trash_returns_a_resource_per_trashed_message(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": True, "data": {}}
+        )
+
+        result = await trash_messages(USER_ID, ["msg1", "msg2"])
+
+        assert result == [GmailMessageResource(id="msg1"), GmailMessageResource(id="msg2")]
+
+    async def test_untrash_returns_a_resource_per_restored_message(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+
+        result = await untrash_messages(USER_ID, ["msg1"])
+
+        assert result == [GmailMessageResource(id="msg1")]
+
     async def test_trash_excludes_failed_messages_from_result(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {"successful": False, "error": "403"}
@@ -525,6 +751,25 @@ class TestFetchThread:
         assert result.messages is not None
         assert result.messages[0]["internalDate"] == "1000"
         assert result.messages[1]["internalDate"] == "2000"
+        assert "threadId" in result.messages[0]
+
+    async def test_message_without_internal_date_sorts_as_the_oldest(
+        self, mock_invoke_gmail_tool, mock_transform
+    ):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "messages": [
+                    {"internalDate": "1", "subject": "dated"},
+                    {"subject": "undated"},
+                ],
+            }
+        )
+
+        result = await fetch_thread(USER_ID, "thread_abc")
+
+        assert result.messages is not None
+        assert [m["subject"] for m in result.messages] == ["undated", "dated"]
 
     async def test_returns_empty_messages_on_failure(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -601,12 +846,11 @@ class TestSearchMessages:
 
         assert result == GmailMessagesResponse(messages=[])
 
-    async def test_returns_empty_result_on_exception(self, mock_invoke_gmail_tool):
+    async def test_exception_propagates(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("503")
 
-        result = await search_messages(USER_ID)
-
-        assert result == GmailMessagesResponse(messages=[])
+        with pytest.raises(Exception, match="503"):
+            await search_messages(USER_ID)
 
     async def test_uses_empty_string_for_missing_query(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -622,12 +866,7 @@ class TestSearchMessages:
         assert params["query"] == ""
 
     async def test_forwards_message_format_to_gmail(self, mock_invoke_gmail_tool):
-        """message_format="metadata" must land on the Gmail tool as format="metadata".
-
-        This is the documented lightweight-fetch path (skips body decode, bypasses
-        GMAIL_FULL_FETCH_HARD_LIMIT); a typoed key or a dropped condition would
-        silently fall back to the expensive full fetch.
-        """
+        """output_format="metadata" must reach the Gmail tool as format="metadata", or it silently full-fetches."""
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {
                 "successful": True,
@@ -638,9 +877,9 @@ class TestSearchMessages:
         await search_messages(
             USER_ID,
             query="test",
-            message_format="metadata",
-            include_payload=False,
-            verbose=False,
+            options=MessageFetchOptions(
+                output_format="metadata", include_payload=False, verbose=False
+            ),
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
@@ -707,7 +946,7 @@ class TestUpdateLabel:
     async def test_updates_label_with_provided_fields(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
-        await update_label(USER_ID, label_id="lbl1", name="Updated Name")
+        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges(name="Updated Name"))
 
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_PATCH_LABEL"
@@ -718,7 +957,7 @@ class TestUpdateLabel:
     async def test_omits_optional_fields_not_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
-        await update_label(USER_ID, label_id="lbl1")
+        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
 
         params = mock_invoke_gmail_tool.call_args[0][2]
         assert "name" not in params
@@ -727,7 +966,7 @@ class TestUpdateLabel:
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("label not found")
 
-        result = await update_label(USER_ID, label_id="lbl1")
+        result = await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
 
         assert result.successful is False
 
@@ -827,9 +1066,7 @@ class TestCreateDraft:
         assert params["bcc"] == ["bcc@example.com"]
 
     async def test_passes_body_through_without_html_flag(self, mock_invoke_gmail_tool):
-        """``is_html`` no longer exists on the service — bodies are converted
-        to HTML by the Composio before-hook, so the service just forwards
-        whatever body it was given and never sets an html param itself."""
+        """is_html no longer exists on the service; HTML conversion is now the Composio before-hook's job."""
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
         await create_draft(
@@ -881,6 +1118,9 @@ class TestListDrafts:
         assert len(result.drafts) == 1
         assert result.next_page_token == "tok"
         mock_transform.assert_called_once()
+        assert result.drafts[0]["id"] == "d1"
+        assert result.drafts[0]["message"]["threadId"] == ""
+        assert "thread_id" not in result.drafts[0]["message"]
 
     async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -934,6 +1174,8 @@ class TestGetDraft:
 
         mock_transform.assert_called_once()
         assert result.message is not None
+        assert result.message["threadId"] == ""
+        assert "thread_id" not in result.message
 
     async def test_returns_error_on_failure(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -968,8 +1210,7 @@ class TestUpdateDraft:
             user_id=USER_ID,
             draft_id="draft1",
             to_list=["bob@example.com"],
-            subject="Updated Subject",
-            body="Updated body",
+            content=EmailContent(subject="Updated Subject", body="Updated body"),
         )
 
         args, _ = mock_invoke_gmail_tool.call_args
@@ -987,8 +1228,7 @@ class TestUpdateDraft:
             user_id=USER_ID,
             draft_id="draft1",
             to_list=["bob@example.com"],
-            subject="Hi",
-            body="Body",
+            content=EmailContent(subject="Hi", body="Body"),
         )
 
         assert result.successful is False
@@ -1125,6 +1365,8 @@ class TestGetEmailById:
 
         assert result.success is True
         assert result.message is not None
+        assert result.message["threadId"] == ""
+        assert "thread_id" not in result.message
         mock_transform.assert_called_once()
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
@@ -1153,6 +1395,250 @@ class TestGetEmailById:
         assert result.message is None
 
 
-# ---------------------------------------------------------------------------
-# get_contact_list
-# ---------------------------------------------------------------------------
+class TestSendEmailParamPins:
+    async def test_log_context_is_exact(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        with patch("app.services.mail.mail_service.log") as log:
+            await send_email(
+                USER_ID,
+                "bob@example.com",
+                EmailContent(subject="Hi", body="Body"),
+            )
+        log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            mail=MailContext(operation="send", provider="gmail"),
+        )
+        log.set_ns.assert_called_once_with("mail", success=True)
+
+    async def test_new_email_parameters_are_exact(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await send_email(
+            USER_ID,
+            "bob@example.com",
+            EmailContent(
+                subject="Hi",
+                body="Body",
+                extra_recipients=["carol@example.com"],
+                cc_list=["cc@example.com"],
+                bcc_list=["bcc@example.com"],
+            ),
+        )
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[0] == USER_ID
+        assert args[1] == "GMAIL_SEND_EMAIL"
+        assert args[2] == {
+            "recipient_email": "bob@example.com",
+            "extra_recipients": ["carol@example.com"],
+            "body": "Body",
+            "subject": "Hi",
+            "cc": ["cc@example.com"],
+            "bcc": ["bcc@example.com"],
+        }
+
+    async def test_reply_parameters_are_exact(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await send_email(
+            USER_ID,
+            "bob@example.com",
+            EmailContent(subject="Re", body="Body"),
+            thread_id="thread_1",
+        )
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[1] == "GMAIL_REPLY_TO_THREAD"
+        assert args[2] == {
+            "recipient_email": "bob@example.com",
+            "extra_recipients": [],
+            "message_body": "Body",
+            "subject": "Re",
+            "thread_id": "thread_1",
+        }
+
+    async def test_failed_tool_result_logs_error_and_is_returned_verbatim(
+        self, mock_invoke_gmail_tool
+    ):
+        failed = GmailToolResult.model_validate({"successful": False, "error": "quota"})
+        mock_invoke_gmail_tool.return_value = failed
+        with patch("app.services.mail.mail_service.log") as log:
+            result = await send_email(
+                USER_ID, "bob@example.com", EmailContent(subject="Hi", body="Body")
+            )
+        assert result is not None and result.successful is False
+        assert result.error == "quota"
+        log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Error from tool",
+            tool_name="GMAIL_SEND_EMAIL",
+            error="quota",
+        )
+        log.set_ns.assert_called_once_with("mail", success=False)
+
+    async def test_exception_returns_failed_result_with_exact_fields(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.side_effect = RuntimeError("composio down")
+        with patch("app.services.mail.mail_service.log") as log:
+            result = await send_email(
+                USER_ID, "bob@example.com", EmailContent(subject="Hi", body="Body")
+            )
+        assert result.successful is False
+        assert result.error == "composio down"
+        log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Error sending email for user",
+            user_id=USER_ID,
+            error="composio down",
+            error_type="RuntimeError",
+        )
+        log.set_ns.assert_called_once_with("mail", success=False)
+
+
+class TestSearchMessagesParamPins:
+    async def test_default_parameters_are_exact(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": True, "data": {"messages": [], "nextPageToken": None}}
+        )
+        await search_messages(USER_ID)
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[0] == USER_ID
+        assert args[1] == "GMAIL_FETCH_EMAILS"
+        assert args[2] == {"query": "", "max_results": 20}
+
+    async def test_all_parameters_are_forwarded_exactly(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": True, "data": {"messages": [], "nextPageToken": "tok"}}
+        )
+        response = await search_messages(
+            USER_ID,
+            query="is:unread",
+            max_results=7,
+            page_token="prev",
+            options=MessageFetchOptions(output_format="metadata", include_payload=False),
+        )
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[2] == {
+            "query": "is:unread",
+            "max_results": 7,
+            "page_token": "prev",
+            "format": "metadata",
+            "include_payload": False,
+        }
+        assert response.next_page_token == "tok"
+
+    async def test_verbose_option_is_forwarded(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": True, "data": {"messages": [], "nextPageToken": None}}
+        )
+        await search_messages(USER_ID, options=MessageFetchOptions(verbose=True))
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[2]["verbose"] is True
+
+    async def test_failure_returns_empty_response_and_sets_ns(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": False})
+        with patch("app.services.mail.mail_service.log") as log:
+            response = await search_messages(USER_ID, query="q")
+        assert response.messages == []
+        log.set_ns.assert_called_once_with("mail", success=False)
+
+    async def test_exception_propagates_after_setting_ns(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.side_effect = RuntimeError("down")
+        with patch("app.services.mail.mail_service.log") as log:
+            with pytest.raises(RuntimeError, match="down"):
+                await search_messages(USER_ID, query="q")
+        log.set_ns.assert_called_once_with("mail", success=False)
+
+
+class TestUpdateLabelParamPins:
+    async def test_name_only_writes_name_key(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_label(USER_ID, "lbl1", LabelChanges(name="New"))
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[1] == "GMAIL_PATCH_LABEL"
+        assert args[2] == {"label_id": "lbl1", "name": "New"}
+
+    async def test_visibilities_are_written(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_label(
+            USER_ID,
+            "lbl1",
+            LabelChanges(label_list_visibility="labelHide", message_list_visibility="hide"),
+        )
+        params = mock_invoke_gmail_tool.await_args.args[2]
+        assert params["label_list_visibility"] == "labelHide"
+        assert params["message_list_visibility"] == "hide"
+        assert "name" not in params
+        assert "color" not in params
+
+    async def test_background_color_only_writes_color_json(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_label(USER_ID, "lbl1", LabelChanges(background_color="#fb4c2f"))
+        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
+        assert color == {"background_color": "#fb4c2f"}
+
+    async def test_text_color_only_writes_color_json(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_label(USER_ID, "lbl1", LabelChanges(text_color="#000000"))
+        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
+        assert color == {"text_color": "#000000"}
+
+    async def test_both_colors_write_color_json(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_label(
+            USER_ID, "lbl1", LabelChanges(background_color="#111111", text_color="#222222")
+        )
+        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
+        assert color == {"background_color": "#111111", "text_color": "#222222"}
+
+    async def test_failure_returns_error_result(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": False, "error": "nope"}
+        )
+        result = await update_label(USER_ID, "lbl1", LabelChanges(name="X"))
+        assert result.successful is False
+
+    async def test_exception_returns_error_result_with_message(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.side_effect = RuntimeError("boom")
+        result = await update_label(USER_ID, "lbl1", LabelChanges(name="X"))
+        assert result.successful is False
+        assert result.error == "boom"
+
+
+class TestUpdateDraftParamPins:
+    async def test_parameters_are_exact_without_cc_bcc(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_draft(
+            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
+        )
+        args, _ = mock_invoke_gmail_tool.await_args
+        assert args[1] == "GMAIL_UPDATE_DRAFT"
+        assert args[2] == {
+            "draft_id": "draft1",
+            "to": ["bob@example.com"],
+            "subject": "S",
+            "body": "B",
+        }
+
+    async def test_cc_and_bcc_are_written_when_present(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        await update_draft(
+            USER_ID,
+            "draft1",
+            ["bob@example.com"],
+            EmailContent(subject="S", body="B", cc_list=["c@x.com"], bcc_list=["b@x.com"]),
+        )
+        params = mock_invoke_gmail_tool.await_args.args[2]
+        assert params["cc"] == ["c@x.com"]
+        assert params["bcc"] == ["b@x.com"]
+
+    async def test_unsuccessful_result_is_returned_as_error(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": False, "error": "locked"}
+        )
+        result = await update_draft(
+            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
+        )
+        assert result.successful is False
+        assert result.error == "locked"
+
+    async def test_exception_returns_error_result_with_message(self, mock_invoke_gmail_tool):
+        mock_invoke_gmail_tool.side_effect = RuntimeError("gone")
+        result = await update_draft(
+            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
+        )
+        assert result.successful is False
+        assert result.error == "gone"

@@ -1,7 +1,7 @@
 """The pin-skew guard must pass on the real tree and fail on drift.
 
 The fixture-based tests point the module's path constants at tmp files via
-monkeypatch (``PRE_COMMIT`` / ``CODE_QUALITY`` / ``MAIN``), then drive
+monkeypatch (``PRE_COMMIT`` / ``CODE_QUALITY``), then drive
 ``main()`` end to end: consistent pins return rc 0, and a pin deleted from
 its invocation but still mentioned in a comment returns rc 1 naming the
 tool. A mention in a comment is prose, not a pin — it can never satisfy the
@@ -52,15 +52,27 @@ jobs:
       - name: Complexity scan
         run: |
           uvx xenon==0.9.3 --max-absolute F apps/api
+  python-bandit:
+    steps:
+      - name: Bandit security scan
+        run: |
+          uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app
+  python-pip-audit:
+    steps:
+      - name: pip-audit
+        run: |
+          uvx --no-build pip-audit==2.10.1 --strict
 """
 
-MAIN_YML = """\
-jobs:
-  test-python:
-    steps:
-      - name: Diff coverage gate
-        run: |
-          uv tool run 'diff-cover==10.5.1' coverage.xml --fail-under=90
+
+UV_LOCK_TOML = """\
+[[package]]
+name = "mypy"
+version = "1.19.1"
+
+[[package]]
+name = "ruff"
+version = "0.14.13"
 """
 
 
@@ -70,11 +82,11 @@ def pinned_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str
     files = {
         "PRE_COMMIT": tmp_path / "pre-commit-config.yaml",
         "CODE_QUALITY": tmp_path / "code-quality.yml",
-        "MAIN": tmp_path / "main.yml",
+        "UV_LOCK": tmp_path / "uv.lock",
     }
     files["PRE_COMMIT"].write_text(PRE_COMMIT_YAML, encoding="utf-8")
     files["CODE_QUALITY"].write_text(CODE_QUALITY_YML, encoding="utf-8")
-    files["MAIN"].write_text(MAIN_YML, encoding="utf-8")
+    files["UV_LOCK"].write_text(UV_LOCK_TOML, encoding="utf-8")
     for name, path in files.items():
         monkeypatch.setattr(check_tool_pins, name, path)
     return files
@@ -167,3 +179,60 @@ def test_real_pin_with_trailing_comment_still_counts(
     )
     rc, out, err = _run(capsys)
     assert rc == 0, err
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [
+        ("  '@biomejs/biome@2.5.7':\n    resolution: {}", True),
+        (
+            "  '@biomejs/biome@2.5.6':\n    resolution: {}",
+            False,
+        ),  # the lockfile resolved another release
+        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', True),
+        ('{"$schema": "https://biomejs.dev/schemas/2.5.6/schema.json"}', False),
+    ],
+)
+def test_biome_pin_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    ok: bool,
+) -> None:
+    """A lockfile resolving another release and a stale $schema both drift."""
+    surface = tmp_path / "biome-surface.json"
+    surface.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "PNPM_LOCK", surface)
+    monkeypatch.setattr(check_tool_pins, "BIOME_CONFIGS", ())
+    rc, _out, err = _run(capsys)
+    assert (rc == 0) is ok, err
+    assert ("biome is not pinned to 2.5.7" in err) is not ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [
+        ('[tools]\nuv = "0.10.6"\n', True),
+        ('[tools]\nuv = "latest"\n', False),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/\n", True),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/\n", False),
+        ('inputs:\n  version:\n    default: "0.10.6"\n', True),
+    ],
+)
+def test_uv_pin_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    ok: bool,
+) -> None:
+    """A local uv on "latest" or another release drifts from the uv CI locks with."""
+    surface = tmp_path / "uv-surface"
+    surface.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", surface)
+    monkeypatch.setattr(check_tool_pins, "SETUP_UV", surface)
+    monkeypatch.setattr(check_tool_pins, "UV_DOCKERFILES", ())
+    # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
+    _rc, _out, err = _run(capsys)
+    assert ("uv is not pinned to 0.10.6" in err) is not ok

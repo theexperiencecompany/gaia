@@ -33,7 +33,7 @@ def _format_details(details: SubscriptionDetails) -> str:
     lines = [f"Plan: {details.plan_name or details.plan_type.value.capitalize()}"]
 
     if not details.is_subscribed:
-        lines.append("Subscribed: no — this user is on the free tier.")
+        lines.append("Subscribed: no, this user is on the free tier.")
         return "\n".join(lines)
 
     lines.append(
@@ -51,7 +51,7 @@ def _format_details(details: SubscriptionDetails) -> str:
         lines.append(f"{renews}: {details.next_billing_date}")
     if details.cancel_at_next_billing_date:
         lines.append(
-            "Cancellation is scheduled — Pro access continues until the date above, "
+            "Cancellation is scheduled: Pro access continues until the date above, "
             "then the account returns to Free."
         )
 
@@ -105,7 +105,7 @@ async def create_upgrade_link(
     status = await payment_service.get_user_subscription_status(user_id)
     if status.is_subscribed:
         return (
-            "This user is already on GAIA Pro — no checkout needed. "
+            "This user is already on GAIA Pro, no checkout needed. "
             "Tell them that instead of sending a payment link."
         )
 
@@ -124,7 +124,7 @@ async def create_upgrade_link(
     log.info(f"{LogTag.TOOL} Upgrade link created", billing_cycle=billing_cycle)
 
     period = billing_cycle.value.removesuffix("ly")
-    lines = [f"GAIA Pro — {_format_money(pro.plan.amount, pro.plan.currency)} per {period}."]
+    lines = [f"GAIA Pro: {_format_money(pro.plan.amount, pro.plan.currency)} per {period}."]
     if pro.plan.features:
         # Straight from the plan catalogue, so the pitch can never promise
         # something the plan stopped including.

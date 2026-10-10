@@ -21,6 +21,20 @@
         "cwd": "{projectRoot}"
       }
     },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format src/",
+        "cwd": "{projectRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

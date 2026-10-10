@@ -17,16 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+from app.services.integrations.integration_expiry import ExpiryOptions
+
 
 def _endpoint():
-    """The webhook endpoint module, imported lazily.
-
-    Importing it at test-module scope makes it the first thing to touch
-    ``app.services.triggers`` and trips a pre-existing circular import there;
-    by test time the app has already imported it. Patching the module object
-    beats patching by dotted string, which resolves through the package
-    attribute and is not reliably present.
-    """
+    """Import the webhook endpoint module lazily, since eager import at module scope trips a pre-existing circular import via app.services.triggers."""
     from app.api.v1.endpoints import webhook_composio
 
     return webhook_composio
@@ -53,12 +48,11 @@ def _make_connection_payload(
     toolkit: str = "NOTION",
     user_id: str = "507f1f77bcf86cd799439011",
 ) -> dict:
-    """A `composio.connected_account.expired` delivery.
+    """Build a composio.connected_account.expired delivery.
 
-    Mirrors the SDK's ``ConnectionExpiredEvent`` / raw snake_case
-    ``SingleConnectedAccountDetailedResponse``. Note it carries NONE of the
-    trigger identifiers ``ComposioWebhookEvent`` types as required ``str`` —
-    that is exactly why the endpoint must branch before building that model.
+    Mirrors the SDK's ConnectionExpiredEvent; carries NONE of the trigger
+    identifiers ComposioWebhookEvent types as required str, which is why the
+    endpoint must branch before building that model.
     """
     return {
         "id": "msg_847cdfcd-d219-4f18-a6dd-91acd42ca94a",
@@ -345,20 +339,16 @@ class TestComposioWebhookRouting:
 
 @pytest.mark.service
 class TestComposioConnectionEvents:
-    """`composio.connected_account.expired` routing.
+    """composio.connected_account.expired routing.
 
     Before this path existed the endpoint 500'd on every connection event —
-    `ComposioWebhookEvent` requires four trigger identifiers a connection event
+    ComposioWebhookEvent requires four trigger identifiers a connection event
     does not carry — so Composio retried the same delivery forever.
     """
 
     @pytest.fixture(autouse=True)
     def pause(self):
-        """The workflow layer is mocked at its own seam — it is not this file's subject.
-
-        Left real it would query Mongo from the background task, and a failure
-        there would abort the expiry these tests assert on.
-        """
+        """Mock the workflow layer at its own seam: left real it would query Mongo from the background task and abort the expiry these tests assert on."""
         with patch.object(
             _endpoint(),
             "pause_workflows_for_expired_integration",
@@ -411,11 +401,13 @@ class TestComposioConnectionEvents:
         expire.assert_awaited_once_with(
             "507f1f77bcf86cd799439011",
             "notion",
-            reason="refresh_token_revoked",
-            trigger="webhook",
-            notify=True,
-            connected_account_id="ca_xxxxxxxxxxxx",
-            paused_workflows=[],
+            ExpiryOptions(
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+                connected_account_id="ca_xxxxxxxxxxxx",
+                paused_workflows=[],
+            ),
         )
 
     async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_expiry(
@@ -440,7 +432,7 @@ class TestComposioConnectionEvents:
                 await asyncio.sleep(0)
 
         pause.assert_awaited_once_with("507f1f77bcf86cd799439011", "notion")
-        assert expire.await_args.kwargs["paused_workflows"] == [
+        assert expire.await_args.args[2].paused_workflows == [
             "Morning digest",
             "Invoice filing",
         ]
@@ -590,11 +582,8 @@ class TestComposioConnectionEvents:
         expire.assert_not_awaited()
 
     async def test_the_endpoint_does_not_check_the_user_exists_before_dispatching(self, real_redis):
-        # Whether GAIA knows this user is the transition's business, not the
-        # webhook's — `expire_user_integration` already no-ops on a user with no
-        # record (unit X1). Re-checking here would duplicate that guard and give
-        # Composio a second way to be told "unknown", so the endpoint just acks
-        # and hands the id straight through.
+        # `expire_user_integration` already no-ops on a user with no record (unit X1);
+        # re-checking here would duplicate that guard, so the endpoint just acks.
         stranger_id = "507f1f77bcf86cd799439099"
         integration = MagicMock()
         integration.id = "notion"

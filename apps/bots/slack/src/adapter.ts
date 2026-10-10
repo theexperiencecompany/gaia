@@ -28,16 +28,21 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   hashLogIdentifier,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
-} from "@gaia/shared";
-import { App } from "@slack/bolt";
+  withWideEvent,
+} from "@gaia/shared/bots";
+import { App, type CodedError, type Context } from "@slack/bolt";
+import { which } from "node-emoji";
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
@@ -51,6 +56,7 @@ interface SlackMessageEvent {
   channel?: string;
   channel_type?: string;
   subtype?: string;
+  ts?: string;
 }
 
 /** Minimal Slack Web API client shape used by the adapter. */
@@ -70,6 +76,7 @@ interface SlackWebClient {
       user: string;
       text: string;
     }) => Promise<unknown>;
+    delete: (args: { channel: string; ts: string }) => Promise<unknown>;
   };
 }
 
@@ -113,7 +120,27 @@ export class SlackAdapter extends BaseBotAdapter {
       signingSecret: this.signingSecret,
       socketMode: true,
       appToken: this.appToken,
+      // Hands the handler the event's context, so the error says who hit it.
+      extendedErrorHandler: true,
     });
+    // Bolt's last resort for anything a listener or middleware throws: its own
+    // unit of work, like Telegram's bot.catch, so it gets a failed event with a
+    // reason. Resolving keeps Bolt's receiver from logging it again, unstructured.
+    this.app.error(
+      async ({ error, context }: { error: CodedError; context: Context }) =>
+        withWideEvent(
+          "bot_runtime_error",
+          {
+            platform: this.platform,
+            component: "adapter",
+            user_hash: hashLogIdentifier(context.userId),
+            slack_error_code: error.code,
+          },
+          async () => {
+            recordBotFailure("slack_runtime_error", error.original ?? error);
+          },
+        ),
+    );
   }
 
   /**
@@ -184,7 +211,14 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(client, channelId, userId, content);
+      await this.handleSlackStreaming(
+        client,
+        channelId,
+        userId,
+        content,
+        false,
+        event.ts,
+      );
     });
 
     // DM messages
@@ -195,7 +229,14 @@ export class SlackAdapter extends BaseBotAdapter {
       if (msg.channel_type !== "im") return;
       if (!msg.text || !msg.user || !msg.channel) return;
 
-      await this.handleSlackStreaming(client, msg.channel, msg.user, msg.text);
+      await this.handleSlackStreaming(
+        client,
+        msg.channel,
+        msg.user,
+        msg.text,
+        true,
+        msg.ts,
+      );
     });
   }
 
@@ -235,48 +276,90 @@ export class SlackAdapter extends BaseBotAdapter {
     return channel;
   }
 
-  protected async deliverOutbound(
+  /**
+   * Runs one outbound send against the conversation's channel id: the channel
+   * itself for a channel/group, else the user's resolved DM channel
+   * (platform_links stores the user id).
+   */
+  private async sendToConversation(
     destinationId: string,
-    text: string,
+    isChannel: boolean,
+    send: (channel: string) => Promise<unknown>,
   ): Promise<void> {
-    // platform_links stores the Slack user id; resolve it to a DM channel id.
-    const channel = await this.resolveDmChannel(destinationId);
+    const channel = isChannel
+      ? destinationId
+      : await this.resolveDmChannel(destinationId);
     try {
-      await this.app.client.chat.postMessage({ channel, text });
+      await send(channel);
     } catch (err) {
       // A cached DM channel id can go stale (conversation archived, user
-      // deactivated). Drop it so the next delivery re-resolves instead of
-      // failing forever against a dead channel.
-      this.dmChannelCache.delete(destinationId);
+      // deactivated): drop it so the next delivery re-resolves.
+      if (!isChannel) this.dmChannelCache.delete(destinationId);
       throw err;
     }
   }
 
-  /**
-   * Delivers an agent-generated file artifact to a Slack user. Fetches the
-   * bytes from GAIA (bot-authenticated) and uploads them to the user's DM
-   * channel via files.uploadV2, with the caption as the message comment.
-   */
-  protected override async deliverOutboundFile(
+  protected async deliverOutbound(
     destinationId: string,
-    attachment: OutboundAttachment,
+    text: string,
+    isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
+    await this.sendToConversation(destinationId, isChannel, (channel) =>
+      this.app.client.chat.postMessage({ channel, text }),
     );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const channel = await this.resolveDmChannel(destinationId);
-    try {
-      await this.app.client.files.uploadV2({
+  }
+
+  /**
+   * Uploads an agent-generated file artifact via files.uploadV2, with the
+   * caption as the message comment: into the channel when `isChannel`, else
+   * into the user's DM channel.
+   */
+  protected override async sendOutboundFile(
+    destinationId: string,
+    { data, filename, caption }: OutboundFile,
+    isChannel: boolean,
+  ): Promise<void> {
+    await this.sendToConversation(destinationId, isChannel, (channel) =>
+      this.app.client.files.uploadV2({
         channel_id: channel,
-        file: artifact.data,
-        filename: attachment.filename,
-        initial_comment: attachment.caption ?? undefined,
+        file: data,
+        filename,
+        initial_comment: caption,
+      }),
+    );
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // reactions.add takes a shortcode (sweat_smile), not the emoji. An emoji
+    // with no known shortcode is refused here and the caller sends it as text.
+    const name = which(emoji);
+    if (!name) {
+      this.adapterLogger.warn("outbound_reaction_unmapped_emoji", { emoji });
+      return REACTION_OUTCOME.UNMAPPED_EMOJI;
+    }
+    const channel = isChannel
+      ? destinationId
+      : await this.resolveDmChannel(destinationId);
+    try {
+      await this.app.client.reactions.add({
+        channel,
+        timestamp: platformMessageId,
+        name,
       });
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
-      this.dmChannelCache.delete(destinationId);
-      throw err;
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        channel_hash: hashLogIdentifier(channel),
+        ...(err instanceof Error
+          ? { error_type: err.name, error: err.message }
+          : { error: String(err) }),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -307,7 +390,13 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(client, channelId, userId, message);
+      await this.handleSlackStreaming(
+        client,
+        channelId,
+        userId,
+        message,
+        channelId.startsWith("D"),
+      );
     });
   }
 
@@ -322,6 +411,8 @@ export class SlackAdapter extends BaseBotAdapter {
     channelId: string,
     userId: string,
     message: string,
+    isDm: boolean,
+    inboundTs?: string,
   ): Promise<void> {
     const result = await client.chat.postMessage({
       channel: channelId,
@@ -357,7 +448,14 @@ export class SlackAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "slack", platformUserId: userId, channelId },
+      {
+        message,
+        platform: "slack",
+        platformUserId: userId,
+        channelId,
+        isDm,
+        platformMessageId: inboundTs,
+      },
       async (text: string) => {
         await client.chat.update({
           channel: channelId,
@@ -402,7 +500,7 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: "🔒 Authentication required — check the private message below to link your account.",
+          text: "🔒 Authentication required. Check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
           channel: channelId,
@@ -419,6 +517,28 @@ export class SlackAdapter extends BaseBotAdapter {
       },
       STREAMING_DEFAULTS.slack,
       await this.analyticsFor(userId),
+      async (emoji: string) => {
+        // A slash command has no inbound message to react to.
+        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
+        const outcome = await this.reactToMessage(
+          channelId,
+          inboundTs,
+          emoji,
+          true,
+        );
+        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
+        try {
+          await client.chat.delete({ channel: channelId, ts });
+        } catch (err) {
+          // The reaction is already the reply; a stale "Thinking..." is all this costs.
+          this.adapterLogger.error(
+            "placeholder_delete_failed",
+            { channel_hash: hashLogIdentifier(channelId) },
+            err,
+          );
+        }
+        return outcome;
+      },
     );
   }
 
@@ -427,16 +547,10 @@ export class SlackAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a {@link RichMessageTarget} for Slack slash command responses.
+   * Create a {@link RichMessageTarget} for Slack slash command responses.
    *
-   * Uses Bolt's `respond` function for ephemeral replies and the
-   * Web API `client` for public messages. Rich messages are rendered
-   * as markdown since Slack has no native embed format.
-   *
-   * @param userId - The Slack user ID.
-   * @param channelId - The Slack channel ID.
-   * @param client - The Slack Web API client.
-   * @param respond - The Bolt respond function (for ephemeral replies).
+   * Uses Bolt's `respond` for ephemeral replies and the Web API `client` for
+   * public messages; rich messages render as markdown (Slack has no embeds).
    */
   private createCommandTarget(
     userId: string,
@@ -449,6 +563,7 @@ export class SlackAdapter extends BaseBotAdapter {
       platform: "slack",
       userId,
       channelId,
+      isDm: channelId.startsWith("D"),
       profile: userName ? { username: userName } : undefined,
 
       send: async (text: string): Promise<SentMessage> => {

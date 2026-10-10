@@ -23,7 +23,7 @@ from app.agents.core.background.executor_queue import decode_raw_item, parse_loc
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -31,10 +31,17 @@ from shared.py.wide_events import log
 async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Append a live-executor status frame when the busy lock is held."""
     try:
-        configurable = agent_configurable(config)
+        configurable: AgentConfigurable = agent_configurable(config)
         thread_id = configurable.get("thread_id")
         if not thread_id or not redis_cache.client:
             return state
+
+        # The narrated run still holds the busy lock. Its flag decides, never a message
+        # name: narration triggers persist in the thread, and a scan for one silences
+        # every later turn of the conversation.
+        if configurable.get("is_result_narration"):
+            return state
+        messages = state.get("messages", [])
 
         raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
         if raw is None:
@@ -45,13 +52,12 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             content=(
                 "A background task you dispatched in this conversation is STILL "
                 f"RUNNING right now (task_id: {task_id or 'unknown'}). Its results "
-                "have not arrived yet — do not claim it finished, and do not "
+                "have not arrived yet. Do not claim it finished, and do not "
                 "dispatch the same task again. If the user asks about it, tell "
                 "them it's in progress."
             ),
             additional_kwargs={EXECUTOR_STATUS_MARKER: True},
         )
-        messages = state.get("messages", [])
         return cast(State, {**state, "messages": [*messages, status]})
     except Exception as e:  # a status frame must never break the turn
         log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)

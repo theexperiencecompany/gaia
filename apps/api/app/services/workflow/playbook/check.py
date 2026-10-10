@@ -1,0 +1,164 @@
+"""Decide whether a workflow run should be asked to author a playbook.
+
+The gate, not the prompt: a run is asked only when there is nothing working to
+replay. A playbook that ran cleanly has already answered the question, and
+re-asking would spend output tokens re-deciding it on every fire.
+"""
+
+from collections.abc import Iterator, Sequence
+
+from app.agents.prompts.playbook_prompts import (
+    PLAYBOOK_CHECK_BRIEF,
+    PLAYBOOK_HEAL_ALREADY_RAN,
+    PLAYBOOK_HEAL_BRIEF,
+    PLAYBOOK_HEAL_NO_REASON,
+    PLAYBOOK_HEAL_VERDICTS,
+)
+from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.constants.log_tags import LogTag
+from app.db.repositories.playbooks import playbook_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.playbook_models import (
+    ForEachStep,
+    HandoffStep,
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+    PlaybookStep,
+    ToolStep,
+)
+from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
+from app.models.workflow_models import WorkflowDocument
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
+from app.services.workflow.playbook.workflow_hash import workflow_hash
+from shared.py.wide_events import log
+
+
+async def playbook_check_brief(
+    workflow_id: str, user_id: str, *, fallback_note: str | None = None
+) -> str:
+    """Return the <playbook_check> block for this run, or "" to stay silent.
+
+    The check brief with no playbook (unless declined too many times), the
+    heal brief when the last replay stopped or was untrusted, or "" when it
+    ran cleanly. fallback_note (a replay that stopped partway this fire)
+    merges into the heal brief. Never raises — a failure just costs a playbook.
+    """
+    try:
+        playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+        workflow = (
+            await workflow_repository.get_for_user(workflow_id, user_id)
+            if playbook is None
+            else None
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} playbook_check_brief: lookup failed; skipping the check",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return ""
+
+    if playbook is None:
+        if workflow is not None and declined_for_good(workflow):
+            log.set_ns(
+                "playbook",
+                check_skipped="declined",
+                declines=workflow.playbook_declines,
+            )
+            return ""
+        if fallback_note:
+            return f"{fallback_note.strip()}\n\n{PLAYBOOK_CHECK_BRIEF}"
+        return PLAYBOOK_CHECK_BRIEF
+    if fallback_note or playbook.last_run_status in HEAL_STATUSES:
+        return heal_brief(playbook, fallback_note=fallback_note)
+    return ""
+
+
+def declined_for_good(workflow: WorkflowDocument) -> bool:
+    """Declined past the limit for the workflow exactly as it stands now."""
+    return (
+        workflow.playbook_declines >= PLAYBOOK_DECLINE_LIMIT
+        and workflow.playbook_declined_hash == workflow_hash(workflow.prompt, workflow.steps)
+    )
+
+
+def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) -> str:
+    """Build the heal brief for a playbook whose last replay stopped or was not trusted."""
+    verdict = PLAYBOOK_HEAL_VERDICTS.get(playbook.last_run_status.value, "did not hold")
+    reason = (playbook.last_run_reason or "").strip() or PLAYBOOK_HEAL_NO_REASON
+    already_ran = (
+        PLAYBOOK_HEAL_ALREADY_RAN.format(fallback_note=fallback_note.strip())
+        if fallback_note
+        else ""
+    )
+    return PLAYBOOK_HEAL_BRIEF.format(verdict=verdict, reason=reason, already_ran=already_ran)
+
+
+def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -> str | None:
+    """Return why a playbook written this run is already suspect, or None.
+
+    Reads by tool name, LAST match: an empty attempt then a retry that found
+    items means the retry — not this attempt — was the one frozen. "Nothing in
+    it" means carries_no_data, not an empty list; a write tool's own empty
+    result attributes don't count as returning nothing.
+    """
+    for step in _calls(playbook.steps):
+        call = next((c for c in reversed(trace) if c.tool_name == step.tool), None)
+        if call is not None and carries_no_data(parse_result(call.result_digest)):
+            return f"{step.tool} returned no items in the run that wrote this playbook"
+    return None
+
+
+def _calls(steps: Sequence[PlaybookStep]) -> Iterator[ToolStep | ForEachStep]:
+    """Every call in the document, a handoff's children included."""
+    for step in steps:
+        if isinstance(step, HandoffStep):
+            yield from step.steps
+        else:
+            yield step
+
+
+def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
+    for call in trace:
+        if call.tool_name != "write_playbook":
+            continue
+        result = parse_result(call.result_digest)
+        if isinstance(result, dict) and result.get("success") is True:
+            return True
+    return False
+
+
+async def distrust_fresh_playbook(
+    workflow_id: str, user_id: str, trace: Sequence[RecordedCall], *, healing: bool = False
+) -> str | None:
+    """After a run that wrote a playbook, distrust it if it froze an empty result.
+
+    The replay's own check compares against the previous run, so a playbook
+    frozen on emptiness has nothing to compare to; marking it suspect heals
+    the next fire instead of replaying it. A heal run is exempt — its brief
+    already probes broadly before it may rewrite.
+    """
+    if healing or not _wrote_a_playbook(trace):
+        return None
+    playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+    if playbook is None or playbook.last_run_status is not PlaybookRunStatus.NOT_RUN:
+        return None
+    reason = frozen_on_empty(playbook, trace)
+    if reason is None:
+        return None
+    await playbook_repository.record_run_outcome(
+        workflow_id,
+        user_id,
+        PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason=reason),
+        playbook_id=playbook.playbook_id,
+        revision=playbook.revision,
+    )
+    log.warning(
+        f"{LogTag.WORKFLOW} Playbook written on an empty result; the next fire heals it",
+        workflow_id=workflow_id,
+        playbook_id=playbook.playbook_id,
+        reason=reason,
+    )
+    return reason

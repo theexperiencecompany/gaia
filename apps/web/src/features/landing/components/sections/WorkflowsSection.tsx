@@ -14,13 +14,9 @@ import { SplitShowcase } from "./SplitShowcase";
 
 /**
  * Workflows & Automations section: mirrors RunsYourDaySection via
- * SplitShowcase `reverse` (copy right, square demo tile left — same tile
- * sizing). Two slides, each a two-act story: the user sets up a real
- * workflow (SCHEDULED: "Study Plan Builder — weekly on Sunday"; TRIGGERED:
- * emails after 7pm get replies drafted), then a time-jump divider and GAIA
- * texting the RESULT when the workflow actually runs. The segmented pill
- * swaps slides; ChatDemo's native `play` reveal replays per slide (typing
- * dots, divider beat, payoff pause on the final message).
+ * SplitShowcase `reverse` (copy right, square demo tile left). Two slides,
+ * each a two-act story — set up (SCHEDULED/TRIGGERED script) then a
+ * time-jump to GAIA texting the result. The segmented pill swaps slides.
  */
 
 const SCHEDULED_SCRIPT: ChatMessageItem[] = [

@@ -1,0 +1,524 @@
+#!/usr/bin/env python3
+"""Emit the mutation-check matrix: changed app modules + their test files.
+
+Reference detection is AST-based because grep misses this codebase's two
+common reference forms: `from app.x.endpoints import y` (submodule imported
+from its package) and mock patch targets written as strings
+(`"app.agents.tools.integrations.google_meet_tool"`). A module is "covered"
+when any test file imports it, imports from it, or names it in a string
+literal (patch target).
+
+Input:  changed app module paths on stdin (one per line, repo-root-relative).
+Output: [{"module": ..., "testfiles": [...], "changed_lines": [...]}, ...]
+        Every test file referencing the module, not one — see with_unit_mirror.
+Exit 1 with a ::error message when a changed module has no test file.
+"""
+
+from __future__ import annotations
+
+import ast
+from collections.abc import Sequence
+from functools import cache
+import io
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tokenize
+
+APP_DIR = Path("apps/api/app")
+TESTS_DIR = Path("apps/api/tests")
+# The repo has one base branch (CLAUDE.md); local runs diff against it so a
+# local mutation run scopes exactly like the PR lane does.
+LOCAL_BASE_BRANCH = "master"
+
+
+def _base_ref() -> str:
+    """Return the branch this diff is scoped to: the PR's base on CI, master locally.
+
+    GAIA_PR_BASE before GITHUB_BASE_REF, and the order is load-bearing rather
+    than defensive. For a PR in a native GitHub stack the `pull_request` payload
+    carries the STACK'S TRUNK in base.ref, not the PR's parent — measured
+    2026-09-11, when #1175 (parent feat/first-steps-activation, a one-module
+    diff) planned 119 modules against master. `changes.sh base` asks the API,
+    which is the only source that names the parent, and the run hands that
+    answer to every lane as GAIA_PR_BASE.
+    """
+    return (
+        os.environ.get("GAIA_PR_BASE", "")
+        or os.environ.get("GITHUB_BASE_REF", "")
+        or LOCAL_BASE_BRANCH
+    )
+
+
+def _merge_base() -> str:
+    """Return the merge-base commit between HEAD and the PR's base ref, or "" outside CI.
+
+    The single source of truth both diff-against-base computations in this
+    file use (line ranges below, and comment-only detection). Resolving the
+    actual merge-base commit — not just ``origin/<base>``'s current tip —
+    matters: if the base branch has moved since the PR branched, diffing
+    against its tip would pull in unrelated changes landed on the base after
+    the branch point and could misjudge a genuine PR change as comment-only
+    (or vice versa).
+
+    Outside CI, GITHUB_BASE_REF is unset and we fall back to the repo's single
+    base branch. That fallback is load-bearing, not a convenience: an empty
+    merge-base yields empty line ranges, and empty ranges classify EVERY
+    survivor as out-of-scope, so the run reports "no survivors" and exits 0
+    while CI fails the same module. A local gate that cannot fail is worse
+    than no local gate, so local resolves a real base like CI does.
+
+    Returns "" only when no base can be resolved at all (a clone with no
+    origin and no local master). Callers must treat "" as "scope unknown" and
+    refuse to run — never as "nothing changed".
+    """
+    base = _base_ref()
+    for ref in (f"origin/{base}", base):
+        try:
+            return subprocess.check_output(
+                ["git", "merge-base", ref, "HEAD"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except subprocess.CalledProcessError:
+            continue
+    # Either variable means "a PR run told us a base", and an unresolvable base
+    # there is a hard error rather than the local fallback below.
+    if os.environ.get("GAIA_PR_BASE") or os.environ.get("GITHUB_BASE_REF"):
+        print(
+            f"::error::mutation gate: could not resolve merge-base with origin/{base}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return ""
+
+
+def _is_triple_quoted(source: str, node: ast.expr) -> bool:
+    """Return True when every string literal in node's source segment is triple-quoted.
+
+    mutmut's operator_string (mutmut/mutation/mutators.py) skips a SimpleString only
+    when it is triple-quoted, so a single-quoted leading string IS mutated. Implicit
+    concatenation is several SimpleStrings to mutmut but one Constant here, hence the
+    tokenize walk rather than a check of the first quote alone.
+    """
+    segment = ast.get_source_segment(source, node)
+    if segment is None:
+        return False
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(segment).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return False
+    literals = [token.string for token in tokens if token.type == tokenize.STRING]
+    if not literals:
+        return False
+    return all(
+        literal[len(literal) - len(literal.lstrip("rRbBuUfF")) :].startswith(('"""', "'''"))
+        for literal in literals
+    )
+
+
+def _code_without_docs(source: str) -> str | None:
+    """Return source's AST dump with triple-quoted docstrings removed, or None on a parse error.
+
+    Comments never reach the AST, so two sources with equal dumps differ only in
+    text that cannot produce a mutant. Only TRIPLE-quoted leading strings are
+    dropped, matching exactly what mutmut refuses to mutate.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+                and _is_triple_quoted(source, body[0].value)
+            ):
+                del body[0]
+    return ast.dump(tree)
+
+
+def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
+    """Return True when ``module_path``'s diff against ``merge_base`` changes only comments or docstrings.
+
+    Such a diff has zero mutants, so no test file is required. Compared by AST,
+    not line prefix: deleting a trailing ``# noqa`` leaves a changed line that
+    does not start with ``#``.
+    """
+    try:
+        old_source = subprocess.check_output(
+            ["git", "show", f"{merge_base}:{module_path}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return False  # new file, or base lookup failed — not comment-only
+    new_full_path = Path(module_path)
+    if not new_full_path.exists():
+        return False  # deleted file — not comment-only
+    old_code = _code_without_docs(old_source)
+    new_code = _code_without_docs(new_full_path.read_text())
+    if old_code is None or new_code is None:
+        return False  # unparseable on either side — don't guess, enforce normally
+    return old_code == new_code
+
+
+@cache
+def _module_refs(path: Path) -> frozenset[str]:
+    """Every app.* dotted name a test file references.
+
+    Memoized, and returning an immutable set so a shared cached value cannot be
+    mutated by a caller. Every changed module used to re-parse every test file
+    AND (via the consumer fallback) every app file: on a whole-tree diff — 427
+    modules against ~1500 files — that is hundreds of thousands of AST parses,
+    and the plan step hit the lane's 10-minute ceiling and was cancelled, so
+    nothing downstream got a gate at all. Each file is now parsed once.
+
+    Two reference forms are trusted:
+    - import statements (import X / from X import Y)
+    - bare module-path strings used as call arguments (patch targets) or
+      assignment values (module-path constants like CONV_SERVICE = "app...").
+    Bare strings in ANY other position (assert operands, docstrings, fixture
+    data) are not references — matching them pulls in test files that never
+    exercise the module (the detector's own unit test poisoned the matrix
+    this way twice).
+    """
+    refs: set[str] = set()
+    try:
+        tree = ast.parse(path.read_text())
+    except (SyntaxError, UnicodeDecodeError):
+        return frozenset()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                refs.add(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            refs.add(node.module)
+            for alias in node.names:
+                refs.add(f"{node.module}.{alias.name}")
+        elif isinstance(node, ast.Call):
+            for arg in node.args:
+                _collect_module_strings(refs, arg)
+            for keyword in node.keywords:
+                _collect_module_strings(refs, keyword.value)
+        elif isinstance(node, ast.Assign):
+            _collect_module_strings(refs, node.value)
+    return frozenset(refs)
+
+
+def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
+    """Add bare module-path strings from call args / assignment values.
+
+    Recurses through list/tuple literals (parametrize argument lists hold
+    patch targets as tuples).
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        candidate = node.value.strip()
+        if _is_bare_module_path(candidate):
+            refs.add(candidate)
+    elif isinstance(node, (ast.List, ast.Tuple)):
+        for element in node.elts:
+            _collect_module_strings(refs, element)
+
+
+def _is_bare_module_path(candidate: str) -> bool:
+    """Return True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
+
+    Rejects strings that embed a module name in surrounding syntax (quotes,
+    parens, spaces) — those are fixture data, not references.
+    """
+    if not candidate.startswith("app."):
+        return False
+    if any(char in candidate for char in "\"'(), "):
+        return False
+    return all(part.isidentifier() for part in candidate.split("."))
+
+
+def _matches(module: str, module_py: str, refs: frozenset[str]) -> bool:
+    """Whether ``refs`` reference ``module`` exactly or as a prefix."""
+    return module in refs or module_py in refs or any(ref.startswith(f"{module}.") for ref in refs)
+
+
+@cache
+def _py_files(root: Path) -> tuple[Path, ...]:
+    """Sorted *.py under root, walked once — the rglob itself was repeated per module."""
+    return tuple(sorted(root.rglob("*.py")))
+
+
+@cache
+def _importers_of(module: str) -> tuple[str, ...]:
+    """App modules that import ``module`` (one level of consumer following)."""
+    module_py = f"{module}.py"
+    importers: set[str] = set()
+    for path in _py_files(APP_DIR):
+        if _matches(module, module_py, _module_refs(path)):
+            relative = path.relative_to(APP_DIR).with_suffix("")
+            importers.add(f"app.{relative.as_posix().replace('/', '.')}")
+    return sorted(importers)
+
+
+def _test_files_for(
+    module_rel: str, tests_dir: Path = TESTS_DIR, _seen: set[str] | None = None
+) -> list[str]:
+    """Test files (repo-root-relative) referencing the module, unit tier first.
+
+    Ordered rather than filtered here: ``with_unit_mirror`` decides which
+    tiers the lane runs. Unit sorts first because it is hermetic; the contract
+    tier needs USE_REAL_SERVICES=1 and live Mongo/Redis, which the lane now
+    inherits from its job the way every other lane does.
+    """
+    module = f"app.{module_rel.replace('/', '.')}"
+    if _seen is None:
+        _seen = set()
+    # The consumer fallback below walks the importer graph, which has cycles:
+    # two modules that import each other (or a module that imports itself)
+    # recurse A -> B -> A -> ... until the interpreter gives up. A module with
+    # no direct test hit would therefore crash the plan step with a
+    # RecursionError instead of reporting "no test file". Track the modules
+    # already on this traversal's path and stop at a revisit — the revisit
+    # adds no test file the first visit did not already collect.
+    if module in _seen:
+        return []
+    _seen.add(module)
+    module_py = f"{module}.py"
+    hits: list[str] = []
+    for path in _py_files(tests_dir):
+        # Only actual test files qualify: conftest.py defines fixtures and
+        # helper modules (store.py, llm.py, ...) support them — running one
+        # as the module's test file would prove nothing and mask the real
+        # gap.
+        if not path.name.startswith("test_"):
+            continue
+        refs = _module_refs(path)
+        # Match the module exactly or as a prefix — patch targets routinely
+        # carry a function suffix (app.x.y.module.get_conversations).
+        if _matches(module, module_py, refs):
+            hits.append(str(path))
+    if not hits:
+        # No test references the module directly — follow its CONSUMERS one
+        # level: modules that import it exercise it, so their test files
+        # cover it. (app.memory.chroma_store is only reached through
+        # app.memory.engine, whose real-tier tests drive every store line.)
+        consumers = _importers_of(module)
+        for consumer in consumers:
+            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir, _seen))
+    hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
+    return hits
+
+
+def with_unit_mirror(
+    module_rel: str, hits: Sequence[str], repo_root: Path = TESTS_DIR.parent
+) -> list[str]:
+    """Every test file for a module, its unit mirror first — the gate's full set.
+
+    The mirror used to short-circuit the scan instead of joining it: a module
+    that had one was measured against ONLY that file, and a module without one
+    against whichever hit sorted first. Either way the rest were discarded, so
+    mutants covered only by a discarded file were reported as "no covering
+    test" — informational, failing nothing. ``app/agents/tools/executor_tool.py``
+    is the extreme case: measured against the file the sort picked, all 65 of
+    its mutants land in that bucket and the gate reports OK having killed
+    nothing; measured against every referencing file, 24 real survivors appear
+    on lines the PR changed.
+    """
+    mirror = f"tests/unit/{Path(module_rel).parent}/test_{Path(module_rel).stem}.py"
+    ordered = [hit.removeprefix("apps/api/") for hit in hits]
+    # Unit tier only. Every selected file is re-run once PER MUTANT, so an e2e
+    # file in this list is paid for tens of times: app/workers/tasks/
+    # workflow_tasks.py picked up tests/e2e/test_workflow_execution.py, which
+    # compiles real graphs, and the module collapsed from 9.43 to 0.11
+    # mutations/second — all 35 mutants hit mutmut's per-mutant timeout and the
+    # run proved nothing. This is the instrument's documented scope (see the
+    # hermetic-fence note in scripts/ci/mutation.sh module); the slower tiers are
+    # already run properly, once, by test-python.
+    #
+    # Kept as a filter rather than a cap: dropping the slow tiers is what makes
+    # the run finish, and dropping *arbitrary* files is what re-introduces the
+    # false-green this function exists to prevent — so every unit file stays.
+    #
+    # The contract tier stays too. It is the ONLY tier that exercises a
+    # repository's query shapes against real Mongo, it runs in ~2s per
+    # repository, and dropping it was how every changed repository method
+    # reported "no covering test" while the gate passed (users.py, 19 lines,
+    # on one PR). The cost this filter guards against is e2e graph compilation,
+    # which contracts never do.
+    fast_tiers = ("tests/unit/", "tests/contracts/")
+    unit_only = [hit for hit in ordered if hit.startswith(fast_tiers)]
+    # A module whose only coverage is integration/e2e keeps it: measuring it
+    # slowly beats not measuring it, and reporting "no test file" would be a lie.
+    ordered = unit_only or ordered
+    if (repo_root / mirror).exists():
+        ordered = [mirror, *(hit for hit in ordered if hit != mirror)]
+    return ordered
+
+
+def scope(module_rel: str) -> int:
+    """Print the compact JSON line scope for ONE module, for mutation.sh.
+
+    This is the same computation the matrix does per module, exposed as a CLI
+    so the local runner and the CI lane cannot drift into two different ideas
+    of "changed". A module with no diff against the base scopes to the WHOLE
+    file: running the gate on untouched code is a legitimate thing to ask for,
+    and answering it with an empty scope would be the silent pass this exists
+    to prevent.
+    """
+    path = f"apps/api/{module_rel}"
+    merge_base = _merge_base()
+    if not merge_base:
+        print(
+            "::error::mutation gate: no base commit to diff against — cannot "
+            "determine which lines this change owns",
+            file=sys.stderr,
+        )
+        return 1
+    ranges = _changed_line_ranges(path, merge_base)
+    if not ranges:
+        line_count = len(Path(path).read_text(encoding="utf-8").splitlines())
+        print(
+            f"mutation: {module_rel} has no diff vs {merge_base[:12]} — "
+            f"scoping the whole file ({line_count} lines)",
+            file=sys.stderr,
+        )
+        ranges = [[1, max(line_count, 1)]]
+    print(json.dumps(ranges, separators=(",", ":")))
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) > 2 and sys.argv[1] == "--scope":
+        return scope(sys.argv[2].removeprefix("apps/api/"))
+    changed = [line.strip() for line in sys.stdin if line.strip()]
+    merge_base = _merge_base()
+    # The base is the single input that decides the entire matrix, and nothing
+    # in the lane used to print it. PR #1202 packed 119 modules into 6 shards
+    # for an 11-module diff because it was still targeting master rather than
+    # the branch it is stacked on, and the only way to find that out was to
+    # read a shard's module list and diff the two branches by hand.
+    print(
+        f"mutation gate: diffing against {_base_ref()} "
+        f"(merge-base {merge_base[:12] or 'unresolved'})",
+        file=sys.stderr,
+    )
+    matrix: list[dict[str, object]] = []
+    failures: list[str] = []
+    for module in changed:
+        rel = module.removeprefix("apps/api/")
+        # A comment-only diff has zero possible mutants — checked before the
+        # test-file lookup, and regardless of whether a test file exists.
+        # This isn't just about the "no test file" failure: even a module
+        # WITH a test file pays a real cost here — mutmut's `# pragma: no
+        # mutate` line-scoping only suppresses mutants ON that exact line,
+        # so a single-line comment change inside a large, weakly-covered
+        # function still leaves the rest of that function's body fully
+        # mutable and can run mutmut's full per-mutant test battery across
+        # it. That's how a one-line noqa removal produced 157 mutants and
+        # blew the per-module timeout in practice. Enforcing test coverage —
+        # or even attempting it — for a diff that changed no code proves
+        # nothing either way, so skip it before the expensive test-file
+        # search and the mutation run even start. Printed, never silent.
+        if merge_base and _is_comment_only_change(module, merge_base):
+            print(
+                f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} is "
+                "comment/docstring-only (no mutable code changed) — skipping",
+                file=sys.stderr,
+            )
+            continue
+        rel_py = rel.removeprefix("app/")
+        rel_py = rel_py.removesuffix(".py")
+        testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
+        if testfiles:
+            entry = _entry(rel, testfiles, merge_base)
+            # A diff that only DELETES lines adds nothing to mutate, the same
+            # way a comment-only one does — and it has to be dropped HERE.
+            # `mutation.sh module` refuses an empty scope (exit 2) because an
+            # empty scope classifies every survivor as out-of-scope and exits 0,
+            # so passing this module on would fail the shard for a module with
+            # no work in it. Printed, never silent.
+            if merge_base and not entry["changed_lines"]:
+                print(
+                    f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} only "
+                    "deletes lines (nothing added to mutate) — skipping",
+                    file=sys.stderr,
+                )
+                continue
+            matrix.append(entry)
+            continue
+        unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
+        failures.append(
+            f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
+            "and AST importers/patch targets). Changed code must ship tests."
+        )
+    if failures:
+        for failure in failures:
+            print(f"::error::mutation gate: {failure}", file=sys.stderr)
+        return 1
+    print(json.dumps(matrix))
+    return 0
+
+
+def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, object]:
+    """Return the module matrix entry with the PR's changed line ranges for this file.
+
+    The gate is diff-driven: a survivor only fails the lane when its mutation
+    lands on a line the PR changed. Mutants on untouched lines are noted, not
+    failures — otherwise a 1-line import fix would demand full-module test
+    coverage.
+    """
+    ranges = _changed_line_ranges(f"apps/api/{module_rel}", merge_base)
+    return {"module": module_rel, "testfiles": testfiles, "changed_lines": ranges}
+
+
+def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
+    """PR-changed line ranges for a file, from the merge-base diff (unified=0).
+
+    Returns [] when ``merge_base`` is empty (local runs — see ``_merge_base``).
+    In CI the diff MUST succeed — empty ranges would silently pass every
+    survivor, so a git failure there is a hard lane error.
+    """
+    if not merge_base:
+        return []
+    try:
+        out = subprocess.check_output(
+            ["git", "diff", "--unified=0", merge_base, "HEAD", "--", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"::error::mutation gate: could not diff {path} against {merge_base}: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+    ranges: list[list[int]] = []
+    for line in out.splitlines():
+        if not line.startswith("@@"):
+            continue
+        match = re.search(r"\+(\d+)(?:,(\d+))?", line)
+        if not match:
+            continue
+        start = int(match.group(1))
+        # A missing count is git's shorthand for exactly one line (`@@ +446 @@`).
+        # An EXPLICIT zero is the opposite: `@@ -447 +446,0 @@` is a pure
+        # deletion, which adds nothing and so leaves nothing to mutate. The old
+        # `max(count, 1)` collapsed the two, and the range it invented —
+        # [446, 446] — points at the line that happened to follow the deleted
+        # one: unchanged code the PR never touched. Every consumer believed it.
+        # On #1175 the gate failed conversation_service.py for "1 changed line
+        # no test reaches (line 446)" against a line the diff only deleted
+        # above, and mutmut's covered_lines scope carried the same phantom.
+        count = int(match.group(2)) if match.group(2) is not None else 1
+        if count == 0:
+            continue
+        ranges.append([start, start + count - 1])
+    return ranges
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

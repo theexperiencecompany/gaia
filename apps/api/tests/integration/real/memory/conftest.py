@@ -1,9 +1,9 @@
 """Fixtures for the memory engine suite — real stores, mocked LLM only.
 
 Postgres, ChromaDB and Redis are the real local docker services from
-``apps/api/.env``; fastembed embedding/reranker models are real and warmed
+apps/api/.env; fastembed embedding/reranker models are real and warmed
 once per worker. The only mocked boundary is the LLM:
-``app.memory.extraction._invoke_structured`` (see ``tests/integration/real/memory/llm.py``).
+app.memory.extraction._invoke_structured (see tests/integration/real/memory/llm.py).
 
 Because the suite's event loop is function-scoped, each test gets its own
 Postgres engine (NullPool), Chroma HTTP client and Redis client patched
@@ -14,12 +14,15 @@ tests.
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 import fcntl
+import os
 from pathlib import Path
 import tempfile
+import time
 import uuid
 
 import chromadb
 from chromadb.api import AsyncClientAPI
+import httpx
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 import pytest
@@ -33,16 +36,17 @@ from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
     CONSOLIDATION_PENDING_KEY,
+    EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    EMBEDDING_SIDECAR_URL_ENV,
 )
 from app.db.chroma.chromadb import ChromaClient
 import app.db.postgresql as postgresql_module
 from app.db.redis import redis_cache
 from app.memory import chroma_store, consolidation, management
+import app.memory.embeddings as embeddings_module
 from app.memory.embeddings import _embed_sync, _rerank_sync
 import app.memory.extraction as extraction_module
 from tests.integration.real.memory.llm import FakeMemoryLLM
-
-_SCHEMA_ADVISORY_LOCK_ID = 743_001_993  # serializes create_all across xdist workers
 
 _schema_ready = False
 _chroma_collections_ready = False
@@ -52,16 +56,23 @@ _chroma_collections_ready = False
 def warm_embedding_models() -> None:
     """Load fastembed models once per worker so latency tests measure warm paths.
 
-    Serialized across xdist workers by a file lock, for the same reason
-    ``pg_engine`` takes an advisory lock around ``create_all``: every worker
-    shares one fastembed cache directory, and a concurrent first load has them
-    all downloading the same HuggingFace snapshot at once. The loser observes
-    the snapshot directory its sibling just created, decides the model is
-    present, and hands onnxruntime a ``model.onnx`` that has not finished
-    downloading — ``NO_SUCHFILE``, which took out 24 memory tests and then the
-    live-server suite that reuses the same cache. The winner downloads; the
-    rest block here and read a complete cache.
+    Serialized by a file lock: a concurrent first load has every worker downloading the same HuggingFace snapshot into one shared cache dir at once, and a loser can hand onnxruntime a still-downloading model.onnx (NO_SUCHFILE) — this took out 24 memory tests and the live-server suite sharing the cache. The winner downloads; the rest block and read a complete cache.
     """
+    # With the shared sidecar (CI sets MEMORY_EMBEDDING_SIDECAR_URL), embed/rerank calls go over HTTP instead of loading ~1.8 GB into every xdist worker; warm the sidecar instead of loading locally.
+    sidecar = os.getenv(EMBEDDING_SIDECAR_URL_ENV, "").strip()
+    if sidecar:
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                r = httpx.get(f"{sidecar}/health", timeout=5.0)
+                if r.status_code == 200:
+                    return
+            except httpx.HTTPError:
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"embedding sidecar at {sidecar} not healthy after 120s")
+            time.sleep(1)
+
     lock_path = Path(tempfile.gettempdir()) / "gaia-fastembed-warmup.lock"
     with lock_path.open("w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
@@ -79,7 +90,10 @@ async def pg_engine(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncEngi
 
     if not _schema_ready:
         async with engine.begin() as conn:
-            await conn.execute(text(f"SELECT pg_advisory_xact_lock({_SCHEMA_ADVISORY_LOCK_ID})"))
+            await conn.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": postgresql_module.SCHEMA_BOOTSTRAP_LOCK_ID},
+            )
             await conn.run_sync(postgresql_module.Base.metadata.create_all)
         _schema_ready = True
 
@@ -113,11 +127,9 @@ async def chroma(
         return client
 
     monkeypatch.setattr(ChromaClient, "get_client", _get_client)
-    chroma_store._loop_collections.clear()
-    chroma_store._loop_locks.clear()
+    chroma_store._loop_states.clear()
     yield client
-    chroma_store._loop_collections.clear()
-    chroma_store._loop_locks.clear()
+    chroma_store._loop_states.clear()
 
 
 @pytest.fixture
@@ -128,6 +140,21 @@ async def real_redis(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Redis, N
     monkeypatch.setattr(redis_cache, "redis", client)
     yield client
     await client.aclose()
+
+
+@pytest.fixture(autouse=True)
+def patient_recall_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give recall's sidecar calls ingestion's 30 s budget, not the 5 s fail-fast one.
+
+    These tests judge what recall finds. Under the fail-fast budget a CI sidecar
+    shared by every xdist worker can queue a query embed past 5 s; recall then
+    drops its vector half, and a paraphrased query finds nothing.
+    """
+    monkeypatch.setattr(
+        embeddings_module,
+        "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS",
+        EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -174,7 +201,7 @@ async def make_memory_user(
     chroma: AsyncClientAPI,
     real_redis: Redis,
 ) -> AsyncGenerator[Callable[[], str], None]:
-    """Factory for isolated test users, each hard-wiped from every store on teardown."""
+    """Return a factory for isolated test users, each hard-wiped from every store on teardown."""
     created: list[str] = []
 
     def _make() -> str:
@@ -192,5 +219,5 @@ async def make_memory_user(
 
 @pytest.fixture
 def memory_user(make_memory_user: Callable[[], str]) -> str:
-    """A dedicated, auto-cleaned user id for the test."""
+    """Return a dedicated, auto-cleaned user id for the test."""
     return make_memory_user()

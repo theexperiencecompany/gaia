@@ -7,10 +7,10 @@ by any later tool call or UI action. Three buckets qualify:
   3. Financial actions (pay / purchase / checkout).
 Reversible actions — trash/archive, create/update/edit, follow/like/star/react,
 labels, internal comments, reads — are NOT listed. Each integration references its
-constant via ``destructive_tools=`` in ``app/config/oauth_config.py``; the registry
-stamps ``Tool.destructive`` from it. A present (possibly empty) list = reviewed:
+constant via destructive_tools= in app/config/oauth_config.py; the registry
+stamps Tool.destructive from it. A present (possibly empty) list = reviewed:
 exactly those gate, every other tool in the toolkit is safe. These are the DEFAULT
-gated set; users override per tool via HIL ``tool_overrides``.
+gated set; users override per tool via HIL tool_overrides.
 """
 
 GOOGLECALENDAR_DESTRUCTIVE_TOOLS: list[str] = [
@@ -24,10 +24,21 @@ GOOGLEDOCS_DESTRUCTIVE_TOOLS: list[str] = [
     "GOOGLEDOCS_DELETE_TAB",
 ]
 
-# GMAIL_DELETE_DRAFT is intentionally NOT gated: a draft is an unsent, agent-managed
-# artifact, and revising a draft means deleting the old one and creating a new one
-# (Gmail has no in-place edit). Gating it would prompt on every draft edit — routine
-# cleanup, not irreversible loss of real mail. Real message deletes below stay gated.
+# Permanent, trash-bypassing deletes gate. CREATE_PERMISSION gates too: sharing
+# exposes the file's contents the instant it's granted, and revoking later
+# can't undo what was already read (CWE-200). TRASH_FILE stays ungated (recoverable).
+GOOGLEDRIVE_DESTRUCTIVE_TOOLS: list[str] = [
+    "GOOGLEDRIVE_CREATE_PERMISSION",
+    "GOOGLEDRIVE_DELETE_DRIVE",
+    "GOOGLEDRIVE_DELETE_FILE",
+    "GOOGLEDRIVE_DELETE_REVISION",
+    "GOOGLEDRIVE_DELETE_TEAM_DRIVE",
+    "GOOGLEDRIVE_EMPTY_TRASH",
+    "GOOGLEDRIVE_GOOGLE_DRIVE_DELETE_FOLDER_OR_FILE_ACTION",
+]
+
+# GMAIL_DELETE_DRAFT is intentionally NOT gated: revising a draft deletes the
+# old one and creates a new one, so gating it would prompt on routine cleanup.
 GMAIL_DESTRUCTIVE_TOOLS: list[str] = [
     "GMAIL_BATCH_DELETE_MESSAGES",
     "GMAIL_DELETE_FILTER",
@@ -237,4 +248,94 @@ CLICKUP_DESTRUCTIVE_TOOLS: list[str] = [
     "CLICKUP_DELETE_TIME_TRACKED",
     "CLICKUP_DELETE_VIEW",
     "CLICKUP_DELETE_WEBHOOK",
+]
+
+# Cancelling/declining a booking emails the attendee and cannot be taken back;
+# booking creation is not gated, matching GOOGLECALENDAR (create is routine).
+CALCOM_DESTRUCTIVE_TOOLS: list[str] = [
+    "CAL_CANCEL_BOOKING_VIA_UID",
+    "CAL_DECLINE_BOOKING_WITH_REASON",
+    "CAL_DELETE_EVENT_TYPE_BY_ID",
+    "CAL_DELETE_EVENT_TYPE_IN_TEAM",
+    "CAL_DELETE_ORGANIZATION_MEMBERSHIP",
+    "CAL_DELETE_SCHEDULE_BY_ID",
+    "CAL_DELETE_TEAM_BY_ID",
+    "CAL_DELETE_TEAM_EVENT_TYPE_IN_ORGANIZATION",
+    "CAL_DELETE_TEAM_FROM_ORGANIZATION",
+    "CAL_DELETE_USER_FROM_ORGANIZATION",
+    "CAL_DELETE_USER_SCHEDULE",
+    "CAL_SAVE_STRIPE_DETAILS",
+]
+
+# POST_INVITEE books a slot on someone's calendar and emails them; the org
+# invitation emails a third party.
+CALENDLY_DESTRUCTIVE_TOOLS: list[str] = [
+    "CALENDLY_CANCEL_SCHEDULED_EVENT",
+    "CALENDLY_DELETE_INVITEE_DATA",
+    "CALENDLY_DELETE_ORGANIZATION_MEMBERSHIP",
+    "CALENDLY_DELETE_SCHEDULED_EVENT_DATA",
+    "CALENDLY_ORGANIZATION_INVITATION",
+    "CALENDLY_POST_INVITEE",
+    "CALENDLY_REMOVE_USER_FROM_ORGANIZATION",
+]
+
+# Plain OUTLOOK_DELETE_MESSAGE moves mail to Deleted Items (recoverable), so only
+# the *_PERMANENTLY / PERMANENT_DELETE variants gate. Calendar deletes/cancels
+# notify attendees, and calendar permissions expose contents (cf. GOOGLEDRIVE).
+OUTLOOK_DESTRUCTIVE_TOOLS: list[str] = [
+    "OUTLOOK_CANCEL_CALENDAR_EVENT",
+    "OUTLOOK_CANCEL_CALENDAR_GROUP_CALENDAR_EVENT",
+    "OUTLOOK_CANCEL_EVENT",
+    "OUTLOOK_CREATE_CALENDAR_PERMISSION",
+    "OUTLOOK_CREATE_ME_CALENDAR_PERMISSION",
+    "OUTLOOK_DECLINE_EVENT",
+    "OUTLOOK_DELETE_CALENDAR",
+    "OUTLOOK_DELETE_CALENDAR_EVENT",
+    "OUTLOOK_DELETE_CALENDAR_EVENT_FROM_SPECIFIC_CALENDAR",
+    "OUTLOOK_DELETE_CALENDAR_GROUP",
+    "OUTLOOK_DELETE_CALENDAR_GROUP_EVENT_PERMANENTLY",
+    "OUTLOOK_DELETE_CALENDAR_PERMANENTLY",
+    "OUTLOOK_DELETE_CHILD_CONTACT_FOLDER_PERMANENTLY",
+    "OUTLOOK_DELETE_CONTACT_FOLDER_PERMANENTLY",
+    "OUTLOOK_DELETE_CONTACT_FROM_CHILD_FOLDER_PERMANENTLY",
+    "OUTLOOK_DELETE_CONTACT_FROM_FOLDER_PERMANENTLY",
+    "OUTLOOK_DELETE_CONTACT_PERMANENTLY",
+    "OUTLOOK_DELETE_EVENT_PERMANENTLY",
+    "OUTLOOK_DELETE_ME_MAIL_FOLDER_CHILD_FOLDER_PERMANENTLY",
+    "OUTLOOK_DELETE_USER_CALENDAR_EVENT_PERMANENTLY",
+    "OUTLOOK_DELETE_USER_CHILD_FOLDER_MESSAGE_PERMANENTLY",
+    "OUTLOOK_DELETE_USER_EVENT_PERMANENTLY",
+    "OUTLOOK_DELETE_USER_MAIL_FOLDER_PERMANENTLY",
+    "OUTLOOK_FORWARD_MESSAGE",
+    "OUTLOOK_FORWARD_USER_CALENDAR_EVENT",
+    "OUTLOOK_PERMANENT_DELETE_MESSAGE",
+    "OUTLOOK_REPLY_EMAIL",
+    "OUTLOOK_SEND_DRAFT",
+    "OUTLOOK_SEND_EMAIL",
+]
+
+JIRA_DESTRUCTIVE_TOOLS: list[str] = [
+    "JIRA_DELETE_ATTACHMENT",
+    "JIRA_DELETE_COMMENT",
+    "JIRA_DELETE_ISSUE",
+    "JIRA_DELETE_VERSION",
+    "JIRA_DELETE_WORKLOG",
+    "JIRA_SEND_NOTIFICATION_FOR_ISSUE",
+]
+
+# DROPBOX_DELETE_FILE / DELETE_BATCH are recoverable (Dropbox keeps deleted files
+# restorable via DROPBOX_RESTORE_FILE), so they stay ungated like Drive trash.
+# Sharing gates for the same reason GOOGLEDRIVE_CREATE_PERMISSION does.
+DROPBOX_DESTRUCTIVE_TOOLS: list[str] = [
+    "DROPBOX_ADD_FILE_MEMBER",
+    "DROPBOX_ADD_FOLDER_MEMBER_ACTION",
+    "DROPBOX_ADD_TEAM_MEMBERS",
+    "DROPBOX_CREATE_SHARED_LINK",
+    "DROPBOX_DELETE_ALL_CLOSED_FILE_REQUESTS",
+    "DROPBOX_DELETE_FILE_REQUESTS",
+    "DROPBOX_DELETE_MANUAL_CONTACTS_BATCH",
+    "DROPBOX_DELETE_TEAM_FOLDER_PERMANENTLY",
+    "DROPBOX_DELETE_TEAM_GROUP",
+    "DROPBOX_SEND_TEAM_MEMBER_WELCOME_EMAIL",
+    "DROPBOX_SHARE_FOLDER",
 ]

@@ -1,10 +1,10 @@
 """Unit tests for notes service operations.
 
-The service now delegates all persistence and caching to ``note_repository`` (the
+The service now delegates all persistence and caching to note_repository (the
 DB/cache behaviour is covered by the repository contract tests). These tests mock
 the repository singleton and assert the service's own responsibilities: delegating
 correctly, mapping the not-found case to 404, orchestrating the ChromaDB side
-effects, and shaping the ``NoteResponse``.
+effects, and shaping the NoteResponse.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.models.notes_models import NoteDocument, NoteModel, NoteResponse
 from app.services.notes_service import (
     create_note_service,
@@ -49,13 +50,17 @@ def mock_repo():
 
 @pytest.fixture
 def mock_chroma():
+    """Patch the collection lookup, not the collection, so a test can pin which name it opens.
+
+    The name carries the GAIA_CHROMA_COLLECTION_SUFFIX lane namespace — a
+    hardcoded "notes" would silently open the wrong collection.
+    """
     with patch(
         "app.services.notes_service.ChromaClient.get_langchain_client",
         new_callable=AsyncMock,
     ) as mock_client:
-        chroma_instance = AsyncMock()
-        mock_client.return_value = chroma_instance
-        yield chroma_instance
+        mock_client.return_value = AsyncMock()
+        yield mock_client
 
 
 @pytest.fixture
@@ -112,7 +117,8 @@ class TestUpdateNote:
         assert isinstance(result, NoteResponse)
         assert result.plaintext == "Updated"
         mock_repo.update.assert_awaited_once()
-        mock_chroma.update_document.assert_called_once()
+        mock_chroma.assert_awaited_once_with(collection_name=CHROMA_NOTES_COLLECTION)
+        mock_chroma.return_value.update_document.assert_called_once()
 
     async def test_raises_404_when_note_not_matched(self, mock_repo):
         mock_repo.update.return_value = None
@@ -144,7 +150,8 @@ class TestDeleteNote:
         await delete_note(FAKE_NOTE_ID, FAKE_USER_ID)
 
         mock_repo.delete.assert_awaited_once_with(FAKE_NOTE_ID, user_id=FAKE_USER_ID)
-        mock_chroma.adelete.assert_called_once_with(ids=[FAKE_NOTE_ID])
+        mock_chroma.assert_awaited_once_with(collection_name=CHROMA_NOTES_COLLECTION)
+        mock_chroma.return_value.adelete.assert_called_once_with(ids=[FAKE_NOTE_ID])
 
     async def test_raises_404_when_not_found(self, mock_repo):
         mock_repo.delete.return_value = False

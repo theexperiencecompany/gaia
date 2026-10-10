@@ -1,8 +1,8 @@
 """The resume verdict: can a reloading client re-attach to an in-flight turn?
 
-``get_resumable_stream_id`` is the authoritative answer. ``conversation_service``
-exposes it as ``active_stream_id``, and the web client treats it as final: on a
-null verdict ``turnManager`` runs ``markDeadSendsFailed`` and the user's own
+get_resumable_stream_id is the authoritative answer. conversation_service
+exposes it as active_stream_id, and the web client treats it as final: on a
+null verdict turnManager runs markDeadSendsFailed and the user's own
 message flips to FAILED. A wrong answer in either direction is user-visible —
 a false null kills a live turn's tab, a false positive attaches the client to a
 dead stream.
@@ -71,15 +71,20 @@ async def _keep_streaming() -> None:
     await StreamManager.publish_chunk(SID, 'data: {"response": "still working "}\n\n')
 
 
+async def _keep_streaming_from_the_executor() -> None:
+    """One more frame from a turn that has handed off to the executor.
+
+    Once comms says "I'm on it" the turn parks in await_executor_done and
+    every later frame comes from the executor's Redis writer, which only
+    publishes — update_progress is a comms-loop call and stops firing. This
+    is what a long turn actually looks like for most of its life.
+    """
+    await StreamManager.publish_chunk(SID, 'data: {"tool": "bash", "status": "running"}\n\n')
+
+
 class TestActiveIndexLifetime:
     async def test_ongoing_activity_keeps_a_long_turn_resumable(self, fake_redis):
-        """A turn that is still streaming must not become unresumable.
-
-        The reverse index is what a reloading client rediscovers the turn
-        through. If it expires under a running turn, the backend reports "no
-        turn is running" for a turn that is running, and the user watches their
-        own message flip to FAILED while the agent is still working.
-        """
+        """A turn that is still streaming must not become unresumable, or the user's own message flips to FAILED mid-run."""
         await StreamManager.start_stream(SID, CONV, USER)
         await _age_the_turns_keys(fake_redis)
 
@@ -91,10 +96,7 @@ class TestActiveIndexLifetime:
         )
 
     async def test_the_same_activity_refreshes_the_other_two_keys(self, fake_redis):
-        """Control. Without it, the assertion above could be inventing a rule
-        rather than pointing at an inconsistency: activity already refreshes the
-        turn's other two keys, and the index is the one that misses out.
-        """
+        """Control: the turn's other two keys already refresh on activity, isolating the index as the one that misses out."""
         await StreamManager.start_stream(SID, CONV, USER)
         await _age_the_turns_keys(fake_redis)
 
@@ -103,9 +105,33 @@ class TestActiveIndexLifetime:
         assert await fake_redis.ttl(PROGRESS_KEY) > NEARLY_EXPIRED
         assert await fake_redis.ttl(EVENTS_KEY) > NEARLY_EXPIRED
 
+    async def test_executor_frames_keep_a_long_turn_resumable(self, fake_redis):
+        """EXECUTOR_WAIT_TIMEOUT is 30 minutes against a 5-minute STREAM_TTL, so an executor-only turn must still stay resumable."""
+        await StreamManager.start_stream(SID, CONV, USER)
+        await _age_the_turns_keys(fake_redis)
+
+        await _keep_streaming_from_the_executor()
+
+        assert await fake_redis.ttl(ACTIVE_KEY) > NEARLY_EXPIRED, (
+            "an executor-only turn did not refresh its resume index, so it becomes "
+            "unresumable while still running and the user's message flips to FAILED"
+        )
+
+    async def test_executor_frames_keep_a_long_turn_cancellable(self, fake_redis):
+        """cancel_stream_endpoint returns "Stream not found" without setting the cancel signal if the progress key expires."""
+        await StreamManager.start_stream(SID, CONV, USER)
+        await _age_the_turns_keys(fake_redis)
+
+        await _keep_streaming_from_the_executor()
+
+        assert await fake_redis.ttl(PROGRESS_KEY) > NEARLY_EXPIRED, (
+            "an executor-only turn did not refresh its progress key, so once it "
+            "expires cancel_stream_endpoint returns 'Stream not found' and never "
+            "sets the cancel signal — the stop button silently does nothing"
+        )
+
     async def test_a_refreshed_index_still_points_at_the_same_stream(self, fake_redis):
-        """Refreshing the TTL must not disturb the value — an index rewritten
-        with the wrong stream id would attach the client to another turn."""
+        """Refreshing the TTL must not disturb the value — a rewritten index would attach the client to another turn."""
         await StreamManager.start_stream(SID, CONV, USER)
         await _age_the_turns_keys(fake_redis)
 
@@ -114,9 +140,7 @@ class TestActiveIndexLifetime:
         assert await StreamManager.get_resumable_stream_id(USER, CONV) == SID
 
     async def test_a_finished_turn_does_not_get_its_index_revived(self, fake_redis):
-        """``complete_stream`` clears the index on purpose. A blanket refresh in
-        the wrong place would resurrect it and hand a reloading client a stream
-        that has already sent [DONE]."""
+        """complete_stream clears the index on purpose; a blanket refresh must not resurrect a stream that already sent [DONE]."""
         await StreamManager.start_stream(SID, CONV, USER)
         await StreamManager.complete_stream(SID)
 
@@ -127,9 +151,10 @@ class TestActiveIndexLifetime:
 
 
 class TestResumeVerdict:
-    """The five branches of ``get_resumable_stream_id``. It had no direct test —
-    every existing reference mocks it — which is how a live turn could start
-    reporting itself idle without anything going red.
+    """The five branches of get_resumable_stream_id.
+
+    It had no direct test — every existing reference mocks it — which is how
+    a live turn could start reporting itself idle without anything going red.
     """
 
     async def test_an_idle_conversation_is_not_resumable(self, fake_redis):
@@ -141,8 +166,7 @@ class TestResumeVerdict:
         assert await StreamManager.get_resumable_stream_id(USER, CONV) == SID
 
     async def test_an_indexed_turn_with_no_progress_is_not_resumable(self, fake_redis):
-        """The progress key outlives nothing — if it is gone there is no turn to
-        rebuild, so the index alone must not be trusted."""
+        """The progress key outlives nothing; if it is gone there is no turn to rebuild, so the index alone must not be trusted."""
         await StreamManager.start_stream(SID, CONV, USER)
         await fake_redis.delete(PROGRESS_KEY)
 
@@ -161,15 +185,13 @@ class TestResumeVerdict:
         assert await StreamManager.get_resumable_stream_id(USER, CONV) is None
 
     async def test_one_users_turn_is_not_visible_to_another(self, fake_redis):
-        """The index is keyed by user AND conversation; a lookup that ignored the
-        user would hand someone else's in-flight stream to the wrong account."""
+        """The index is keyed by user and conversation; ignoring the user would hand someone else's stream to the wrong account."""
         await StreamManager.start_stream(SID, CONV, USER)
 
         assert await StreamManager.get_resumable_stream_id("someone-else", CONV) is None
 
     async def test_the_index_expires_on_its_own_ttl(self, fake_redis):
-        """Sanity: the index is TTL-bound, not permanent. A turn whose process
-        died must not leave the conversation permanently 'busy'."""
+        """Sanity: the index is TTL-bound, not permanent, so a dead process must not leave the conversation permanently "busy"."""
         await StreamManager.start_stream(SID, CONV, USER)
         assert 0 < await fake_redis.ttl(ACTIVE_KEY) <= STREAM_TTL
 

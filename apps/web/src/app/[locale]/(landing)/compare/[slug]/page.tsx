@@ -270,7 +270,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 <Link
                   key={comp.slug}
                   href={`/compare/${comp.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
                     {t("comparisons.gaia_vs", { name: comp.name })}
@@ -293,7 +293,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 <Link
                   key={persona.slug}
                   href={`/for/${persona.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-2 text-base font-medium text-white group-hover:text-primary">
                     {t("comparisons.gaia_for_persona", { role: persona.role })}
@@ -315,7 +315,7 @@ export default async function ComparisonPage({ params }: PageProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
               href="/learn"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("comparisons.ai_glossary")}
@@ -326,7 +326,7 @@ export default async function ComparisonPage({ params }: PageProps) {
             </Link>
             <Link
               href="/for"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("comparisons.gaia_for_role")}

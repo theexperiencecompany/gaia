@@ -14,7 +14,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
-import { ToolCard } from "../primitives";
+import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
@@ -242,9 +242,8 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       {/* Fields */}
       {fields && fields.length > 0 && (
         <div className="space-y-1">
-          {fields.map((field, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static LLM-provided field list
-            <div key={i} className="flex gap-2 text-sm">
+          {fields.map((field) => (
+            <div key={JSON.stringify(field)} className="flex gap-2 text-sm">
               <span className="min-w-16 shrink-0 font-medium text-zinc-400">
                 {field.label}
               </span>

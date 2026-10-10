@@ -30,7 +30,9 @@ export function useOAuthSuccessToast() {
   const sendMessage = useSendMessage();
   // Use ref to hold stable reference to sendMessage
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  });
 
   useEffect(() => {
     const oauthSuccess = searchParams.get("oauth_success");
@@ -61,7 +63,7 @@ export function useOAuthSuccessToast() {
     processedOAuthCallbacks.add(dedupeKey);
 
     // Clean up after a delay to allow for future OAuth flows
-    setTimeout(() => {
+    const dedupeTimer = setTimeout(() => {
       processedOAuthCallbacks.delete(dedupeKey);
     }, 5000);
 
@@ -82,10 +84,9 @@ export function useOAuthSuccessToast() {
       // Only send the message if we're on a chat page to avoid creating unwanted conversations
       const isChatRoute = pathname === "/c" || pathname.startsWith("/c/");
       if (isChatRoute) {
-        // OAuth is a full-page redirect, so the store has not been populated
-        // from the route yet when this fires. The route is the reliable source:
-        // without it the send falls back to a null active id and the message
-        // lands in a brand new conversation instead of the one being worked in.
+        // OAuth is a full-page redirect, so the store isn't populated from the
+        // route yet when this fires — the route is the reliable source, or the
+        // send falls back to a null active id and lands in a brand new conversation.
         sendMessageRef.current(`Hey I just connected ${displayName}`, {
           conversationId: conversationId ?? null,
         });
@@ -112,5 +113,6 @@ export function useOAuthSuccessToast() {
           `Authentication failed: ${oauthError}. Please try again.`,
       );
     }
+    return () => clearTimeout(dedupeTimer);
   }, [searchParams, router, pathname, conversationId, queryClient]);
 }

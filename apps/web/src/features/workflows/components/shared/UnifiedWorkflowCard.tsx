@@ -3,39 +3,37 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon } from "@icons";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { Link } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { toast } from "@/lib/toast";
-import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
   IntegrationRef,
   PublicWorkflowStep,
-  TriggerConfig,
+  TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
-import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
 import { isSystemCreator } from "../../utils/creator";
+import { useWorkflowCardActions } from "./useWorkflowCardActions";
 import {
   ActivationStatus,
   CreatorAvatar,
-  getNextRunDisplay,
   MissingIntegrationsWarning,
   SystemWorkflowChip,
   TriggerDisplay,
 } from "./WorkflowCardComponents";
 import WorkflowIcons from "./WorkflowIcons";
+import { getNextRunDisplay } from "./workflowCardHelpers";
 
-type WorkflowVariant = "user" | "community" | "explore" | "suggestion";
-type ActionType = "run" | "create" | "insert-prompt" | "navigate" | "none";
+export type WorkflowVariant = "user" | "community" | "explore" | "suggestion";
+type WorkflowCardAction =
+  | "run"
+  | "create"
+  | "insert-prompt"
+  | "navigate"
+  | "none";
 
 interface UnifiedWorkflowCardProps {
   // Core data - accepts either full Workflow or simplified data
@@ -52,7 +50,7 @@ interface UnifiedWorkflowCardProps {
   /** Built-in workflow key — keeps "add" idempotent with the provisioner */
   systemWorkflowKey?: string | null;
   /** The trigger this card advertises, reproduced on add */
-  triggerConfig?: TriggerConfig;
+  triggerConfig?: TriggerConfigDraft;
   /** Author, for cards built from flat props rather than a workflow object */
   creator?: ContentCreator;
   totalExecutions?: number;
@@ -70,7 +68,7 @@ interface UnifiedWorkflowCardProps {
   showDescriptionAsTooltip?: boolean;
 
   // Action configuration
-  primaryAction?: ActionType;
+  primaryAction?: WorkflowCardAction;
   onCardClick?: () => void;
   onActionComplete?: () => void;
   /**
@@ -103,16 +101,8 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     actionButtonLabel,
     href,
   } = props;
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
-  // Auth check
-  const { isAuthenticated, openLoginModal } = useAuth();
-
-  const { selectWorkflow } = useWorkflowSelection();
-  const { createWorkflow } = useWorkflowCreation();
   const { integrations } = useIntegrations();
-  const appendToInput = useAppendToInput();
 
   // Normalize data + display settings from the various supported prop sources.
   const {
@@ -139,142 +129,25 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
 
-  // Action handlers
-  const handleRunWorkflow = async () => {
-    if (!workflow || isLoading) return;
-    setIsLoading(true);
-    try {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
-        workflow_id: workflow.id,
-        step_count: workflow.steps?.length || 0,
-        trigger_type: workflow.trigger_config.type,
-      });
-      selectWorkflow(workflow, { autoSend: true });
-      onActionComplete?.();
-    } catch (error) {
-      console.error("Error running workflow:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreateWorkflow = async () => {
-    if (isLoading) return;
-
-    // Check authentication first - open login modal if not authenticated
-    if (!isAuthenticated) {
-      openLoginModal();
-      return;
-    }
-
-    setIsLoading(true);
-    const toastId = toast.loading("Creating workflow...");
-
-    try {
-      // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
-      const formattedSteps = steps?.map((step, index) => ({
-        id: step.id || `step_${index}`,
-        title: step.title,
-        description: step.description,
-        category: step.category,
-      }));
-
-      const workflowRequest = {
-        title,
-        description:
-          communityWorkflow?.description || propDescription || undefined,
-        prompt: communityWorkflow?.prompt || displayDescription || title,
-        // Reproduce the trigger the card advertises; manual only as a fallback.
-        trigger_config: sourceTriggerConfig ?? {
-          type: "manual" as const,
-          enabled: true,
-        },
-        system_workflow_key: systemWorkflowKey,
-        // Pass formatted steps if available to avoid regeneration
-        ...(formattedSteps &&
-          formattedSteps.length > 0 && {
-            steps: formattedSteps,
-          }),
-        // Only generate if no steps exist
-        generate_immediately: !formattedSteps || formattedSteps.length === 0,
-      };
-
-      const result = await createWorkflow(workflowRequest);
-
-      if (result.success && result.workflow) {
-        toast.success("Workflow created successfully!", { id: toastId });
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: result.workflow.id,
-          step_count: result.workflow.steps?.length || 0,
-          trigger_type: "manual",
-          has_schedule: false,
-        });
-        selectWorkflow(result.workflow, { autoSend: variant === "suggestion" });
-        onActionComplete?.();
-      }
-    } catch (error) {
-      toast.error("Error creating workflow", { id: toastId });
-      console.error("Workflow creation error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInsertPrompt = () => {
-    if (prompt) {
-      // `title` is user-authored free text — intentionally not sent.
-      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
-      appendToInput(prompt);
-      router.push("/c");
-      onActionComplete?.();
-    }
-  };
-
-  const handleNavigate = () => {
-    const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
-    if (targetSlug) {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
-        slug: targetSlug,
-        variant,
-      });
-      router.push(`/use-cases/${targetSlug}`);
-    }
-  };
-
-  const handlePrimaryAction = async () => {
-    switch (resolvedAction) {
-      case "run":
-        await handleRunWorkflow();
-        break;
-      case "create":
-        await handleCreateWorkflow();
-        break;
-      case "insert-prompt":
-        handleInsertPrompt();
-        break;
-      case "navigate":
-        handleNavigate();
-        break;
-      default:
-        break;
-    }
-  };
-
-  const handleCardClick = () => {
-    if (onCardClick) {
-      onCardClick();
-      return;
-    }
-
-    // Default card click behavior
-    if (variant === "suggestion") {
-      handleCreateWorkflow();
-    } else if (variant === "user" && workflow) {
-      handleRunWorkflow();
-    } else {
-      handleNavigate();
-    }
-  };
+  // All card-level actions (run / create / insert prompt / navigate) plus the
+  // loading flag they share, extracted to keep this card focused on rendering.
+  const { isLoading, handlePrimaryAction, handleCardClick } =
+    useWorkflowCardActions({
+      workflow,
+      communityWorkflow,
+      title,
+      displayDescription,
+      description: propDescription,
+      steps,
+      slug,
+      prompt,
+      variant,
+      sourceTriggerConfig,
+      systemWorkflowKey,
+      resolvedAction,
+      onCardClick,
+      onActionComplete,
+    });
 
   // Get button configuration
   const buttonConfig = getButtonConfig(
@@ -298,6 +171,15 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     <div
       className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
       onClick={href ? undefined : handleCardClick}
+      onKeyDown={
+        !href && isClickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") handleCardClick();
+            }
+          : undefined
+      }
+      role={!href && isClickable ? "button" : undefined}
+      tabIndex={!href && isClickable ? 0 : undefined}
     >
       {href && (
         <Link
@@ -375,7 +257,13 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
 
             {resolvedAction !== "none" && (
-              <span className="relative z-[2]">
+              <span
+                className="relative z-[2]"
+                // Keep Run/Create presses from also triggering the card-level
+                // open/select handler via click/key bubbling.
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
                 <WorkflowActionButton
                   label={buttonConfig.label}
                   isLoading={isLoading}
@@ -470,7 +358,7 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     communityWorkflow?.system_workflow_key ??
     undefined;
   const sourceTriggerConfig =
-    propTriggerConfig ?? communityWorkflow?.trigger_config;
+    propTriggerConfig ?? communityWorkflow?.trigger_config ?? undefined;
 
   return {
     title,
@@ -492,7 +380,7 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
 }
 
 // Helper function to determine default action based on variant
-function getDefaultAction(variant: WorkflowVariant): ActionType {
+function getDefaultAction(variant: WorkflowVariant): WorkflowCardAction {
   switch (variant) {
     case "user":
       return "run";
@@ -508,7 +396,7 @@ function getDefaultAction(variant: WorkflowVariant): ActionType {
 
 // Helper function to get button configuration
 function getButtonConfig(
-  action: ActionType,
+  action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
 ): { label: string; variant: "primary" | "flat" } {

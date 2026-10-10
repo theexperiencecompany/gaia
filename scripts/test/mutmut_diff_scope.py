@@ -19,7 +19,7 @@ UNCHANGED, and timing out before it finished.
 
 Loaded into the mutmut process by mutation.sh via PYTHONPATH, alongside
 mutmut_decorated_patch. With no env vars set it does nothing, so a bare
-``bash scripts/test/mutation.sh app/x.py`` still mutates the whole module.
+``bash scripts/ci/mutation.sh module app/x.py`` still mutates the whole module.
 """
 
 from __future__ import annotations

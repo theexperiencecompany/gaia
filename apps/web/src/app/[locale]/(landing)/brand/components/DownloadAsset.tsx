@@ -19,6 +19,15 @@ interface DownloadAssetProps {
   backgroundColor?: "light" | "dark";
 }
 
+function downloadAsset(path: string, format: string) {
+  const link = document.createElement("a");
+  link.href = path;
+  link.download = path.split("/").pop() || `download${format}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export function DownloadAsset({
   name,
   imagePath,
@@ -27,15 +36,6 @@ export function DownloadAsset({
   backgroundColor = "light",
 }: DownloadAssetProps) {
   const [isHovered, setIsHovered] = useState(false);
-
-  const handleDownload = (path: string, format: string) => {
-    const link = document.createElement("a");
-    link.href = path;
-    link.download = path.split("/").pop() || `download${format}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const bgClass =
     backgroundColor === "dark"
@@ -70,7 +70,7 @@ export function DownloadAsset({
             <Button
               key={`${option.format}-${option.variant || "default"}`}
               size="sm"
-              onPress={() => handleDownload(option.path, option.format)}
+              onPress={() => downloadAsset(option.path, option.format)}
               startContent={<Download01Icon width={15} height={15} />}
             >
               {option.variant

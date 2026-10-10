@@ -1,20 +1,8 @@
 """Unit tests for runtime-configurable LLM providers (self-host wave 1).
 
-Covers:
-- init_ollama_llm: ChatOpenAI construction (base_url/model/api_key), explicit
-  OLLAMA_BASE_URL env and credential-store sources, trailing-slash
-  normalization
-- actionable LLMNotConfiguredError from the provider init functions when no
-  configuration exists
-- resolver precedence: credential-store snapshot beats env fallback; the env
-  fallback IS provider_credentials_service._env_fallback (one shared policy —
-  OpenRouter forwards an explicitly-set OPENROUTER_BASE_URL, Ollama counts only
-  an explicitly-set OLLAMA_BASE_URL)
-- _get_available_providers consulting resolver results instead of import-time
-  registry availability
-- refresh_provider_configs populating the snapshot; scheduling is a no-op
-  outside a running loop
-- reset_aux_llm_caches actually clearing every @cache'd builder
+Covers the Ollama and OpenRouter init lanes, resolver precedence (stored
+snapshot beats env fallback), provider availability from resolver results,
+snapshot refresh, and aux-cache resets.
 """
 
 from types import SimpleNamespace
@@ -34,8 +22,6 @@ from app.agents.llm.client import (
     _get_available_providers,
     _sim_llm,
     get_default_llm,
-    get_memory_llm,
-    get_vision_llm,
     init_custom_llm,
     init_gemini_llm,
     init_ollama_llm,
@@ -43,10 +29,11 @@ from app.agents.llm.client import (
     memory_lane_available,
     refresh_provider_configs,
     reset_aux_llm_caches,
+    resolve_model,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
-from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS
+from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS, ModelUse
 
 
 def _store_config(
@@ -54,16 +41,12 @@ def _store_config(
     base_url: str | None = None,
     model: str | None = None,
 ) -> dict[str, str | None]:
-    """A ProviderConfig-shaped dict as the credential service returns it."""
+    """Return a ProviderConfig-shaped dict as the credential service does."""
     return {"api_key": api_key, "base_url": base_url, "model": model, "preset": None}
 
 
 class _FakeChatOpenRouter:
-    """ChatOpenRouter double recording construction kwargs.
-
-    Carries ``client.sdk_configuration`` because ``without_sdk_retry`` writes
-    there — a double missing it would pass where the production path raises.
-    """
+    """ChatOpenRouter double recording construction kwargs, with the sdk_configuration surface."""
 
     calls: ClassVar[list[dict[str, Any]]] = []
 
@@ -77,9 +60,11 @@ class _FakeChatOpenRouter:
 
 
 class _FakeChatOpenAI:
-    """ChatOpenAI double for the Ollama lane (no sdk_configuration — the real
-    langchain-openai class has none, which is why without_sdk_retry must not
-    touch it)."""
+    """Provide the ChatOpenAI double for the Ollama lane.
+
+    It carries no sdk_configuration — the real langchain-openai class has none,
+    which is why without_sdk_retry must not touch it.
+    """
 
     calls: ClassVar[list[dict[str, Any]]] = []
 
@@ -164,8 +149,7 @@ class TestOllamaInit:
         assert cast(Any, instance).profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
     def test_explicit_env_var_builds_expected_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The EXPLICIT OLLAMA_BASE_URL env var (not the settings default) is the
-        env-side source for the keyless lane."""
+        """Take the keyless lane env source from the explicit OLLAMA_BASE_URL env var."""
         monkeypatch.setattr(client_module, "ChatOpenAI", _FakeChatOpenAI)
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11500")
         _FakeChatOpenAI.calls.clear()
@@ -179,9 +163,7 @@ class TestOllamaInit:
     def test_code_default_url_is_not_a_configuration_source(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """F10: the settings default (docker-internal DNS name) must not satisfy
-        the lane — only an explicitly-set env var counts, exactly like the
-        credential service's fallback."""
+        """Reject the settings default URL as a source; only an explicitly set env var counts."""
         monkeypatch.setattr(
             client_module.settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
         )
@@ -246,9 +228,7 @@ class TestResolverPrecedence:
         assert kwargs["base_url"] == "http://gateway.internal:8080/v1"
 
     def test_env_serves_when_never_resolved(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Pre-refresh (empty snapshot) the env path serves from settings. With
-        no OPENROUTER_BASE_URL configured, NO base_url kwarg is forwarded — a
-        None kwarg would clobber ChatOpenRouter's OPENROUTER_API_BASE default."""
+        """Forward no base_url kwarg when unconfigured; None would clobber the client default."""
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env-key")
         _FakeChatOpenRouter.calls.clear()
@@ -260,9 +240,7 @@ class TestResolverPrecedence:
         assert "base_url" not in kwargs
 
     def test_explicit_env_base_url_is_forwarded(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The shared env-fallback policy: an explicitly-set OPENROUTER_BASE_URL
-        rides the resolved config into client construction, same as it does for
-        the credential service's resolution."""
+        """Ride the resolved config into client construction; explicit env base_url is forwarded."""
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env-key")
         monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
@@ -292,7 +270,7 @@ class TestResolverPrecedence:
 class TestAvailableProviders:
     @pytest.fixture
     def registry(self, monkeypatch: pytest.MonkeyPatch):
-        """A fake provider registry whose instances are keyed by registry name."""
+        """Provide a fake provider registry keyed by registry name."""
         instances = {
             f"{name}_llm": object() for name in ("gemini", "openrouter", "ollama", "custom")
         }
@@ -316,8 +294,7 @@ class TestAvailableProviders:
         assert available[LLMProviderName.OPENROUTER] is registry["openrouter_llm"]
 
     def test_unconfigured_providers_excluded(self, registry: dict[str, object]) -> None:
-        """No snapshot entries, no explicit env: every lane is unavailable —
-        including Ollama, whose code-default URL is not a configuration source."""
+        """Leave every lane unavailable with no snapshot entries and no explicit env."""
         available = _get_available_providers()
 
         assert available == {}
@@ -421,15 +398,16 @@ class TestResetAuxLlmCaches:
                 constructions.append((model, temperature))
 
         monkeypatch.setattr(client_module, "ChatGoogleGenerativeAI", _FakeGemini)
-        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
+        client_module._runtime_configs["gemini"] = _store_config(api_key="g-key")
 
-        get_vision_llm()
-        get_memory_llm()
+        resolve_model(ModelUse.VISION)
+        resolve_model(ModelUse.MEMORY)
         assert len(constructions) == 2  # cached after first call each
 
         reset_aux_llm_caches()
-        get_vision_llm()
-        get_memory_llm()
+        client_module._runtime_configs["gemini"] = _store_config(api_key="g-key")
+        resolve_model(ModelUse.VISION)
+        resolve_model(ModelUse.MEMORY)
         assert len(constructions) == 4  # both rebuilt
 
     def test_snapshot_is_dropped_so_stale_store_keys_never_serve(self) -> None:
@@ -452,9 +430,9 @@ class TestAuxLaneErrorsPreserved:
 
     def test_vision_llm_names_env_var(self) -> None:
         with pytest.raises(LLMNotConfiguredError, match="GOOGLE_API_KEY"):
-            get_vision_llm()
+            resolve_model(ModelUse.VISION)
 
     def test_memory_lane_reports_availability(self) -> None:
         assert memory_lane_available() is False
         with pytest.raises(LLMNotConfiguredError, match="GOOGLE_API_KEY"):
-            get_memory_llm()
+            resolve_model(ModelUse.MEMORY)

@@ -39,6 +39,7 @@ from app.models.memory_models import (
     UpdateMemoryRequest,
 )
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from shared.py.wide_events import MemoryContext, UserContext, log
 
@@ -49,7 +50,7 @@ router = APIRouter()
 
 def _require_user_id(user: AuthenticatedUser) -> str:
     """Extract the authenticated user's ID or fail the request."""
-    user_id: str | None = user.get("user_id")
+    user_id: str | None = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user_id
@@ -168,9 +169,9 @@ async def get_memory_graph(
 
 @router.get(
     "/episodes",
-    responses={
-        400: {"description": "Invalid date range (start after end, or range exceeds limit)"}
-    },
+    responses=error_responses(
+        {400: "Invalid date range (start after end, or range exceeds limit)"}
+    ),
 )
 async def get_memory_episodes(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -240,6 +241,7 @@ async def update_memory_document(
     result = await memory_engine.update_document(user_id, doc_type, request.content)
 
     log.set(memory=MemoryContext(operation="update_document", version=result.version))
+    capture_context_event(AnalyticsEvents.MEMORY_DOCUMENT_UPDATED)
     return result
 
 
@@ -284,6 +286,7 @@ async def create_memory(
 
     entry = retained.entry
     log.set(memory=MemoryContext(operation="create", memory_id=entry.id, success=True))
+    capture_context_event(AnalyticsEvents.MEMORY_CREATED)
     return CreateMemoryResponse(
         success=True,
         memory_id=entry.id,
@@ -319,7 +322,7 @@ async def get_memory_history(
 
 @router.patch(
     "/{memory_id}",
-    responses={404: {"description": "Memory not found or already superseded"}},
+    responses=error_responses({404: "Memory not found or already superseded"}),
 )
 @tiered_rate_limit("memory")
 async def update_memory(
@@ -334,18 +337,18 @@ async def update_memory(
         memory=MemoryContext(operation="update", memory_id=memory_id),
     )
 
+    # A superseded id resolves to its chain head; an unknown one raises
+    # MemoryNotFoundError, which the AppError handler renders as a 404.
     entry = await memory_engine.update_memory(user_id, memory_id, request.content)
-    if entry is None:
-        log.warning("memory_not_found", operation="update", memory_id=memory_id)
-        raise HTTPException(status_code=404, detail="Memory not found or already superseded")
 
     log.set(memory=MemoryContext(operation="update", new_memory_id=entry.id, version=entry.version))
+    capture_context_event(AnalyticsEvents.MEMORY_UPDATED)
     return entry
 
 
 @router.delete(
     "/{memory_id}",
-    responses={404: {"description": "Memory not found"}},
+    responses=error_responses({404: "Memory not found"}),
 )
 @tiered_rate_limit("memory")
 async def delete_memory(

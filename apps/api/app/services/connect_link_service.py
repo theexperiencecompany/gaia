@@ -5,16 +5,11 @@ browser. This mints a short, single-use link they can open in any browser to
 start the OAuth flow for ONE integration — no GAIA login required, because the
 link itself is the credential.
 
-Security properties:
-- **High-entropy opaque code** (96-bit, ``secrets.token_urlsafe``) → unguessable;
-  the only way to test a code is an online request to the (rate-limited)
-  connect-link endpoint — there is no offline oracle.
-- **Server-side binding** → the code maps to one ``(user_id, integration_id)``
-  in Redis; nothing sensitive travels in the link.
-- **Single-use** → consumed atomically with ``GETDEL`` on first open, so a
-  second open (or a brute-force hit racing a real user) gets nothing.
-- **Bounded lifetime** → ``CONNECT_LINK_TTL_MINUTES``.
-- The endpoint it points at only redirects into OAuth; it never returns data.
+Security properties: a high-entropy opaque code (96-bit, secrets.token_urlsafe)
+testable only via the rate-limited connect-link endpoint (no offline oracle);
+server-side binding, so nothing sensitive travels in the link; single-use via
+atomic GETDEL on first open; a bounded lifetime (CONNECT_LINK_TTL_MINUTES);
+and an endpoint that only redirects into OAuth, never returns data.
 """
 
 from __future__ import annotations
@@ -35,10 +30,10 @@ def _code_key(code: str) -> str:
 
 
 async def build_connect_link_url(user_id: str, integration_id: str) -> str | None:
-    """Mint a single-use connect link pointing at the frontend ``/connect/<code>``.
+    """Mint a single-use connect link pointing at the frontend /connect/<code>.
 
-    Stores the ``(user_id, integration_id)`` binding in Redis under a fresh
-    high-entropy code and returns the frontend URL. Returns ``None`` when the
+    Stores the (user_id, integration_id) binding in Redis under a fresh
+    high-entropy code and returns the frontend URL. Returns None when the
     binding can't be stored (Redis unavailable/failed) so callers degrade to a
     generic connect prompt instead of handing out a link that can't resolve.
     """
@@ -57,10 +52,10 @@ async def build_connect_link_url(user_id: str, integration_id: str) -> str | Non
 
 
 async def resolve_and_consume_connect_code(code: str) -> tuple[str, str] | None:
-    """Atomically consume a connect code, returning ``(user_id, integration_id)``.
+    """Atomically consume a connect code, returning (user_id, integration_id).
 
-    The code is deleted on first read (``GETDEL``), enforcing single-use. Returns
-    ``None`` for an unknown, expired, or already-consumed code.
+    The code is deleted on first read (GETDEL), enforcing single-use. Returns
+    None for an unknown, expired, or already-consumed code.
     """
     data = await get_and_delete_cache(_code_key(code))
     if not isinstance(data, dict):

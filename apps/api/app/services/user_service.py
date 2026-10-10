@@ -1,28 +1,20 @@
-from typing import Any
-
 from fastapi import HTTPException
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, UserUpdateResponse, user_to_legacy_dict
+from app.models.user_models import UserDocument, UserUpdate, UserUpdateResponse
 from app.utils.oauth_utils import upload_user_picture
 from shared.py.wide_events import log
 
 
-async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
-    """Get user by ID from database.
-
-    Returns the ``user_to_legacy_dict`` bridge shape — a raw-style dict with a
-    string ``_id`` — because its consumers (agent tools, workflow/todo workers)
-    mutate it and pass it on as a plain dict. Typing it as ``UserDocument`` is
-    the real fix and belongs with retiring that bridge, not here.
-    """
+async def get_user_by_id(user_id: str) -> UserDocument | None:
+    """Get user by ID from database."""
     log.set(component="user_service", user_id=user_id)
     try:
         user = await user_repository.get(user_id)
-        return user_to_legacy_dict(user) if user else None
+        return user
     except Exception as e:
         log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found") from e
 
 
 async def update_user_profile(
@@ -30,7 +22,6 @@ async def update_user_profile(
     name: str | None = None,
     picture_data: bytes | None = None,
 ) -> UserUpdateResponse:
-    """Update user profile information."""
     log.set(
         component="user_service",
         user_id=user_id,
@@ -65,7 +56,9 @@ async def update_user_profile(
                     error_type=type(e).__name__,
                     user_id=user_id,
                 )
-                raise HTTPException(status_code=500, detail="Failed to upload profile picture")
+                raise HTTPException(
+                    status_code=500, detail="Failed to upload profile picture"
+                ) from e
 
         # Only write (and bump updated_at) when something actually changed.
         updated_user = (
@@ -79,8 +72,10 @@ async def update_user_profile(
 
         return UserUpdateResponse(
             user_id=updated_user.id,
-            name=updated_user.name,
-            email=updated_user.email,
+            name=updated_user.name or "",
+            # A legacy account can carry no email; the response schema wants a
+            # string, so degrade to empty rather than 500-ing the whole update.
+            email=updated_user.email or "",
             picture=updated_user.picture,
             updated_at=updated_user.updated_at,
         )
@@ -94,4 +89,4 @@ async def update_user_profile(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        raise HTTPException(status_code=500, detail="Failed to update profile")
+        raise HTTPException(status_code=500, detail="Failed to update profile") from e

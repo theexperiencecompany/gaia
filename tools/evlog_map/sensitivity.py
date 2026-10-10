@@ -87,7 +87,7 @@ class Sensitivity:
     """How much an entry point matters: money/auth high, PII medium."""
 
     # One ordered vocabulary across both scanners: "low" | "medium" | "high".
-    # scripts/ci/evlog-map-bots.mjs classifies binary (low/high) and has no PII
+    # scripts/ci/checks.mjs evlog-map-bots classifies binary (low/high) and has no PII
     # tier; naming the floor "none" instead of "low" made the two reports
     # incomparable on a field they both emit, for no gain.
     level: str  # "high" | "medium" | "low"

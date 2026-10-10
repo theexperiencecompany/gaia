@@ -49,10 +49,9 @@ const getFlatMode = (color: string | undefined): FlatMode => {
   return null;
 };
 
-// Inline-style overrides for black + white flat modes. Inline styles are used
-// instead of Tailwind classes so the existing glossy treatment (bg-primary,
-// dark:bg-zinc-500, ::before overlay, shadow-md) can be neutralised in one
-// place without fighting cva specificity or class-detection edge cases.
+// Inline-style overrides for black/white flat modes — used instead of
+// Tailwind classes so the existing glossy treatment (bg-primary,
+// dark:bg-zinc-500, ::before, shadow-md) is neutralised without fighting cva specificity.
 const FLAT_BLACK_STYLE: React.CSSProperties = {
   background: "linear-gradient(to bottom, #444, #000)",
   borderColor: "#111113",
@@ -149,4 +148,4 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 RaisedButton.displayName = "RaisedButton";
 
-export { RaisedButton, raisedButtonVariants };
+export { RaisedButton };

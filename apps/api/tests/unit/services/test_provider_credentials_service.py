@@ -8,6 +8,7 @@ the runtime-config subscriber runs when another pod's update arrives.
 """
 
 import json
+import time
 from typing import Any
 
 from cryptography.fernet import Fernet
@@ -112,10 +113,12 @@ def clean_state(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _stub_aux_llm_reset(monkeypatch):
-    """invalidate() lazily imports reset_aux_llm_caches from client.py (A3's
-    surface). Stub it in every test so paths that trigger invalidation run the
-    full fan-out without depending on that landing; tests asserting on the call
-    override this with their own recorder (aux_cache_calls)."""
+    """Stub reset_aux_llm_caches so invalidation paths run the full fan-out.
+
+    invalidate() lazily imports it from client.py (A3's surface); stubbing it in
+    every test keeps those paths independent of that landing. Tests asserting on
+    the call override this with their own recorder (aux_cache_calls).
+    """
     monkeypatch.setattr("app.agents.llm.client.reset_aux_llm_caches", lambda: None, raising=False)
 
 
@@ -167,7 +170,7 @@ def aux_cache_calls(monkeypatch) -> list[int]:
 
 @pytest.fixture
 def clock(monkeypatch):
-    """Controllable monotonic clock for TTL-cache assertions."""
+    """Provide a controllable monotonic clock for TTL-cache assertions."""
 
     class FakeClock:
         def __init__(self) -> None:
@@ -288,8 +291,7 @@ class TestResolvePrecedenceAndFallbacks:
         }
 
     async def test_ollama_code_default_is_not_configured(self, repo, monkeypatch) -> None:
-        """The settings default (docker DNS name) must not count as a working
-        endpoint — bare instances route chat at it and die on connect."""
+        """Disregard the settings default URL; bare instances would die on connect."""
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         assert await resolve("ollama") is None
 
@@ -326,10 +328,12 @@ class TestResolvePrecedenceAndFallbacks:
 
 
 class TestToolProviderEnvFallbacks:
-    """The tool/integration credential lanes: single-key providers resolve from
-    their one env var; the multi-variable pairs (cloudinary, google_oauth)
-    resolve ONLY when every variable is present — a half-set env must never
-    report the provider as configured."""
+    """Resolve tool/integration lanes all-or-nothing.
+
+    Single-key providers resolve from their one env var; the multi-variable pairs
+    (cloudinary, google_oauth) resolve ONLY when every variable is present, so a
+    half-set env must never report the provider as configured.
+    """
 
     @pytest.mark.parametrize(
         ("provider", "field", "value"),
@@ -455,8 +459,7 @@ class TestInvalidate:
     async def test_missing_registry_entry_is_handled(
         self, monkeypatch, fixed_secret, redis_fake, aux_cache_calls
     ) -> None:
-        """The LLM registry may not have the key registered yet — a KeyError is
-        expected and handled, everything after it still runs."""
+        """Handle an unregistered registry key and keep going; the fan-out still runs."""
 
         def _missing(_name: str) -> None:
             raise KeyError(_name)
@@ -482,10 +485,18 @@ class TestInvalidate:
     async def test_upsert_invalidates_its_own_cache(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
     ) -> None:
+        """A save warms the snapshot with the value just written, not empty."""
+        stale_at = time.monotonic()
+        service_module._cache["openrouter"] = (
+            stale_at - 3600,
+            {"api_key": "sk-stale", "base_url": None, "model": None, "preset": None},
+        )
+
         await upsert("openrouter", api_key="sk-v1")
 
-        assert "openrouter" not in service_module._cache
         assert registry_reset_calls == ["openrouter_llm"]
+        _, cached = service_module._cache["openrouter"]
+        assert cached["api_key"] == "sk-v1"
 
     async def test_delete_invalidates_too(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls, monkeypatch
@@ -513,9 +524,7 @@ class TestInvalidateLocally:
     async def test_drops_caches_and_fans_out_without_publishing(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
     ) -> None:
-        """The exact sequence a REMOTE pod's update must run: TTL cache drop,
-        lazy-loader reset, aux LLM caches — and NO publish (that would echo the
-        update back onto the channel and loop it across pods forever)."""
+        """Run a remote pod update with no publish; publishing would echo the update forever."""
         await resolve("openrouter")
         assert "openrouter" in service_module._cache
 
@@ -529,8 +538,7 @@ class TestInvalidateLocally:
     def test_unknown_provider_is_a_harmless_noop(
         self, redis_fake, registry_reset_calls, aux_cache_calls
     ) -> None:
-        """A payload naming a provider this build doesn't know must still clear
-        what it can without raising inside the listener."""
+        """Clear what it can for an unknown provider without raising."""
         service_module.invalidate_locally("not-a-provider")
 
         assert registry_reset_calls == []

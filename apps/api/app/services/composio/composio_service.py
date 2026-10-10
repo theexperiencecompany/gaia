@@ -12,18 +12,18 @@ from composio_client.types.connected_account_list_response import Item
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.models.integrations.composio import ComposioConnectLink
 from app.models.trigger_config import TriggerConfig
 
-# Defensive: guarantee the Composio CustomTool monkey-patches are applied in any
-# process that builds a Composio client (API, ARQ worker, future entrypoints),
-# not only where an entrypoint remembers to `import app.patches`. Without the
-# user_id-injection patch, custom tools 500 with "Missing user_id in
-# auth_credentials".
+# Defensive: guarantees Composio's CustomTool monkey-patches run in any process
+# that builds a Composio client, not just where an entrypoint imports app.patches.
+# Without the user_id-injection patch, custom tools 500 with "Missing user_id in auth_credentials".
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
@@ -32,7 +32,10 @@ from app.services.composio.langchain_composio_service import (
 )
 from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.services.mcp.mcp_tools_service import store_mcp_tools
-from app.services.providers.provider_credentials_service import resolved_config
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolved_config,
+)
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -42,9 +45,33 @@ from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
+COMPOSIO_SERVICE_PROVIDER = "composio_service"
+
+
+class _ComposioEventTotals(BaseModel):
+    """The totals this service accumulates on the wide event's composio namespace."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    toolkits: list[str] = Field(default_factory=list)
+    tools_loaded: int = 0
+
+
+class _WideEventComposio(BaseModel):
+    """The accumulated wide event, read only for its composio namespace."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    composio: _ComposioEventTotals = Field(default_factory=_ComposioEventTotals)
+
+
+def _composio_event_totals() -> _ComposioEventTotals:
+    return _WideEventComposio.model_validate(log.get()).composio
 
 
 class ComposioService:
+    """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
+
     def __init__(self, api_key: str):
         from app.config.oauth_config import OAUTH_INTEGRATIONS
 
@@ -64,7 +91,8 @@ class ComposioService:
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: str | None = None
-    ) -> dict:
+    ) -> ComposioConnectLink:
+        """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -82,12 +110,9 @@ class ComposioService:
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
-            # `link()`, not `initiate()`: the legacy POST /api/v3/connected_accounts
-            # behind initiate() is being retired for Composio-managed OAuth (cutover
-            # 2026-07-03), after which it raises
-            # ComposioLegacyConnectedAccountsEndpointRetiredError. Same return shape
-            # and same allow_multiple semantics; the redirect now points at
-            # Composio's hosted Connect Link rather than straight at the provider.
+            # link(), not initiate(): the legacy endpoint retires 2026-07-03 and
+            # then raises ComposioLegacyConnectedAccountsEndpointRetiredError. Same
+            # return shape/allow_multiple semantics; redirect now goes to Composio's hosted Connect Link.
             loop = asyncio.get_event_loop()
             connection_request = await loop.run_in_executor(
                 None,
@@ -164,12 +189,11 @@ class ComposioService:
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)
-        existing = log.get().get("composio", {})
+        totals = _composio_event_totals()
         log.set(
             composio={
-                **existing,
-                "toolkits": existing.get("toolkits", []) + [tool_kit],
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
+                "toolkits": [*totals.toolkits, tool_kit],
+                "tools_loaded": totals.tools_loaded + len(result),
             }
         )
         return result
@@ -236,13 +260,7 @@ class ComposioService:
             result_count=len(result),
             tools_time=tools_time,
         )
-        existing = log.get().get("composio", {})
-        log.set(
-            composio={
-                **existing,
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
-            }
-        )
+        log.set(composio={"tools_loaded": _composio_event_totals().tools_loaded + len(result)})
         return result
 
     async def get_raw_tools_metadata(
@@ -250,17 +268,12 @@ class ComposioService:
         tool_kit: str | None = None,
         specific_tools: list[str] | None = None,
     ) -> list[Tool]:
-        """Fetch raw Composio tool definitions WITHOUT wrapping them.
+        """Fetch raw Composio tool definitions without wrapping them.
 
-        ``get_tools``/``get_tools_by_name`` run the LangchainProvider, which
-        builds a Pydantic args-model + closure per tool (~100KB each). Wrapping
-        the whole ~1.6k-tool catalog this way is the dominant source of resident
-        memory. For warmup we only need metadata (name + description) to index
-        the catalog into ChromaDB (retrieval) and Mongo (the /tools listing).
-        The raw endpoint returns ``composio.types.Tool`` objects (slug,
-        description, input_parameters) with no wrapping. Executable
-        StructuredTools are materialized lazily, per provider, when a subagent is
-        first created (see ``ToolRegistry.register_provider_tools``).
+        get_tools/get_tools_by_name wrap via LangchainProvider (~100KB per
+        tool), the dominant source of resident memory across the ~1.6k-tool
+        catalog. Warmup only needs name+description; StructuredTools
+        materialize lazily per provider when a subagent is first created.
         """
 
         def _fetch() -> list[Tool]:
@@ -362,6 +375,7 @@ class ComposioService:
     def get_connected_account_by_id(
         self, connected_account_id: str
     ) -> ConnectedAccountRetrieveResponse | None:
+        """Fetch one connected account by its nanoid, or None when Composio cannot return it."""
         try:
             connected_account = self.composio.connected_accounts.get(
                 nanoid=connected_account_id,
@@ -377,6 +391,7 @@ class ComposioService:
             return None
 
     async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
+        """Delete every active connected account this user holds for the provider."""
         log.set(composio_user_id=user_id, composio_provider=provider)
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -444,12 +459,9 @@ class ComposioService:
             )
             raise
         finally:
-            # Always flush the proxy connected_account_id cache: on success the
-            # cached ID is gone, on partial failure it may now be invalid, and
-            # on the idempotent no-op path a previous session may have cached
-            # an ID revoked outside this code path. Skipping invalidation when
-            # gather() raises would leave stale IDs in memory for up to the
-            # full TTL.
+            # Always flush: on success the cache is stale, on partial failure the
+            # ID may be invalid, and on the no-op path a previous session may have
+            # cached a revoked ID. Skipping this on gather() raise leaves stale IDs for up to the full TTL.
             if config.toolkit:
                 invalidate_connected_account_cache(user_id=user_id, toolkit=config.toolkit)
 
@@ -475,6 +487,7 @@ class ComposioService:
         try:
 
             def create_trigger(trigger: TriggerConfig) -> TriggerInstanceUpsertResponse:
+                """Create one trigger instance for this user."""
                 return self.composio.triggers.create(
                     user_id=user_id,
                     slug=trigger.slug,
@@ -498,7 +511,10 @@ class ComposioService:
 
 
 @lazy_provider(
-    name="composio_service",
+    name=COMPOSIO_SERVICE_PROVIDER,
+    # Empty on purpose: the key is resolved at LOAD time from the credential
+    # store (see _load), so availability must not be decided by import-time
+    # env — a key saved in Settings has to register the service.
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     warning_message="Composio is not configured. Composio-backed integrations and tools will not work.",
@@ -506,16 +522,10 @@ class ComposioService:
 def init_composio_service() -> ComposioService:
     """Build the Composio service from a store-first resolved key.
 
-    Sync loader on purpose: the Composio SDK is synchronous and its consumers
-    call it from worker threads (see proxy_client), so this cannot await.
-    Instead it reads the credential service's runtime snapshot — populated by
-    resolve() at startup refresh and on every invalidation — and falls back to
-    ``COMPOSIO_KEY``, the same store → env contract as the LLM lanes' loaders.
-    A loader that finds nothing raises so the WARN strategy degrades loudly
-    instead of handing out a service built on a missing key; the next access
-    re-runs it, so a key configured later picks up without a restart.
+    Sync loader because the SDK is synchronous; raises when no key resolves so
+    missing config degrades loudly instead of handing out a broken service.
     """
-    config = resolved_config("composio")
+    config: ProviderConfig | None = resolved_config("composio")
     api_key = config["api_key"] if config else None
     if api_key is None:
         api_key = settings.COMPOSIO_KEY
@@ -527,7 +537,8 @@ def init_composio_service() -> ComposioService:
 
 
 def get_composio_service() -> ComposioService:
-    service = providers.get("composio_service")
+    """Return the registered ComposioService; raise when it is not available."""
+    service = providers.get(COMPOSIO_SERVICE_PROVIDER)
     if service is None:
         raise RuntimeError("ComposioService is not available")
     # providers.get() is typed Any | None; "composio_service" is always

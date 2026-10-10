@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import Link from "next/link";
 import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
@@ -44,7 +43,6 @@ function BotCard({
   icon,
   name,
   description,
-  badge,
   primaryAction,
   secondaryAction,
 }: BotConfig) {
@@ -52,14 +50,15 @@ function BotCard({
     <div className="flex flex-col items-start gap-5 rounded-3xl bg-zinc-900/50 p-4 text-left group hover:bg-zinc-900 transition">
       <div className="flex w-full items-start gap-2 flex-col">
         <div className="relative h-15 w-15 shrink-0 group-hover:scale-110 group-hover:-rotate-10 transition duration-100">
-          <Image src={icon} alt={name} fill className="object-contain" />
+          <Image
+            src={icon}
+            alt={name}
+            fill
+            sizes="60px"
+            className="object-contain"
+          />
         </div>
-        <div className="flex items-center gap-2 justifybet">
-          <h2 className="font-medium text-white text-xl">{name}</h2>
-          <Chip size="sm" variant="flat" color={badge.color}>
-            {badge.label}
-          </Chip>
-        </div>
+        <h2 className="font-medium text-white text-xl">{name}</h2>
         <p className="text-sm text-zinc-400">{description}</p>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 w-full">
@@ -104,6 +103,7 @@ export default function BotsPage() {
                 src={icon.src}
                 alt={icon.alt}
                 fill
+                sizes="80px"
                 className="object-contain hover:scale-110 hover:-translate-y-4 transition"
               />
             </div>
@@ -114,7 +114,7 @@ export default function BotsPage() {
             Your AI, Where You Already Work
           </h1>
           <p className="max-w-xl text-center text-lg text-zinc-400">
-            Chat, delegate tasks, and get answers — right inside Discord,
+            Chat, delegate tasks, and get answers, right inside Discord,
             Telegram, Slack, WhatsApp, or iMessage.
           </p>
         </div>

@@ -1,31 +1,18 @@
-"""Gaia-tasks VFS catalog materialization for ``/workspace/gaia-tasks/``.
+"""Gaia-tasks VFS catalog materialization for /workspace/gaia-tasks/.
 
-MongoDB is the source of truth. The on-disk tree is a hash-gated
-projection — steady-state turns do zero I/O because both the catalog
-marker (``.gaia/gaia-tasks.v``) and per-doc markers
-(``.gaia/gaia-tasks/<id>.v``) short-circuit unchanged content.
+MongoDB is the source of truth; the on-disk tree is a hash-gated projection
+— steady-state syncs do zero I/O because the catalog marker
+(.gaia/gaia-tasks.v) and per-doc markers (.gaia/gaia-tasks/<id>.v)
+short-circuit unchanged content.
 
-Layout under ``<user_root>/gaia-tasks/``::
+Layout under <user_root>/gaia-tasks/: GUIDE.md and index.md (mode 0644),
+plus per-doc <slug>-<shortid>/ folders holding canvas.md, log.md, meta.json
+(mode 0444). Folder names are a kebab-case title (up to 40 chars) plus the
+ObjectId's last 8 hex chars; a title rename removes the stale folder and
+writes a fresh one under the new slug.
 
-    GUIDE.md                          hand-authored, mode 0644
-    index.md                          generated summary, mode 0644
-    <slug>-<shortid>/
-        canvas.md                     mode 0444
-        log.md                        mode 0444
-        meta.json                     mode 0444
-
-Folder names are ``<slug>-<shortid>``: kebab-case title (≤ 40 chars) +
-first 8 hex chars of the Mongo ObjectId. Title rename → stale folder
-removed, fresh folder written under the new slug on next sync.
-
-This module reuses shared FS/marker/slug helpers from
-:mod:`app.services.storage._vfs_common`. The Mongo glue lives in
-:mod:`app.services.gaia_tasks_fs`.
-
-A one-shot migration step (:func:`cleanup_legacy_todos_dir`) removes
-the prior release's ``/workspace/todos/`` projection on the first sync
-per user — kept for a release or two and then safe to delete along with
-the legacy constants below.
+cleanup_legacy_todos_dir is a one-shot migration removing the prior release's
+/workspace/todos/ projection, kept for a release or two before deletion.
 """
 
 from __future__ import annotations
@@ -37,6 +24,8 @@ from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
     INDEX_FILENAME,
     META_FILENAME,
+    READONLY_DIR_MODE,
+    RW_DIR_MODE,
     folder_name as common_folder_name,
     hash_body_with_meta,
     meta_body,
@@ -61,6 +50,7 @@ GAIA_TASKS_DIRNAME = "gaia-tasks"
 GAIA_TASKS_MARKER = ".gaia/gaia-tasks.v"
 GAIA_TASKS_PER_DOC_MARKER_DIR = ".gaia/gaia-tasks"
 CANVAS_FILENAME = "canvas.md"
+ACTIVITY_FILENAME = "activity.md"
 LOG_FILENAME = "log.md"
 
 # --- Legacy paths (one-shot migration from the prior release) ---------------
@@ -75,18 +65,19 @@ class GaiaTaskProjection(TypedDict):
 
     id: str
     canvas: str
+    activity: str
     log: str
     meta: dict[str, Any]
 
 
 # ====================================================================
-# signatures (per-doc body shape is canvas + log + meta)
+# signatures (per-doc body shape is canvas + activity + log + meta)
 # ====================================================================
 
 
 def per_doc_signature(doc: GaiaTaskProjection) -> str:
-    """sha256 of canvas + log + serialized meta — gates per-folder rewrite."""
-    return hash_body_with_meta(doc["canvas"], doc["log"], doc["meta"])
+    """sha256 of canvas + activity + log + serialized meta — gates per-folder rewrite."""
+    return hash_body_with_meta(doc["canvas"], doc["activity"], doc["log"], meta=doc["meta"])
 
 
 # ====================================================================
@@ -118,23 +109,12 @@ def write_gaia_tasks_marker(user_root: Path, value: str) -> None:
 
 
 def cleanup_legacy_todos_dir(user_root: Path) -> bool:
-    """Remove the prior release's ``/todos/`` projection if present.
+    """Remove the prior release's /todos/ projection if present; idempotent.
 
-    Detection rule: presence of ``.gaia/todos.v`` (the legacy marker
-    only the prior release wrote). We do NOT touch ``/todos/`` without
-    the marker present, because in the new layout that path belongs to
-    the user-todos materializer.
-
-    The marker alone is not enough, though: ``/todos/`` is the SAME path in
-    both layouts. A migrating user can have the legacy marker still on disk
-    *and* a freshly written user-todos projection, because the two syncs are
-    scheduled independently (todo_service / tracked_todo_service) in no fixed
-    order. Removing the tree there deletes live todos. So the shared content
-    dir is only dropped while the new projection has not claimed it; the
-    legacy-only artifacts are unambiguous and always go.
-
-    Returns ``True`` if anything was deleted (useful for telemetry).
-    Idempotent — subsequent calls return ``False``.
+    Gated on .gaia/todos.v (the legacy marker). /todos/ is the SAME path in
+    both layouts, and a migrating user can have that marker alongside an
+    already-written user-todos projection, so the shared content dir is only
+    removed while the new projection hasn't claimed it.
     """
     legacy_marker = user_root / LEGACY_TODOS_MARKER
     if not legacy_marker.exists():
@@ -165,7 +145,8 @@ def _folder_name(doc: GaiaTaskProjection) -> str:
     return common_folder_name(doc["id"], doc["meta"].get("title"))
 
 
-def _index_lines(docs: list[GaiaTaskProjection]) -> str:
+def render_index(docs: list[GaiaTaskProjection]) -> str:
+    """Build the generated index.md body: one line per task, newest-updated first."""
     header = (
         "<!-- Generated index of active gaia-tasks. Sorted by "
         "last-updated, newest first. Do not edit — regenerated on every "
@@ -189,7 +170,7 @@ def _index_lines(docs: list[GaiaTaskProjection]) -> str:
 
 
 def materialize_gaia_tasks(user_root: Path, docs: list[GaiaTaskProjection], guide_md: str) -> int:
-    """Idempotently project ``docs`` into ``<user_root>/gaia-tasks/``.
+    """Idempotently project docs into <user_root>/gaia-tasks/.
 
     Returns the number of task bodies rewritten (excluding GUIDE / index).
     """
@@ -202,7 +183,7 @@ def materialize_gaia_tasks(user_root: Path, docs: list[GaiaTaskProjection], guid
     written, expected_folders = _write_changed_docs(user_root, tasks_root, docs)
     _remove_stale_folders(tasks_root, expected_folders)
     prune_per_doc_markers(gaia_tasks_per_doc_dir(user_root), {d["id"] for d in docs})
-    write_rw_body(tasks_root / INDEX_FILENAME, _index_lines(docs))
+    write_rw_body(tasks_root / INDEX_FILENAME, render_index(docs))
     return written
 
 
@@ -223,25 +204,27 @@ def _write_changed_docs(
             continue
 
         folder.mkdir(parents=True, exist_ok=True)
+        folder.chmod(RW_DIR_MODE)
         write_readonly_body(folder / CANVAS_FILENAME, doc["canvas"])
+        write_readonly_body(folder / ACTIVITY_FILENAME, doc["activity"])
         write_readonly_body(folder / LOG_FILENAME, doc["log"])
         write_readonly_body(folder / META_FILENAME, meta_body(doc["meta"]))
+        folder.chmod(READONLY_DIR_MODE)
         write_marker(marker_path, sig)
         written += 1
     return written, expected
 
 
 def _remove_stale_folders(tasks_root: Path, expected: set[str]) -> None:
-    """Remove subdirectories of ``tasks_root`` not in ``expected``."""
+    """Remove subdirectories of tasks_root not in expected."""
     for child in tasks_root.iterdir():
         if child.is_dir() and child.name not in expected:
             remove_tree(child)
 
 
-# Public surface used by :mod:`app.services.gaia_tasks_fs`. Generic
-# helpers (``catalog_signature``, ``read_marker``, ``write_marker``)
-# live in ``_vfs_common`` — import them from there in the Mongo glue,
-# not via this module.
+# Public surface used by app.services.gaia_tasks_fs. Generic helpers
+# (catalog_signature, read_marker, write_marker) live in _vfs_common —
+# import them from there, not via this module.
 __all__ = [
     "GAIA_TASKS_DIRNAME",
     "GAIA_TASKS_MARKER",

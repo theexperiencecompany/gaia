@@ -26,8 +26,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/ci/lib/log.sh
+source "$SCRIPT_DIR/ci/lib/log.sh"
+
 FOUND_ISSUES=false
 TOTAL_DEAD_CODE=0
+
+# The findings this run will hand the gate, as `--finding file:line:msg` pairs.
+# Collected as the scan reports them rather than re-parsed at the end, so the
+# annotation a reader clicks is the line the tool actually named.
+VERDICT_ARGS=()
+# Past this the annotations bury the summary they are supposed to explain; the
+# full list is in the step's own output either way.
+MAX_VERDICT_FINDINGS=50
+
+add_finding() {
+  ((${#VERDICT_ARGS[@]} / 2 < MAX_VERDICT_FINDINGS)) || return 0
+  VERDICT_ARGS+=(--finding "$1:$2:$3")
+}
 
 # Colors (disabled if not a terminal)
 if [[ -t 1 ]]; then
@@ -132,6 +148,13 @@ run_vulture() {
   fi
 
   FOUND_ISSUES=true
+
+  # vulture already prints file:line:message, so the verdict's findings are a
+  # read of its own output — not a second, divergent scan.
+  while IFS= read -r line; do
+    add_finding "$(echo "$line" | cut -d: -f1)" "$(echo "$line" | cut -d: -f2)" \
+      "vulture: $(echo "$line" | cut -d: -f3- | sed 's/^ *//')"
+  done <<< "$raw_output"
 
   if $VERBOSE; then
     # Full detailed output with file names and line numbers
@@ -241,6 +264,19 @@ run_knip() {
   FOUND_ISSUES=true
   TOTAL_DEAD_CODE=$((TOTAL_DEAD_CODE + knip_total))
 
+  # knip's default reporter groups rows under a section header and puts the
+  # path (with `:line:col` where it has one) in the row. That is enough to put
+  # every finding on the PR's Files tab; a second run with --reporter json
+  # would cost the lane a whole extra scan to say the same thing.
+  local section=""
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[A-Z][a-z]+.*\([0-9]+\)$ ]]; then
+      section="${line%% (*}"
+    elif [[ "$line" =~ ([^[:space:]]+\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css))(:([0-9]+))? ]]; then
+      add_finding "${BASH_REMATCH[1]}" "${BASH_REMATCH[4]:-1}" "knip ${section:-finding}: $line"
+    fi
+  done <<< "$raw_output"
+
   if $VERBOSE; then
     # Full detailed output
     while IFS= read -r line; do
@@ -282,20 +318,27 @@ if $FOUND_ISSUES; then
   print_health_bar $TOTAL_DEAD_CODE
 fi
 
+# The gate's own wording, once: the paragraph a reader sees below is the same
+# sentence the verdict carries to the PR, so the two cannot drift.
+DEAD_CODE_FIX="Delete the unused code and every reference to it (imports, re-exports, tests). \
+If a symbol is genuinely reached only through dynamic dispatch or a framework entrypoint the \
+scanner cannot see, register it — TS: config/knip.config.ts; Python: [tool.vulture] \
+ignore_names / ignore_decorators in pyproject.toml, with a comment saying why. \
+Never widen the config to silence real dead code."
+
 echo "════════════════════════════════════════════════════════"
 if $FOUND_ISSUES && $STRICT; then
+  ci_verdict --lane dead-code --status fail \
+    --summary "$TOTAL_DEAD_CODE unused item(s) across TypeScript (knip) and Python (vulture)" \
+    ${VERDICT_ARGS[@]+"${VERDICT_ARGS[@]}"} \
+    --advice "$DEAD_CODE_FIX"
   echo -e "${RED}${BOLD}Dead-code gate FAILED.${RESET}"
   echo ""
   echo -e "${DIM}Why: unused functions, classes, files, and exports rot — they mislead"
   echo -e "readers, break under refactors no one exercises, and hide what is really used.${RESET}"
   echo ""
-  echo -e "Fix: for each item listed above, delete the unused code and every reference"
-  echo -e "to it (imports, re-exports, tests). Do not comment it out or keep it"
-  echo -e "\"just in case\". If a symbol is genuinely used only via dynamic dispatch or a"
-  echo -e "framework entrypoint the scanner cannot see, register it in the config so the"
-  echo -e "scanner stops flagging it — TS/knip: config/knip.config.ts; Python/vulture:"
-  echo -e "the [tool.vulture] ignore_names / ignore_decorators lists in ./pyproject.toml"
-  echo -e "(add a comment saying why). Never widen the config to silence real dead code."
+  echo -e "Fix: for each item listed above. $DEAD_CODE_FIX"
+  echo -e "Do not comment it out or keep it \"just in case\"."
   echo ""
   echo -e "Rule: .claude/rules/general.md § \"Dead Code\"."
   exit 1
@@ -303,6 +346,13 @@ elif $FOUND_ISSUES; then
   echo -e "${YELLOW}Dead code found (warning only). Use --strict to enforce.${RESET}"
   exit 0
 else
+  # Only the gated (--strict) run reports: a developer's exploratory run is not
+  # a lane, and a verdict it wrote would be uploaded by whatever job lands on
+  # this workspace next.
+  if $STRICT; then
+    ci_verdict --lane dead-code --status pass \
+      --summary "no unused TypeScript (knip) or Python (vulture) code"
+  fi
   echo -e "${GREEN}No dead code found.${RESET}"
   exit 0
 fi

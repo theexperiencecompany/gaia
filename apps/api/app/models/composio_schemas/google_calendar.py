@@ -22,7 +22,10 @@ class GoogleCalendarEventCreatedPayload(BaseModel):
 
 
 class GoogleCalendarEventStartingSoonPayload(BaseModel):
-    """Payload for GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER."""
+    """Payload for GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER.
+
+    Field set verified against Composio triggers_types API (2026-08).
+    """
 
     attendees: list[dict[str, Any]] | None = Field(None, description="List of attendees")
     calendar_id: str | None = Field(None, description="The calendar identifier")
@@ -35,9 +38,12 @@ class GoogleCalendarEventStartingSoonPayload(BaseModel):
     hangout_link: str | None = Field(None, description="Google Meet link for the conference")
     html_link: str | None = Field(None, description="Link to the event in Google Calendar")
     location: str | None = Field(None, description="Event location")
+    minutes_until_start: float | None = Field(
+        None, description="Minutes remaining until event starts"
+    )
     organizer_email: str | None = Field(None, description="Email of the event organizer")
-    organizer_self: bool | None = Field(None, description="Whether the organizer is self")
     start_time: str | None = Field(None, description="Event start time in ISO format")
-    status: str | None = Field(None, description="Event status")
+    start_timestamp: float | None = Field(
+        None, description="Event start time as UNIX epoch timestamp (UTC)"
+    )
     summary: str | None = Field(None, description="Event title")
-    updated: str | None = Field(None, description="Event update time")

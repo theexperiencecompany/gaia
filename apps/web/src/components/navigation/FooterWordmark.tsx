@@ -60,9 +60,68 @@ interface ClickWave {
   start: number;
 }
 
+/** Per-frame inputs for {@link updateDot} — everything the physics needs. */
+interface DotUpdateContext {
+  now: number;
+  cssW: number;
+  ease: number;
+  cursorX: number;
+  cursorY: number;
+  pointerInside: boolean;
+  waves: ClickWave[];
+}
+
+/**
+ * Ease one dot toward its target radius for this frame and update its glow.
+ * Returns true when the dot has settled (no further animation needed).
+ */
+function updateDot(dot: Dot, ctxIn: DotUpdateContext): boolean {
+  const { now, cssW, ease, cursorX, cursorY, pointerInside, waves } = ctxIn;
+  const dist = Math.hypot(dot.x - cursorX, dot.y - cursorY);
+  // Only dots inside the cursor's falloff circle are affected — the
+  // rest of the wordmark stays at rest.
+  const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
+  let target = pointerInside ? ripple : 0;
+
+  // Sum every active click wave: each dot swells on a sin bump as the
+  // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
+  // ripple physically travels across the whole lockup.
+  let click = 0;
+  for (const wave of waves) {
+    const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
+    const phase = ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
+    if (phase < 0 || phase > 1) continue;
+    const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
+    click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
+  }
+  target += click;
+
+  const targetRadius = dot.base * (1 + target);
+  dot.radius += (targetRadius - dot.radius) * ease;
+  // The white layer tracks the click wave only — hovering swells the
+  // dots but must not repaint them, so the two reads stay distinct.
+  dot.glow = Math.min(1, click / CLICK_AMP);
+  return Math.abs(targetRadius - dot.radius) <= SETTLE_EPSILON;
+}
+
 function smoothstep(a: number, b: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * First family of a computed font-family list, unquoted.
+ *
+ * `document.fonts.load()` rejects when ANY face matching the string is in
+ * error, and next/font's metric-matched "<name> Fallback" face is a `local()`
+ * alias for a system font that exists on macOS and not on Linux. Passing the
+ * whole computed list therefore rejected on Linux and aborted the draw.
+ */
+function primaryFamily(list: string): string {
+  return list
+    .split(",")[0]
+    .trim()
+    .replace(/^["']|["']$/g, "");
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -187,10 +246,9 @@ function buildDots(
       const y = (row + 0.5) * cell;
       const t = Math.min(1, y / cssH);
 
-      // The logo has three flat blues plus white text. Contrast-stretch the
-      // narrow luminance spread, then POSTERIZE into three discrete shade
-      // bands so each blue reads as a distinctly different dot size (dark
-      // navy → tiny, mid blue → medium, light cyan / white → full).
+      // Three flat blues plus white text: contrast-stretch the narrow
+      // luminance spread, then posterize into three shade bands so each
+      // blue maps to a distinct dot size (navy tiny, mid blue medium, cyan/white full).
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
       const stretched = Math.min(1, Math.max(0, (lum - 0.1) / 0.55));
       const toneMul = stretched < 0.38 ? 0.28 : stretched < 0.72 ? 0.62 : 1.0;
@@ -249,14 +307,12 @@ function drawGlow(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
 }
 
 /**
- * Pointer interaction: dots inside a circle around the cursor swell and
- * trail it smoothly as it moves over the wordmark, and a pointerdown sends a
- * wavefront rippling across the whole lockup. The ripple center follows the
- * cursor with exponential smoothing and each dot's radius eases toward its
- * target, so the swell glides instead of snapping. The rAF loop runs while
- * the pointer is inside, a click wave is alive, or any dot is still easing
- * back to rest; returns a cleanup that detaches listeners and cancels it.
-
+ * Pointer interaction: dots swell and trail the cursor inside a radius, and
+ * a pointerdown sends a wavefront rippling across the lockup. The ripple
+ * center follows the cursor with exponential smoothing, each dot's radius
+ * eases toward its target, and the rAF loop runs while the pointer is
+ * inside, a click wave is alive, or a dot is still easing back — cleanup
+ * detaches listeners and cancels it.
  */
 function attachPointerInteraction(
   canvas: HTMLCanvasElement,
@@ -307,36 +363,20 @@ function attachPointerInteraction(
 
     const ease = 1 - Math.exp(-dt / SWELL_TAU);
     let settled = true;
-
     for (const dot of dots) {
-      const dist = Math.hypot(dot.x - cursorX, dot.y - cursorY);
-      // Only dots inside the cursor's falloff circle are affected — the
-      // rest of the wordmark stays at rest.
-      const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
-      let target = pointerInside ? ripple : 0;
-
-      // Sum every active click wave: each dot swells on a sin bump as the
-      // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
-      // ripple physically travels across the whole lockup.
-      let click = 0;
-      for (const wave of waves) {
-        const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
-        const phase =
-          ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
-        if (phase < 0 || phase > 1) continue;
-        const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
-        click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
-      }
-      target += click;
-
-      const targetRadius = dot.base * (1 + target);
-      dot.radius += (targetRadius - dot.radius) * ease;
-      if (Math.abs(targetRadius - dot.radius) > SETTLE_EPSILON) {
+      if (
+        !updateDot(dot, {
+          now,
+          cssW,
+          ease,
+          cursorX,
+          cursorY,
+          pointerInside,
+          waves,
+        })
+      ) {
         settled = false;
       }
-      // The white layer tracks the click wave only — hovering swells the
-      // dots but must not repaint them, so the two reads stay distinct.
-      dot.glow = Math.min(1, click / CLICK_AMP);
     }
 
     ctx.clearRect(0, 0, cssW, cssH);
@@ -366,10 +406,9 @@ function attachPointerInteraction(
     const p = toCanvasPoint(e);
     pointerX = p.x;
     pointerY = p.y;
-    // A pointermove on the canvas implies the pointer is over it — adopt it
-    // unconditionally. Without this, a rebuild (resize) while hovering, or a
-    // pointer already inside when the interaction attached, would leave the
-    // swell dead until a leave/re-enter cycle.
+    // A pointermove implies the pointer is over the canvas — adopt it
+    // unconditionally, or a resize/rebuild while hovering (or an
+    // already-inside pointer at attach time) leaves the swell dead until leave/re-enter.
     pointerInside = true;
     start();
   };
@@ -393,10 +432,9 @@ function attachPointerInteraction(
   canvas.addEventListener("pointerleave", onLeave);
   canvas.addEventListener("pointercancel", onLeave);
 
-  // If the pointer is already over the canvas when the interaction attaches
-  // (e.g. the page scrolled or resized under a stationary pointer), adopt it
-  // so the swell isn't dead until the pointer moves. The exact position is
-  // unknown — the first pointermove corrects the ripple center.
+  // If the pointer is already over the canvas when this attaches (page
+  // scrolled/resized under a stationary pointer), adopt it so the swell
+  // isn't dead until it moves — the first pointermove corrects the exact position.
   if (canvas.matches(":hover")) {
     pointerInside = true;
     pointerX = cssW / 2;
@@ -445,7 +483,12 @@ export function FooterWordmark() {
       const family = getComputedStyle(probe).fontFamily;
       const [logo] = await Promise.all([
         loadImage(LOGO_SRC),
-        document.fonts.load(`700 100px ${family}`),
+        // Metrics only: this await exists so the raster measures the real
+        // webfont rather than a fallback. A face that never arrives must
+        // degrade to fallback metrics, never blank the whole wordmark.
+        document.fonts
+          .load(`700 100px "${primaryFamily(family)}"`)
+          .catch(() => undefined),
       ]);
       if (cancelled) return;
 

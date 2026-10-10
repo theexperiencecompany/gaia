@@ -1,6 +1,6 @@
 """A real executor resume arms the checkpoint probe; a fresh run does not.
 
-``_execute_executor`` stamping ``HIL_RESUME_CONFIG_KEY`` on a resume is the only
+_execute_executor stamping HIL_RESUME_CONFIG_KEY on a resume is the only
 thing that makes handoff/spawn recovery reachable in production — every replay
 guard downstream keys on it. Nothing else exercised these two lines: the e2e
 drivers patch the re-dispatch seam and the replay tests set the flag by hand,
@@ -9,15 +9,28 @@ subagents' side effects on every real resume.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langgraph.types import Command
 
 from app.agents.core.background.executor_runner import _execute_executor
+from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
+from app.constants.executor import EXECUTOR_PAUSED
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
+from app.models.user_models import AuthenticatedUser
 
 RUNNER = "app.agents.core.background.executor_runner"
+
+_RUN = ExecutorRun(
+    stream_id="stream-1",
+    conversation_id="conv-1",
+    user=AuthenticatedUser(user_id="u1"),
+    kind=RunKind.LIVE,
+    task_id="task-1",
+    user_message_id=None,
+    bot_message_id="bot-1",
+)
 
 
 class _Ctx:
@@ -34,7 +47,7 @@ async def _run(resume: Command | None) -> _Ctx:
         patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
         patch(f"{RUNNER}.execute_subagent_stream", execute),
     ):
-        await _execute_executor("task", {"user_id": "u1"}, "stream-1", resume=resume)
+        await _execute_executor("task", {"user_id": "u1"}, _RUN, resume=resume)
     assert execute.await_count == 1
     assert execute.await_args.kwargs["ctx"] is ctx
     return ctx
@@ -50,6 +63,37 @@ async def test_a_resume_stamps_the_replay_flag_on_both_config_surfaces() -> None
     assert ctx.config["configurable"].get(HIL_RESUME_CONFIG_KEY) is True
 
 
+async def test_a_paused_run_reports_the_approval_it_is_parked_on() -> None:
+    # The id is the only handle a later decision has to re-dispatch this thread.
+    execute = AsyncMock(return_value=SubagentOutcome(text="", interrupt={"approval_id": "ap-1"}))
+    with (
+        patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+        patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+        patch(f"{RUNNER}.execute_subagent_stream", execute),
+    ):
+        result = await _execute_executor("task", {"user_id": "u1"}, _RUN)
+
+    assert (result.text, result.type, result.paused_on) == ("", EXECUTOR_PAUSED, ("ap-1",))
+
+
+async def test_a_batch_pause_reports_every_approval_not_the_single_id() -> None:
+    # A barrier pause parks on several approvals at once; dropping the batch
+    # would leave every id but the fallback single one unresumable.
+    execute = AsyncMock(
+        return_value=SubagentOutcome(
+            text="", interrupt={"approval_ids": ["ap-1", "ap-2"], "approval_id": "ap-3"}
+        )
+    )
+    with (
+        patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+        patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+        patch(f"{RUNNER}.execute_subagent_stream", execute),
+    ):
+        result = await _execute_executor("task", {"user_id": "u1"}, _RUN)
+
+    assert (result.text, result.type, result.paused_on) == ("", EXECUTOR_PAUSED, ("ap-1", "ap-2"))
+
+
 async def test_a_fresh_run_does_not_arm_the_probe() -> None:
     # The probe is a per-handoff Postgres read; fresh runs (effectively all of
     # them) must skip it.
@@ -57,3 +101,45 @@ async def test_a_fresh_run_does_not_arm_the_probe() -> None:
 
     assert HIL_RESUME_CONFIG_KEY not in ctx.configurable
     assert HIL_RESUME_CONFIG_KEY not in ctx.config["configurable"]
+
+
+class TestExecuteExecutorWiring:
+    """_execute_executor hands prep the run's own task, config and stream.
+
+    That call is the only thing deciding which conversation gets executed, and it
+    stamps the measured prep time on the executor namespace.
+    """
+
+    async def test_prep_receives_the_run_arguments_and_exact_prep_ms(self) -> None:
+        ctx = _Ctx()
+        prepare = AsyncMock(return_value=(ctx, None))
+        log_mock = MagicMock()
+
+        with (
+            patch(f"{RUNNER}.prepare_executor_execution", prepare),
+            patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+            patch(
+                f"{RUNNER}.execute_subagent_stream",
+                AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{RUNNER}.log", log_mock),
+            patch(f"{RUNNER}.time.perf_counter", side_effect=[1000.0, 1000.123456]),
+        ):
+            result = await _execute_executor("the task", {"user_id": "u1"}, _RUN)
+
+        prepare.assert_awaited_once_with(
+            task="the task",
+            configurable={"user_id": "u1"},
+            stream_id="stream-1",
+        )
+        log_mock.set.assert_called_once_with(executor={"prep_ms": 123.46})
+        assert result.text == "done"
+
+
+class TestTheRunNamesTheMessageItRendersInto:
+    """A background subagent folds its own stream into this message, so the executor must carry it."""
+
+    async def test_a_live_run_carries_its_turns_bot_message(self) -> None:
+        ctx = await _run(resume=None)
+        assert ctx.configurable["bot_message_id"] == "bot-1"
+        assert ctx.config["configurable"]["bot_message_id"] == "bot-1"

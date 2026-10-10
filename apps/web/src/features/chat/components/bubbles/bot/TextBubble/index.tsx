@@ -12,9 +12,9 @@ import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
-  MESSAGE_BREAK_DURATION_SECONDS,
+  DEFAULT_PART_CHOREOGRAPHY,
   MESSAGE_BREAK_EASE_OUT_QUART,
-  MESSAGE_BREAK_STAGGER_SECONDS,
+  type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -25,10 +25,14 @@ import {
   ApprovalResolveProvider,
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
+import type { ApprovalOutcome } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
-import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import {
+  deriveProcessedToolKeys,
+  useSubagentSynthesis,
+} from "./useSubagentSynthesis";
 import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
@@ -59,7 +63,8 @@ function ReplyQuote({
         const el = document.getElementById(replyToMessage.id);
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.style.transition = "all 0.3s ease";
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "scale 0.3s ease";
           el.style.scale = "1.02";
           setTimeout(() => {
             el.style.scale = "1";
@@ -82,14 +87,12 @@ function ReplyQuote({
 }
 
 /**
- * The failure surface for a bot turn, in two shapes:
- *  - `partial` — some text streamed before the turn died, so a bubble already
- *    rendered above; this is a compact strip under it saying it was cut short.
- *  - full bubble — nothing streamed, so this IS the message.
+ * The failure surface for a bot turn: `partial` is a compact strip under an
+ * already-streamed bubble saying it was cut short; otherwise this IS the
+ * message.
  *
- * Retry lives here rather than only in the hover actions row: that row is
- * invisible until hover and suppressed on the last bubble while the
- * conversation is busy, which is exactly when a failure appears.
+ * Retry lives here (not only the hover row), since that row is invisible
+ * until hover and suppressed on the last bubble exactly when a failure appears.
  */
 function FailedResponse({
   error,
@@ -359,13 +362,15 @@ export default function TextBubble({
   error,
   onRetry,
   isRetrying,
-}: Readonly<ChatBubbleBotProps>) {
+  partChoreography = DEFAULT_PART_CHOREOGRAPHY,
+}: Readonly<ChatBubbleBotProps> & {
+  partChoreography?: PartChoreography;
+}) {
   const baseId = useId();
 
-  // Persist a HIL approval decision into THIS message's tool_data, so the pending
-  // card becomes a settled receipt (clearing the derived "Waiting for approval"
-  // pill) and survives reload. The resolved frame is published on the resumed
-  // run's stream — a different message — so it never reaches this card otherwise.
+  // Persist a HIL approval decision into THIS message's tool_data so the
+  // pending card settles (clears the pill) and survives reload — the
+  // resolved frame publishes on a different (resumed) message's stream.
   const resolveApproval = React.useCallback<ApprovalResolver>(
     (approvalId, resolved) => {
       if (!message_id || !tool_data) return;
@@ -389,6 +394,11 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // One stable React key per processedTools entry — derived from
+  // stream-stable structure (ids/tool name/timestamp), never payload, so
+  // grouped cards (search results, approvals) keep identity as data grows.
+  const processedToolKeys = deriveProcessedToolKeys(processedTools);
+
   // Dev-only: record what this bubble did with each tool_data entry.
   useToolRenderAudit(message_id, tool_data);
 
@@ -407,18 +417,21 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
-  // Settled decisions, keyed the same way — the tool's own row in the thread
-  // carries the outcome as a chip instead of a separate receipts block.
-  const approvalStatusByToolCallId = React.useMemo(() => {
-    const statuses = new Map<string, ApprovalRequestData["status"]>();
+  // Settled decisions, keyed the same way — the tool's row carries the outcome
+  // as a chip, with feedback so it shows the receipt, not just "Approved".
+  const { approvalOutcomeByToolCallId } = React.useMemo(() => {
+    const outcomes = new Map<string, ApprovalOutcome>();
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
       if (data?.tool_call_id && data.status !== "pending") {
-        statuses.set(data.tool_call_id, data.status);
+        outcomes.set(data.tool_call_id, {
+          status: data.status,
+          feedback: data.feedback ?? null,
+        });
       }
     });
-    return statuses;
+    return { approvalOutcomeByToolCallId: outcomes };
   }, [tool_data]);
 
   return (
@@ -433,18 +446,18 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-          approvalStatusByToolCallId={approvalStatusByToolCallId}
+          approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
         />
       )}
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name;
-        const keyId = entry.timestamp || index;
+        const entryKey = processedToolKeys[index];
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
-            <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+            <React.Fragment key={`${baseId}-tool-${entryKey}`}>
               <TodoProgressSection todo_progress={data} isStreaming={loading} />
             </React.Fragment>
           ) : null;
@@ -453,31 +466,17 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
-        const toolCallId =
-          typeof typedData === "object" &&
-          typedData !== null &&
-          "tool_call_id" in typedData
-            ? String(
-                (typedData as unknown as { tool_call_id?: string })
-                  .tool_call_id ?? "",
-              )
-            : "";
-        const toolKey = toolCallId
-          ? `${baseId}-tool-${toolName}-${toolCallId}`
-          : `${baseId}-tool-${toolName}-${index}`;
-
         return (
-          <React.Fragment key={toolKey}>
+          <React.Fragment key={`${baseId}-tool-${entryKey}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
       })}
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        // Gate on the CLEANED display text, not raw `text`: during a slow start
-        // the message can briefly hold non-visible content (thinking residue, a
-        // stray char) while the rendered text is still empty, which would flash
-        // an empty bubble + tail. No visible content → no bubble.
+        // Gate on CLEANED display text, not raw `text`: mid-stream it can
+        // hold non-visible content (thinking residue, a stray char) while
+        // rendered text is empty, which would flash an empty bubble + tail.
         parsedContent.cleanText.trim().length > 0 &&
         (() => {
           // Use cleaned text without thinking tags
@@ -485,16 +484,15 @@ export default function TextBubble({
           // Preserve :::openui fences when splitting so they aren't mangled.
           const textParts = splitMessageByBreaks(displayText);
 
-          // Filter empty/whitespace-only parts up front so first/last/single
-          // reflect the *visible* list, not the array index. Without this, a
-          // single visible part sandwiched between blanks (e.g. trailing break,
-          // post-thinking residue) would lose its tail because `isLast` would
-          // point at a non-rendered entry. Animation delays use the visible
-          // index so blanks don't shift the stagger; the original index is kept
-          // for keys to preserve React identity across re-renders.
-          const visibleParts = textParts
-            .map((part, originalIndex) => ({ part, originalIndex }))
-            .filter(({ part }) => part.trim());
+          // Single pass so first/last/single reflect the *visible* list, not
+          // array index — else a visible part sandwiched between blanks loses
+          // its tail. Animation delay uses visible index; original index is kept for React keys.
+          const visibleParts: Array<{ part: string; originalIndex: number }> =
+            [];
+          for (const [originalIndex, part] of textParts.entries()) {
+            if (!part.trim()) continue;
+            visibleParts.push({ part, originalIndex });
+          }
 
           if (visibleParts.length === 0) return null;
 
@@ -508,9 +506,9 @@ export default function TextBubble({
                 const hasOpenUI = segments.some((s) => s.type === "openui");
                 const partKey = `${baseId}-text-part-${originalIndex}`;
                 const partTransition: PartTransition = {
-                  duration: MESSAGE_BREAK_DURATION_SECONDS,
+                  duration: partChoreography.durationSeconds,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: visibleIndex * MESSAGE_BREAK_STAGGER_SECONDS,
+                  delay: visibleIndex * partChoreography.staggerSeconds,
                 };
 
                 return hasOpenUI ? (

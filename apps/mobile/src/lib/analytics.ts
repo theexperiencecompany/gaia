@@ -18,6 +18,7 @@ export const ANALYTICS_EVENTS = {
   CHAT_MESSAGE_SENT: "chat:message_sent",
   CHAT_CONVERSATION_CREATED: "chat:conversation_created",
   CHAT_FIRST_MESSAGE_SENT: "chat:first_message_sent",
+  CHAT_ACTIVITY_TIMELINE_TOGGLED: "chat:activity_timeline_toggled",
 
   // Integration events
   INTEGRATION_CONNECTED: "integration:connected",

@@ -1,44 +1,69 @@
-"""
-Comprehensive database indexes for all MongoDB collections.
-Follows MongoDB indexing best practices for optimal query performance.
-
-Index Strategy:
-- User-centric compound indexes for multi-tenant queries
-- Sparse indexes for optional fields to reduce storage
-- Text search indexes for content discovery
-- Unique constraints for data integrity
-- ESR (Equality, Sort, Range) ordering for compound indexes
-"""
+"""Database indexes for all MongoDB collections, following ESR compound-index ordering."""
 
 import asyncio
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, NotRequired, TypedDict, TypeVar, Unpack, cast
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
+from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
+
+# Security-critical index builds: these unique indexes enforce invariants, so
+# unlike performance indexes (warn-and-continue) a failed build aborts boot
+# rather than running healthy with the constraint silently absent.
+SECURITY_CRITICAL_COLLECTIONS = frozenset(
+    {"auth_credentials", "instance_settings", "provider_credentials"}
+)
 
 # Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
 # every `create_index` call in this module actually passes: a single field
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
 
-# Collections whose index builds are security-critical: their unique indexes
-# ENFORCE invariants rather than merely speed up queries. auth_credentials.slot
-# is THE single-admin registration gate for local auth (every credential row
-# carries slot="admin", so uniqueness admits exactly one document);
-# instance_settings.key and provider_credentials.provider are the upsert keys
-# concurrent provisioning races on. When such a build fails — pre-existing
-# duplicates after a restore, a transient Mongo failure — the constraint simply
-# doesn't exist, and the stack runs "healthy" forever with registration
-# unenforced. Unlike performance indexes (warn-and-continue), a failure here
-# aborts boot, same fail-loud convention as startup_validation.
-SECURITY_CRITICAL_COLLECTIONS = frozenset(
-    {"auth_credentials", "instance_settings", "provider_credentials"}
-)
+# The index helpers never read a document, so they take a collection of any document type.
+DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
+
+
+class IndexOptions(TypedDict, total=False):
+    """The create_index options this module passes."""
+
+    name: str
+    unique: bool
+    sparse: bool
+    partialFilterExpression: Mapping[str, object]
+
+
+class _DuplicateShapeGroup(TypedDict):
+    """One $group row of _dedupe_tool_output_shapes: the _ids sharing a (scope, tool_name)."""
+
+    ids: list[ObjectId]
+
+
+class _McpConfigProjection(TypedDict, total=False):
+    server_url: str | None
+
+
+class _ServerUrlBackfillDoc(TypedDict):
+    """The projection _backfill_custom_server_url_keys reads."""
+
+    integration_id: str
+    created_by: NotRequired[str | None]
+    mcp_config: NotRequired[_McpConfigProjection | None]
+
+
+class _SlugBackfillDoc(TypedDict):
+    """The projection _backfill_integration_slugs reads."""
+
+    integration_id: str
+    name: NotRequired[str]
+    category: NotRequired[str]
 
 
 async def create_all_indexes() -> None:
@@ -69,14 +94,23 @@ async def create_all_indexes() -> None:
             create_integration_instructions_indexes(),
             create_device_token_indexes(),
             create_installed_skills_indexes(),
+            # Security-critical (see SECURITY_CRITICAL_COLLECTIONS): these unique
+            # indexes are what enforce the single-admin claim and the provisioning
+            # upsert keys, so their creators must run with the rest.
+            create_local_credential_indexes(),
+            create_instance_settings_indexes(),
+            create_provider_credential_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
+            create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
-            create_local_credential_indexes(),
-            create_instance_settings_indexes(),
-            create_provider_credential_indexes(),
+            create_browser_profiles_indexes(),
+            create_browser_tasks_indexes(),
+            create_llm_call_indexes(),
+            create_playbook_indexes(),
+            create_tool_output_shapes_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -103,14 +137,20 @@ async def create_all_indexes() -> None:
             "integration_instructions",
             "device_tokens",
             "skills",
+            "auth_credentials",
+            "instance_settings",
+            "provider_credentials",
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
             "hil_approvals",
+            "approval_ledger",
             "pending_platform_registrations",
-            "auth_credentials",
-            "instance_settings",
-            "provider_credentials",
+            "browser_profiles",
+            "browser_tasks",
+            "llm_calls",
+            "playbooks",
+            "tool_output_shapes",
         ]
 
         index_results = {}
@@ -220,6 +260,10 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("user_id", 1), ("messages.message_id", 1)]),
             # For message pinning aggregations
             conversations_collection.create_index([("user_id", 1), ("messages.pinned", 1)]),
+            # For "active since <date>" range queries (e.g. the cost/usage dashboard).
+            # updatedAt is the only activity timestamp stored as a real BSON date —
+            # createdAt is an ISO string and can't be range-queried efficiently.
+            conversations_collection.create_index([("updatedAt", -1)]),
         )
 
     except Exception as e:
@@ -277,10 +321,8 @@ async def create_todo_indexes() -> None:
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
-            # For tracked-todo cron sweeps (safety-net + maintenance). Both
-            # scan by gaia-tracked label + completion, then range on
-            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
-            # first (labels, completed), then range fields.
+            # For tracked-todo cron sweeps: ESR ordering, equality (labels, completed) then
+            # range (scheduled_at, gaia_retry_count).
             todos_collection.create_index(
                 [
                     ("labels", 1),
@@ -289,6 +331,18 @@ async def create_todo_indexes() -> None:
                     ("gaia_retry_count", 1),
                 ],
                 name="tracked_sweep",
+            ),
+            # Per-resource triggers are found by Composio instance id (cross-user); account-level
+            # triggers (Gmail) carry no instance id and are found by user + trigger name instead.
+            todos_collection.create_index(
+                "trigger_subscriptions.composio_trigger_ids",
+                name="subscription_trigger_ids",
+                sparse=True,
+            ),
+            todos_collection.create_index(
+                [("user_id", 1), ("trigger_subscriptions.trigger_name", 1)],
+                name="user_subscription_trigger_name",
+                sparse=True,
             ),
         )
 
@@ -416,11 +470,9 @@ async def create_blog_indexes() -> None:
     try:
         # Create all blog indexes concurrently
         await asyncio.gather(
-            # Unique slug index
             blog_collection.create_index("slug", unique=True),
             # Date-based sorting
             blog_collection.create_index([("date", -1)]),
-            # Category filtering
             blog_collection.create_index("category"),
             # Author queries
             blog_collection.create_index("authors"),
@@ -560,10 +612,8 @@ async def create_workflow_indexes() -> None:
             ),
         )
 
-        # Partial-unique index on slug for public workflows. Built outside
-        # the gather so a pre-existing duplicate (legacy data) only logs a
-        # warning instead of crashing startup — operators can de-dup and
-        # restart to reapply.
+        # Built outside the gather so a pre-existing duplicate slug only logs a warning
+        # instead of crashing startup.
         try:
             await workflows_collection.create_index(
                 [("slug", 1)],
@@ -613,6 +663,7 @@ async def create_payment_indexes() -> None:
     payments_collection = get_async_collection("payments")
     plans_collection = get_async_collection("subscription_plans")
     subscriptions_collection = get_async_collection("subscriptions")
+    checkout_sessions_collection = get_async_collection("checkout_sessions")
     try:
         # Create payment collection indexes
         await asyncio.gather(
@@ -631,6 +682,9 @@ async def create_payment_indexes() -> None:
             subscriptions_collection.create_index([("user_id", 1), ("status", 1)]),
             subscriptions_collection.create_index([("user_id", 1), ("created_at", -1)]),
             subscriptions_collection.create_index("webhook_processed_at", sparse=True),
+            # Checkout session indexes - webhook-race resolution lookups
+            checkout_sessions_collection.create_index("session_id", unique=True),
+            checkout_sessions_collection.create_index([("user_id", 1), ("created_at", -1)]),
             # Plans indexes
             plans_collection.create_index("is_active"),
             plans_collection.create_index("dodo_product_id", sparse=True),
@@ -700,18 +754,109 @@ async def create_pending_platform_registration_indexes() -> None:
         raise
 
 
-async def create_usage_indexes() -> None:
-    """
-    Create indexes for the usage_snapshots and usage_daily collections.
-    Includes TTL index for automatic snapshot cleanup after 90 days.
+async def create_playbook_indexes() -> None:
+    """Create indexes for the playbooks collection.
 
-    Query patterns:
-    - Find latest usage by user_id (sorted by created_at desc)
-    - Find usage history by user_id and date range
-    - Heatmap: per-user trailing-window reads on usage_daily (user_id + date)
-    - Percentile thresholds: cross-user aggregation on usage_daily (date range)
-    - Automatic cleanup via TTL index
+    Unique on (workflow_id, user_id): "one active playbook per workflow" is the
+    invariant the replay path rests on, and the repository's upsert relies on
+    the index to reject the loser of two concurrent first authorings. The same
+    index serves the per-run lookup.
     """
+    playbooks_collection = get_async_collection("playbooks")
+    try:
+        await playbooks_collection.create_index([("workflow_id", 1), ("user_id", 1)], unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating playbook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def _dedupe_tool_output_shapes(
+    collection: AsyncIOMotorCollection[DocumentT],
+) -> None:
+    """Collapse pre-existing (scope, tool_name) duplicates before the unique index build.
+
+    A DB that raced under the pre-index code can hold duplicates, which would
+    make the unique index build fail (swallowed) and leave record()'s retry
+    without its guarantee. Observed shapes are regenerable, so keep the
+    most-observed record per key ($push preserves the $sort) and drop the rest.
+    """
+    pipeline: list[dict[str, Any]] = [
+        {"$sort": {"call_count": -1}},
+        {
+            "$group": {
+                "_id": {"scope": "$scope", "tool_name": "$tool_name"},
+                "ids": {"$push": "$_id"},
+            }
+        },
+        {"$match": {"ids.1": {"$exists": True}}},
+    ]
+    async for row in collection.aggregate(pipeline):
+        group: _DuplicateShapeGroup = cast(_DuplicateShapeGroup, row)
+        losers = group["ids"][1:]
+        await collection.delete_many({"_id": {"$in": losers}})
+
+
+async def create_tool_output_shapes_indexes() -> None:
+    """Create indexes for the tool_output_shapes collection.
+
+    Unique on (scope, tool_name): the observed-shape upsert is keyed on this
+    pair, so the index makes "one record per scoped tool" a property of the
+    data, not of timing — it rejects a concurrent insert's loser with
+    DuplicateKeyError, which record() retries into the winner.
+    """
+    tool_output_shapes_collection = get_async_collection("tool_output_shapes")
+    try:
+        await _dedupe_tool_output_shapes(tool_output_shapes_collection)
+        await tool_output_shapes_collection.create_index(
+            [("scope", 1), ("tool_name", 1)], unique=True
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating tool_output_shapes indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_approval_ledger_indexes() -> None:
+    """Create indexes for the approval_ledger collection.
+
+    Unique on approval_id (the CAS filter keys on it). Partial unique on
+    (conversation_id, fingerprint) over live states IS the dedup atomicity —
+    the loser of a concurrent propose reads the winner's id. (conversation_id,
+    state) serves OPEN PENDINGS; (state, executing_started_at) the reconciler.
+    """
+    approval_ledger_collection = get_async_collection("approval_ledger")
+    try:
+        await asyncio.gather(
+            approval_ledger_collection.create_index("approval_id", unique=True),
+            approval_ledger_collection.create_index(
+                [("conversation_id", 1), ("fingerprint", 1)],
+                unique=True,
+                partialFilterExpression={
+                    "state": {"$in": ["pending", "approved"]},
+                },
+                name="conv_fingerprint_live_unique",
+            ),
+            approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
+            approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating approval_ledger indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_usage_indexes() -> None:
+    """Create usage_snapshots/usage_daily indexes, including a TTL index for 90-day cleanup."""
     usage_daily_collection = get_async_collection("usage_daily")
     usage_snapshots_collection = get_async_collection("usage_snapshots")
     try:
@@ -753,10 +898,29 @@ async def create_usage_indexes() -> None:
         raise
 
 
+# Atomic backstop behind the application's check-then-create dedup. Extracted
+# (not inline) so the contract suite can build this exact spec on a bare
+# collection and prove it rejects duplicates while leaving keyless rows alone.
+CUSTOM_SERVER_URL_DEDUP_KEYS: IndexKeys = [
+    ("created_by", 1),
+    ("mcp_config.server_url_normalized", 1),
+]
+CUSTOM_SERVER_URL_DEDUP_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "custom_url_dedup_unique",
+    # $type: string (not $exists) so explicit nulls stay out of the index too —
+    # only real keys participate, and keyless rows can never violate it.
+    "partialFilterExpression": {
+        "source": "custom",
+        "mcp_config.server_url_normalized": {"$type": "string"},
+    },
+}
+
+
 async def _create_index_safe(
-    collection: AsyncIOMotorCollection[dict[str, Any]],
+    collection: AsyncIOMotorCollection[DocumentT],
     keys: IndexKeys,
-    **kwargs: Any,  # noqa: ANN401 -- contract
+    **kwargs: Unpack[IndexOptions],
 ) -> None:
     """
     Create an index safely, handling IndexOptionsConflict gracefully.
@@ -782,9 +946,8 @@ async def create_local_credential_indexes() -> None:
         await asyncio.gather(
             # One credential per user — session lookups resolve by user_id.
             _create_index_safe(collection, "user_id", unique=True),
-            # THE registration gate: every credential carries the constant
-            # slot="admin", so this index admits exactly ONE document ever —
-            # concurrent first signups race here and Mongo admits one, instead
+            # The registration gate: constant slot=admin admits exactly one
+            # document ever, so concurrent first signups race in Mongo instead
             # of a check-then-create that two requests can both pass.
             _create_index_safe(collection, "slot", unique=True),
         )
@@ -832,17 +995,12 @@ async def create_provider_credential_indexes() -> None:
 
 
 async def create_integration_indexes() -> None:
-    """
-    Create indexes for integrations collection.
-
-    Query patterns:
-    - List all integrations (marketplace browsing)
-    - Filter by source (platform vs custom)
-    - Filter by category
-    - Featured integrations lookup
-    - Public custom integrations for marketplace
-    """
+    """Create integrations collection indexes for marketplace browsing and filtering."""
     integrations_collection = get_async_collection("integrations")
+    # The dedup backfill must land before the unique index below: a legacy row
+    # without the key is invisible to the partial filter, so backfilling first
+    # (conflict losers stay keyless) keeps the index build from ever failing.
+    await _backfill_custom_server_url_keys()
     try:
         await asyncio.gather(
             # Primary unique index on integration_id
@@ -894,6 +1052,14 @@ async def create_integration_indexes() -> None:
                 sparse=True,
                 name="slug_sparse",
             ),
+            # One custom server URL per creator: the atomic backstop behind the
+            # application's check-then-create dedup (spec shared with the
+            # contract suite — see CUSTOM_SERVER_URL_DEDUP_* above).
+            _create_index_safe(
+                integrations_collection,
+                CUSTOM_SERVER_URL_DEDUP_KEYS,
+                **CUSTOM_SERVER_URL_DEDUP_OPTIONS,
+            ),
         )
 
         # Backfill slugs for existing public integrations that don't have one
@@ -908,6 +1074,74 @@ async def create_integration_indexes() -> None:
         raise
 
 
+async def _backfill_custom_server_url_keys() -> None:
+    """Populate the dedup key on custom integrations missing it.
+
+    First writer (by created_at) wins a contested key; losers stay keyless so
+    they are excluded from the partial unique index — no data loss, and the
+    index build can never fail on legacy duplicates. Keyless rows are still
+    fully functional (found by id); only URL-dedup skips them.
+    """
+    integrations_collection = get_async_collection("integrations")
+    try:
+        total_backfilled = 0
+        while True:
+            cursor = (
+                integrations_collection.find(
+                    {
+                        "source": "custom",
+                        "mcp_config.server_url_normalized": {"$exists": False},
+                    },
+                    {
+                        "integration_id": 1,
+                        "created_by": 1,
+                        "mcp_config.server_url": 1,
+                    },
+                )
+                .sort("created_at", 1)
+                .limit(500)
+            )
+            docs: list[_ServerUrlBackfillDoc] = cast(
+                list[_ServerUrlBackfillDoc], await cursor.to_list(length=500)
+            )
+            if not docs:
+                break
+
+            for doc in docs:
+                mcp_config: _McpConfigProjection = doc.get("mcp_config") or {}
+                raw = mcp_config.get("server_url") or ""
+                key = dedup_server_url_key(raw)
+                if not key:
+                    continue
+                claimed = await integrations_collection.find_one(
+                    {
+                        "source": "custom",
+                        "created_by": doc.get("created_by"),
+                        "mcp_config.server_url_normalized": key,
+                    },
+                    {"_id": 1},
+                )
+                if claimed is not None:
+                    continue
+                await integrations_collection.update_one(
+                    {"integration_id": doc["integration_id"]},
+                    {"$set": {"mcp_config.server_url_normalized": key}},
+                )
+                total_backfilled += 1
+
+        if total_backfilled:
+            log.info(
+                f"{LogTag.MONGO} Server-URL dedup-key backfill complete",
+                total_backfilled=total_backfilled,
+            )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.MONGO} Server-URL dedup-key backfill failed (non-fatal)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
 async def _backfill_integration_slugs() -> None:
     """Populate slug field for public integrations missing it."""
     integrations_collection = get_async_collection("integrations")
@@ -918,7 +1152,9 @@ async def _backfill_integration_slugs() -> None:
                 {"is_public": True, "slug": {"$exists": False}},
                 {"integration_id": 1, "name": 1, "category": 1},
             )
-            docs = await cursor.to_list(length=500)
+            docs: list[_SlugBackfillDoc] = cast(
+                list[_SlugBackfillDoc], await cursor.to_list(length=500)
+            )
             if not docs:
                 break
 
@@ -1127,15 +1363,9 @@ async def create_installed_skills_indexes() -> None:
 async def create_hil_approvals_indexes() -> None:
     """Create indexes for the hil_approvals collection.
 
-    (conversation_id, status) serves the pending-approval lookup that runs on
-    every chat message while an approval is open; (status, expires_at) serves
-    the timeout sweep's expiry pass. (status, resumed_at, decided_at) serves the
-    sweep's crashed-resume pass (list_decided_unresumed): its resumed_at=null
-    equality bound keeps the scan off the successfully-resumed records, which are
-    the overwhelming majority and accumulate forever on this permanent audit
-    trail. Without it that pass — running every minute — would scan the whole
-    decided history. The collection is a permanent audit trail, so these queries
-    must never fall back to a collection scan.
+    (status, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
+    bound keeps it off the majority-resumed audit trail, which must never scan the full
+    collection.
     """
     hil_approvals_collection = get_async_collection("hil_approvals")
     try:
@@ -1182,6 +1412,105 @@ async def create_e2b_sandbox_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_profiles_indexes() -> None:
+    """Create indexes for the browser_profiles collection.
+
+    One saved login per (user_id, domain): the unique index makes the upsert in
+    BrowserProfilesRepository.upsert_storage_state_blob a get-or-create, and
+    serves the per-task lookup before a session is created.
+    """
+    browser_profiles_collection = get_async_collection("browser_profiles")
+    try:
+        await browser_profiles_collection.create_index([("user_id", 1), ("domain", 1)], unique=True)
+        # Auto-expire session data not used for BROWSER_PROFILE_TTL_DAYS. The clock
+        # is `updated_at`, refreshed on every use, so active sites never expire.
+        await browser_profiles_collection.create_index(
+            [("updated_at", 1)], expireAfterSeconds=BROWSER_PROFILE_TTL_SECONDS
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_profiles indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_tasks_indexes() -> None:
+    """Create indexes for the browser_tasks collection.
+
+    The settings history lists a user's tasks newest-first, so index on
+    (user_id, created_at desc) to serve that query without a scan.
+    """
+    browser_tasks_collection = get_async_collection("browser_tasks")
+    try:
+        await browser_tasks_collection.create_index([("user_id", 1), ("created_at", -1)])
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_tasks indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_llm_call_indexes() -> None:
+    """Create indexes for the llm_calls ledger — one document per model call.
+
+    Five deliberate query indexes; this is the highest-write collection, so every extra
+    index costs on insert. The sixth is a sparse uniqueness constraint making the history
+    backfill re-runnable, not a query index.
+    """
+    llm_calls_collection = get_async_collection("llm_calls")
+    try:
+        await asyncio.gather(
+            # "What did this user spend, call by call, over this window?" — the
+            # per-user cost drill-down behind every billing question. ESR: equality
+            # on user_id, then the range/sort on created_at.
+            llm_calls_collection.create_index(
+                [("user_id", 1), ("created_at", -1)], name="user_calls_recent"
+            ),
+            # "What did this conversation cost, and which calls made it up?" —
+            # the per-turn breakdown. Matches on the bare conversation id, so a
+            # comms call and its executor children come back as one timeline.
+            llm_calls_collection.create_index(
+                [("conversation_id", 1), ("created_at", -1)], name="conversation_calls_recent"
+            ),
+            # "What did this workflow run cost?" — sparse because only calls made
+            # inside a workflow execution carry the field, and that is the small
+            # minority; a full index would carry a null entry for every chat call.
+            llm_calls_collection.create_index(
+                "workflow_execution_id", sparse=True, name="workflow_execution_calls"
+            ),
+            # "What is each lane spending over time?" — the COGS-by-agent split
+            # (comms vs executor vs each auxiliary helper) that decides where an
+            # optimisation is worth making.
+            llm_calls_collection.create_index(
+                [("agent_name", 1), ("created_at", -1)], name="agent_calls_recent"
+            ),
+            # Idempotency key for scripts/backfill_llm_calls.py --apply. Sparse and unique —
+            # only backfilled rows carry the field, so the live write path pays nothing.
+            llm_calls_collection.create_index(
+                "backfill_key", unique=True, sparse=True, name="backfill_idempotency"
+            ),
+            # Retention: 90 days, matching usage_snapshots. usage_daily is the durable
+            # money history and is never expired by this index.
+            llm_calls_collection.create_index(
+                "created_at",
+                name="created_at_ttl",
+                expireAfterSeconds=7776000,  # 90 days
+            ),
+        )
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Failed to create llm_calls indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

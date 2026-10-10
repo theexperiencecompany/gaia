@@ -5,18 +5,6 @@ export const CARD_IMAGES = {
   EXPERIENCE_LOGO: "/brand/experience_logo_white.png",
 } as const;
 
-// Logo dimensions
-export const LOGO_SIZES = {
-  FRONT: {
-    width: 100,
-    height: 30,
-  },
-  BACK: {
-    width: 80,
-    height: 24,
-  },
-} as const;
-
 // Position calculation constants
 export const POSITION_CALC = {
   DAMPING_FACTOR: 1.5, // Used to dampen the background position offset

@@ -72,23 +72,10 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 }) => {
   const [search, setSearch] = useState(initialFilters.search || "");
   const [sort, setSort] = useState(initialFilters.sort || "popular");
-  const hasSyncedParams = useRef(false);
 
-  useEffect(() => {
-    if (hasSyncedParams.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const urlSearch = params.get("search");
-    const urlCategory = params.get("category");
-    if (urlSearch || urlCategory) {
-      hasSyncedParams.current = true;
-      if (urlSearch) setSearch(urlSearch);
-      onFilterChange({
-        search: urlSearch || search,
-        category: urlCategory || category,
-        sort,
-      });
-    }
-  }, []);
+  // Deep links (?search=&category=) need no sync here: the parent hydrates its
+  // filter state via useSearchParams() and passes it down as `category` +
+  // `initialFilters`, so this component starts in sync without an effect.
 
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onFilterChange({ search: value, category, sort });

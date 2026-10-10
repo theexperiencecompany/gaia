@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import { type Plan, pricingApi } from "../api/pricingApi";
 
 export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);
-  const user = useUser();
+  const user = useCurrentUser();
 
   // Get all plans (no authentication required)
   const {
@@ -35,27 +35,30 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 
   // Verify payment status
-  const verifyPayment = useCallback(async () => {
-    try {
-      setError(null);
-      const result = await pricingApi.verifyPayment();
+  const verifyPayment = useCallback(
+    async (subscriptionId?: string | null) => {
+      try {
+        setError(null);
+        const result = await pricingApi.verifyPayment(subscriptionId);
 
-      // Refetch subscription status after verification
-      await refetchSubscription();
+        // Refetch subscription status after verification
+        await refetchSubscription();
 
-      return result;
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Payment verification failed";
-      setError(errorMessage);
-      throw err;
-    }
-  }, [refetchSubscription]);
+        return result;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Payment verification failed";
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [refetchSubscription],
+  );
 
   // Get plan by ID
   const getPlanById = useCallback(
@@ -95,13 +98,26 @@ export const usePricing = (initialPlans: Plan[] = []) => {
 
 // Separate hook for just subscription status (for backward compatibility)
 export const useUserSubscriptionStatus = () => {
-  const user = useUser();
+  const user = useCurrentUser();
 
   return useQuery({
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 };
+
+/**
+ * Whether the subscription plan is not yet known: the user store hasn't
+ * rehydrated a real id, or the (disabled/pending) `["subscription-status"]`
+ * query hasn't produced data. Keyed off `data === undefined`, never
+ * `isLoading` — a v5 disabled query reports `isLoading === false` despite never
+ * fetching. See `useIsPaid`: never treat "unknown" as "not paid".
+ */
+export function useIsSubscriptionStatusUnknown(): boolean {
+  const user = useCurrentUser();
+  const { data } = useUserSubscriptionStatus();
+  return !user.userId || data === undefined;
+}

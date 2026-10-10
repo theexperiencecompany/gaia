@@ -1,19 +1,11 @@
 """Integration tests for Tool Registry & Semantic Retrieval (ChromaDB).
 
-Tests exercise the end-to-end flow of tool indexing into ChromaDB and
-semantic retrieval back out. Uses an ephemeral in-memory ChromaDB client
-with a deterministic embedding function to avoid external dependencies.
-
-Key production modules under test
-----------------------------------
-- app.db.chroma.chroma_store.ChromaStore
-- app.db.chroma.chroma_tools_store.index_tools_to_store
-- app.db.chroma.chroma_tools_store._compute_tool_diff
-- app.db.chroma.chroma_tools_store._build_put_operations
-- app.db.chroma.chroma_tools_store._get_existing_tools_from_chroma
-- app.agents.tools.core.registry.ToolRegistry
-- app.agents.tools.core.registry.ToolCategory
-- app.agents.tools.core.registry.Tool
+Exercises the end-to-end flow of tool indexing into ChromaDB and semantic
+retrieval back out, against app.db.chroma.chroma_store.ChromaStore,
+chroma_tools_store's indexing/diff functions, and
+app.agents.tools.core.registry (ToolRegistry, ToolCategory, Tool). Uses an
+ephemeral in-memory ChromaDB client with a deterministic embedding function
+to avoid external dependencies.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,7 +17,7 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
 import pytest
 
-from app.agents.tools.core.registry import ToolCategory, ToolRegistry
+from app.agents.tools.core.registry import CategoryOptions, ToolCategory, ToolRegistry
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -33,6 +25,8 @@ from app.db.chroma.chroma_tools_store import (
     _get_existing_tools_from_chroma,
     index_tools_to_store,
 )
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.redis_lock import DistributedLock
 
 # ---------------------------------------------------------------------------
 # Deterministic embedding function for semantic retrieval tests
@@ -107,26 +101,7 @@ class _DeterministicEmbeddings(Embeddings):
 # ---------------------------------------------------------------------------
 
 
-class _NoOpEmbeddingFunction:
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        return [[0.0] * 384 for _ in input]
-
-    @staticmethod
-    def name() -> str:
-        return "test-noop"
-
-    def get_config(self) -> dict[str, str]:
-        return {"name": "test-noop"}
-
-    @staticmethod
-    def build_from_config(config: dict) -> "_NoOpEmbeddingFunction":
-        return _NoOpEmbeddingFunction()
-
-    def is_legacy(self) -> bool:
-        return False
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
+_NOOP_EF = NoOpEmbeddingFunction()
 
 
 class _AsyncCollectionWrapper:
@@ -224,7 +199,7 @@ TOOL_DEFS = {
 
 
 @pytest.fixture
-def ephemeral_client():
+def ephemeral_client(_precreate_ephemeral_chroma: None):
     """Return a fresh async-wrapped ephemeral ChromaDB client per test."""
     client = _AsyncEphemeralWrapper()
     yield client
@@ -279,6 +254,22 @@ async def indexed_store(semantic_store, tool_set):
 @pytest.mark.integration
 class TestToolIndexing:
     """Register tools with known schemas and verify they are stored in ChromaDB."""
+
+    @pytest.fixture(autouse=True)
+    def _bypass_seed_lock(self):
+        """Run the seeding work directly instead of taking the real Redis lease.
+
+        The module-level redis_cache.redis singleton binds to the event loop
+        that first used it, which goes stale under pytest's per-test loops and
+        raises RuntimeError: Event loop is closed. The lock itself is proven
+        in tests/integration/real/test_distributed_lock_real.py.
+        """
+
+        async def _run(self, work):
+            await work()
+
+        with patch.object(DistributedLock, "run_idempotent", _run):
+            yield
 
     async def test_tools_stored_after_put(self, semantic_store, tool_set):
         """PutOp with tool descriptions should store tools retrievable by GetOp."""
@@ -1001,7 +992,7 @@ class TestToolRegistryCategories:
 
     def test_tool_category_add_and_retrieve(self):
         """ToolCategory should store tools and return them via get_tool_objects."""
-        category = ToolCategory(name="test_cat", space="general")
+        category = ToolCategory(name="test_cat", options=CategoryOptions(space="general"))
         t1 = _make_tool("tool_a", "Tool A")
         t2 = _make_tool("tool_b", "Tool B")
         category.add_tools([t1, t2])
@@ -1013,7 +1004,7 @@ class TestToolRegistryCategories:
 
     def test_tool_category_core_tools_filtering(self):
         """ToolCategory.get_core_tools should return only core-flagged tools."""
-        category = ToolCategory(name="mixed", space="general")
+        category = ToolCategory(name="mixed", options=CategoryOptions(space="general"))
         core_tool = _make_tool("core_tool", "Core tool")
         regular_tool = _make_tool("regular_tool", "Regular tool")
         category.add_tool(core_tool, is_core=True)
@@ -1030,7 +1021,7 @@ class TestToolRegistryCategories:
         registry._add_category(
             name="custom",
             tools=[t1],
-            space="custom_space",
+            options=CategoryOptions(space="custom_space"),
         )
 
         category = registry.get_category("custom")
@@ -1041,8 +1032,8 @@ class TestToolRegistryCategories:
     def test_registry_get_category_by_space(self):
         """get_category_by_space should return the category matching the space."""
         registry = ToolRegistry()
-        registry._add_category(name="cat_a", tools=[], space="space_a")
-        registry._add_category(name="cat_b", tools=[], space="space_b")
+        registry._add_category(name="cat_a", tools=[], options=CategoryOptions(space="space_a"))
+        registry._add_category(name="cat_b", tools=[], options=CategoryOptions(space="space_b"))
 
         result = registry.get_category_by_space("space_b")
         assert result is not None
@@ -1056,8 +1047,10 @@ class TestToolRegistryCategories:
         t1 = _make_tool("alpha", "Alpha tool")
         t2 = _make_tool("beta", "Beta tool")
         t3 = _make_tool("gamma", "Gamma tool")
-        registry._add_category(name="cat1", tools=[t1, t2], space="general")
-        registry._add_category(name="cat2", tools=[t3], space="other")
+        registry._add_category(
+            name="cat1", tools=[t1, t2], options=CategoryOptions(space="general")
+        )
+        registry._add_category(name="cat2", tools=[t3], options=CategoryOptions(space="other"))
 
         names = registry.get_tool_names()
         assert set(names) == {"alpha", "beta", "gamma"}
@@ -1066,7 +1059,9 @@ class TestToolRegistryCategories:
         """get_category_of_tool should return the category name for a known tool."""
         registry = ToolRegistry()
         t1 = _make_tool("special_tool", "Special")
-        registry._add_category(name="special_cat", tools=[t1], space="general")
+        registry._add_category(
+            name="special_cat", tools=[t1], options=CategoryOptions(space="general")
+        )
 
         assert registry.get_category_of_tool("special_tool") == "special_cat"
         assert registry.get_category_of_tool("unknown_tool") == "unknown"
@@ -1076,12 +1071,16 @@ class TestToolRegistryCategories:
         registry = ToolRegistry()
         t_regular = _make_tool("regular", "Regular tool")
         t_delegated = _make_tool("delegated", "Delegated tool")
-        registry._add_category(name="reg_cat", tools=[t_regular], space="general")
+        registry._add_category(
+            name="reg_cat", tools=[t_regular], options=CategoryOptions(space="general")
+        )
         registry._add_category(
             name="del_cat",
             tools=[t_delegated],
-            space="delegated_space",
-            is_delegated=True,
+            options=CategoryOptions(
+                space="delegated_space",
+                is_delegated=True,
+            ),
         )
 
         all_tools = registry.get_all_tools_for_search(include_delegated=True)

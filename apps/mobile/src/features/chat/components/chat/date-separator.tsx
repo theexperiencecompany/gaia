@@ -24,7 +24,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function DateSeparator({ date }: DateSeparatorProps) {
-  const { spacing, fontSize } = useResponsive();
+  const { spacing, fontSize, moderateScale } = useResponsive();
   const label = formatDateLabel(date);
 
   return (
@@ -33,7 +33,7 @@ export function DateSeparator({ date }: DateSeparatorProps) {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: spacing.sm,
+        height: Math.round(moderateScale(28, 0.5)),
         paddingHorizontal: spacing.md,
       }}
     >

@@ -1,20 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Number of control points across the X axis of the gradient. */
 export const SPECTRUM_BINS = 24;
 
 /**
- * Source of the spectrum on a given frame:
- * - "mic": live microphone input via Web Audio AnalyserNode
- * - "agent-track": Web Audio AnalyserNode over a remote MediaStreamTrack
- *   (e.g. the LiveKit agent's TTS audio track) passed in via `remoteTrack`
- * - "loading": procedural low-pass-filtered random walk — used during the
- *   voice-mode connecting phase so the gradient visibly vibrates while the
- *   room negotiates. Caller invokes `decayLoading()` when transitioning out
- *   to fade the amplitude to zero before switching sources.
- * - "idle": flat baseline — wave settles to zero
+ * Spectrum source per frame: "mic" (live AnalyserNode), "agent-track"
+ * (AnalyserNode over a remote MediaStreamTrack, e.g. agent TTS, via `remoteTrack`),
+ * "loading" (procedural random walk while connecting — call `decayLoading()` to
+ * fade out before switching), "idle" (flat baseline).
  */
 export type SpectrumSource = "mic" | "agent-track" | "loading" | "idle";
 
@@ -137,13 +132,12 @@ export function useVoiceSpectrum({
   remoteTrack = null,
   muted = false,
 }: UseVoiceSpectrumOptions) {
-  // Persistent buffer — mutated in place each frame. Consumers read it via
-  // a ref so they don't trigger re-renders on every audio frame.
-  const spectrumRef = useRef<Float32Array>(new Float32Array(SPECTRUM_BINS));
-  const targetSpectrumRef = useRef<Float32Array>(
-    new Float32Array(SPECTRUM_BINS),
-  );
-  const scratchRef = useRef<Float32Array>(new Float32Array(SPECTRUM_BINS));
+  // Persistent per-instance buffers, allocated once via a lazy state initializer
+  // (no per-render Float32Array churn) and mutated in place by the rAF loop below;
+  // consumers read `spectrum` directly so audio frames don't trigger re-renders.
+  const [spectrum] = useState(() => new Float32Array(SPECTRUM_BINS));
+  const [targetSpectrum] = useState(() => new Float32Array(SPECTRUM_BINS));
+  const [scratch] = useState(() => new Float32Array(SPECTRUM_BINS));
   const rawFftRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -161,11 +155,11 @@ export function useVoiceSpectrum({
   const tickRef = useRef<((now: number) => void) | null>(null);
   const sourceRef = useRef<SpectrumSource>(source);
   const mutedRef = useRef(false);
-  const loadingStateRef = useRef<LoadingState>({
+  const [loadingState] = useState<LoadingState>(() => ({
     current: new Float32Array(SPECTRUM_BINS),
     target: new Float32Array(SPECTRUM_BINS),
     lastRefresh: 0,
-  });
+  }));
   // 1 → full loading jitter visible. Caller flips `decayLoading()` and the
   // tick loop decays this toward 0 over ~LOADING_DECAY_MS so the gradient
   // smoothly settles before the next source (mic/agent-track) takes over.
@@ -309,8 +303,8 @@ export function useVoiceSpectrum({
   // Single requestAnimationFrame loop that updates the spectrum buffer in
   // place every frame regardless of source.
   useEffect(() => {
-    const target = targetSpectrumRef.current;
-    const smoothed = spectrumRef.current;
+    const target = targetSpectrum;
+    const smoothed = spectrum;
 
     // Bins an analyser's FFT into SPECTRUM_BINS perceptually-curved bands,
     // writing into `out`. Returns false when the analyser isn't ready yet
@@ -387,7 +381,7 @@ export function useVoiceSpectrum({
           buildLoadingSpectrum(
             now,
             target,
-            loadingStateRef.current,
+            loadingState,
             loadingAmplitudeRef.current,
           );
           break;
@@ -397,7 +391,7 @@ export function useVoiceSpectrum({
 
       // Spatial smoothing (3-tap Gaussian) on the target, then temporal lerp
       // toward the smoothed buffer that consumers actually read.
-      applySpatialSmoothing(target, target, scratchRef.current);
+      applySpatialSmoothing(target, target, scratch);
       for (let i = 0; i < SPECTRUM_BINS; i++) {
         smoothed[i] = lerp(smoothed[i], target[i], TEMPORAL_SMOOTHING);
       }
@@ -416,12 +410,13 @@ export function useVoiceSpectrum({
       rafRef.current = null;
       tickRef.current = null;
     };
-  }, []);
+    // The buffers are stable across renders; listing them satisfies
+    // exhaustive-deps without ever re-running the loop setup.
+  }, [targetSpectrum, spectrum, loadingState, scratch]);
 
-  // Pause the raf on mute (after a settle window so the wave glides flat
-  // first) or while the tab is hidden; resume on unmute / visibility return.
-  // Agent-track frames are exempt from the mute pause — the agent's audible
-  // speech should keep animating even while the user's mic is off.
+  // Pauses the raf on mute (after a settle window so the wave glides flat first)
+  // or when the tab is hidden; resumes on unmute/visibility. Agent-track frames
+  // are exempt from the mute pause so the agent's speech keeps animating.
   useEffect(() => {
     const resume = () => {
       if (rafRef.current !== null || !tickRef.current) return;
@@ -436,11 +431,11 @@ export function useVoiceSpectrum({
       }
     };
 
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
     const apply = () => {
-      if (settleTimer !== null) {
+      if (settleTimer !== undefined) {
         clearTimeout(settleTimer);
-        settleTimer = null;
+        settleTimer = undefined;
       }
       if (typeof document !== "undefined" && document.hidden) {
         pause();
@@ -462,7 +457,7 @@ export function useVoiceSpectrum({
       document.addEventListener("visibilitychange", apply);
     }
     return () => {
-      if (settleTimer !== null) clearTimeout(settleTimer);
+      clearTimeout(settleTimer);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", apply);
       }
@@ -473,7 +468,7 @@ export function useVoiceSpectrum({
 
   return {
     /** Length SPECTRUM_BINS, values in [0, 1]. Mutated in place across frames. */
-    spectrum: spectrumRef.current,
+    spectrum,
     start,
     decayLoading,
   };

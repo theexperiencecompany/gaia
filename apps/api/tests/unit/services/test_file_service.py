@@ -1,6 +1,6 @@
 """Unit tests for the files service package.
 
-Covers the ``FileService`` upload/update/delete flows plus the store/summaries
+Covers the FileService upload/update/delete flows plus the store/summaries
 helpers they orchestrate. External boundaries (Cloudinary, Mongo, ChromaDB,
 the JuiceFS sandbox mirror, the summary LLM) are mocked at the same seams the
 production code uses.
@@ -9,21 +9,29 @@ production code uses.
 from collections.abc import Iterator
 import contextlib
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 from fastapi import HTTPException
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
 from app.services.analytics_service import AnalyticsEvents
-from app.services.files.service import FileService
+from app.services.files.service import (
+    FileService,
+    _log_upload_context,
+    _PreparedUpload,
+    _UploadSummary,
+)
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
 from app.utils.upload_validation import MAX_UPLOAD_BYTES
+from shared.py.wide_events import FileContext
 
 
 def _file_doc(**overrides: object) -> FileDocument:
-    """A stored file document as the repository returns it."""
+    """Build a stored file document as the repository returns it."""
     data: dict[str, object] = {
         "id": "0" * 24,
         "file_id": "f-1",
@@ -74,7 +82,7 @@ def _upload_file_mock(
 def _no_analytics() -> Iterator[None]:
     """Neutralize analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
@@ -84,9 +92,9 @@ def _no_analytics() -> Iterator[None]:
 
 @pytest.fixture
 def mock_file_repo() -> Iterator[AsyncMock]:
-    """One mock behind both module bindings of ``file_repository``.
+    """One mock behind both module bindings of file_repository.
 
-    ``store.py`` (insert_metadata) and ``service.py`` (get/update/delete) each
+    store.py (insert_metadata) and service.py (get/update/delete) each
     import the repository singleton directly, so both bindings must point at
     the same mock.
     """
@@ -120,7 +128,7 @@ def mock_chroma_client() -> Iterator[tuple[MagicMock, AsyncMock]]:
 
 @pytest.fixture
 def mock_sandbox_mirror() -> Iterator[tuple[AsyncMock, AsyncMock]]:
-    """Mock the JuiceFS projection boundary used by ``FileService.upload``."""
+    """Mock the JuiceFS projection boundary used by FileService.upload."""
     with (
         patch(
             "app.services.files.service.mirror_upload",
@@ -234,6 +242,31 @@ class TestFileServiceUpload:
                 "content_type": "application/pdf",
             },
         )
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_the_wide_event_carries_the_callers_conversation_id(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        mock_cloudinary_upload,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+    ):
+        """upload() must hand _log_upload_context the real conversation id, or every upload's wide event silently degrades to ""."""
+        mock_cloudinary_upload.return_value = {
+            "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
+        }
+
+        with _summary("This is a summary"), patch("app.services.files.service.log") as log:
+            await FileService.upload(
+                file=_upload_file_mock(),
+                user_id="user-abc",
+                conversation_id="conv-1",
+            )
+
+        contexts = [c.kwargs["file"] for c in log.set.call_args_list if "file" in c.kwargs]
+        assert len(contexts) == 1
+        assert contexts[0]["conversation_id"] == "conv-1"
 
     async def test_missing_filename_raises_400(self):
         file = _upload_file_mock(filename=None)
@@ -663,8 +696,7 @@ class TestReindexFile:
         )
 
     async def test_chroma_client_init_fails_still_calls_index(self):
-        """When the client is unavailable, delete_from_index swallows its error
-        and index_file is still attempted."""
+        """When the Chroma client is unavailable, delete_from_index swallows its error and index_file still runs."""
         with (
             patch(
                 "app.services.files.store.ChromaClient.get_langchain_client",
@@ -854,8 +886,7 @@ class TestFileServiceUpdate:
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_file_repo):
-        """Only filename/description may be written — protected fields in the
-        payload must never reach the update model (mass-assignment guard)."""
+        """Only filename/description may be written; protected payload fields must never reach the update model (mass-assignment guard)."""
         mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
         mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
 
@@ -1019,3 +1050,122 @@ class TestFileServiceUpdate:
             )
 
         mock_reindex.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Exact pins for the upload flow's logging and identity behavior
+# ---------------------------------------------------------------------------
+
+
+class TestLogUploadContext:
+    def _ctx(self, **overrides: Any) -> FileContext:
+        kwargs: dict[str, Any] = {
+            "operation": "upload",
+            "file_id": "f1",
+            "content_type": "application/pdf",
+            "size_bytes": 1,  # len(b"x") -- both tests below upload single-byte content
+            "conversation_id": "",
+            "has_summary": False,
+            "page_count": 0,
+        }
+        kwargs.update(overrides)
+        return FileContext(**kwargs)
+
+    def test_context_fields_are_exact(self) -> None:
+        summary = _UploadSummary(description="desc", page_wise_summary=["p1", "p2"])
+        with patch("app.services.files.service.log") as log:
+            _log_upload_context(
+                _PreparedUpload(
+                    file_id="f1",
+                    filename="report.pdf",
+                    content=b"x",
+                    content_type="application/pdf",
+                    resource_type="raw",
+                ),
+                conversation_id=None,
+                summary=summary,
+            )
+
+        ctx = log.set.call_args.kwargs["file"]
+        assert ctx == self._ctx(has_summary=True, page_count=2)
+
+    def test_conversation_id_falls_back_to_empty_string(self) -> None:
+        summary = _UploadSummary(description=None, page_wise_summary=[])
+        with patch("app.services.files.service.log") as log:
+            _log_upload_context(
+                _PreparedUpload(
+                    file_id="f2",
+                    filename="a.txt",
+                    content=b"x",
+                    content_type="text/plain",
+                    resource_type="raw",
+                ),
+                conversation_id=None,
+                summary=summary,
+            )
+
+        ctx = log.set.call_args.kwargs["file"]
+        assert ctx["conversation_id"] == ""
+        assert ctx["has_summary"] is False
+        assert ctx["page_count"] == 0
+
+
+class TestFileServiceUploadPins:
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_file_id_is_a_uuid_string_and_metadata_is_persisted_verbatim(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        mock_cloudinary_upload,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+    ):
+        mock_cloudinary_upload.return_value = {
+            "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
+        }
+
+        with _summary("Summary text"):
+            result = await FileService.upload(
+                file=_upload_file_mock(),
+                user_id="user-abc",
+                conversation_id="conv-1",
+            )
+
+        # file_id must be a real UUID string — a mutated generator would break
+        # every downstream lookup.
+        parsed = UUID(result.file_id)
+        assert str(parsed) == result.file_id
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_summary_is_processed_into_description_and_pages(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        mock_cloudinary_upload,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+    ):
+        mock_cloudinary_upload.return_value = {
+            "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
+        }
+        # A real PageWiseSummary is a list of DocumentSummaryModel dumps
+        # (``{"data": {...}, "summary": ...}``) -- render_summary_markdown
+        # (exercised for real via mock_sandbox_mirror) indexes into that shape.
+        page_summary = [{"summary": "page-one", "data": {"page_number": 1, "content": "body"}}]
+        with patch(
+            "app.services.files.service.generate_file_summary", new_callable=AsyncMock
+        ) as gen:
+            gen.return_value = {"pages": [{"page_number": 1, "summary": "s"}]}
+            with patch(
+                "app.services.files.service.process_summary",
+                return_value=("short desc", page_summary),
+            ) as proc:
+                result = await FileService.upload(
+                    file=_upload_file_mock(),
+                    user_id="user-abc",
+                    conversation_id="conv-1",
+                )
+
+        proc.assert_called_once_with({"pages": [{"page_number": 1, "summary": "s"}]})
+        assert result.description == "short desc"
+        assert result.page_wise_summary == page_summary

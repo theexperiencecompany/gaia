@@ -1,44 +1,16 @@
 // `gaia bridge` — connects this machine's MCP servers and files to GAIA over
 // one secure outbound tunnel.
 
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
 import { Command } from "commander";
 import {
   apiUrlFromEnvOrCreds,
   clearCredentials,
   loadConfig,
   loadCredentials,
-  removeServer,
-  upsertServer,
 } from "./config.js";
-import { FILESYSTEM_SERVER_KEY } from "./constants.js";
 import { runLogin } from "./login.js";
-import { runUp } from "./up.js";
-import { runAdd } from "./wizard.js";
-
-/** Expand a leading ~ so quoted paths like "~/Documents" still resolve to $HOME. */
-function expandTilde(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
-  return p;
-}
-
-function cmdFs(dirs: string[], write: boolean): void {
-  const allow = dirs.map((p) => resolve(expandTilde(p)));
-  upsertServer({
-    type: "filesystem",
-    key: FILESYSTEM_SERVER_KEY,
-    name: "Local Files",
-    allow,
-    allowWrite: write,
-  });
-  console.info(
-    `Filesystem access configured for:\n  ${allow.join("\n  ")}\n` +
-      `Writes: ${write ? "ENABLED" : "disabled (read-only)"}\n` +
-      `Run: gaia bridge up`,
-  );
-}
+import { daemonStatusLine, runServe, runUp, stopDaemon } from "./up.js";
+import { type AddOptions, runAdd, runRemove } from "./wizard.js";
 
 function cmdList(): void {
   const creds = loadCredentials();
@@ -47,6 +19,7 @@ function cmdList(): void {
       ? `Paired (device ${creds.deviceId}, ${apiUrlFromEnvOrCreds()})`
       : "Not paired — run: gaia bridge login",
   );
+  console.info(daemonStatusLine());
   const servers = loadConfig().servers;
   if (servers.length === 0) {
     console.info("No servers configured — run: gaia bridge add");
@@ -64,6 +37,9 @@ function cmdList(): void {
       if (names.length) console.info(`  env: ${names.join(", ")}`);
     } else {
       console.info(`  [${s.key}] ${s.name}: ${s.url}`);
+      const headerNames = s.headers ? Object.keys(s.headers) : [];
+      if (headerNames.length)
+        console.info(`  headers: ${headerNames.join(", ")}`);
     }
   }
 }
@@ -91,9 +67,20 @@ export const bridgeCommand = new Command("bridge")
 
 bridgeCommand
   .command("add")
-  .description("Connect a local MCP server (guided — start here!)")
-  .action(async () => {
-    await run(runAdd);
+  .description(
+    "Connect a local MCP server (guided; or non-interactive with --type)",
+  )
+  .option(
+    "--type <type>",
+    "stdio | url — enables non-interactive mode (no prompts)",
+  )
+  .option("--name <name>", "display name")
+  .option("--command <command>", "stdio: the command that starts the server")
+  .option("--url <url>", "url: the local MCP server URL")
+  .option("--env <pair...>", "stdio: KEY=VALUE env var (repeatable)")
+  .option("--header <pair...>", "url: Header:Value request header (repeatable)")
+  .action(async (opts: AddOptions) => {
+    await run(() => runAdd(opts));
   });
 
 bridgeCommand
@@ -112,15 +99,6 @@ bridgeCommand
   });
 
 bridgeCommand
-  .command("fs")
-  .description("Expose folders for file access (read-only unless --write)")
-  .argument("<dirs...>", "Folders to expose, e.g. ~/Documents")
-  .option("--write", "Allow GAIA to write to these folders")
-  .action(async (dirs: string[], options: { write?: boolean }) => {
-    await run(() => cmdFs(dirs, options.write === true));
-  });
-
-bridgeCommand
   .command("ls")
   .alias("list")
   .description("Show pairing status and configured servers")
@@ -129,24 +107,36 @@ bridgeCommand
   });
 
 bridgeCommand
-  .command("rm")
-  .alias("remove")
-  .description("Remove a configured server")
-  .argument("<key>", "Server key from `gaia bridge ls`")
-  .action(async (key: string) => {
-    await run(() => {
-      console.info(
-        removeServer(key) ? `Removed '${key}'` : `No server '${key}'`,
-      );
-    });
+  .command("remove")
+  .alias("rm")
+  .description(
+    "Remove a configured server (interactive picker if no key given)",
+  )
+  .argument("[key]", "Server key from `gaia bridge ls` (optional)")
+  .action(async (key: string | undefined) => {
+    await run(() => runRemove(key));
   });
 
 bridgeCommand
   .command("up")
   .alias("start")
-  .description("Connect and serve (holds the tunnel; Ctrl+C to stop)")
+  .description(
+    "Connect with full file access + serve in the background (stop with: gaia bridge down)",
+  )
+  .option(
+    "--serve",
+    "(internal) hold the tunnel in the foreground; used by the background daemon",
+  )
+  .action(async (options: { serve?: boolean }) => {
+    await run(options.serve ? runServe : runUp);
+  });
+
+bridgeCommand
+  .command("down")
+  .alias("stop")
+  .description("Stop the background tunnel started by `gaia bridge up`")
   .action(async () => {
-    await run(runUp);
+    await run(stopDaemon);
   });
 
 bridgeCommand

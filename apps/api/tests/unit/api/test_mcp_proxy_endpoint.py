@@ -29,7 +29,7 @@ API = "/api/v1/mcp"
 
 
 class TestProxyToolCall:
-    """POST /api/v1/mcp/proxy/tool-call"""
+    """POST /api/v1/mcp/proxy/tool-call."""
 
     async def test_tool_call_success(self, client: AsyncClient) -> None:
         mock_result = CallToolResult(
@@ -105,7 +105,7 @@ class TestProxyToolCall:
                 },
             )
         assert resp.status_code == 500
-        assert "Tool call failed" in resp.json()["detail"]
+        assert "Tool call failed" in resp.json()["message"]
 
     async def test_tool_call_validation_error(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/proxy/tool-call", json={})
@@ -123,7 +123,7 @@ class TestProxyToolCall:
 
 
 class TestProxyResourcesList:
-    """POST /api/v1/mcp/proxy/resources/list"""
+    """POST /api/v1/mcp/proxy/resources/list."""
 
     async def test_resources_list_success(self, client: AsyncClient) -> None:
         mock_result = ListResourcesResult(
@@ -175,7 +175,7 @@ class TestProxyResourcesList:
                 json={"server_url": "https://example.com/mcp"},
             )
         assert resp.status_code == 500
-        assert "resources/list failed" in resp.json()["detail"]
+        assert "resources/list failed" in resp.json()["message"]
 
     async def test_resources_list_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
@@ -186,7 +186,7 @@ class TestProxyResourcesList:
 
 
 class TestProxyResourceTemplatesList:
-    """POST /api/v1/mcp/proxy/resources/templates/list"""
+    """POST /api/v1/mcp/proxy/resources/templates/list."""
 
     async def test_templates_list_success(self, client: AsyncClient) -> None:
         mock_result = ListResourceTemplatesResult(
@@ -252,7 +252,7 @@ class TestProxyResourceTemplatesList:
 
 
 class TestProxyResourceRead:
-    """POST /api/v1/mcp/proxy/resources/read"""
+    """POST /api/v1/mcp/proxy/resources/read."""
 
     async def test_resource_read_success(self, client: AsyncClient) -> None:
         mock_result = ReadResourceResult(
@@ -293,7 +293,7 @@ class TestProxyResourceRead:
                 },
             )
         assert resp.status_code == 500
-        assert "resources/read failed" in resp.json()["detail"]
+        assert "resources/read failed" in resp.json()["message"]
 
     async def test_resource_read_validation_error(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/proxy/resources/read", json={})
@@ -308,7 +308,7 @@ class TestProxyResourceRead:
 
 
 class TestProxyPromptsList:
-    """POST /api/v1/mcp/proxy/prompts/list"""
+    """POST /api/v1/mcp/proxy/prompts/list."""
 
     async def test_prompts_list_success(self, client: AsyncClient) -> None:
         mock_result = ListPromptsResult(prompts=[Prompt(name="greet", description="Say hi")])
@@ -357,7 +357,7 @@ class TestProxyPromptsList:
                 json={"server_url": "https://example.com/mcp"},
             )
         assert resp.status_code == 500
-        assert "prompts/list failed" in resp.json()["detail"]
+        assert "prompts/list failed" in resp.json()["message"]
 
     async def test_prompts_list_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(

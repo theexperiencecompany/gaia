@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
+import discardedPreambleTurn from "./__fixtures__/discarded-preamble-turn.json";
 import executorReasoning from "./__fixtures__/executor-reasoning.json";
 import imageGeneration from "./__fixtures__/image-generation.json";
 import plainTextTurn from "./__fixtures__/plain-text-turn.json";
@@ -47,6 +49,8 @@ describe("turnAccumulator golden replay", () => {
 
     expect(acc).toEqual({
       responseText: "Hello, world",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [],
       followUpActions: ["Tell me more", "Summarize this"],
       imageData: null,
@@ -59,11 +63,36 @@ describe("turnAccumulator golden replay", () => {
     expect(acc.toolData).toHaveLength(0);
   });
 
+  it("parses an emoji_ack frame into the reaction event", () => {
+    const events = parseChatStreamEvent(
+      JSON.stringify({
+        emoji_ack: { emoji: "😎", reacts_to_message_id: "umsg_1" },
+      }),
+    );
+
+    expect(events).toEqual([
+      { type: "emoji_ack", emoji: "😎", reactsToMessageId: "umsg_1" },
+    ]);
+  });
+
+  it("does not accumulate an emoji_ack into message state", () => {
+    // Same contract as main_response_complete: a turn-session event, consumed
+    // by the session, never content.
+    const acc = fold([
+      JSON.stringify({ emoji_ack: { emoji: "👍", reacts_to_message_id: "u" } }),
+    ]);
+
+    expect(acc.responseText).toBe("");
+    expect(acc.toolData).toEqual([]);
+  });
+
   it("(b) tool turn: tool_output merges onto the matching tool_call_id", () => {
     const acc = fold(toolTurn);
 
     expect(acc).toEqual({
       responseText: "Done.",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [
         {
           tool_name: "tool_calls_data",
@@ -151,6 +180,8 @@ describe("turnAccumulator golden replay", () => {
 
     expect(acc).toEqual({
       responseText: "All done.",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [
         {
           tool_name: "subagent_group",
@@ -190,6 +221,8 @@ describe("turnAccumulator golden replay", () => {
 
     expect(acc).toEqual({
       responseText: "",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [
         {
           tool_name: "todo_progress",
@@ -219,6 +252,8 @@ describe("turnAccumulator golden replay", () => {
 
     expect(acc).toEqual({
       responseText: "Answer.",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [
         {
           tool_name: "tool_calls_data",
@@ -263,6 +298,8 @@ describe("turnAccumulator golden replay", () => {
     expect(acc).toEqual({
       // Invariant: the generating_image status clears any streamed text.
       responseText: "",
+      currentMessageStart: 0,
+      messageBreakPending: false,
       toolData: [],
       followUpActions: null,
       imageData: {
@@ -273,6 +310,67 @@ describe("turnAccumulator golden replay", () => {
       todoProgress: null,
       extras: {},
     });
+  });
+});
+
+describe("a retracted handoff preamble", () => {
+  it("(g) is streamed, then cut back out when its message is discarded", () => {
+    const acc = fold(discardedPreambleTurn);
+
+    // In production the user read both: the preamble AND the acknowledgement,
+    // concatenated into one bubble ("…tasks createdyeah, all of it's…").
+    expect(acc.responseText).toBe("yeah, all of it's being set up now.");
+    expect(acc.messageBreakPending).toBe(true);
+  });
+
+  it("shows the preamble while it is still the current message", () => {
+    // The retraction is only possible AFTER the fact — the wire delivers a
+    // message's text before its tool call. Withholding it instead would cost
+    // every ordinary reply its token streaming.
+    const acc = fold(discardedPreambleTurn.slice(0, 3));
+
+    expect(acc.responseText).toBe(
+      "yeah, i can set all that up. let me get the tasks created",
+    );
+  });
+
+  it("separates two kept messages with the bubble-break sentinel", () => {
+    const acc = fold([
+      '{"response":"fixing it."}',
+      '{"message_boundary":{"message_id":"m1","discarded":false}}',
+      '{"response":"fixing it now."}',
+      '{"message_boundary":{"message_id":"m2","discarded":false}}',
+    ]);
+
+    // Concatenating them is what produced the persisted "fixing it.fixing it now".
+    expect(acc.responseText).toBe(
+      `fixing it.${NEW_MESSAGE_BREAK_TOKEN}fixing it now.`,
+    );
+  });
+
+  it("adds no separator for a message that carried no text", () => {
+    const acc = fold([
+      '{"response":"on it."}',
+      '{"message_boundary":{"message_id":"m1","discarded":false}}',
+      '{"message_boundary":{"message_id":"m2","discarded":false}}',
+    ]);
+
+    expect(acc.responseText).toBe("on it.");
+  });
+
+  it("never eats the text a resumed turn already had", () => {
+    // The executor-resume transport seeds the accumulator with the message's
+    // existing content. If the seed did not move currentMessageStart with it, a
+    // discard in the resumed stream would cut that content away.
+    const seeded = createTurnAccumulator("what the message already said. ");
+    const acc = [
+      '{"response":"and now some narration"}',
+      '{"message_boundary":{"message_id":"m1","discarded":true}}',
+    ]
+      .flatMap((frame) => parseChatStreamEvent(frame))
+      .reduce(applyStreamEvent, seeded);
+
+    expect(acc.responseText).toBe("what the message already said. ");
   });
 });
 

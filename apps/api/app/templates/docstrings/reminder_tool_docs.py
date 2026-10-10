@@ -1,9 +1,4 @@
-"""Docstrings for reminder-rel3. Limits (only when user asks, explicitly or implicitly):
-   • If user says "stop after 5 days" (daily reminders), set `max_occurrences=5`.
-   • Or use `stop_after` (ISO 8601) to cut off after a date.
-
-PAYLOAD:
-  STATIC → {"title": str, "body": str}n tools."""
+"""Docstring templates for reminder tools (see CREATE_REMINDER for limits/payload details)."""
 
 # TODO: Improve this prompt to be more concise and focused on the tool's purpose, LLM still sometimes misses that it has capabilities to create reminders with tools, not just static notifications.
 

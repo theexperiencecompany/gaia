@@ -1,8 +1,8 @@
-"""Unit tests for the instance secret store (app.services.runtime.secrets_store).
+"""Unit tests for the instance secret store.
 
-Covers the contract: INSTANCE_SECRET env wins, else the Mongo ``instance_settings``
-doc (key="secrets"), else generate + persist atomically; plus Fernet key
-derivation from the instance secret.
+Covers the contract: INSTANCE_SECRET env wins, else the Mongo secrets doc,
+else generate and persist atomically; plus Fernet key derivation from the
+instance secret.
 """
 
 from base64 import urlsafe_b64encode
@@ -22,7 +22,7 @@ SECRET_FIELD = "instance_secret"
 
 
 class _FakeDoc:
-    """Minimal stand-in for InstanceSettingsDocument (only ``value`` is read)."""
+    """Minimal stand-in for InstanceSettingsDocument (only value is read)."""
 
     def __init__(self, value: dict[str, object]) -> None:
         self.value = value
@@ -31,8 +31,8 @@ class _FakeDoc:
 class FakeInstanceSettingsRepo:
     """In-memory fake of the two repository methods the secret store uses.
 
-    ``find_by_key``/``set_if_absent`` mirror the real repository's semantics,
-    including the atomic insert-if-absent result of ``set_if_absent``.
+    find_by_key and set_if_absent mirror the real semantics, including the
+    atomic insert-if-absent result.
     """
 
     def __init__(self) -> None:
@@ -108,8 +108,7 @@ class TestGetInstanceSecretFromDb:
         assert await get_instance_secret() == "stored-secret"
 
     async def test_corrupt_doc_raises_instead_of_regenerating(self, monkeypatch) -> None:
-        """A secrets doc without the field means prior ciphertexts are orphaned —
-        generating a new secret would silently break decryption, so raise."""
+        """Raise on a secrets doc missing the field; regenerating would orphan prior ciphertexts."""
         monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
         repo = make_repo(monkeypatch)
         repo.docs[SECRETS_KEY] = {}
@@ -141,8 +140,7 @@ class TestGetInstanceSecretGeneration:
         assert len(repo.set_if_absent_calls) == 1  # second call served from the doc
 
     async def test_lost_race_returns_winner_secret(self, monkeypatch) -> None:
-        """If another pod inserts first, this pod adopts the winner's secret so
-        both sign/derive keys identically instead of splitting the instance."""
+        """Adopt the winner secret when another pod inserts first; both pods then derive identically."""
         monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
         repo = make_repo(monkeypatch)
         repo.lost_race_secret = "winner-secret"

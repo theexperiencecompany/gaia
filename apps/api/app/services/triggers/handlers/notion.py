@@ -10,16 +10,16 @@ from typing import Any, ClassVar, Literal
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
-    NotionAllPageEventsPayload,
     NotionFetchDataData,
     NotionFetchDataInput,
-    NotionPageAddedPayload,
-    NotionPageUpdatedPayload,
+    NotionPageContentUpdatedPayload,
+    NotionPageCreatedPayload,
+    NotionPagePropertiesUpdatedPayload,
 )
-from app.models.trigger_config import TriggerOption
+from app.models.trigger_config import TriggerOption, TriggerOptionsQuery
 from app.models.trigger_configs import (
-    NotionAllPageEventsConfig,
     NotionNewPageInDbConfig,
+    NotionPageContentUpdatedConfig,
     NotionPageUpdatedConfig,
 )
 from app.models.workflow_models import TriggerConfig, Workflow
@@ -35,19 +35,22 @@ class NotionTriggerHandler(TriggerHandler):
     SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "notion_new_page_in_db",
         "notion_page_updated",
-        "notion_all_page_events",
+        "notion_page_content_updated",
     ]
 
+    # The old NOTION_PAGE_ADDED_TO_DATABASE / NOTION_PAGE_UPDATED_TRIGGER /
+    # NOTION_ALL_PAGE_EVENTS_TRIGGER slugs were retired by Composio; stored
+    # workflows keep their old GAIA names and resync against the new slugs.
     SUPPORTED_EVENTS: ClassVar[set[str]] = {
-        "NOTION_PAGE_ADDED_TO_DATABASE",
-        "NOTION_PAGE_UPDATED_TRIGGER",
-        "NOTION_ALL_PAGE_EVENTS_TRIGGER",
+        "NOTION_PAGE_CREATED",
+        "NOTION_PAGE_PROPERTIES_UPDATED",
+        "NOTION_PAGE_CONTENT_UPDATED",
     }
 
     TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
-        "notion_new_page_in_db": "NOTION_PAGE_ADDED_TO_DATABASE",
-        "notion_page_updated": "NOTION_PAGE_UPDATED_TRIGGER",
-        "notion_all_page_events": "NOTION_ALL_PAGE_EVENTS_TRIGGER",
+        "notion_new_page_in_db": "NOTION_PAGE_CREATED",
+        "notion_page_updated": "NOTION_PAGE_PROPERTIES_UPDATED",
+        "notion_page_content_updated": "NOTION_PAGE_CONTENT_UPDATED",
     }
 
     @property
@@ -58,37 +61,29 @@ class NotionTriggerHandler(TriggerHandler):
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
-    async def get_config_options(
-        self,
-        trigger_name: str,  # noqa: ARG002 -- framework contract
-        field_name: str,
-        user_id: str,
-        integration_id: str,
-        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
-        **kwargs: str,
-    ) -> list[TriggerOption]:
+    async def get_config_options(self, query: TriggerOptionsQuery) -> list[TriggerOption]:
         """Get dynamic options for Notion trigger config fields."""
         try:
             composio_service = get_composio_service()
 
             # Use NOTION_FETCH_DATA tool
-            tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=user_id)
+            tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=query.user_id)
             if not tool:
                 log.error(f"{LogTag.TRIGGER} Notion FETCH_DATA tool not found")
                 return []
 
             # Determine fetch_type based on field_name
             fetch_type: Literal["pages", "databases", "all"]
-            if field_name == "database_id":
+            if query.field_name == "database_id":
                 fetch_type = "databases"
-            elif field_name == "page_id":
+            elif query.field_name == "page_id":
                 fetch_type = "pages"
             else:
                 log.warning(
                     f"{LogTag.TRIGGER} Unknown Notion field, fetching all",
-                    field_name=field_name,
-                    user_id=user_id,
-                    integration_id=integration_id,
+                    field_name=query.field_name,
+                    user_id=query.user_id,
+                    integration_id=query.integration_id,
                 )
                 fetch_type = "all"
 
@@ -96,7 +91,7 @@ class NotionTriggerHandler(TriggerHandler):
             input_model = NotionFetchDataInput(
                 fetch_type=fetch_type,
                 page_size=100,
-                query=kwargs.get("search"),
+                query=query.search or None,
             )
 
             log.debug(
@@ -110,8 +105,8 @@ class NotionTriggerHandler(TriggerHandler):
                 log.error(
                     f"{LogTag.TRIGGER} Notion API error",
                     error=result["error"],
-                    user_id=user_id,
-                    integration_id=integration_id,
+                    user_id=query.user_id,
+                    integration_id=query.integration_id,
                 )
                 return []
 
@@ -130,36 +125,29 @@ class NotionTriggerHandler(TriggerHandler):
             log.info(
                 f"{LogTag.TRIGGER} Returning Notion options",
                 options_count=len(options),
-                field_name=field_name,
+                field_name=query.field_name,
             )
             return options
 
         except Exception as e:
             log.error(
                 f"{LogTag.TRIGGER} Failed to get Notion options for",
-                field_name=field_name,
+                field_name=query.field_name,
                 error=str(e),
                 error_type=type(e).__name__,
-                user_id=user_id,
-                integration_id=integration_id,
+                user_id=query.user_id,
+                integration_id=query.integration_id,
             )
             return []
 
     async def register(
         self,
         user_id: str,
-        _workflow_id: str,
+        _owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register Notion triggers with parallel execution and rollback.
-
-        If any trigger registration fails, all successfully created triggers
-        are rolled back to maintain atomicity.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
-        """
+        """Register Notion triggers in parallel, rolling back all on any failure."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             raise TriggerRegistrationError(
@@ -184,8 +172,10 @@ class NotionTriggerHandler(TriggerHandler):
                 log.warning(f"{LogTag.TRIGGER} No database IDs provided for notion_new_page_in_db")
                 return []
 
+            # Composio's NOTION_PAGE_CREATED config scopes by data_source_id
+            # (Notion's current name for a database).
             for database_id in database_ids:
-                configs.append({"database_id": database_id})
+                configs.append({"data_source_id": database_id})
 
         elif trigger_name == "notion_page_updated":
             if not isinstance(trigger_data, NotionPageUpdatedConfig):
@@ -202,13 +192,18 @@ class NotionTriggerHandler(TriggerHandler):
             for page_id in page_ids:
                 configs.append({"page_id": page_id})
 
-        elif trigger_name == "notion_all_page_events":
-            if trigger_data is not None and not isinstance(trigger_data, NotionAllPageEventsConfig):
+        elif trigger_name == "notion_page_content_updated":
+            if not isinstance(trigger_data, NotionPageContentUpdatedConfig):
                 raise TypeError(
-                    f"Expected NotionAllPageEventsConfig for trigger '{trigger_name}', "
-                    f"but got {type(trigger_data).__name__}"
+                    f"Expected NotionPageContentUpdatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
                 )
-            configs.append({})
+            page_ids = trigger_data.page_ids
+
+            for page_id in page_ids:
+                configs.append({"page_id": page_id})
+            if not configs:
+                configs.append({})
 
         else:
             raise TriggerRegistrationError(
@@ -233,12 +228,12 @@ class NotionTriggerHandler(TriggerHandler):
             # optional: validate payload for page added events
             # Validate payload
             try:
-                if "new_page" in event_type.lower():
-                    NotionPageAddedPayload.model_validate(data)
-                elif "page_updated" in event_type.lower():
-                    NotionPageUpdatedPayload.model_validate(data)
-                elif "all_page_events" in event_type.lower():
-                    NotionAllPageEventsPayload.model_validate(data)
+                if "page_created" in event_type.lower():
+                    NotionPageCreatedPayload.model_validate(data)
+                elif "properties_updated" in event_type.lower():
+                    NotionPagePropertiesUpdatedPayload.model_validate(data)
+                elif "content_updated" in event_type.lower():
+                    NotionPageContentUpdatedPayload.model_validate(data)
             except Exception as e:
                 log.debug(
                     f"{LogTag.TRIGGER} Notion payload validation failed",

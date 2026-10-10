@@ -7,7 +7,17 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.models.workflow_models import (
+    PlaybookDiscard,
+    PublicWorkflowRow,
+    PublicWorkflowStep,
+    TriggerConfig,
+    TriggerType,
+    WorkflowDocument,
+    WorkflowStep,
+    WorkflowUpdate,
+    public_workflow_steps,
+)
 
 BASE = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)  # midnight UTC
 
@@ -71,3 +81,73 @@ class TestTriggerConfigUpdateNextRun:
         tc.update_next_run(base_time=BASE)
         # Same base + zone => same next_run => no change on the second call.
         assert tc.update_next_run(base_time=BASE) is False
+
+
+def _stored_workflow(**overrides: object) -> WorkflowDocument:
+    return WorkflowDocument(
+        id="wf_1",
+        user_id="u_1",
+        title="Daily agenda",
+        steps=[],
+        trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+        **overrides,
+    )
+
+
+class TestThePlaybookDiscardAWorkflowRemembers:
+    """The discard record is the only durable answer to "where did my shortcut go" — the worker's warning line ages out of log retention first."""
+
+    DISCARD = PlaybookDiscard(
+        playbook_id="pb_1",
+        revision=3,
+        reason="suspect_streak_exhausted",
+        at=datetime(2025, 6, 1, 12, 0, tzinfo=UTC),
+        details={"suspect_streak": "3"},
+    )
+
+    def test_it_survives_the_round_trip_through_a_stored_workflow(self) -> None:
+        stored = _stored_workflow(last_playbook_discard=self.DISCARD)
+
+        restored = WorkflowDocument.model_validate(stored.model_dump())
+
+        assert restored.last_playbook_discard == self.DISCARD
+
+    def test_a_workflow_that_never_lost_one_says_nothing(self) -> None:
+        assert _stored_workflow().last_playbook_discard is None
+
+    def test_the_update_carries_it_as_a_set_field(self) -> None:
+        """$set is built from the fields the caller actually set, so a discard written elsewhere never reaches Mongo."""
+        update = WorkflowUpdate(last_playbook_discard=self.DISCARD)
+
+        assert update.model_dump(exclude_unset=True) == {
+            "last_playbook_discard": self.DISCARD.model_dump()
+        }
+
+
+class TestPublicWorkflowSteps:
+    def _row(self, *steps: WorkflowStep) -> PublicWorkflowRow:
+        return PublicWorkflowRow(
+            id="wf_1",
+            user_id="u_1",
+            title="Daily agenda",
+            steps=list(steps),
+            trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+        )
+
+    def test_a_categorised_step_keeps_its_category(self) -> None:
+        row = self._row(
+            WorkflowStep(id="s1", title="Fetch mail", category="gmail", description="Read inbox")
+        )
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(
+                id="s1", title="Fetch mail", description="Read inbox", category="gmail"
+            )
+        ]
+
+    def test_an_uncategorised_step_reads_as_general(self) -> None:
+        row = self._row(WorkflowStep(id="s1", title="Summarise", category="", description="Digest"))
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(id="s1", title="Summarise", description="Digest", category="general")
+        ]

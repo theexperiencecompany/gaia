@@ -4,21 +4,39 @@ import { FEATURE_DISCOVERED_WORKFLOWS_KEY } from "@/features/chat/constants";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import {
-  type SelectedWorkflowData,
-  useWorkflowSelectionStore,
-  type WorkflowSelectionOptions,
-} from "@/stores/workflowSelectionStore";
+import { useSelectedWorkflow } from "@/stores/composerStore";
+import type {
+  SelectedWorkflowData,
+  WorkflowSelectionOptions,
+} from "@/stores/composerStore.types";
 
 export type { SelectedWorkflowData, WorkflowSelectionOptions };
+
+/** Narrow a full API workflow down to the fields the composer attaches. */
+const toSelectedWorkflowData = (
+  workflow: Workflow | SelectedWorkflowData,
+): SelectedWorkflowData =>
+  "trigger_config" in workflow
+    ? {
+        id: workflow.id,
+        title: workflow.title,
+        description: workflow.description,
+        prompt: workflow.prompt,
+        steps: workflow.steps.map((step) => ({
+          id: step.id,
+          title: step.title,
+          description: step.description,
+          category: step.category,
+        })),
+      }
+    : workflow;
 
 export const useWorkflowSelection = () => {
   const {
     selectedWorkflow,
     selectWorkflow: storeSelectWorkflow,
     clearSelectedWorkflow,
-    setSelectedWorkflow,
-  } = useWorkflowSelectionStore();
+  } = useSelectedWorkflow();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -28,7 +46,7 @@ export const useWorkflowSelection = () => {
       options?: WorkflowSelectionOptions,
     ) => {
       // Use store to persist the workflow selection
-      storeSelectWorkflow(workflow, options);
+      storeSelectWorkflow(toSelectedWorkflowData(workflow), options);
 
       // Navigate to chat page if not already there. This MUST happen before
       // analytics — a throwing/blocked analytics SDK must never prevent the
@@ -64,6 +82,5 @@ export const useWorkflowSelection = () => {
     selectedWorkflow,
     selectWorkflow,
     clearSelectedWorkflow,
-    setSelectedWorkflow,
   };
 };

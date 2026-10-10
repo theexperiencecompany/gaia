@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { AiBrain01Icon } from "@icons";
-import { useEffect, useState } from "react";
 
 interface MemoryResult {
   id: string;
@@ -53,7 +52,7 @@ function resolveSuccessText(operation?: string, count?: number): string {
 }
 
 // Determine what text to display based on memory data, or null when the data
-// does not warrant an indicator (leaving any prior text untouched).
+// does not warrant an indicator.
 function resolveMemoryText(memoryData: MemoryData): string | null {
   const { type, operation, status, count } = memoryData;
 
@@ -70,35 +69,21 @@ export default function MemoryIndicator({
   memoryData,
   onOpenModal,
 }: MemoryIndicatorProps) {
-  const [displayText, setDisplayText] = useState<string>("");
-  const [showIndicator, setShowIndicator] = useState(false);
-
-  useEffect(() => {
-    if (!memoryData) return;
-
-    const text = resolveMemoryText(memoryData);
-    if (text !== null) {
-      setDisplayText(text);
-      setShowIndicator(true);
-    }
-  }, [memoryData]);
-
-  if (!showIndicator && !displayText) return null;
+  // Derived during render — memoryData is a message's fixed tool payload, so
+  // there is nothing to keep in state between renders.
+  const displayText = memoryData ? resolveMemoryText(memoryData) : null;
+  if (!displayText) return null;
 
   return (
-    <>
-      {showIndicator && (
-        <Button
-          size="sm"
-          variant="flat"
-          radius="full"
-          className="w-fit text-gray-500"
-          startContent={<AiBrain01Icon className="h-4 w-4" />}
-          onPress={onOpenModal}
-        >
-          {displayText}
-        </Button>
-      )}
-    </>
+    <Button
+      size="sm"
+      variant="flat"
+      radius="full"
+      className="w-fit text-gray-500"
+      startContent={<AiBrain01Icon className="h-4 w-4" />}
+      onPress={onOpenModal}
+    >
+      {displayText}
+    </Button>
   );
 }

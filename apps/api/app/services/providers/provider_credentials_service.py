@@ -1,22 +1,9 @@
-"""Runtime-configurable provider credentials (self-host credential store).
+"""Runtime-configurable provider credentials for self-host instances.
 
-User-configured provider credentials live in Mongo as Fernet-encrypted JSON
-(keyed by the instance secret — see ``secrets_store``); plaintext never touches
-the database. ``resolve`` is the single read path every consumer uses:
-
-    DB credential → env fallback → None
-
-with a 60s in-process TTL cache in front of both, and every result mirrored
-into :func:`resolved_config` for sync consumers. Writes go through
-``upsert``/``delete`` which invalidate and fan out so every consumer rebuilds
-against the new configuration:
-
-- the lazy-loader registry entry for the provider is reset (LLM lanes plus
-  the sync tool loaders — composio service, Cloudinary config),
-- the aux-LLM caches inside ``app.agents.llm.client`` are cleared,
-- a Redis publish on ``RUNTIME_CONFIG_CHANNEL`` tells other pods to do the same
-  (subscribed to per pod by ``app.core.runtime_config_subscriber``, which
-  applies remote updates through :func:`invalidate_locally`).
+Credentials live in Mongo as Fernet-encrypted JSON keyed by the instance
+secret and never as plaintext. Resolve is the single read path with a
+60 second cache: stored credential wins, then environment, then None.
+Writes invalidate locally and publish so other pods rebuild too.
 """
 
 import importlib
@@ -42,11 +29,8 @@ RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
 
 _CACHE_TTL_SECONDS = 60.0
 
-# Credential-store provider → lazy-loader registry key whose cached instance
-# must be rebuilt when the credential changes. LLM lanes first; then the SYNC
-# tool loaders (composio service factory, Cloudinary global config) that read
-# the runtime snapshot instead of resolving per call — resetting them makes a
-# newly saved credential take effect on the next access without a restart.
+# Registry key rebuilt per provider when its credential changes, so a newly
+# saved credential takes effect on next access without a restart.
 _REGISTRY_RESET_KEYS: dict[str, str] = {
     "openrouter": "openrouter_llm",
     "gemini": "gemini_llm",
@@ -70,30 +54,22 @@ class ProviderConfig(TypedDict):
 # configs (unconfigured) too, so misses don't re-hit Mongo on every call.
 _cache: dict[str, tuple[float, ProviderConfig]] = {}
 
-# The most recent resolve() result per provider, mirrored here so SYNC
-# consumers — sync lazy loaders like the composio service factory and the
-# Cloudinary config, which cannot await — can read a stored credential without
-# blocking, exactly as the LLM lanes' loaders do. Populated by every resolve()
-# (startup refresh, per-access, invalidation fan-out); app.agents.llm.client
-# aliases this dict as its own snapshot, so there is exactly one copy of it.
+# Latest resolve result per provider for sync consumers that cannot await;
+# exactly one copy, also aliased as the LLM client snapshot.
 resolved_configs: dict[str, ProviderConfig | None] = {}
 
 
 def resolved_config(provider: str) -> ProviderConfig | None:
-    """The last-known resolve() result for ``provider``, readable synchronously.
+    """Return the last-known resolve result for a provider, readable synchronously.
 
-    ``None`` means "not resolved yet", NOT "unconfigured" — callers that must
-    tell the two apart read :data:`resolved_configs` directly (the LLM client
-    does). Sync consumers combine the result with their own env read under the
-    LLM lanes' contract: store credentials win over env the moment a
-    resolution has run, and never before. Async consumers should ``await
-    resolve`` instead.
+    None means not resolved yet, not unconfigured; async callers should await
+    resolve instead.
     """
     return resolved_configs.get(provider)
 
 
 async def resolve(provider: str) -> ProviderConfig | None:
-    """The provider's active config: stored credential → env fallback → None."""
+    """Return the provider's active config: stored credential → env fallback → None."""
     hit, cached = _cache_get(provider)
     if hit:
         return cached
@@ -156,13 +132,10 @@ async def delete(provider: str) -> None:
 
 
 def invalidate_locally(provider: str) -> None:
-    """Drop every pod-local cached view of ``provider`` so consumers rebuild.
+    """Drop every pod-local cached view of a provider so consumers rebuild.
 
-    The pod-local half of :func:`invalidate`, shared verbatim with the
-    cross-pod path: the runtime-config subscriber applies REMOTE credential
-    updates by calling this, so a save served by another pod rebuilds exactly
-    what a local save does (service TTL cache → lazy-loader registry → aux LLM
-    caches).
+    Also the remote-update path: the runtime-config subscriber calls this for
+    saves served by another pod.
     """
     _cache.pop(provider, None)
 
@@ -178,12 +151,8 @@ def invalidate_locally(provider: str) -> None:
                 name=registry_key,
             )
 
-    # Imported lazily through the module: client.py sits ABOVE this service in
-    # the import graph (its resolver consumes this module's symbols at module
-    # level), so importing the client back at module level here would close a
-    # real cycle — this function-level import is the legitimate cycle-breaker,
-    # not a workaround. Contract: reset_aux_llm_caches lives on
-    # app.agents.llm.client; a missing symbol fails loud here.
+    # Function-level import breaks a real cycle: the client module consumes
+    # this module at import time, so a top-level import would close the loop.
     client_module = importlib.import_module("app.agents.llm.client")
     client_module.reset_aux_llm_caches()
 
@@ -224,11 +193,7 @@ def _ensure_known(provider: str) -> None:
 
 
 def _cache_get(provider: str) -> tuple[bool, ProviderConfig | None]:
-    """(hit?, config) for the provider's cache entry.
-
-    A hit whose config is ``None`` is a cached *miss* (provider known but
-    unconfigured) — it resolves to ``None`` without touching Mongo again.
-    """
+    """Cache lookup for a provider; a None config is a cached miss that skips Mongo."""
     entry = _cache.get(provider)
     if entry is None:
         return False, None
@@ -244,7 +209,7 @@ def _cache_put(provider: str, config: ProviderConfig | None) -> None:
 
 
 def _env_fallback(provider: str) -> ProviderConfig | None:
-    """What the environment alone provides for ``provider``, or None."""
+    """Return what the environment alone provides for a provider, or None."""
     if provider == "openrouter":
         if not settings.OPENROUTER_API_KEY:
             return None
@@ -261,10 +226,8 @@ def _env_fallback(provider: str) -> ProviderConfig | None:
             api_key=settings.GOOGLE_API_KEY, base_url=None, model=None, preset=None
         )
     if provider == "ollama":
-        # Keyless local lane. Only resolvable when the endpoint was EXPLICITLY
-        # provided — settings.OLLAMA_BASE_URL carries a code default (the
-        # docker-internal DNS name), and treating that default as a working
-        # Ollama made bare instances route chat at an unreachable endpoint.
+        # Only when the endpoint was explicitly provided; the settings default
+        # is a docker-internal name that is unreachable from bare instances.
         explicit = os.environ.get("OLLAMA_BASE_URL")
         if not explicit:
             return None
@@ -287,10 +250,8 @@ def _env_fallback(provider: str) -> ProviderConfig | None:
             model=settings.DEV_LLM_MODEL,
             preset=None,
         )
-    # Tool / integration keys below — single api_key lanes like tavily, except
-    # where the service needs a multi-variable set to actually work (cloudinary,
-    # google_oauth): those resolve only when EVERY variable is present, so a
-    # half-set env never reports the provider as configured.
+    # Tool keys resolve on a single api key, except multi-variable services
+    # that resolve only when every variable is present.
     if provider == "composio":
         if not settings.COMPOSIO_KEY:
             return None

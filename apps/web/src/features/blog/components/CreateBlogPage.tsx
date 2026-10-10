@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon, File01Icon, UserCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { type UseFormRegister, useForm } from "react-hook-form";
 import { z } from "zod";
 import { type TeamMember, teamApi } from "@/features/team/api/teamApi";
 import { toast } from "@/lib/toast";
@@ -41,8 +41,8 @@ const blogSchema = z.object({
 
 type BlogFormData = z.infer<typeof blogSchema>;
 
-export default function CreateBlogPage() {
-  const router = useRouter();
+/** Form state, derived fields, side effects, and submit handling. */
+function useCreateBlogForm(onCreated: () => void) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedAuthors, setSelectedAuthors] = useState<TeamMember[]>([]);
   const [isSubmitting, startSubmitTransition] = useTransition();
@@ -182,13 +182,253 @@ Happy writing! 🚀`,
 
         await blogApi.createBlogWithFormData(formData);
         toast.success("Blog post created successfully!");
-        router.push("/blog");
+        onCreated();
       } catch (error) {
         console.error("Failed to create blog post:", error);
         toast.error("Failed to create blog post. Please try again.");
       }
     });
   };
+
+  return {
+    register,
+    handleSubmit,
+    errors,
+    watchTitle,
+    watchContent,
+    teamMembers,
+    selectedAuthors,
+    selectedFile,
+    isSubmitting,
+    handleAuthorSelect,
+    removeAuthor,
+    handleFileChange,
+    handleRemoveFile,
+    onSubmit,
+  };
+}
+
+interface AuthorsFieldProps {
+  availableMembers: TeamMember[];
+  selectedAuthors: TeamMember[];
+  onSelect: (authorId: string) => void;
+  onRemove: (authorId: string) => void;
+  errorMessage?: string;
+}
+
+function AuthorsField({
+  availableMembers,
+  selectedAuthors,
+  onSelect,
+  onRemove,
+  errorMessage,
+}: AuthorsFieldProps) {
+  return (
+    <div className="space-y-3">
+      <label
+        className="text-sm font-medium text-foreground"
+        htmlFor="blog-author-autocomplete"
+      >
+        Authors <span className="text-danger">*</span>
+      </label>
+
+      <Autocomplete
+        id="blog-author-autocomplete"
+        placeholder="Search and select authors"
+        startContent={
+          <UserCircle02Icon className="h-4 w-4 text-foreground-400" />
+        }
+        onSelectionChange={(key) => {
+          if (key) onSelect(key as string);
+        }}
+      >
+        {availableMembers.map((member) => (
+          <AutocompleteItem key={member.id}>
+            <div className="flex items-center gap-2">
+              <Avatar src={member.avatar} name={member.name} size="sm" />
+              <div>
+                <div className="font-medium">{member.name}</div>
+                <div className="text-xs text-foreground-500">{member.role}</div>
+              </div>
+            </div>
+          </AutocompleteItem>
+        ))}
+      </Autocomplete>
+
+      {/* Selected Authors */}
+      {selectedAuthors.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedAuthors.map((author) => (
+            <Chip
+              key={author.id}
+              onClose={() => onRemove(author.id)}
+              avatar={
+                <Avatar src={author.avatar} name={author.name} size="sm" />
+              }
+              variant="flat"
+              color="primary"
+            >
+              {author.name}
+            </Chip>
+          ))}
+        </div>
+      )}
+
+      {errorMessage && <p className="text-xs text-danger">{errorMessage}</p>}
+    </div>
+  );
+}
+
+interface FeaturedImageUploadProps {
+  selectedFile: File | null;
+  onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveFile: () => void;
+  isSubmitting: boolean;
+  hasError: boolean;
+  errorMessage?: string;
+}
+
+function FeaturedImageUpload({
+  selectedFile,
+  onFileChange,
+  onRemoveFile,
+  isSubmitting,
+  hasError,
+  errorMessage,
+}: FeaturedImageUploadProps) {
+  return (
+    <div className="space-y-3">
+      <div className="text-sm font-medium text-foreground">
+        Featured Image (Optional)
+      </div>
+
+      {selectedFile ? (
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded bg-primary/10">
+                <File01Icon className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium">{selectedFile.name}</p>
+                <p className="text-sm text-foreground-500">
+                  {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="flat"
+              color="danger"
+              size="sm"
+              onPress={onRemoveFile}
+              isDisabled={isSubmitting}
+            >
+              Remove
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <div className="rounded-lg border-2 border-dashed border-foreground-300 p-8 text-center transition-colors hover:border-primary">
+          <input
+            id="image-upload"
+            type="file"
+            accept="image/*"
+            onChange={onFileChange}
+            className="hidden"
+            disabled={isSubmitting}
+          />
+          <label
+            htmlFor="image-upload"
+            className="flex cursor-pointer flex-col items-center gap-3"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground-100">
+              <File01Icon className="h-6 w-6 text-foreground-400" />
+            </div>
+            <div>
+              <p className="font-medium">Click to upload image</p>
+              <p className="text-sm text-foreground-500">
+                PNG, JPG, WebP or GIF up to 10MB
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
+
+      <p className="text-xs text-foreground-500">
+        Upload a banner image for your blog post. Recommended: 1200×630px for
+        optimal display.
+      </p>
+      {hasError && <p className="text-xs text-danger">{errorMessage}</p>}
+    </div>
+  );
+}
+
+interface ContentEditorProps {
+  register: UseFormRegister<BlogFormData>;
+  contentError?: string;
+  watchTitle?: string;
+  watchContent?: string;
+}
+
+function ContentEditor({
+  register,
+  contentError,
+  watchTitle,
+  watchContent,
+}: ContentEditorProps) {
+  return (
+    <div className="space-y-4">
+      <label
+        className="text-sm font-medium text-foreground"
+        htmlFor="textarea-blogpost"
+      >
+        Content <span className="text-danger">*</span>
+      </label>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div>
+          <Textarea
+            id="textarea-blogpost"
+            placeholder="Write your blog post content in Markdown..."
+            description="You can use Markdown syntax for formatting"
+            minRows={12}
+            isRequired
+            isInvalid={!!contentError}
+            errorMessage={contentError}
+            {...register("content")}
+          />
+        </div>
+
+        <div className="hidden lg:block">
+          <MarkdownPreview content={watchContent || ""} title={watchTitle} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function CreateBlogPage() {
+  const router = useRouter();
+  const form = useCreateBlogForm(() => router.push("/blog"));
+
+  // Single pass over team members: skip already-selected authors
+  const selectedIds = new Set(form.selectedAuthors.map((author) => author.id));
+  const availableMembers: TeamMember[] = [];
+  for (const member of form.teamMembers) {
+    if (!selectedIds.has(member.id)) {
+      availableMembers.push(member);
+    }
+  }
+
+  const authorsErrorMessage = form.errors.authors?.message;
+
+  const imageHasError = !!form.errors.image;
+  const imageErrorMessage =
+    form.errors.image &&
+    typeof form.errors.image === "object" &&
+    "message" in form.errors.image
+      ? String(form.errors.image.message)
+      : undefined;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -204,25 +444,28 @@ Happy writing! 🚀`,
         </CardHeader>
 
         <CardBody>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={form.handleSubmit(form.onSubmit)}
+            className="space-y-6"
+          >
             {/* Title & Slug */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Input
                 label="Title"
                 placeholder="Enter blog post title"
                 isRequired
-                isInvalid={!!errors.title}
-                errorMessage={errors.title?.message}
-                {...register("title")}
+                isInvalid={!!form.errors.title}
+                errorMessage={form.errors.title?.message}
+                {...form.register("title")}
               />
               <Input
                 label="Slug"
                 placeholder="auto-generated-from-title"
                 description="URL-friendly version of the title"
                 isRequired
-                isInvalid={!!errors.slug}
-                errorMessage={errors.slug?.message}
-                {...register("slug")}
+                isInvalid={!!form.errors.slug}
+                errorMessage={form.errors.slug?.message}
+                {...form.register("slug")}
               />
             </div>
 
@@ -232,212 +475,65 @@ Happy writing! 🚀`,
                 label="Category"
                 placeholder="Enter category (e.g., AI Technology, Product Update)"
                 isRequired
-                isInvalid={!!errors.category}
-                errorMessage={errors.category?.message}
-                {...register("category")}
+                isInvalid={!!form.errors.category}
+                errorMessage={form.errors.category?.message}
+                {...form.register("category")}
               />
               <Input
                 label="Date"
                 type="date"
                 isRequired
-                isInvalid={!!errors.date}
-                errorMessage={errors.date?.message}
+                isInvalid={!!form.errors.date}
+                errorMessage={form.errors.date?.message}
                 startContent={
                   <CalendarIcon className="h-4 w-4 text-foreground-400" />
                 }
-                {...register("date")}
+                {...form.register("date")}
               />
             </div>
 
             {/* Authors */}
-            <div className="space-y-3">
-              <label
-                className="text-sm font-medium text-foreground"
-                htmlFor="blog-author-autocomplete"
-              >
-                Authors <span className="text-danger">*</span>
-              </label>
-
-              <Autocomplete
-                id="blog-author-autocomplete"
-                placeholder="Search and select authors"
-                startContent={
-                  <UserCircle02Icon className="h-4 w-4 text-foreground-400" />
-                }
-                onSelectionChange={(key) => {
-                  if (key) handleAuthorSelect(key as string);
-                }}
-              >
-                {teamMembers
-                  .filter(
-                    (member) =>
-                      !selectedAuthors.find(
-                        (selected) => selected.id === member.id,
-                      ),
-                  )
-                  .map((member) => (
-                    <AutocompleteItem key={member.id}>
-                      <div className="flex items-center gap-2">
-                        <Avatar
-                          src={member.avatar}
-                          name={member.name}
-                          size="sm"
-                        />
-                        <div>
-                          <div className="font-medium">{member.name}</div>
-                          <div className="text-xs text-foreground-500">
-                            {member.role}
-                          </div>
-                        </div>
-                      </div>
-                    </AutocompleteItem>
-                  ))}
-              </Autocomplete>
-
-              {/* Selected Authors */}
-              {selectedAuthors.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {selectedAuthors.map((author) => (
-                    <Chip
-                      key={author.id}
-                      onClose={() => removeAuthor(author.id)}
-                      avatar={
-                        <Avatar
-                          src={author.avatar}
-                          name={author.name}
-                          size="sm"
-                        />
-                      }
-                      variant="flat"
-                      color="primary"
-                    >
-                      {author.name}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-
-              {errors.authors && (
-                <p className="text-xs text-danger">{errors.authors.message}</p>
-              )}
-            </div>
+            <AuthorsField
+              availableMembers={availableMembers}
+              selectedAuthors={form.selectedAuthors}
+              onSelect={form.handleAuthorSelect}
+              onRemove={form.removeAuthor}
+              errorMessage={authorsErrorMessage}
+            />
 
             {/* Featured Image Upload */}
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-foreground">
-                Featured Image (Optional)
-              </div>
-
-              {selectedFile ? (
-                <Card className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded bg-primary/10">
-                        <File01Icon className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{selectedFile.name}</p>
-                        <p className="text-sm text-foreground-500">
-                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="flat"
-                      color="danger"
-                      size="sm"
-                      onPress={handleRemoveFile}
-                      isDisabled={isSubmitting}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </Card>
-              ) : (
-                <div className="rounded-lg border-2 border-dashed border-foreground-300 p-8 text-center transition-colors hover:border-primary">
-                  <input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    disabled={isSubmitting}
-                  />
-                  <label
-                    htmlFor="image-upload"
-                    className="flex cursor-pointer flex-col items-center gap-3"
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground-100">
-                      <File01Icon className="h-6 w-6 text-foreground-400" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Click to upload image</p>
-                      <p className="text-sm text-foreground-500">
-                        PNG, JPG, WebP or GIF up to 10MB
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              <p className="text-xs text-foreground-500">
-                Upload a banner image for your blog post. Recommended:
-                1200×630px for optimal display.
-              </p>
-              {errors.image && (
-                <p className="text-xs text-danger">
-                  {typeof errors.image === "object" &&
-                  errors.image !== null &&
-                  "message" in errors.image
-                    ? String(errors.image.message)
-                    : "Invalid image file"}
-                </p>
-              )}
-            </div>
+            <FeaturedImageUpload
+              selectedFile={form.selectedFile}
+              onFileChange={form.handleFileChange}
+              onRemoveFile={form.handleRemoveFile}
+              isSubmitting={form.isSubmitting}
+              hasError={imageHasError}
+              errorMessage={imageErrorMessage}
+            />
 
             {/* Content with Preview */}
-            <div className="space-y-4">
-              <label
-                className="text-sm font-medium text-foreground"
-                htmlFor="textarea-blogpost"
-              >
-                Content <span className="text-danger">*</span>
-              </label>
-
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div>
-                  <Textarea
-                    id="textarea-blogpost"
-                    placeholder="Write your blog post content in Markdown..."
-                    description="You can use Markdown syntax for formatting"
-                    minRows={12}
-                    isRequired
-                    isInvalid={!!errors.content}
-                    errorMessage={errors.content?.message}
-                    {...register("content")}
-                  />
-                </div>
-
-                <div className="hidden lg:block">
-                  <MarkdownPreview
-                    content={watchContent || ""}
-                    title={watchTitle}
-                  />
-                </div>
-              </div>
-            </div>
+            <ContentEditor
+              register={form.register}
+              contentError={form.errors.content?.message}
+              watchTitle={form.watchTitle}
+              watchContent={form.watchContent}
+            />
 
             {/* Submit Button */}
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 variant="flat"
                 onPress={() => router.back()}
-                isDisabled={isSubmitting}
+                isDisabled={form.isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" color="primary" isLoading={isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create Blog Post"}
+              <Button
+                type="submit"
+                color="primary"
+                isLoading={form.isSubmitting}
+              >
+                {form.isSubmitting ? "Creating..." : "Create Blog Post"}
               </Button>
             </div>
           </form>

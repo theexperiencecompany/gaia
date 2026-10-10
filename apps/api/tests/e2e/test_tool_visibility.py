@@ -1,23 +1,17 @@
 """The tool-call contract of the chat stream, asserted frame by frame.
 
-Every test drives the real ``execute_graph_streaming`` — the function that
-translates LangGraph's three stream modes into the SSE vocabulary the chat UI
-consumes — and asserts on a parsed :class:`Transcript`, never on prose.
+Every test drives the real execute_graph_streaming -- the function translating LangGraph's three
+stream modes into the SSE vocabulary the chat UI consumes -- and asserts on a parsed Transcript,
+never on prose. The contract the frontend depends on: a tool call is visible, with its real name
+and arguments, BEFORE it runs (turnAccumulator.ts appends it to the message's tool list); its
+result arrives separately and is joined ONLY by tool_call_id (mergeToolOutputIntoToolData in
+streaming.ts), so a broken id means a tool card that renders forever without a result; and frames
+that must not reach the client (stale replays from pre-model hooks, silent turns, executor-tier
+text, the nostream: marker) do not.
 
-What is under test is the contract the frontend depends on:
-
-* a tool call is *visible*, with its real name and its arguments, before it runs
-  (``libs/shared/ts/src/chat/turnAccumulator.ts`` appends the entry to the
-  message's tool list);
-* its result arrives separately and is joined **only** by ``tool_call_id``
-  (``mergeToolOutputIntoToolData`` in ``streaming.ts``) — a broken id means a
-  tool card that renders forever without a result;
-* frames that must not reach the client (stale replays from pre-model hooks,
-  silent turns, executor-tier text, the ``nostream:`` marker) do not.
-
-Only the graph is a double (see ``_harness/graph_double.py``); it exists so a
-test can pin the exact LangGraph event sequence, including ones a real run
-produces only under conditions a test cannot arrange.
+Only the graph is a double (see _harness/graph_double.py); it exists so a test can pin the exact
+LangGraph event sequence, including ones a real run produces only under conditions a test cannot
+arrange.
 """
 
 from __future__ import annotations
@@ -55,9 +49,9 @@ def _registry(real_tool_registry):
     """Tool categories and display labels come from the real global registry."""
 
 
-def _tool_call(name: str, args: dict[str, Any] | None = None, id: str | None = "tc_1") -> dict:
-    """A LangChain ToolCall exactly as the model layer produces one."""
-    return {"name": name, "args": args or {}, "id": id, "type": "tool_call"}
+def _tool_call(name: str, args: dict[str, Any] | None = None, call_id: str | None = "tc_1") -> dict:
+    """Build a LangChain ToolCall exactly as the model layer produces one."""
+    return {"name": name, "args": args or {}, "id": call_id, "type": "tool_call"}
 
 
 async def run_stream(
@@ -69,9 +63,9 @@ async def run_stream(
 ) -> Transcript:
     """Stream a scripted LangGraph event sequence through the real translator.
 
-    ``user_id`` is deliberately left out of the config: it only unlocks the MCP
-    provenance lookups (``_resolve_mcp_integration_id`` /
-    ``_resolve_mcp_ui_metadata``), which are per-user network calls and are not
+    user_id is deliberately left out of the config: it only unlocks the MCP
+    provenance lookups (_resolve_mcp_integration_id /
+    _resolve_mcp_ui_metadata), which are per-user network calls and are not
     what these tests are about.
     """
     scripted = graph if graph is not None else ScriptedGraph(events)
@@ -106,9 +100,7 @@ class TestToolCallVisibility:
         assert transcript.result_for("call_executor") == "Task accepted"
 
     async def test_real_tool_name_is_nested_under_the_envelope(self):
-        """``tool_name`` on the entry is always the envelope literal; the tool
-        the model called is at ``data.tool_name``. Flattening it would make the
-        frontend render every tool card as "tool_calls_data"."""
+        """tool_name on the entry is always the envelope literal; the real tool name is at data.tool_name."""
         transcript = await run_stream(
             [agent_update(AIMessage(content="", tool_calls=[_tool_call("call_executor")]))]
         )
@@ -118,8 +110,7 @@ class TestToolCallVisibility:
         assert entry["data"]["tool_name"] == "call_executor"
 
     async def test_arguments_survive_the_wire_verbatim(self):
-        """Nested objects, lists, unicode and empty strings all reach the client
-        unchanged — the tool card renders these as the call's inputs."""
+        """Nested objects, lists, unicode and empty strings all reach the client unchanged."""
         args = {
             "title": "Café ☕ meeting",
             "attendees": ["a@x.com", "b@x.com"],
@@ -133,9 +124,7 @@ class TestToolCallVisibility:
         assert transcript.args("call_executor") == args
 
     async def test_curated_special_tool_carries_its_category_and_label(self):
-        """``call_executor`` is one of the nine curated tools: the frontend keys
-        the executor card off ``tool_category`` and drops the category prefix
-        when ``show_category`` is false."""
+        """call_executor is one of the nine curated tools, keyed by tool_category with show_category false."""
         transcript = await run_stream(
             [agent_update(AIMessage(content="", tool_calls=[_tool_call("call_executor")]))]
         )
@@ -146,8 +135,7 @@ class TestToolCallVisibility:
         assert call.show_category is False
 
     async def test_handoff_label_names_the_target_subagent(self):
-        """A handoff card must say who it handed off to — the subagent id is
-        resolved to a display name, not shown raw."""
+        """A handoff card must resolve the subagent id to a display name, not show it raw."""
         transcript = await run_stream(
             [
                 agent_update(
@@ -167,16 +155,15 @@ class TestToolCallVisibility:
         assert call.args["subagent_id"] == "gmail"
 
     async def test_several_tool_calls_in_one_message_all_stream_in_order(self):
-        """A model turn may carry more than one call; dropping any of them
-        loses a card the user was shown mid-turn."""
+        """A model turn may carry more than one call; dropping any loses a card the user was shown."""
         transcript = await run_stream(
             [
                 agent_update(
                     AIMessage(
                         content="",
                         tool_calls=[
-                            _tool_call("add_memory", {"content": "likes tea"}, id="tc_a"),
-                            _tool_call("search_memory", {"query": "tea"}, id="tc_b"),
+                            _tool_call("add_memory", {"content": "likes tea"}, call_id="tc_a"),
+                            _tool_call("search_memory", {"query": "tea"}, call_id="tc_b"),
                         ],
                     )
                 )
@@ -188,10 +175,12 @@ class TestToolCallVisibility:
     async def test_calls_across_turns_keep_their_emission_order(self):
         transcript = await run_stream(
             [
-                agent_update(AIMessage(content="", tool_calls=[_tool_call("add_memory", id="a")])),
+                agent_update(
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="a")])
+                ),
                 tool_message("stored", tool_call_id="a"),
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("search_memory", id="b")])
+                    AIMessage(content="", tool_calls=[_tool_call("search_memory", call_id="b")])
                 ),
                 tool_message("found", tool_call_id="b"),
             ]
@@ -209,32 +198,33 @@ class TestToolCallVisibility:
 
 class TestToolCallEmissionGuards:
     async def test_a_repeated_tool_call_id_is_emitted_once(self):
-        """LangGraph re-sends the same ``AIMessage`` across updates within a
-        turn. Without the dedup set the user sees the same card twice."""
-        message = AIMessage(content="", tool_calls=[_tool_call("call_executor", id="tc_dup")])
+        """LangGraph re-sends the same AIMessage across updates; without dedup the card doubles."""
+        message = AIMessage(content="", tool_calls=[_tool_call("call_executor", call_id="tc_dup")])
         transcript = await run_stream([agent_update(message), agent_update(message)])
 
         assert transcript.tool_names() == ["call_executor"]
 
     async def test_a_tool_call_without_an_id_is_not_streamed(self):
-        """An id-less call can never be joined to its result, so streaming it
-        would strand a card with no output forever."""
+        """An id-less call can never be joined to its result, so it would strand a card forever."""
         transcript = await run_stream(
-            [agent_update(AIMessage(content="", tool_calls=[_tool_call("call_executor", id=None)]))]
+            [
+                agent_update(
+                    AIMessage(content="", tool_calls=[_tool_call("call_executor", call_id=None)])
+                )
+            ]
         )
 
         assert transcript.of_kind("tool_data") == []
 
     async def test_two_distinct_calls_to_the_same_tool_both_stream(self):
-        """Dedup is per call id, not per tool name — a tool legitimately called
-        twice in a turn must show two cards."""
+        """Dedup is per call id, not per tool name — a tool called twice must show two cards."""
         transcript = await run_stream(
             [
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_1")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_1")])
                 ),
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_2")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_2")])
                 ),
             ]
         )
@@ -257,18 +247,15 @@ class TestNodeGate:
         "node", ["filter_messages", "manage_system_prompts", "tools", "follow_up_actions"]
     )
     async def test_only_the_agent_node_streams_tool_cards(self, node: str):
-        """Pre-model hooks replay historical ``AIMessage``s that still carry
-        last turn's ``tool_calls``. Emitting those would replay stale tool cards
-        into the current turn."""
-        historical = AIMessage(content="", tool_calls=[_tool_call("add_memory", id="old_1")])
+        """Pre-model hooks replay historical AIMessages; emitting those would replay stale tool cards."""
+        historical = AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="old_1")])
         transcript = await run_stream([node_update(node, historical)])
 
         assert transcript.of_kind("tool_data") == []
 
     async def test_a_hook_replay_does_not_suppress_the_real_call(self):
-        """The gate must filter by node, not by "first seen wins" — the same
-        call replayed by a hook *before* the agent node must still stream."""
-        call = AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_live")])
+        """The gate filters by node, not "first seen wins" — a replay before the agent node still streams."""
+        call = AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_live")])
         transcript = await run_stream([node_update("filter_messages", call), agent_update(call)])
 
         assert transcript.tool_names() == ["add_memory"]
@@ -287,31 +274,27 @@ class TestResponseText:
         assert transcript.final_text() == "Hello!"
 
     async def test_executor_text_never_reaches_the_client(self):
-        """Only ``comms_agent`` talks to the user. Executor-tier text on the
-        same stream would duplicate the reply the comms agent is about to give."""
+        """Only comms_agent talks to the user; executor-tier text would duplicate its reply."""
         transcript = await run_stream([text("internal reasoning")], agent_name="executor_agent")
 
         assert transcript.of_kind("response") == []
         assert transcript.complete_message() == ""
 
     async def test_silent_turns_emit_no_text(self):
-        """Silent runs (workflows, background turns) share this code path; their
-        text must not surface in a user-facing stream."""
+        """Silent runs (workflows, background turns) share this code path; their text must not surface."""
         transcript = await run_stream([text("silent output", silent=True)])
 
         assert transcript.of_kind("response") == []
 
     async def test_completion_marker_carries_the_text_that_gets_persisted(self):
-        """The ``nostream:`` marker is where the persisted bot message comes
-        from — it must equal what the user actually saw."""
+        """The nostream: marker is the persisted bot message and must equal what the user saw."""
         transcript = await run_stream([text("Part one. "), text("Part two.")])
 
         assert transcript.complete_message() == "Part one. Part two."
         assert transcript.complete_message() == transcript.final_text()
 
     async def test_empty_text_chunks_emit_no_frame(self):
-        """Providers routinely send empty deltas (role-only or usage-only
-        chunks); forwarding them is dead weight on the wire."""
+        """Providers routinely send empty deltas (role/usage-only chunks); forwarding them is dead weight."""
         transcript = await run_stream([text(""), text("real")])
 
         assert transcript.of_kind("response") == ["real"]
@@ -324,16 +307,15 @@ class TestResponseText:
 
 class TestToolOutput:
     async def test_output_joins_its_call_by_id_not_by_position(self):
-        """Two calls complete out of order — each result must land on its own
-        card. Joining by arrival order would swap them."""
+        """Two calls complete out of order; joining by arrival order instead of id would swap results."""
         transcript = await run_stream(
             [
                 agent_update(
                     AIMessage(
                         content="",
                         tool_calls=[
-                            _tool_call("add_memory", id="tc_a"),
-                            _tool_call("search_memory", id="tc_b"),
+                            _tool_call("add_memory", call_id="tc_a"),
+                            _tool_call("search_memory", call_id="tc_b"),
                         ],
                     )
                 ),
@@ -350,7 +332,7 @@ class TestToolOutput:
         transcript = await run_stream(
             [
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_real")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_real")])
                 ),
                 tool_message("orphan", tool_call_id="tc_other"),
             ]
@@ -360,8 +342,7 @@ class TestToolOutput:
         assert [o.tool_call_id for o in transcript.outputs()] == ["tc_other"]
 
     async def test_output_payload_omits_the_subagent_key_when_absent(self):
-        """``exclude_none`` keeps root-level results free of a null
-        ``subagent_id``, which the frontend routes on."""
+        """exclude_none keeps root-level results free of a null subagent_id, which the frontend routes on."""
         transcript = await run_stream([tool_message("plain result", tool_call_id="tc_1")])
 
         assert transcript.of_kind("tool_output") == [
@@ -370,15 +351,13 @@ class TestToolOutput:
 
     @pytest.mark.parametrize("suppressed", ["plan_tasks", "update_tasks"])
     async def test_todo_tool_results_are_suppressed(self, suppressed: str):
-        """Todo tools already stream ``todo_progress``; a second result frame
-        renders a duplicate card next to the todo list."""
+        """Todo tools already stream todo_progress; a second result frame duplicates the todo card."""
         transcript = await run_stream([tool_message("[]", tool_call_id="tc_1", name=suppressed)])
 
         assert transcript.of_kind("tool_output") == []
 
     async def test_todo_flagged_tools_are_suppressed_by_their_marker(self):
-        """Tracked-todo helpers are not named ``plan_tasks``; they carry the
-        ``todo_tool`` marker instead."""
+        """Tracked-todo helpers are not named plan_tasks; they carry the todo_tool marker instead."""
         transcript = await run_stream(
             [
                 tool_message(
@@ -393,8 +372,7 @@ class TestToolOutput:
         assert transcript.of_kind("tool_output") == []
 
     async def test_a_non_todo_tool_result_is_not_suppressed(self):
-        """Control for the two suppression tests above — without it, a bug that
-        suppressed every result would still look correct."""
+        """Control for the two suppression tests above, so a bug suppressing every result wouldn't pass."""
         transcript = await run_stream(
             [tool_message("real result", tool_call_id="tc_1", name="add_memory")]
         )
@@ -404,8 +382,7 @@ class TestToolOutput:
         ]
 
     async def test_inline_media_is_stripped_out_of_the_result(self):
-        """A base64 image block in a tool result would ship megabytes into the
-        SSE frame and into the persisted message."""
+        """A base64 image block in a tool result would ship megabytes into the SSE frame."""
         transcript = await run_stream(
             [
                 tool_message(
@@ -430,8 +407,7 @@ class TestToolOutput:
 
 class TestModelFallback:
     async def test_fallback_is_announced_once_per_stream(self):
-        """The frontend shows it as a toast; one downgrade must not produce a
-        toast per model chunk."""
+        """The frontend shows it as a toast; one downgrade must not produce a toast per model chunk."""
         fell_back = AIMessage(
             content="",
             response_metadata={"gaia_fell_back": True, "gaia_fallback_model": "grok-4"},
@@ -455,8 +431,7 @@ class TestModelFallback:
 
 class TestCustomEvents:
     async def test_subagent_lifecycle_and_reasoning_ride_the_same_stream(self):
-        """Subagent activity is published onto the comms stream id, not a
-        nested channel — one subscription must see all of it."""
+        """Subagent activity publishes onto the comms stream id, not a nested channel."""
         transcript = await run_stream(
             [
                 custom(
@@ -480,8 +455,7 @@ class TestCustomEvents:
         assert transcript.of_kind("subagent_end") == [{"subagent_id": "sub_1", "duration_ms": 120}]
 
     async def test_subagent_tool_calls_are_visible_and_tagged(self):
-        """A tool run inside a subagent must still show up as a tool call, and
-        carry the ``subagent_id`` the frontend groups it under."""
+        """A tool run inside a subagent must still show as a tool call, carrying its subagent_id."""
         transcript = await run_stream(
             [
                 custom(
@@ -546,9 +520,7 @@ class TestStreamShape:
         assert transcript.kinds().count(DONE) == 1
 
     async def test_every_frame_is_a_well_formed_sse_event(self):
-        """``data: <json>\\n\\n``, no exceptions. A frame missing its blank line
-        is folded into the next event by every EventSource implementation, so a
-        single malformed frame silently corrupts the rest of the turn."""
+        """A frame missing its blank line folds into the next event, silently corrupting the turn."""
         transcript = await run_stream(
             [
                 agent_update(AIMessage(content="", tool_calls=[_tool_call("call_executor")])),
@@ -559,14 +531,14 @@ class TestStreamShape:
         )
 
         wire = [chunk for chunk in transcript.raw() if not chunk.startswith("nostream: ")]
-        assert len(wire) == 5
+        # tool_data, tool_output, message_boundary (the agent update closes that
+        # message), progress, response, [DONE].
+        assert len(wire) == 6
         for chunk in wire:
             assert _SSE_FRAME.fullmatch(chunk), f"malformed SSE frame: {chunk!r}"
 
     async def test_the_completion_marker_is_not_an_sse_frame(self):
-        """``nostream:`` is consumed by the chat service before the wire. If it
-        were emitted as ``data:`` it would be an unparseable frame for every
-        client — and it carries the raw persisted text."""
+        """nostream: is consumed by the chat service before the wire and carries the raw persisted text."""
         transcript = await run_stream([text("hi")])
 
         markers = [chunk for chunk in transcript.raw() if chunk.startswith("nostream: ")]
@@ -575,24 +547,21 @@ class TestStreamShape:
         assert all("nostream" not in frame.payload for frame in transcript.frames())
 
     async def test_the_marker_precedes_the_done_terminator(self):
-        """The service reads the marker to persist the turn; it must arrive
-        before the client is told the stream is over."""
+        """The service reads the marker to persist the turn before the client is told the stream is over."""
         raw = (await run_stream([text("hi")])).raw()
 
         assert raw[-2].startswith("nostream: ")
         assert raw[-1] == "data: [DONE]\n\n"
 
     async def test_an_empty_run_still_terminates(self):
-        """A turn the model answers with nothing must not leave the client
-        waiting on a stream that never closes."""
+        """A turn the model answers with nothing must not leave the client waiting forever."""
         transcript = await run_stream([])
 
         assert transcript.is_done
         assert transcript.complete_message() == ""
 
     async def test_two_tuple_events_are_still_translated(self):
-        """LangGraph yields 2-tuples when a mode emits outside a subgraph
-        namespace; dropping them would silently lose frames."""
+        """LangGraph yields 2-tuples outside a subgraph namespace; dropping them silently loses frames."""
         transcript = await run_stream(
             [("messages", (AIMessageChunk(content="from a 2-tuple"), {}))]
         )
@@ -600,8 +569,7 @@ class TestStreamShape:
         assert transcript.final_text() == "from a 2-tuple"
 
     async def test_the_graph_is_streamed_with_subgraphs_and_all_three_modes(self):
-        """Executor and subagent activity only reaches this stream because the
-        run subscribes to subgraph namespaces and to the ``custom`` mode."""
+        """Executor and subagent activity only reaches this stream via subgraph namespaces and custom mode."""
         graph = ScriptedGraph([])
         await run_stream([], graph=graph)
 
@@ -616,14 +584,7 @@ class TestStreamShape:
 
 class TestCancellation:
     async def test_a_cancelled_stream_stops_pulling_from_the_graph(self):
-        """Cancel must abandon the run, not merely stop forwarding its output.
-
-        Both graphs are scripted identically, so the only difference is the
-        cancel flag — which pins down what "not cancelled" looks like and makes
-        the truncation assertion mean something. ``yielded`` is the load-bearing
-        check: a run that keeps draining events is a graph still doing work
-        (and still burning tokens) after the user pressed stop.
-        """
+        """Cancel must abandon the run (graph.yielded stops), not merely stop forwarding its output."""
         events = [text("one "), text("two "), text("three")]
         cancelled_graph = ScriptedGraph(events)
         control_graph = ScriptedGraph(events)
@@ -650,13 +611,12 @@ class TestCancellation:
         assert control_graph.yielded == 3
 
     async def test_cancelling_closes_the_run_before_recording_the_interruption(self):
-        """``record_interruption`` reads the checkpoint, so the run must already
-        be stopped — otherwise it records a state the run then overwrites."""
+        """record_interruption reads the checkpoint, so the run must stop first or it overwrites the record."""
         graph = ScriptedGraph(
             [text("one "), text("two ")],
             state_values={
                 "messages": [
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_open")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_open")])
                 ]
             },
         )
@@ -677,8 +637,7 @@ class TestCancellation:
         assert graph.state_updates[0]["as_node"] == "tools"
 
     async def test_no_cancellation_check_without_a_stream_id(self):
-        """Silent/background runs carry no stream id; they must not be probed
-        for a cancel flag that can never be set."""
+        """Silent/background runs carry no stream id; they must not be probed for a cancel flag."""
         with patch(
             "app.helpers.agent_helpers.stream_manager.is_cancelled", new=AsyncMock()
         ) as is_cancelled:

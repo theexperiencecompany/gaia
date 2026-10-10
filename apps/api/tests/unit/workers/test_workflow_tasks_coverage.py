@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin
-from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from app.workers.tasks.workflow_tasks import _resolve_workflow_user, execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -36,10 +37,8 @@ def _workflow(user_id: str = "user-1", occurrence_count: int = 2) -> MagicMock:
     return wf
 
 
-def _user(completed: bool) -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": completed}
-    return user
+def _user(completed: bool) -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": completed}})
 
 
 async def _run_task(
@@ -51,19 +50,26 @@ async def _run_task(
 ) -> _Run:
     scheduler = MagicMock()
     scheduler.get_task = AsyncMock(return_value=workflow)
-    scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+    scheduler.claim_task_for_execution = AsyncMock(return_value=True)
     scheduler.handle_recurring_task = AsyncMock(side_effect=rearm_error)
     user_get = AsyncMock(return_value=user)
     with (
         patch(f"{MODULE}.workflow_scheduler", scheduler),
         patch(f"{MODULE}.user_repository.get", user_get),
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these guard tests
+        # are about onboarding/budget, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget",
             new_callable=AsyncMock,
             side_effect=budget_side_effect,
         ) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
-        patch(f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"),
+        patch(
+            f"{MODULE}.execute_workflow_as_chat",
+            new_callable=AsyncMock,
+            return_value=("conv-1", []),
+        ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
         patch(f"{MODULE}.capture_event"),
@@ -72,6 +78,30 @@ async def _run_task(
         create.return_value = MagicMock(execution_id="exec-1")
         result = await execute_workflow_by_id({}, "wf-1", context)
     return _Run(result, scheduler, user_get, budget, log)
+
+
+class TestLedgerAttribution:
+    """Which run a workflow's model spend is attributed to.
+
+    The execution id exists only inside this task — it never reaches
+    config.configurable, so the llm_calls ledger reads it off the task's
+    wide event (llm_metering._ambient_worker_context). Without the stamp,
+    every model call a workflow makes lands in the ledger with no execution to
+    attribute it to, and "what did this run cost" comes back empty rather than
+    wrong — which is far harder to notice.
+    """
+
+    async def test_the_runs_execution_is_stamped_before_the_agent_makes_any_call(self) -> None:
+        run = await _run_task(
+            _workflow("owner-7"), _user(completed=True), {"trigger_type": "schedule"}
+        )
+
+        stamped = [
+            call.kwargs["workflow"]
+            for call in run.log.set.call_args_list
+            if "workflow" in call.kwargs
+        ]
+        assert {"id": "wf-1", "execution_id": "exec-1"} in stamped
 
 
 class TestSystemRunGuards:
@@ -102,9 +132,7 @@ class TestSystemRunGuards:
     async def test_the_budget_wall_runs_under_the_origin_the_trigger_implies(
         self, trigger_type: str, expected: LimitHitOrigin
     ) -> None:
-        """Which email a limit hit sends. Asserted at the wall rather than on the
-        call's arguments: the origin now reaches the seam through the run's
-        context, so the argument list cannot show whether it is right."""
+        """Asserted at the wall, not the call args: origin reaches the seam via context, not an argument."""
         seen: list[LimitHitOrigin] = []
 
         async def _record(*_args: object, **_kwargs: object) -> None:
@@ -134,3 +162,96 @@ class TestSystemRunGuards:
         run.log.error.assert_called_once()
         assert "wf-1" in run.log.error.call_args.args[0]
         assert "boom" in run.log.error.call_args.args[0]
+
+
+def _timezone_workflow(schedule_tz: str | None) -> MagicMock:
+    workflow = _workflow()
+    workflow.trigger_config = MagicMock(timezone=schedule_tz)
+    return workflow
+
+
+def _profile(timezone: str | None) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        user_id="user-1", email="ada@example.com", name="Ada", timezone=timezone
+    )
+
+
+@pytest.mark.unit
+class TestResolveWorkflowUser:
+    """The clock a scheduled run executes on.
+
+    An ARQ worker has no request and no X-Timezone header, so this function
+    is the only thing standing between a user's 8am digest and one that arrives
+    at 8am UTC. Both run paths read the zone straight back off
+    user_data.timezone: the agent through build_agent_config and the
+    replay through $now / $today.
+    """
+
+    async def _resolve(
+        self, profile: AuthenticatedUser | Exception | None, schedule_tz: str | None
+    ) -> tuple[AuthenticatedUser, MagicMock]:
+        lookup = AsyncMock(
+            side_effect=profile if isinstance(profile, Exception) else None,
+            return_value=None if isinstance(profile, Exception) else profile,
+        )
+        with (
+            patch(f"{MODULE}.load_user_context", lookup),
+            patch(f"{MODULE}.log") as log,
+        ):
+            user_data = await _resolve_workflow_user(_timezone_workflow(schedule_tz), "user-1")
+        lookup.assert_awaited_once_with("user-1")
+        return user_data, log
+
+    async def test_a_real_profile_zone_wins_over_the_schedule_zone(self) -> None:
+        """The user's own clock is the one they meant, wherever the schedule was created from."""
+        user_data, log = await self._resolve(_profile("Asia/Kolkata"), "America/New_York")
+
+        assert user_data.timezone == "Asia/Kolkata"
+        assert user_data.user_id == "user-1"
+        assert user_data.email == "ada@example.com"
+        log.set.assert_called_once_with(workflow_agent_timezone="Asia/Kolkata")
+        log.warning.assert_not_called()
+
+    async def test_a_utc_profile_zone_defers_to_the_schedule_zone(self) -> None:
+        """UTC on a profile is the default nobody chose; a schedule naming a real zone wins instead."""
+        for stored in ("UTC", "utc"):
+            user_data, _ = await self._resolve(_profile(stored), "America/New_York")
+            assert user_data.timezone == "America/New_York", stored
+
+    async def test_a_blank_profile_zone_falls_back_to_the_schedule_zone(self) -> None:
+        """Whitespace in the profile is not a timezone."""
+        for stored in (None, "", "   "):
+            user_data, _ = await self._resolve(_profile(stored), "America/New_York")
+            assert user_data.timezone == "America/New_York", stored
+
+    async def test_no_zone_anywhere_falls_back_to_utc_and_says_so(self) -> None:
+        """UTC here is a real degradation, not a neutral default, so it must be logged with the workflow and user."""
+        user_data, log = await self._resolve(_profile(None), None)
+
+        assert user_data.timezone == "UTC"
+        log.set.assert_called_once_with(workflow_agent_timezone="UTC")
+        assert "UTC" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs["workflow_id"] == "wf-1"
+        assert log.warning.call_args.kwargs["user_id"] == "user-1"
+
+    async def test_a_blank_schedule_zone_is_not_a_zone_either(self) -> None:
+        user_data, _ = await self._resolve(_profile(None), "   ")
+
+        assert user_data.timezone == "UTC"
+
+    async def test_a_missing_profile_still_produces_a_usable_user_bag(self) -> None:
+        """A missing user row must not take the run down; the schedule's own zone is still the right clock."""
+        user_data, _ = await self._resolve(None, "America/New_York")
+
+        assert user_data.user_id == "user-1"
+        assert user_data.timezone == "America/New_York"
+
+    async def test_a_failing_profile_lookup_still_returns_the_user_id(self) -> None:
+        """A failed lookup returns a usable bag, not an exception, with the failure logged (type and text)."""
+        user_data, log = await self._resolve(RuntimeError("mongo down"), "America/New_York")
+
+        assert user_data == AuthenticatedUser(user_id="user-1")
+        assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
+        assert log.warning.call_args.kwargs["error"] == "mongo down"
+        assert log.warning.call_args.kwargs["user_id"] == "user-1"
+        assert log.warning.call_args.kwargs["workflow_id"] == "wf-1"

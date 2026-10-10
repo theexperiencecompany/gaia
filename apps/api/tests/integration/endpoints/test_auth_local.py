@@ -1,12 +1,12 @@
 """Integration tests for local-mode (self-host) authentication.
 
-Covers the ``/api/v1/auth`` router (signup/login/logout), the session-token
-utilities behind it, the AUTH_MODE="local" branch of WorkOSAuthMiddleware, and
+Covers the /api/v1/auth router (signup, login, logout), the session-token
+utilities behind it, the AUTH_MODE local branch of WorkOSAuthMiddleware, and
 the local branch of the WebSocket auth dependency.
 
 Repositories and the instance-secret store are mocked at their seams; bcrypt,
-the jose JWT encode/verify path, the middleware dispatch order, and the cookie
-contract all run for real.
+the jose JWT encode and verify path, the middleware dispatch order, and the
+cookie contract all run for real.
 """
 
 import asyncio
@@ -55,10 +55,9 @@ PASSWORD_MULTIBYTE_OVER_LIMIT = "🔐" * 19
 def _instance_secret(monkeypatch):
     """Wire local_auth_utils to a fixed instance secret.
 
-    The cache starts WARM: production resolves the immutable instance secret
-    once per process, and the sync verify path requires it — exactly the state
-    every request finds after boot. (The cold-start behavior itself is pinned
-    by TestSessionTokens tests below.)
+    The cache starts warm, matching production after boot where the sync
+    verify path requires the resolved secret; cold-start behavior is pinned
+    by the TestSessionTokens tests below.
     """
     from app.utils import local_auth_utils
 
@@ -118,10 +117,12 @@ def directory():
 
 @pytest.fixture(autouse=True)
 def _disable_slowapi_limiter():
-    """These tests build their own apps but share one process-global slowapi
-    bucket (keyed on 127.0.0.1), so cumulative signup calls would 429 each
-    other mid-suite. Rate limiting has its own dedicated suite; here it only
-    couples unrelated tests."""
+    """Disable the process-global slowapi limiter for these tests.
+
+    They build their own apps but share one bucket (keyed on 127.0.0.1), so
+    cumulative signup calls would 429 each other mid-suite. Rate limiting has its
+    own dedicated suite; here it only couples unrelated tests.
+    """
     from app.api.v1.middleware.rate_limiter import limiter
 
     previous = limiter.enabled
@@ -134,10 +135,10 @@ def _disable_slowapi_limiter():
 def credential_store():
     """In-memory stand-in for the auth_credentials collection.
 
-    Every operation yields to the event loop first (``sleep(0)``), mirroring a
-    real Mongo round trip so gathered concurrent signups actually interleave
-    between the gate check and the write. ``try_create`` mirrors the real
-    repository's atomic claim semantics: at most ONE credential can ever land.
+    Every operation yields to the event loop first, mirroring a real Mongo
+    round trip so gathered concurrent signups interleave between gate check
+    and write. try_create keeps atomic claim semantics: at most one
+    credential can ever land.
     """
     store: dict[str, LocalCredentialDocument] = {}
 
@@ -161,7 +162,7 @@ def credential_store():
     async def update(
         doc_id: str, update_model: LocalCredentialUpdate
     ) -> LocalCredentialDocument | None:
-        """Typed ``$set`` by id, mirroring MongoRepository.update semantics."""
+        """Typed set by id, mirroring MongoRepository.update semantics."""
         await asyncio.sleep(0)
         doc = next((c for c in store.values() if c.id == doc_id), None)
         if doc is None:
@@ -186,14 +187,11 @@ def credential_store():
 
 @pytest.fixture
 def patched_repos(directory, credential_store, monkeypatch):
-    """Point every consumer (endpoints + middleware + ws dependency) at the
-    in-memory stores.
+    """Point every consumer (endpoints, middleware, ws dependency) at the in-memory stores.
 
-    This directory's shared conftest (setup-API tests) swaps the
-    ``local_credentials`` module attribute to its own count-only fake at import
-    time; these tests re-bind the genuine singletons first so the REAL router
-    code runs against controlled seams. All consumers import the same singleton
-    objects, so patching their methods covers every call site.
+    The shared setup-API conftest swaps the local_credentials module attribute
+    at import time, so these tests re-bind the genuine singletons first and the
+    real router code runs against controlled seams.
     """
     import app.api.v1.endpoints.auth_local as auth_local_module
     import app.db.repositories.local_credentials as creds_mod
@@ -238,33 +236,42 @@ async def _client(app: FastAPI) -> httpx.AsyncClient:
 
 
 def _build_router_app() -> FastAPI:
-    """The real auth_local router mounted exactly as routes.py will mount it."""
+    """Build an app carrying the real auth_local router, as routes.py mounts it.
+
+    register_exception_handlers keeps every non-2xx body in the ErrorEnvelope
+    shape clients see; a bare FastAPI app would answer with a default detail
+    shape instead.
+    """
     from app.api.v1.endpoints.auth_local import router as auth_router
+    from app.core.exception_handlers import register_exception_handlers
 
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     return app
 
 
 def _build_middleware_app() -> FastAPI:
-    """The real WorkOSAuthMiddleware in local mode, plus the mounted router.
+    """Build an app carrying the real middleware in local mode plus the mounted router.
 
     The probe route reports what request.state carries after dispatch — the
     contract downstream handlers depend on.
     """
     from app.api.v1.endpoints.auth_local import router as auth_router
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
+    from app.core.exception_handlers import register_exception_handlers
 
     app = FastAPI()
+    register_exception_handlers(app)
 
     @app.get("/probe")
     async def probe(request: Request) -> JSONResponse:
         user = getattr(request.state, "user", None)
         if not getattr(request.state, "authenticated", False) or not user:
             return JSONResponse(status_code=401, content={"detail": "no user"})
-        return JSONResponse(
-            content={"email": user.get("email"), "auth_provider": user.get("auth_provider")}
-        )
+        # request.state.user is the frozen AuthenticatedUser model (not a dict)
+        # — see build_user_context.
+        return JSONResponse(content={"email": user.email, "auth_provider": user.auth_provider})
 
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
@@ -319,7 +326,7 @@ class TestSignup:
             )
 
         assert response.status_code == 403
-        assert response.json()["detail"]["error_code"] == "registration_closed"
+        assert response.json()["code"] == "registration_closed"
         assert patched_repos.created == []  # no second user was written
 
     async def test_short_password_rejected_before_any_write(
@@ -338,8 +345,7 @@ class TestSignup:
         assert patched_repos.created == []
 
     async def test_password_at_bcrypt_limit_is_accepted(self, patched_repos, _instance_secret):
-        """Exactly 72 bytes is bcrypt's cap, not past it — the boundary must
-        keep working end to end."""
+        """Keep the 72-byte boundary working end to end; exactly 72 bytes is bcrypt cap."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
@@ -353,10 +359,7 @@ class TestSignup:
     async def test_password_over_bcrypt_limit_is_422_before_any_write(
         self, patched_repos, credential_store, _instance_secret
     ):
-        """>72 bytes makes bcrypt >= 5 raise ValueError. Rejected as a plain
-        422 BEFORE any row is written — hashing after the user insert used to
-        orphan the row on failure, permanently locking that email out of
-        signup via the existing-identity gate."""
+        """Reject over-72-byte passwords as 422 before any write; late hashing would orphan the row."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
@@ -373,8 +376,7 @@ class TestSignup:
     async def test_multibyte_password_over_byte_limit_is_422_before_any_write(
         self, patched_repos, credential_store, _instance_secret
     ):
-        """19 characters — under any character-count limit — but 76 UTF-8
-        bytes, past bcrypt's cap. Proves the limit counts bytes, not chars."""
+        """Count bytes, not characters, against bcrypt cap; 19 chars can be 76 UTF-8 bytes."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
@@ -390,11 +392,7 @@ class TestSignup:
     async def test_lost_race_cleans_up_the_just_created_user_row(
         self, patched_repos, credential_store, _instance_secret
     ):
-        """Deterministic replay of a lost registration race: try_create comes
-        back empty exactly as when a concurrent signup won the admin slot.
-        The user row created moments earlier must be removed again — an
-        orphaned row poisons its email against every future signup (the
-        existing-identity gate refuses re-registration)."""
+        """Remove the just-created user row when try_create loses the race; orphans poison the email."""
         credential_store.try_create.side_effect = None
         credential_store.try_create.return_value = None
 
@@ -407,7 +405,7 @@ class TestSignup:
             )
 
         assert response.status_code == 403, response.text
-        assert response.json()["detail"]["error_code"] == "registration_closed"
+        assert response.json()["code"] == "registration_closed"
         # The half-created row was compensated away — nothing orphaned.
         assert patched_repos.created == []
         assert patched_repos.by_email == {}
@@ -415,9 +413,7 @@ class TestSignup:
     async def test_signup_refuses_existing_identity_claim(
         self, patched_repos, credential_store, _instance_secret
     ):
-        """A pre-existing user row (e.g. from a WorkOS era on the same DB) is
-        NOT claimable by knowing its email — that would hand the identity to
-        an attacker. Signup is refused; no credential is attached."""
+        """Refuse signup claiming a pre-existing user row; no credential is attached."""
         existing = UserDocument.model_validate({"id": str(ObjectId()), "email": "adopted@gaia.dev"})
         patched_repos.by_email["adopted@gaia.dev"] = existing
 
@@ -430,7 +426,7 @@ class TestSignup:
             )
 
         assert response.status_code == 403, response.text
-        assert response.json()["detail"]["error_code"] == "registration_closed"
+        assert response.json()["code"] == "registration_closed"
         assert credential_store.store == {}  # nothing attached to the identity
         assert patched_repos.created == []
 
@@ -467,12 +463,7 @@ class TestSignup:
     async def test_concurrent_signups_produce_exactly_one_admin(
         self, patched_repos, credential_store, _instance_secret, monkeypatch
     ):
-        """N signups racing on a fresh instance: exactly one 201, every loser a
-        deterministic 403 registration_closed, and no orphaned user rows.
-
-        The seams yield (``sleep(0)``) so gathered requests genuinely interleave
-        between the gate read and the write — the shape that let two signups
-        both become admin under check-then-create."""
+        """Admit exactly one admin when signups race; losers get 403 and leave no orphan rows."""
         import app.api.v1.endpoints.auth_local as auth_local_module
 
         monkeypatch.setattr(auth_local_module.bcrypt, "hashpw", lambda pw, salt: _FAKE_HASH)
@@ -496,7 +487,7 @@ class TestSignup:
         assert statuses.count(403) == len(emails) - 1, statuses
         for response in responses:
             if response.status_code == 403:
-                assert response.json()["detail"]["error_code"] == "registration_closed"
+                assert response.json()["code"] == "registration_closed"
 
         assert len(credential_store.store) == 1
         # The losers' just-created user rows were compensated away — no garbage.
@@ -537,15 +528,13 @@ class TestLogin:
             )
 
         assert response.status_code == 401
-        assert response.json()["detail"]["error_code"] == "invalid_credentials"
+        assert response.json()["code"] == "invalid_credentials"
         assert "gaia_session" not in response.cookies
 
     async def test_over_bcrypt_limit_password_is_422_before_any_lookup(
         self, admin, _instance_secret
     ):
-        """bcrypt >= 5 refuses to verify passwords past its 72-byte cap
-        (ValueError). Request validation rejects them with a clear 422
-        before any account lookup happens — never a 500, and no session."""
+        """Reject over-cap passwords as 422 before any lookup; never 500, never a session."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
@@ -571,11 +560,10 @@ class TestLogin:
             )
 
         assert response.status_code == 401
-        assert response.json()["detail"]["error_code"] == "invalid_credentials"
+        assert response.json()["code"] == "invalid_credentials"
 
     async def test_user_without_credential_is_401(self, patched_repos, _instance_secret):
-        """A user row with no local credential must never authenticate via
-        password — the credential lookup is load-bearing, not the email match."""
+        """Refuse password auth for a user row with no local credential."""
         patched_repos.by_email["hollow@gaia.dev"] = UserDocument.model_validate(
             {"id": str(ObjectId()), "email": "hollow@gaia.dev"}
         )
@@ -604,8 +592,7 @@ class TestLogin:
     async def test_unknown_email_and_wrong_password_are_indistinguishable(
         self, admin, _instance_secret, monkeypatch
     ):
-        """Both failures return byte-identical error bodies AND burn the same
-        bcrypt work — response time must not reveal whether an account exists."""
+        """Burn equal bcrypt work on both login failures so timing reveals no account oracle."""
         import app.api.v1.endpoints.auth_local as auth_local_module
 
         spy = MagicMock(wraps=bcrypt_lib.checkpw)
@@ -635,8 +622,10 @@ class TestLogin:
 
 @pytest.mark.integration
 class TestBcryptValueErrorGuards:
-    """Second line of defense behind request validation: validation already
-    turns over-cap passwords into clean 422s on the wire (see the signup and
+    """Pin the handler-level second line of defense behind request validation.
+
+    Validation already turns over-cap passwords into clean 422s on the wire (see
+    the signup and
     login tests above). These tests drive the handlers directly with an
     unvalidated body to pin what happens if a refused input ever reaches them
     anyway — a clean 422 on signup / uniform 401 on login, never a 500, and
@@ -675,7 +664,7 @@ class TestBcryptValueErrorGuards:
         assert exc_info.value.status_code == 401
         # Byte-identical to every other login failure — no oracle.
         assert exc_info.value.detail == {
-            "error_code": INVALID_CREDENTIALS,
+            "code": INVALID_CREDENTIALS,
             "message": "Invalid email or password",
         }
 
@@ -687,9 +676,11 @@ class TestBcryptValueErrorGuards:
 
 @pytest.mark.integration
 class TestChangePassword:
-    """PATCH /api/v1/auth/password — self-service rotation for the local
-    admin, driven through the real middleware so the session requirement is
-    exercised end to end."""
+    """Exercise PATCH /api/v1/auth/password self-service rotation end to end.
+
+    Driven through the real middleware for the local admin, so the session
+    requirement is exercised too.
+    """
 
     @pytest.fixture
     def admin(self, patched_repos, credential_store):
@@ -698,8 +689,7 @@ class TestChangePassword:
     async def test_change_then_old_fails_new_works(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """The full rotation contract: 200 on change, old password stops
-        authenticating, new password logs in."""
+        """Pin rotation: 200 on change, old password fails, new password logs in."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         token = await issue_session_token(admin.id)
         old_hash = credential_store.store[admin.id].password_hash
@@ -736,8 +726,7 @@ class TestChangePassword:
     async def test_wrong_current_password_is_401_and_changes_nothing(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """A wrong current password is the uniform invalid_credentials 401 and
-        leaves the working credential untouched."""
+        """Return uniform invalid_credentials 401 on wrong current password; change nothing."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         token = await issue_session_token(admin.id)
         original = credential_store.store[admin.id]
@@ -754,7 +743,7 @@ class TestChangePassword:
                 },
             )
             assert response.status_code == 401, response.text
-            assert response.json()["detail"]["error_code"] == INVALID_CREDENTIALS
+            assert response.json()["code"] == INVALID_CREDENTIALS
             # Nothing written — the old password still works.
             assert credential_store.store[admin.id] is original
             still_works = await client.post(
@@ -767,8 +756,7 @@ class TestChangePassword:
     async def test_without_a_session_is_401_not_authenticated(
         self, admin, _instance_secret, monkeypatch
     ):
-        """The route is not excluded from auth: without a session it fails
-        closed through get_current_user, never reaching verification."""
+        """Fail closed through get_current_user without a session; verification is never reached."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
         app = _build_middleware_app()
@@ -783,13 +771,12 @@ class TestChangePassword:
             )
 
         assert response.status_code == 401
-        assert response.json()["detail"]["error_code"] == "NOT_AUTHENTICATED"
+        assert response.json()["code"] == "NOT_AUTHENTICATED"
 
     async def test_short_new_password_is_422_before_any_verification(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """min_length is part of the request contract — rejected before the
-        current-password verify runs and before anything is written."""
+        """Reject a short new password before the current-password verify runs; write nothing."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         token = await issue_session_token(admin.id)
         original = credential_store.store[admin.id]
@@ -809,9 +796,7 @@ class TestChangePassword:
     async def test_over_bcrypt_limit_new_password_is_422_before_any_write(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """>72 bytes would make bcrypt >= 5 raise ValueError mid-request;
-        request validation rejects it as a clean 422 first (byte cap, chars
-        are not bytes)."""
+        """Reject an over-72-byte new password as 422 first; bcrypt would raise mid-request."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         token = await issue_session_token(admin.id)
         original = credential_store.store[admin.id]
@@ -834,9 +819,7 @@ class TestChangePassword:
     async def test_update_receives_typed_rotation_model(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """The repository seam gets a LocalCredentialUpdate carrying the new hash
-        and bumped token_version — identity fields (user_id/slot/created_at)
-        can never drift through a password change."""
+        """Carry new hash plus bumped token_version through the seam; identity fields cannot drift."""
         import app.api.v1.endpoints.auth_local as auth_local_module
 
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
@@ -892,8 +875,10 @@ class TestLogout:
 
 
 def _build_user_route_app() -> FastAPI:
-    """The real user router mounted exactly as routes.py mounts it, behind the
-    real WorkOSAuthMiddleware in local mode."""
+    """Build an app carrying the real user router behind the real middleware.
+
+    Mounted exactly as routes.py mounts it, in local mode.
+    """
     from app.api.v1.endpoints.user import router as user_router
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 
@@ -905,9 +890,11 @@ def _build_user_route_app() -> FastAPI:
 
 @pytest.mark.integration
 class TestHostedLogoutRoute:
-    """POST /api/v1/user/logout — the canonical hosted logout endpoint the web
-    client calls — must authenticate through WorkOSAuthMiddleware like every
-    other route and reach user.py's local branch (security-review M2)."""
+    """Authenticate POST /api/v1/user/logout like every other route.
+
+    The canonical hosted logout endpoint the web client calls must reach
+    user.py's local branch through WorkOSAuthMiddleware.
+    """
 
     async def test_reachable_with_valid_session_cookie(
         self, patched_repos, credential_store, _instance_secret, monkeypatch
@@ -923,13 +910,14 @@ class TestHostedLogoutRoute:
             response = await client.post("/api/v1/user/logout")
 
         assert response.status_code == 200, response.text
-        assert response.json() == {"mode": "local"}
+        # No logout_url: there is no hosted logout page on a local instance, so
+        # the client stays put. Its absence is the local-mode signal.
+        assert response.json()["logout_url"] is None
         cleared = response.headers["set-cookie"]
         assert "gaia_session=" in cleared
 
     async def test_without_a_session_is_401(self, patched_repos, _instance_secret, monkeypatch):
-        """Removing the route from the middleware's exclude list must not open
-        anonymous access — get_current_user still fails closed."""
+        """Fail closed on get_current_user with the route off the exclude list."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         app = _build_user_route_app()
         client = await _client(app)
@@ -949,8 +937,7 @@ class TestSessionCookies:
     async def test_session_cookie_flags_over_lan_http(
         self, patched_repos, credential_store, _instance_secret, monkeypatch
     ):
-        """Non-production ENV (self-host on plain http) must NOT set Secure —
-        a Secure cookie would never be stored by browsers over LAN http."""
+        """Omit Secure under non-production ENV; browsers drop Secure cookies over LAN http."""
         monkeypatch.setattr(settings, "ENV", "selfhost")
         app = _build_router_app()
         client = await _client(app)
@@ -971,9 +958,7 @@ class TestSessionCookies:
     async def test_session_cookie_is_secure_when_request_is_https(
         self, patched_repos, credential_store, _instance_secret
     ):
-        """Secure follows the request's ACTUAL transport (X-Forwarded-Proto),
-        not ENV — a self-host instance behind a TLS proxy must mark the cookie
-        Secure, while plain-HTTP LAN instances must stay login-able."""
+        """Follow the request transport for Secure, not ENV; TLS proxies must mark, LAN http must not."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
@@ -996,8 +981,7 @@ class TestSessionCookies:
     async def test_cleared_cookie_keeps_flags_in_non_production(
         self, _instance_secret, monkeypatch
     ):
-        """The deletion cookie must mirror the set cookie's attributes or some
-        clients keep the session alive — and must drop Secure off LAN http."""
+        """Mirror the set-cookie attributes on the deletion cookie, minus Secure on LAN http."""
         monkeypatch.setattr(settings, "ENV", "selfhost")
         app = _build_router_app()
         client = await _client(app)
@@ -1046,9 +1030,7 @@ class TestSessionTokens:
         assert verify_session_token(foreign) is None
 
     async def test_verify_before_secret_resolution_fails_loud(self, monkeypatch):
-        """A cold secret cache is a caller bug (skipped resolve_session_token),
-        not an 'invalid session' — returning None here would lock out every
-        existing session after a restart until re-login, invisibly."""
+        """Raise on a cold secret cache; a skipped resolve must not look like a bad session."""
         from app.utils import local_auth_utils
 
         monkeypatch.setattr(local_auth_utils, "_resolved_secret", None)
@@ -1137,8 +1119,7 @@ class TestLocalMiddlewareDispatch:
     async def test_signup_path_is_excluded_from_auth(
         self, patched_repos, _instance_secret, monkeypatch
     ):
-        """An excluded path must reach the ROUTER unauthenticated — the 422 from
-        request validation proves the middleware let the request through."""
+        """Let an excluded path reach the router unauthenticated; 422 proves pass-through."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         app = _build_middleware_app()
         client = await _client(app)
@@ -1149,8 +1130,7 @@ class TestLocalMiddlewareDispatch:
     async def test_unknown_token_user_passes_through_anonymous(
         self, patched_repos, credential_store, _instance_secret, monkeypatch
     ):
-        """A signed token naming a user that no longer exists authenticates
-        nobody — same posture as the WorkOS path."""
+        """Authenticate nobody for a token naming a deleted user, same as the WorkOS path."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         ghost_token = await issue_session_token(str(ObjectId()))
 
@@ -1204,23 +1184,24 @@ class TestLocalWebSocketAuth:
 
         user = await get_current_user_ws(_fake_websocket({"gaia_session": token}))
 
-        assert user["email"] == "admin@gaia.dev"
-        assert user["auth_provider"] == "email"
-        assert user["user_id"] == admin.id
+        assert user.email == "admin@gaia.dev"
+        assert user.auth_provider == "email"
+        assert user.user_id == admin.id
 
     async def test_missing_credentials_close_policy_violation(
         self, patched_repos, _instance_secret, monkeypatch
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         from fastapi import status as fastapi_status
+        from fastapi.exceptions import WebSocketException
 
         from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
 
         websocket = _fake_websocket({})
-        user = await get_current_user_ws(websocket)
+        with pytest.raises(WebSocketException) as exc_info:
+            await get_current_user_ws(websocket)
 
-        assert user == {}
-        websocket.close.assert_awaited_once_with(code=fastapi_status.WS_1008_POLICY_VIOLATION)
+        assert exc_info.value.code == fastapi_status.WS_1008_POLICY_VIOLATION
 
     async def test_subprotocol_bearer_token_accepted(
         self, patched_repos, credential_store, _instance_secret, monkeypatch
@@ -1234,18 +1215,19 @@ class TestLocalWebSocketAuth:
         websocket = _fake_websocket({}, protocols=f"Bearer, {token}")
         user = await get_current_user_ws(websocket)
 
-        assert user["user_id"] == admin.id
+        assert user.user_id == admin.id
 
     async def test_invalid_token_closes_connection(
         self, patched_repos, _instance_secret, monkeypatch
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         from fastapi import status as fastapi_status
+        from fastapi.exceptions import WebSocketException
 
         from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
 
         websocket = _fake_websocket({"gaia_session": "garbage"})
-        user = await get_current_user_ws(websocket)
+        with pytest.raises(WebSocketException) as exc_info:
+            await get_current_user_ws(websocket)
 
-        assert user == {}
-        websocket.close.assert_awaited_once_with(code=fastapi_status.WS_1008_POLICY_VIOLATION)
+        assert exc_info.value.code == fastapi_status.WS_1008_POLICY_VIOLATION

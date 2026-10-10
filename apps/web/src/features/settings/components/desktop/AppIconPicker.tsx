@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import type { DesktopAppIconOption } from "@shared/desktop-tools";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 interface AppIconPickerProps {
@@ -39,12 +40,15 @@ export function AppIconPicker({
                 : "ring-2 ring-transparent hover:scale-105",
             )}
           >
-            {/* Data-URL previews from the main process — not optimizable. */}
-            {/* biome-ignore lint/performance/noImgElement: data-URL preview */}
-            <img
+            {/* Data-URL previews from the main process — the Next.js optimizer
+                can't process them, so bypass it with `unoptimized`. */}
+            <Image
               src={icon.preview}
               alt={`${icon.label} app icon`}
+              width={128}
+              height={128}
               className="aspect-square h-full w-full rounded-[22%] object-cover"
+              unoptimized
             />
           </Button>
         );

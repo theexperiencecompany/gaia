@@ -1,18 +1,24 @@
 import type {
+  MemoryDocument,
+  MemoryEntry,
+  MemoryEpisode,
+} from "@shared/api/generated";
+import type {
   ApprovalRequestData,
   RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
 import type {
+  DeviceApprovalRequiredData,
+  DeviceOnboardingRequiredData,
+} from "@/features/devices/types";
+import type {
+  ConnectOptionsData,
   IntegrationConnectionData,
   IntegrationListStreamData,
 } from "@/features/integrations/types";
-import type {
-  MemoryDocument,
-  MemoryEntry,
-  MemoryEpisode,
-} from "@/features/memory/api/types";
+import type { BrowserTaskSnapshot } from "@/types/features/browserTaskTypes";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -30,7 +36,7 @@ import type {
   PeopleSearchData,
 } from "@/types/features/mailTypes";
 import type {
-  NotificationRecord,
+  NotificationView,
   SendNotificationData,
 } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
@@ -110,40 +116,13 @@ export interface MCPAppData {
   tool_arguments?: Record<string, unknown>;
 }
 
-// Tool Registry
-// Single source of truth for tool names and their data payload types.
-// When you add a tool here, all downstream types (ToolName, ToolDataMap),
-// message schemas, and UI renderers can infer the correct types automatically.
-//
-// Why `null as unknown as T`?
-// - We want a value-level object (used at runtime for deriving keys) that also
-//   carries precise compile-time types for each key.
-// - Using `null` keeps runtime cost at zero; these values are never read.
-// - Casting `null as unknown as T` tells TypeScript: “treat this value as T”
-//   without needing to construct a real instance of T. The first cast to
-//   `unknown` is required to legally cast from `null` to any specific type.
-// - Result: strong static typing with no runtime overhead and a single place to
-//   author tool types.
-//
-// Single source of truth
-// - `TOOL_REGISTRY` defines all tool keys and their payload shapes.
-// - `ToolName` is derived from its keys.
-// - `ToolDataMap` maps each key to its payload type.
-// - `TOOLS_MESSAGE_SCHEMA` (below) composes tool data into message schemas.
-// - UI components (like renderers) can key off `ToolName` and get the exact
-//   payload type for each tool.
-//
-// How to add a new tool
-// 1) Add a new key here with its payload type using `null as unknown as YourType`.
-// 2) If you have a renderer, register it in your renderer map keyed by the new tool name.
-// 3) If you stream or store this tool’s data in messages, no extra typing is required;
-//    the message schema derives from this registry.
-// 4) Optionally, add tests and docs/examples demonstrating the new tool.
+// Single source of truth for tool names + payload types (ToolName,
+// ToolDataMap, message schemas, UI renderers all derive from this). Values
+// are `null as unknown as T`: zero runtime cost, precise compile-time types without constructing T.
 
-// The canonical RateLimitData / ToolCallEntry / SubagentGroupData shapes live
-// in @shared/chat (they're what the shared turn accumulator and backend
-// contract define); re-exported here so existing web imports keep one source
-// of truth instead of a drifting copy.
+// RateLimitData / ToolCallEntry / SubagentGroupData canonically live in
+// @shared/chat (shared turn accumulator + backend contract); re-exported
+// here so existing web imports keep one source of truth, not a drifting copy.
 export {
   type RateLimitData,
   REASONING_TOOL_NAME,
@@ -151,7 +130,9 @@ export {
   type ToolCallEntry,
 } from "@shared/chat";
 
-export const TOOL_REGISTRY = {
+// Not exported: nothing outside this module reads the runtime value — the
+// public surface is the types derived from it below.
+const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
   deep_research_results: null as unknown as DeepResearchResults,
   weather_data: null as unknown as WeatherData,
@@ -171,10 +152,13 @@ export const TOOL_REGISTRY = {
   google_docs_data: null as unknown as GoogleDocsData,
   code_data: null as unknown as CodeData,
   todo_data: null as unknown as TodoToolData,
-  notification_data: null as unknown as { notifications: NotificationRecord[] },
+  notification_data: null as unknown as { notifications: NotificationView[] },
   send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
+  connect_options: null as unknown as ConnectOptionsData,
   integration_list_data: null as unknown as IntegrationListStreamData,
+  device_onboarding_required: null as unknown as DeviceOnboardingRequiredData,
+  device_approval_required: null as unknown as DeviceApprovalRequiredData,
   tool_calls_data: null as unknown as SharedToolCallEntry[],
   subagent_group: null as unknown as SharedSubagentGroupData,
   twitter_search_data: null as unknown as TwitterSearchData,
@@ -186,6 +170,7 @@ export const TOOL_REGISTRY = {
   rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
+  browser_task_data: null as unknown as BrowserTaskSnapshot,
   memory_data: null as unknown as MemoryData,
   approval_request: null as unknown as ApprovalRequestData,
 } as const;
@@ -196,7 +181,7 @@ export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 // Tools Message Schema
 // Derived from TOOL_REGISTRY. Represents the tool-specific portion
 // of a message. Used by the base message registry.
-export interface ToolDataEntry {
+export interface TypedToolDataEntry {
   tool_name: ToolName;
   tool_category: string;
   data: ToolDataMap[ToolName];
@@ -205,17 +190,13 @@ export interface ToolDataEntry {
 
 // Optional wrapper for tool data in messages
 type ToolsMessageSchema = {
-  tool_data?: ToolDataEntry[] | null;
+  tool_data?: TypedToolDataEntry[] | null;
 };
 
 export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
   tool_data: undefined,
 };
-export type ToolsMessageKey = keyof ToolsMessageSchema;
 export type ToolsMessageData = ToolsMessageSchema;
-export const TOOLS_MESSAGE_KEYS = Object.keys(
-  TOOLS_MESSAGE_SCHEMA,
-) as ToolsMessageKey[];
 
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
@@ -225,10 +206,12 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "reddit_data",
   "integration_connection_required",
   "integration_list_data",
+  "device_approval_required",
   "rate_limit_data",
   "email_fetch_data",
   "email_compose_data",
   "email_sent_data",
   "artifact_data",
   "memory_data",
+  "browser_task_data",
 ]);

@@ -5,7 +5,7 @@ import React from "react";
 import type { z } from "zod";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
-import { ToolCard } from "../primitives";
+import { ToolCard } from "../primitives/ToolCard";
 import { timelineSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
@@ -53,11 +53,11 @@ function formatTimelineTime(raw: string): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Views
-// ---------------------------------------------------------------------------
+// TimelineView stays file-private: this module's public surface is the
+// `timelineDef` registration at the bottom. Exporting the component
+// alongside that def breaks Fast Refresh (react-refresh/only-export-components).
 
-export function TimelineView(props: z.infer<typeof timelineSchema>) {
+function TimelineView(props: z.infer<typeof timelineSchema>) {
   const triggerAction = useSafeTriggerAction();
 
   return (

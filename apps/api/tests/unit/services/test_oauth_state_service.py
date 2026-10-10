@@ -277,7 +277,6 @@ class TestValidateAndConsumeOAuthState:
         assert result is None
 
     async def test_incomplete_state_data_missing_user_id_returns_none(self, mock_redis_client):
-        """If user_id is missing from state data, return None."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
                 "user_id": "",
@@ -321,7 +320,7 @@ class TestValidateAndConsumeOAuthState:
         assert result is None
 
     async def test_all_fields_missing_returns_none(self, mock_redis_client):
-        """hgetall returns data with empty-string defaults for missing keys."""
+        """Hgetall returns data with empty-string defaults for missing keys."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
                 "user_id": "",
@@ -343,9 +342,7 @@ class TestValidateAndConsumeOAuthState:
         assert result is None
 
     async def test_redis_error_on_delete_still_returns_data(self, mock_redis_client):
-        """If delete fails but hgetall succeeded, the exception is caught at the
-        outer level. Since delete is inside the try block, an exception there
-        causes the whole validate to return None."""
+        """A delete failure after a good hgetall is caught by the outer try/except, so validate still returns None."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
                 "user_id": "user123",

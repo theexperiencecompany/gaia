@@ -295,10 +295,9 @@ export async function runUpFlow(
     return;
   }
 
-  // Compose returning is not the stack answering requests — wait for the API
-  // health endpoint and the web app before pointing the user at a browser,
-  // otherwise the first click lands on "connection refused". On timeout the
-  // finish screen says so honestly and exit stays 0 (services keep running).
+  // Compose returning is not the stack answering — wait for API health + web
+  // before pointing at a browser. On timeout the finish screen says so and
+  // exit stays 0 (services keep running).
   const readiness = await waitForUpReadiness(store, { apiPort, webPort });
 
   finishUp(store, targetPath, webPort, apiPort, {

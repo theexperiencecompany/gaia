@@ -1,6 +1,9 @@
-"""Follow-up actions node: suggests contextual follow-up actions from
-conversation context and tool usage."""
+"""Follow-up actions node: suggests contextual follow-up actions.
 
+From conversation context and tool usage.
+"""
+
+import time
 from typing import cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
@@ -17,9 +20,10 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, config_agent_name
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
+from app.services.latency_metrics import observe_graph_node
 from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )
@@ -80,12 +84,9 @@ async def generate_follow_up_actions(
                 {
                     **config,
                     "silent": True,  # top-level flag
-                    # Canonical location the messages-stream consumers read
-                    # (execute_graph_streaming / subagent_runner check
-                    # metadata.get("silent")). Without this, this internal
-                    # structured-output call's `{"actions": [...]}` tokens are
-                    # captured by the chat token stream and leak into the
-                    # assistant response. See memory/extraction.py.
+                    # Canonical location messages-stream consumers read
+                    # (metadata.get("silent")); without it this call's tokens
+                    # leak into the assistant response. See memory/extraction.py.
                     "metadata": {**config.get("metadata", {}), "silent": True},
                 },
             ),
@@ -97,6 +98,19 @@ async def generate_follow_up_actions(
 
 
 async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
+    """Analyze conversation context and stream relevant follow-up actions (timed)."""
+    start = time.perf_counter()
+    try:
+        return await _follow_up_actions(state, config)
+    finally:
+        observe_graph_node(
+            time.perf_counter() - start,
+            node="follow_up_actions",
+            agent=config_agent_name(config),
+        )
+
+
+async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
     """Analyze conversation context and stream relevant follow-up actions.
 
     Follow-up actions are streamed, not stored in state.
@@ -115,11 +129,9 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
 
     messages = state.get("messages", [])
 
-    # When this turn delegated to a background executor, the executor produces
-    # the user-visible answer as a separate message and attaches its own
-    # follow-up actions there. Emitting them here would attach them to the
-    # intermediate comms acknowledgement, where they flash then vanish once the
-    # executor's result message supersedes it.
+    # When delegated to a background executor, it produces the user-visible
+    # answer separately with its own follow-ups; emitting here would attach
+    # to the intermediate ack, which flashes then vanishes.
     if _delegated_to_executor(messages):
         log.debug(f"{LogTag.AGENT} Skipping comms follow-ups: turn delegated to executor")
         return state
@@ -158,7 +170,7 @@ def _safe_write_actions(writer: StreamWriter, actions: list[str]) -> None:
 
 
 def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
-    """True if the current turn invoked the ``call_executor`` tool.
+    """Return whether the current turn invoked the call_executor tool.
 
     Scoped to messages after the last human turn so a delegation from an
     earlier turn doesn't suppress follow-ups on a later, non-delegating turn.
@@ -178,12 +190,9 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
-# Bounded follow-up context: the one-shot needs the recent exchange, not
-# megabytes. A giant executor result (up to the 64k output cap) previously
-# flowed verbatim into the follow-up request — measured: a 65k-token follow-up
-# after a maxed-out executor turn, ~2% cache hit. Capping the context keeps
-# the suggestion call small (and its shared prefix meaningful). The NEWEST
-# exchange is what follow-ups react to, so the cap keeps the tail.
+# Bounded follow-up context: an uncapped executor result (up to 64k) once
+# flowed verbatim into the request (measured: 65k-token follow-up, ~2% cache
+# hit). The NEWEST exchange is what follow-ups react to, so the cap keeps the tail.
 _FOLLOW_UP_CONTEXT_MAX_CHARS = 6_000
 
 

@@ -1,33 +1,45 @@
 """In-process E2B sandbox pool.
 
-The pool holds a single live `AsyncSandbox` per user_id. Reuse across tool
+The pool holds a single live AsyncSandbox per user_id. Reuse across tool
 calls avoids reconnecting to E2B's control plane for every command. The pool
-also exposes per-user `asyncio.Lock` + refcount used by the lifecycle layer to
+also exposes per-user asyncio.Lock + refcount used by the lifecycle layer to
 serialize calls and time pause-on-idle correctly.
 
 The pool is per-API-process, not cross-process. Two API replicas operating on
 the same user will each hold their own AsyncSandbox handle; E2B coordinates
 the underlying sandbox state. That's fine — the lifecycle layer reconciles via
-the Mongo `e2b_sandboxes` doc as the source of truth for `sandbox_id`.
+the Mongo e2b_sandboxes doc as the source of truth for sandbox_id.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+import contextlib
 from dataclasses import dataclass, field
 
 from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.sandbox import (
+    SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    SANDBOX_LOCK_LEASE_SECONDS,
+    SANDBOX_LOCK_MAX_HOLD_SECONDS,
+    SANDBOX_LOCK_RENEW_SECONDS,
+)
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.providers.provider_credentials_service import (
     resolve as resolve_e2b_config,
 )
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
+from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
+from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import log
+
+SANDBOX_LOCK_KEY_PREFIX = "lock:sandbox:"
 
 
 @dataclass
@@ -56,10 +68,8 @@ class SandboxPool:
         # to zero re-publish 0 explicitly (Prometheus gauges otherwise hold
         # their last positive value indefinitely).
         self._known_shards: set[int] = set()
-        # Seed warm-pool gauges at zero for each configured shard so the
-        # dashboard renders a flat zero line instead of "No data" until the
-        # warm pool capability (sibling change e2b-perf-metrics-and-
-        # improvements) actually populates entries.
+        # Seed warm-pool gauges at zero for each shard so the dashboard renders
+        # a flat zero line instead of "No data" until the warm pool populates entries.
         for shard in range(max(1, settings.JUICEFS_NUM_SHARDS)):
             set_sandbox_pool_size("warm", str(shard), 0)
 
@@ -77,17 +87,15 @@ class SandboxPool:
         return self._entries.get(user_id)
 
     def put(self, user_id: str, entry: PooledSandbox) -> None:
-        """Cache ``entry`` as the user's pooled sandbox and republish pool size."""
+        """Cache entry as the user's pooled sandbox and republish pool size."""
         self._entries[user_id] = entry
         self._publish_size()
 
     def evict(self, user_id: str) -> PooledSandbox | None:
         """Remove and return the user's pooled entry (keeps its lock); republish size."""
-        # Deliberately does NOT prune _lock_registry: an unheld lock can still
-        # have a concurrent acquirer mid-`get_lock`→`acquire` that would then be
-        # handed a different Lock object, breaking per-user mutual exclusion.
-        # The registry grows only with distinct active users and resets on
-        # deploy — a bounded, minor cost not worth that race.
+        # Deliberately does NOT prune _lock_registry: a concurrent acquirer
+        # mid-`get_lock`->`acquire` could be handed a different Lock object,
+        # breaking mutual exclusion. Growth is bounded (distinct active users) and resets on deploy.
         removed = self._entries.pop(user_id, None)
         if removed is not None:
             self._publish_size()
@@ -97,17 +105,26 @@ class SandboxPool:
         """Return a snapshot copy of all pooled entries keyed by user id."""
         return dict(self._entries)
 
+    @contextlib.asynccontextmanager
+    async def distributed_lock(self, user_id: str) -> AsyncIterator[None]:
+        """Serialize sandbox acquisition for one user across every replica.
+
+        Two locks answer different questions: the in-process asyncio.Lock
+        collapses this pod's concurrent acquirers so only one talks to Redis,
+        and the Redis lease then serializes against the other pods. Failing
+        to take the Redis lease raises rather than proceeding silently.
+        """
+        async with await self.get_lock(user_id):
+            async with _redis_user_lock(user_id):
+                yield
+
     def _publish_size(self) -> None:
         """Recompute per-shard pool occupancy and publish to Prometheus.
 
-        Walks ``_entries`` once, buckets by ``shard_for(user_id)``, and emits
-        one ``sandbox_pool_size{kind="user",shard=...}`` gauge value per
-        shard. Re-publishes 0 for previously-seen shards now empty so the
-        gauge falls instead of holding its last positive value forever.
-
-        The walk is O(N) where N is the active user count (typically small;
-        one entry per active user per replica). If this gets expensive we
-        switch to incremental counts; today it's cheap.
+        Walks _entries once, buckets by shard_for(user_id), and emits one
+        gauge per shard — re-publishing 0 for now-empty shards so the gauge
+        falls instead of holding its last positive value. O(N) in active
+        users; cheap today.
         """
         counts: dict[int, int] = {}
         # Snapshot keys: a concurrent put/evict from another user's acquire can
@@ -133,12 +150,10 @@ _pool_singleton: SandboxPool | None = None
 async def init_sandbox_pool() -> SandboxPool:
     """Lazy-provider factory; also memoizes the module-level singleton.
 
-    Registered with `@lazy_provider` purely to surface E2B configuration
-    problems during provider warmup; callers use `get_sandbox_pool()` to get
-    the unwrapped `SandboxPool` instance. The key resolves store-first with an
-    env fallback, so this warning reflects what a sandbox acquisition will
-    actually find — an import-time check could not (a stored credential only
-    becomes visible once Mongo is reachable).
+    Registered with @lazy_provider purely to expose the E2B_API_KEY
+    dependency to provider_registration. The @lazy_provider decorator
+    wraps the return value, so callers should use get_sandbox_pool() to
+    get the unwrapped SandboxPool instance.
     """
     global _pool_singleton
     if _pool_singleton is None:
@@ -154,11 +169,36 @@ async def init_sandbox_pool() -> SandboxPool:
     return _pool_singleton
 
 
+@contextlib.asynccontextmanager
+async def _redis_user_lock(user_id: str) -> AsyncIterator[None]:
+    """Hold the cross-replica lease for user_id for the duration of the block.
+
+    Correctness-critical: a failed acquire (another replica held it past the
+    window, or Redis is unavailable) raises rather than entering the critical
+    section unprotected. The lease is short and watchdog-renewed, so a dead
+    pod frees the user within SANDBOX_LOCK_LEASE_SECONDS.
+    """
+    lock = DistributedLock(
+        f"{SANDBOX_LOCK_KEY_PREFIX}{user_id}",
+        lease_seconds=SANDBOX_LOCK_LEASE_SECONDS,
+        acquire_timeout_seconds=SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+        renew_seconds=SANDBOX_LOCK_RENEW_SECONDS,
+        max_hold_seconds=SANDBOX_LOCK_MAX_HOLD_SECONDS,
+    )
+    async with lock.hold() as held:
+        if not held:
+            raise SandboxAcquisitionError(
+                "could not acquire the cross-replica sandbox lease for this user "
+                "(another replica held it past the wait window, or Redis is unavailable)"
+            )
+        yield
+
+
 def get_sandbox_pool() -> SandboxPool:
-    """Synchronous accessor for the SandboxPool singleton.
+    """Return the SandboxPool singleton, synchronously.
 
     The pool itself does no I/O at construction time, so we don't need the
-    full `providers.aget` machinery here. Initializes on first call.
+    full providers.aget machinery here. Initializes on first call.
     """
     global _pool_singleton
     if _pool_singleton is None:

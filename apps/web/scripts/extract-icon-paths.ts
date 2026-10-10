@@ -28,6 +28,7 @@ import {
   Award01Icon,
   BarChartIcon,
   BodyPartMuscleIcon,
+  BookBookmark02Icon,
   BookOpen01Icon,
   Brain02Icon,
   BrainIcon,
@@ -207,7 +208,7 @@ function extractSvgPaths(
   const html = ReactDOMServer.renderToStaticMarkup(
     React.createElement(IconComponent, {
       size: 24,
-      color: style === "stroke" ? "currentColor" : "currentColor",
+      color: "currentColor",
       strokeWidth: style === "stroke" ? 1.5 : undefined,
     }),
   );
@@ -232,6 +233,7 @@ function extractSvgPaths(
 const solidIcons: Record<string, IconComponent> = {
   AlarmClockIcon,
   BodyPartMuscleIcon,
+  BookBookmark02Icon,
   Brain02Icon,
   CheckListIcon,
   ComputerTerminal01Icon,

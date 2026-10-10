@@ -16,12 +16,9 @@ interface ExecutorCancelledEvent {
 /**
  * Subscribe to `executor.cancelled` and clear the stuck loading indicator.
  *
- * When the agent cancels an executor task (e.g. user says "stop that"), no
- * result message will arrive to end the awaiting-executor session — this drops
- * it for that conversation. (In-flight tool-card spinners are handled
- * separately by the stream-gated `isStreaming` check in `SubagentRow`: once a
- * message's stream closes, its cards stop spinning regardless of a missing end
- * event.)
+ * An agent-initiated cancel (e.g. "stop that") has no result message to end
+ * the awaiting-executor session, so this drops it. Tool-card spinners are
+ * handled separately by `isStreaming` in `SubagentRow`.
  */
 export function useExecutorCancelWebSocket() {
   const handleCancelled = useCallback((raw: unknown) => {

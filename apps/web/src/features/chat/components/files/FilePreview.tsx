@@ -6,7 +6,10 @@ import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 import { useState } from "react";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
-import { getFileTypeExtension } from "@/features/chat/components/files/fileTypeConfig";
+import {
+  getFileTypeExtension,
+  getFormattedFileType,
+} from "@/features/chat/components/files/fileTypeConfig";
 
 export interface UploadedFilePreview {
   id: string;
@@ -24,42 +27,6 @@ interface FilePreviewProps {
   onRemove: (id: string) => void;
 }
 
-const getFileExtension = (fileName: string) => {
-  const parts = fileName.split(".");
-  return parts.length > 1 ? parts[parts.length - 1] : "";
-};
-
-// Format the file type more clearly
-export const getFormattedFileType = (fileType: string, fileName: string) => {
-  const ext = getFileExtension(fileName).toUpperCase();
-
-  // Handle common document types with cleaner labels
-  if (fileType.includes("msword") || fileType.includes("wordprocessing"))
-    return "DOC";
-
-  if (fileType.includes("spreadsheet") || fileType.includes("excel"))
-    return "SPREADSHEET";
-
-  // Extract meaningful part from MIME type or use extension
-  const typePart = fileType.split("/")[1];
-
-  if (!typePart || typePart === "octet-stream") {
-    return ext || "FILE";
-  }
-
-  // Cleanup and shorten common verbose MIME types
-  const cleanType = typePart
-    .replace("vnd.openxmlformats-officedocument.", "")
-    .replace("vnd.ms-", "")
-    .replace("x-", "")
-    .replace("document.", "")
-    .replace("presentation.", "")
-    .replace("application.", "")
-    .split(".")[0];
-
-  return cleanType.toUpperCase().substring(0, 8);
-};
-
 const FileChip: React.FC<{
   file: UploadedFilePreview;
   onRemove: (id: string) => void;
@@ -69,7 +36,7 @@ const FileChip: React.FC<{
 
   return (
     <div
-      className={`group/filetype group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-all hover:bg-zinc-900`}
+      className={`group/filetype group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-colors hover:bg-zinc-900`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -84,7 +51,7 @@ const FileChip: React.FC<{
         size="sm"
         variant="faded"
         isDisabled={file.isUploading}
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-all group-hover:opacity-100"
+        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
       >
         <Cancel01Icon size={14} />

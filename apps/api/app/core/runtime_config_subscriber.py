@@ -1,19 +1,18 @@
 """One shared per-pod subscription to the runtime-config channel.
 
-``provider_credentials_service.invalidate`` publishes credential writes on
-Redis so a Settings/setup-wizard save reaches every pod — but publishing only
-informs pods that LISTEN. Without this subscriber (the F4 gap), other pods kept
-serving stale credentials until their 60s TTL expired; single-pod installs
-apply updates locally before publishing and never needed it.
-
-The listener mirrors ``services/device/revoke_listener.py``: subscribe once per
-pod, apply each update through the service's own pod-local invalidation, and
-re-subscribe on a dropped connection instead of dying silently.
+Credential writes publish on Redis so a Settings or setup-wizard save reaches
+every pod, but publishing only informs pods that listen. Without this
+subscriber other pods keep serving stale credentials until their 60s TTL
+expires; single-pod installs apply updates locally before publishing and never
+needed it. The listener mirrors services/device/revoke_listener.py: subscribe
+once per pod, apply each update through the service's own pod-local
+invalidation, and re-subscribe on a dropped connection instead of dying.
 """
 
 import asyncio
 import contextlib
 import json
+from typing import TypedDict, cast
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -30,11 +29,31 @@ _RESUBSCRIBE_SECONDS: float = 5.0
 _subscriber_task: asyncio.Task[None] | None = None
 
 
-def _parse_provider(data: str | bytes) -> str | None:
-    """The provider named in a published payload, or ``None`` when malformed.
+class _InvalidationPayload(TypedDict):
+    """The published invalidation message this listener reads.
 
-    Payload contract (see ``invalidate``): ``{"scope": "provider:<name>"}``.
-    A malformed message must never take the listener down — log loud, skip.
+    Wire shape is scope provider:NAME, as published by invalidate.
+    """
+
+    scope: str
+
+
+class _PubSubMessage(TypedDict, total=False):
+    """The Redis pub/sub envelope this listener reads.
+
+    Redis returns type message or subscribe plus a data payload; every other
+    key is ignored.
+    """
+
+    type: str
+    data: str | bytes
+
+
+def _parse_provider(data: str | bytes) -> str | None:
+    """Return the provider named in a published payload, or None when malformed.
+
+    Payload contract is scope provider:NAME. A malformed message must never
+    take the listener down: log loud, skip.
     """
     raw = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data
     try:
@@ -46,7 +65,14 @@ def _parse_provider(data: str | bytes) -> str | None:
             error=str(e),
         )
         return None
-    scope = payload.get("scope") if isinstance(payload, dict) else None
+    # Validated into the declared shape once, at this boundary, rather than read
+    # off a bare json.loads dict.
+    parsed: _InvalidationPayload | None = (
+        cast(_InvalidationPayload, payload)
+        if isinstance(payload, dict) and "scope" in payload
+        else None
+    )
+    scope = parsed.get("scope") if parsed else None
     prefix = "provider:"
     if not isinstance(scope, str) or not scope.startswith(prefix):
         log.warning(
@@ -79,10 +105,16 @@ async def _consume() -> None:
     await pubsub.subscribe(RUNTIME_CONFIG_CHANNEL)
     try:
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if message is None or message.get("type") != "message":
+            raw_message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if not isinstance(raw_message, dict):
                 continue
-            await _apply_update(message["data"])
+            message: _PubSubMessage = cast(_PubSubMessage, raw_message)
+            if message.get("type") != "message":
+                continue
+            data = message.get("data")
+            if data is None:
+                continue
+            await _apply_update(data)
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(RUNTIME_CONFIG_CHANNEL)

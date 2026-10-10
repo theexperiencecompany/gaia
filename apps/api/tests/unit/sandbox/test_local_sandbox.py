@@ -1,10 +1,8 @@
-"""Unit tests for the local Docker-exec sandbox (hermetic — no daemon).
+"""Unit tests for the local Docker-exec sandbox (hermetic, no daemon).
 
-Every test drives `LocalDockerSandbox` through its real code paths with only
-the subprocess seam (`local_sandbox._spawn_process`) replaced by fakes, so the
-argv construction, e2b exception mapping, streaming callbacks and tar packing
-are all exercised for real. The live-daemon counterparts live in
-`test_local_sandbox_docker.py`.
+Every test drives LocalDockerSandbox through its real code paths with only
+the subprocess spawn seam replaced by fakes, so argv construction, exception
+mapping, streaming callbacks and tar packing are all exercised for real.
 """
 
 from __future__ import annotations
@@ -114,7 +112,7 @@ class FakeProcess:
 
 
 class SpawnRecorder:
-    """Patch target for `_spawn_process`: records argvs, hands back responses."""
+    """Spawn-process double: records argvs, hands back queued responses."""
 
     def __init__(self, *responses: FakeProcess | Exception) -> None:
         self.argvs: list[list[str]] = []

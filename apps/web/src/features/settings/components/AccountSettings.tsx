@@ -8,15 +8,20 @@ import {
   PencilEdit02Icon,
   UserCircle02Icon,
 } from "@icons";
+import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import {
+  patchCurrentUser,
+  useCurrentUser,
+} from "@/features/auth/hooks/useCurrentUser";
 import { PasswordChangeSection } from "@/features/settings/components/PasswordChangeSection";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { binaryField } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import type { ModalAction } from "./SettingsMenu";
 
@@ -25,8 +30,8 @@ export default function AccountSection({
 }: {
   setModalAction: React.Dispatch<React.SetStateAction<ModalAction | null>>;
 }) {
-  const user = useUser();
-  const { updateUser } = useUserActions();
+  const user = useCurrentUser();
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || "");
   const [isLoading, setIsLoading] = useState(false);
@@ -39,11 +44,7 @@ export default function AccountSection({
 
       const response = await authApi.updateName(editedName);
 
-      updateUser({
-        name: response.name,
-        email: response.email,
-        profilePicture: response.picture,
-      });
+      patchCurrentUser(queryClient, { name: response.name });
 
       setIsEditing(false);
       toast.success("Name updated!", { id: "update-name" });
@@ -63,16 +64,11 @@ export default function AccountSection({
       setIsLoading(true);
       toast.loading("Uploading profile picture...", { id: "update-picture" });
 
-      const formData = new FormData();
-      formData.append("picture", file);
-
-      const response = await authApi.updateProfile(formData);
-
-      updateUser({
-        name: response.name,
-        email: response.email,
-        profilePicture: response.picture,
+      const response = await authApi.updateProfile({
+        picture: binaryField(file),
       });
+
+      patchCurrentUser(queryClient, { picture: response.picture });
     } catch (error) {
       console.error("Profile picture update error:", error);
     } finally {
@@ -91,7 +87,7 @@ export default function AccountSection({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading}
-              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
+              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-shadow duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
             >
               {user?.profilePicture ? (
                 <Image

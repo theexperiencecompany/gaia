@@ -1,9 +1,8 @@
 """Unit tests for the Cloudinary global-context configuration.
 
-``init_cloudinary`` is a sync lazy loader that resolves its API key through
-the credential service's runtime snapshot (store → env) — the same contract
-as the LLM lanes' loaders. Cloud name + secret have no stored representation
-and always come from env; all three are required.
+init_cloudinary is a sync lazy loader resolving its API key through the
+credential service runtime snapshot (store, then env), like the LLM lanes.
+Cloud name and secret always come from env; all three are required.
 """
 
 from typing import Any
@@ -59,9 +58,7 @@ class TestInitCloudinary:
 
     @pytest.mark.parametrize("missing", ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET"])
     def test_partial_configuration_fails_loud_and_configures_nothing(self, missing: str):
-        """A stored API key alone cannot drive the SDK; without cloud name or
-        secret the loader raises (the WARN strategy degrades loudly) rather
-        than configuring the global client with holes."""
+        """Raise on partial config; a stored key alone cannot drive the SDK."""
         config_mock = MagicMock()
         with (
             patch(f"{MOD}.resolved_config", return_value=_stored("stored-key")),

@@ -5,12 +5,17 @@ from unittest.mock import patch
 
 import pytest
 
+from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
 from app.utils.user_preferences_utils import (
     build_user_context_parts,
     format_profession_for_display,
     format_response_style_instruction,
     format_user_preferences_for_agent,
+    format_writing_style_for_prompt,
+    onboarding_preferences,
 )
+
+WRITING_STYLE_HEADER = "Learned Writing Style (match this tone and voice when composing the email):"
 
 # ---------------------------------------------------------------------------
 # format_response_style_instruction
@@ -102,6 +107,12 @@ class TestBuildUserContextParts:
         assert parts[0] == "User Profession: Software Engineer"
         assert parts[1] == "Communication Style: Keep responses brief and to the point"
         assert parts[2] == "Special Instructions: Always use Python examples"
+        mock_log.set.assert_called_once_with(
+            operation="build_user_context_parts",
+            has_profession=True,
+            has_response_style=True,
+            has_custom_instructions=True,
+        )
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_preferences(self, mock_log: Any) -> None:
@@ -183,6 +194,43 @@ class TestBuildUserContextParts:
 
 
 # ---------------------------------------------------------------------------
+# format_writing_style_for_prompt
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWritingStyleForPrompt:
+    def test_the_users_edited_summary_wins_over_the_learned_one(self) -> None:
+        result = format_writing_style_for_prompt(
+            {"summary": "Formal", "user_edited_summary": "Warm"}
+        )
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Warm"
+
+    def test_the_learned_summary_is_used_when_the_user_never_edited_it(self) -> None:
+        result = format_writing_style_for_prompt({"summary": "Formal"})
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Formal"
+
+    def test_no_summary_renders_nothing_even_with_an_example(self) -> None:
+        assert format_writing_style_for_prompt({"example": "Hi there"}) == ""
+
+    def test_example_blocks_are_rendered_in_their_voice(self) -> None:
+        result = format_writing_style_for_prompt(
+            {
+                "summary": "Warm",
+                "example": {
+                    "greeting": "Hi Sam,",
+                    "body": ["Thanks."],
+                    "signoff": "Best,",
+                    "name": "Ana",
+                },
+            }
+        )
+        assert result == (
+            f"{WRITING_STYLE_HEADER}\n  Style: Warm\n"
+            '  Example email in their voice:\n    "Hi Sam,\n\nThanks.\n\nBest,\nAna"'
+        )
+
+
+# ---------------------------------------------------------------------------
 # format_user_preferences_for_agent
 # ---------------------------------------------------------------------------
 
@@ -244,3 +292,39 @@ class TestFormatUserPreferencesForAgent:
         ):
             result = format_user_preferences_for_agent({"profession": "doctor"})
             assert result is None
+
+
+# ---------------------------------------------------------------------------
+# onboarding_preferences
+# ---------------------------------------------------------------------------
+
+
+class TestOnboardingPreferences:
+    """UserDocument.onboarding is typed; AuthenticatedUser.onboarding is still the raw Mongo dict."""
+
+    def test_typed_subdocument_yields_only_the_stored_preference_keys(self) -> None:
+        onboarding = OnboardingSubdocument(
+            preferences=OnboardingPreferences(profession="doctor"),
+            writing_style={"summary": "terse"},
+        )
+
+        preferences, writing_style = onboarding_preferences(onboarding)
+
+        assert preferences == {"profession": "doctor"}
+        assert writing_style == {"summary": "terse"}
+
+    def test_typed_subdocument_without_preferences_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(writing_style={"summary": "terse"})
+
+        assert onboarding_preferences(onboarding) == (None, {"summary": "terse"})
+
+    def test_typed_subdocument_without_writing_style_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(preferences=OnboardingPreferences(profession="doctor"))
+
+        assert onboarding_preferences(onboarding) == ({"profession": "doctor"}, None)
+
+    @pytest.mark.parametrize("onboarding", [None, {}])
+    def test_missing_onboarding_reads_as_a_pair_of_none(
+        self, onboarding: dict[str, Any] | None
+    ) -> None:
+        assert onboarding_preferences(onboarding) == (None, None)

@@ -30,7 +30,7 @@ def sanitize_for_tts(piece: str) -> str:
 
 
 def has_open_tag_at_tail(s: str) -> bool:
-    """True when the string ends inside an open tag (last `<` is later than last `>`)."""
+    """Return True when the string ends inside an open tag (last < is later than last >)."""
     last_open = s.rfind("<")
     if last_open == -1:
         return False
@@ -38,7 +38,7 @@ def has_open_tag_at_tail(s: str) -> bool:
 
 
 def has_open_openui_fence_at_tail(s: str) -> bool:
-    """True when the buffer contains a ':::openui' that has no closing ':::' after it."""
+    """Return True when the buffer has an open ':::openui' fence with no closing ':::'."""
     return OPEN_OPENUI_FENCE_TAIL_RE.search(s) is not None
 
 
@@ -59,7 +59,7 @@ def _clean_str(value: object) -> str | None:
 def extract_meta_data(md: str | None) -> ParticipantMeta:
     """Extract session credentials from participant metadata JSON.
 
-    ``backendUrl`` lets one shared agent serve many backends (staging
+    backendUrl lets one shared agent serve many backends (staging
     previews): the /token endpoint embeds the URL of the API that minted
     the session.
     """
@@ -122,7 +122,7 @@ def build_messages_from_ctx(chat_ctx: ChatContext) -> list[dict[str, str]]:
 def user_id_from_room(room_name: str) -> str | None:
     """Recover the user id from a voice room name.
 
-    Rooms are named ``voice_session_{user_id}_{uuid_hex}`` by the /token
+    Rooms are named voice_session_{user_id}_{uuid_hex} by the /token
     endpoint. The user id itself may contain underscores, so strip the fixed
     prefix and split off the trailing uuid segment.
     """

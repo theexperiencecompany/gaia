@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
@@ -10,6 +10,7 @@ from app.api.v1.dependencies.google_scope_dependencies import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
+from app.models.composio_schemas.gmail import GmailResourceId
 from app.models.mail_models import (
     ApplyLabelRequest,
     ArchiveEmailsResponse,
@@ -29,6 +30,7 @@ from app.models.mail_models import (
     GmailLabelsResponse,
     GmailMessageResponse,
     GmailMessagesResponse,
+    GmailSearchFilters,
     GmailThreadResponse,
     LabelRequest,
     MarkAsReadResponse,
@@ -36,6 +38,7 @@ from app.models.mail_models import (
     ModifyLabelsResponse,
     MoveToInboxResponse,
     SendDraftResponse,
+    SendEmailForm,
     SendEmailRequest,
     SendEmailResponse,
     SendEmailWithAttachmentsResponse,
@@ -44,6 +47,8 @@ from app.models.mail_models import (
     UnstarEmailsResponse,
     UntrashEmailsResponse,
 )
+from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
@@ -51,6 +56,8 @@ from app.services.mail.email_importance_service import (
     get_single_email_importance_summary as get_single_importance_summary_service,
 )
 from app.services.mail.mail_service import (
+    EmailContent,
+    LabelChanges,
     apply_labels,
     archive_messages,
     create_draft,
@@ -74,10 +81,13 @@ from app.services.mail.mail_service import (
     unstar_messages,
     untrash_messages,
     update_draft,
-    update_label,
+    update_label as update_label_service,
 )
 from app.utils.embedding_utils import search_notes_by_similarity
-from app.utils.user_preferences_utils import format_writing_style_for_prompt
+from app.utils.user_preferences_utils import (
+    format_writing_style_for_prompt,
+    onboarding_preferences,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -168,21 +178,32 @@ async def get_email_by_id(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+def _build_gmail_query(filters: GmailSearchFilters) -> str:
+    """Translate the advanced-search filters into one Gmail query string."""
+    parts: list[str] = [filters.query] if filters.query else []
+    prefixed = {
+        "from:": filters.sender,
+        "to:": filters.recipient,
+        "subject:": filters.subject,
+        "filename:": filters.attachment_type,
+        "after:": filters.date_from,
+        "before:": filters.date_to,
+        "label:": filters.label,
+    }
+    parts += [f"{prefix}{value}" for prefix, value in prefixed.items() if value]
+    if filters.has_attachment is not None:
+        parts.append("has:attachment" if filters.has_attachment else "-has:attachment")
+    if filters.is_read is not None:
+        parts.append("is:read" if filters.is_read else "is:unread")
+    return " ".join(parts)
+
+
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
-    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
-    # nothing at the wire and keeps the signature honest about how it is called.
-    *,
-    query: str | None = None,
-    sender: str | None = None,
-    recipient: str | None = None,
-    subject: str | None = None,
-    has_attachment: bool | None = None,
-    attachment_type: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    label: str | None = None,
-    is_read: bool | None = None,
+    # Bound as a dependency, not Query(): FastAPI 0.139 does not flatten
+    # query-models through include_router, so Query() 422s every request;
+    # Depends() binds each field as its own flattened query param.
+    filters: Annotated[GmailSearchFilters, Depends()],
     max_results: int = 20,
     page_token: str | None = None,
     user_id: str = Depends(require_integration_user_id("gmail")),
@@ -191,51 +212,14 @@ async def search_emails(
     Search Gmail messages with advanced query parameters.
     Note: max_results is capped at 20 to avoid Composio payload size limits.
 
-    - **query**: Free text search query
-    - **sender**: Filter by sender email
-    - **recipient**: Filter by recipient email
-    - **subject**: Filter by subject
-    - **has_attachment**: Filter for messages with attachments
-    - **attachment_type**: Filter by attachment type (e.g., pdf, doc)
-    - **date_from**: Filter messages after this date (YYYY/MM/DD)
-    - **date_to**: Filter messages before this date (YYYY/MM/DD)
-    - **label**: Filter by label
-    - **is_read**: Filter by read/unread status
-    - **max_results**: Maximum number of results to return
-    - **page_token**: Token for pagination
-
     Returns a list of messages matching the search criteria and a next page token if more results are available.
     """
+    log.set(operation="search_emails", user={"id": user_id})
     try:
         # Cap max_results to avoid Composio 413 payload-too-large errors
         max_results = min(max_results, 20)
 
-        # Build Gmail query string from parameters
-        query_parts = []
-
-        if query:
-            query_parts.append(f"{query}")
-        if sender:
-            query_parts.append(f"from:{sender}")
-        if recipient:
-            query_parts.append(f"to:{recipient}")
-        if subject:
-            query_parts.append(f"subject:{subject}")
-        if has_attachment is not None:
-            query_parts.append("has:attachment" if has_attachment else "-has:attachment")
-        if attachment_type:
-            query_parts.append(f"filename:{attachment_type}")
-        if date_from:
-            query_parts.append(f"after:{date_from}")
-        if date_to:
-            query_parts.append(f"before:{date_to}")
-        if label:
-            query_parts.append(f"label:{label}")
-        if is_read is not None:
-            query_parts.append("is:read" if is_read else "is:unread")
-
-        # Combine all query parts
-        gmail_query = " ".join(query_parts)
+        gmail_query = _build_gmail_query(filters)
 
         response = await search_messages(
             user_id=user_id,
@@ -247,8 +231,8 @@ async def search_emails(
         log.set(
             operation="search_emails",
             result_count=len(response.messages),
-            has_attachment=has_attachment,
-            label=label,
+            has_attachment=filters.has_attachment,
+            label=filters.label,
             outcome="success",
         )
         return response
@@ -260,31 +244,29 @@ async def search_emails(
 @tiered_rate_limit("mail_actions")
 async def process_email(
     request: EmailRequest,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> ComposedEmailOutput:
     log.set(mail={"operation": "compose"})
     try:
-        user_id = current_user.get("user_id")
-        if user_id is None:
+        user_id = current_user.user_id
+        if not user_id:
             raise HTTPException(status_code=401, detail="User ID is required")
-        log.set(user={"id": str(user_id)})
+        log.set(user={"id": user_id})
 
-        notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
+        notes = await search_notes_by_similarity(input_text=request.prompt, user_id=user_id)
 
-        writing_style_data = current_user.get("onboarding", {}).get("writing_style")
+        _, writing_style_data = onboarding_preferences(current_user.onboarding)
         learned_style_block = format_writing_style_for_prompt(writing_style_data)
 
         prompt = EMAIL_COMPOSER.format(
-            sender_name=current_user.get("name") or "none",
+            sender_name=current_user.name or "none",
             subject=request.subject or "empty",
             body=request.body or "empty",
             writing_style=request.writingStyle or "Professional",
             content_length=request.contentLength or "None",
             clarity_option=request.clarityOption or "None",
             notes=(
-                "- ".join(note.get("content", "") for note in notes)
-                if notes
-                else "No relevant notes found."
+                "- ".join(note.content for note in notes) if notes else "No relevant notes found."
             ),
             prompt=request.prompt,
             learned_writing_style=learned_style_block,
@@ -305,13 +287,7 @@ async def process_email(
 @router.post("/gmail/send", summary="Send an email using Gmail API")
 @tiered_rate_limit("mail_actions")
 async def send_email_route(
-    to: str = Form(...),
-    subject: str = Form(...),
-    body: str = Form(...),
-    thread_id: str | None = Form(None),
-    cc: str | None = Form(None),
-    bcc: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
+    form: Annotated[SendEmailForm, Form()],
     user_id: str = Depends(require_integration_user_id("gmail")),
 ) -> SendEmailWithAttachmentsResponse:
     """
@@ -326,21 +302,23 @@ async def send_email_route(
     """
     try:
         # Parse recipients
-        to_list = [email.strip() for email in to.split(",") if email.strip()]
-        cc_list = [email.strip() for email in cc.split(",")] if cc else None
-        bcc_list = [email.strip() for email in bcc.split(",")] if bcc else None
+        to_list = [email.strip() for email in form.to.split(",") if email.strip()]
+        cc_list = [email.strip() for email in form.cc.split(",")] if form.cc else None
+        bcc_list = [email.strip() for email in form.bcc.split(",")] if form.bcc else None
 
         # Send the email using the new async function
         sent_message = await send_email(
             user_id=user_id,
             to=to_list[0],
-            extra_recipients=to_list[1:],
-            subject=subject,
-            body=body,
-            cc_list=cc_list,
-            bcc_list=bcc_list,
-            attachments=attachments,
-            thread_id=thread_id,
+            content=EmailContent(
+                subject=form.subject,
+                body=form.body,
+                extra_recipients=to_list[1:],
+                cc_list=cc_list,
+                bcc_list=bcc_list,
+            ),
+            attachments=form.attachments,
+            thread_id=form.thread_id,
         )
 
         if not sent_message.successful:
@@ -350,24 +328,24 @@ async def send_email_route(
             )
 
         capture_context_event(
-            AnalyticsEvents.EMAIL_REPLIED if thread_id else AnalyticsEvents.EMAIL_SENT,
+            AnalyticsEvents.EMAIL_REPLIED if form.thread_id else AnalyticsEvents.EMAIL_SENT,
             {
-                "has_attachments": bool(attachments),
-                "attachment_count": len(attachments) if attachments else 0,
+                "has_attachments": bool(form.attachments),
+                "attachment_count": len(form.attachments) if form.attachments else 0,
             },
         )
         log.set(
             operation="send_email",
-            thread_id=thread_id,
-            has_attachment=bool(attachments),
-            attachments_count=len(attachments) if attachments else 0,
+            thread_id=form.thread_id,
+            has_attachment=bool(form.attachments),
+            attachments_count=len(form.attachments) if form.attachments else 0,
             outcome="success",
         )
         # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
         return SendEmailWithAttachmentsResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=GmailResourceId.model_validate(sent_message.data or {}).id,
             status="Email sent successfully",
-            attachments_count=len(attachments) if attachments else 0,
+            attachments_count=len(form.attachments) if form.attachments else 0,
         )
     except HTTPException:
         raise
@@ -378,7 +356,7 @@ async def send_email_route(
 @router.post(
     "/gmail/send-json",
     summary="Send an email using JSON payload",
-    responses={500: {"description": "Gmail rejected the send, or the send failed upstream"}},
+    responses=error_responses({500: "Gmail rejected the send, or the send failed upstream"}),
 )
 @tiered_rate_limit("mail_actions")
 async def send_email_json(
@@ -399,12 +377,13 @@ async def send_email_json(
         sent_message = await send_email(
             user_id=user_id,
             to=request.to[0],
-            extra_recipients=request.to[1:],
-            subject=request.subject,
-            body=request.body,
-            cc_list=request.cc,
-            bcc_list=request.bcc,
-            attachments=None,
+            content=EmailContent(
+                subject=request.subject,
+                body=request.body,
+                extra_recipients=request.to[1:],
+                cc_list=request.cc,
+                bcc_list=request.bcc,
+            ),
         )
 
         if not sent_message.successful:
@@ -420,7 +399,7 @@ async def send_email_json(
             outcome="success",
         )
         return SendEmailResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=GmailResourceId.model_validate(sent_message.data or {}).id,
             status="Email sent successfully",
         )
     except HTTPException:
@@ -452,6 +431,9 @@ async def mark_as_read(
             operation="mark_read",
             result_count=len(modified_messages),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_MARKED_READ, {"message_count": len(modified_messages)}
         )
         return MarkAsReadResponse(
             success=True,
@@ -489,6 +471,9 @@ async def mark_as_unread(
             result_count=len(modified_messages),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_MARKED_UNREAD, {"message_count": len(modified_messages)}
+        )
         return MarkAsUnreadResponse(
             success=True,
             marked_as_unread=[msg.id for msg in modified_messages],
@@ -523,6 +508,9 @@ async def star_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_STARRED, {"message_count": len(modified_messages)}
+        )
         return StarEmailsResponse(
             success=True,
             starred=[msg.id for msg in modified_messages],
@@ -554,6 +542,9 @@ async def unstar_emails(
             operation="unstar_emails",
             result_count=len(modified_messages),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_UNSTARRED, {"message_count": len(modified_messages)}
         )
         return UnstarEmailsResponse(
             success=True,
@@ -587,9 +578,12 @@ async def trash_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_TRASHED, {"message_count": len(modified_messages)}
+        )
         return TrashEmailsResponse(
             success=True,
-            trashed=[msg["id"] for msg in modified_messages],
+            trashed=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages moved to trash",
         )
@@ -621,9 +615,12 @@ async def untrash_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_UNTRASHED, {"message_count": len(modified_messages)}
+        )
         return UntrashEmailsResponse(
             success=True,
-            restored=[msg["id"] for msg in modified_messages],
+            restored=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages restored from trash",
         )
@@ -654,6 +651,9 @@ async def archive_emails(
             operation="archive_email",
             result_count=len(modified_messages),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_ARCHIVED, {"message_count": len(modified_messages)}
         )
         return ArchiveEmailsResponse(
             success=True,
@@ -687,6 +687,9 @@ async def move_emails_to_inbox(
             folder="inbox",
             result_count=len(modified_messages),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_MOVED_TO_INBOX, {"message_count": len(modified_messages)}
         )
         return MoveToInboxResponse(
             success=True,
@@ -761,6 +764,7 @@ async def create_label_route(
             label=request.name,
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.EMAIL_LABEL_CREATED)
         return GmailLabelResource.model_validate(new_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -787,18 +791,23 @@ async def update_label_route(
     """
     try:
         # Update label using the new async function
-        updated_label = await update_label(
+        updated_label = await update_label_service(
             user_id=user_id,
             label_id=label_id,
-            name=request.name,
-            label_list_visibility=request.label_list_visibility,
-            message_list_visibility=request.message_list_visibility,
+            changes=LabelChanges(
+                name=request.name,
+                label_list_visibility=request.label_list_visibility,
+                message_list_visibility=request.message_list_visibility,
+                background_color=request.background_color,
+                text_color=request.text_color,
+            ),
         )
         log.set(
             operation="update_label",
             label=label_id,
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.EMAIL_LABEL_UPDATED)
         return GmailLabelResource.model_validate(updated_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -822,6 +831,7 @@ async def delete_label_route(
         success = await delete_label(user_id=user_id, label_id=label_id)
         if success:
             log.set(operation="delete_label", label=label_id, outcome="success")
+            capture_context_event(AnalyticsEvents.EMAIL_LABEL_DELETED)
             return GmailDeletionResponse(status="success", message="Label deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Label deletion reported failure", label=label_id)
@@ -857,6 +867,9 @@ async def apply_labels_route(
             operation="apply_label",
             result_count=len(modified_messages),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_LABEL_APPLIED, {"message_count": len(modified_messages)}
         )
         return ModifyLabelsResponse(
             success=True,
@@ -895,6 +908,9 @@ async def remove_labels_route(
             result_count=len(modified_messages),
             outcome="success",
         )
+        capture_context_event(
+            AnalyticsEvents.EMAIL_LABEL_REMOVED, {"message_count": len(modified_messages)}
+        )
         return ModifyLabelsResponse(
             success=True,
             modified_messages=[msg.id for msg in modified_messages],
@@ -932,13 +948,14 @@ async def create_draft_route(
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
-        message_id = (draft.message or {}).get("id")
+        message_id = GmailResourceId.model_validate(draft.message or {}).id
 
         log.set(
             operation="create_draft",
             email_id=message_id,
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.EMAIL_DRAFT_CREATED)
         return DraftMutationResponse(
             draft_id=draft.id,
             message_id=message_id,
@@ -1030,10 +1047,12 @@ async def update_draft_route(
             user_id=user_id,
             draft_id=draft_id,
             to_list=request.to,
-            subject=request.subject,
-            body=request.body,
-            cc_list=request.cc,
-            bcc_list=request.bcc,
+            content=EmailContent(
+                subject=request.subject,
+                body=request.body,
+                cc_list=request.cc,
+                bcc_list=request.bcc,
+            ),
         )
 
         log.set(
@@ -1041,9 +1060,10 @@ async def update_draft_route(
             email_id=draft_id,
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.EMAIL_DRAFT_UPDATED)
         return DraftMutationResponse(
             draft_id=updated_draft.id,
-            message_id=(updated_draft.message or {}).get("id"),
+            message_id=GmailResourceId.model_validate(updated_draft.message or {}).id,
             status="Draft updated successfully",
         )
     except Exception as e:
@@ -1069,6 +1089,7 @@ async def delete_draft_route(
 
         if success:
             log.set(operation="delete_draft", email_id=draft_id, outcome="success")
+            capture_context_event(AnalyticsEvents.EMAIL_DRAFT_DELETED)
             return GmailDeletionResponse(status="success", message="Draft deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Draft deletion reported failure", email_id=draft_id)
@@ -1123,7 +1144,7 @@ async def send_draft_route(
 async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> EmailImportanceSummariesResponse:
     """
     Get email importance summaries for the current user.
@@ -1134,7 +1155,7 @@ async def get_email_importance_summaries(
     Returns list of email summaries with importance analysis.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 
@@ -1157,7 +1178,7 @@ async def get_email_importance_summaries(
     summary="Get single email importance summary",
 )
 async def get_single_email_importance_summary(
-    message_id: str, current_user: dict[str, Any] = Depends(require_integration("gmail"))
+    message_id: str, current_user: AuthenticatedUser = Depends(require_integration("gmail"))
 ) -> EmailImportanceSummaryResponse:
     """
     Get importance summary for a specific email.
@@ -1167,7 +1188,7 @@ async def get_single_email_importance_summary(
     Returns the importance analysis for the specified email.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 
@@ -1192,7 +1213,7 @@ async def get_single_email_importance_summary(
 @router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> BulkEmailImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.
@@ -1202,7 +1223,7 @@ async def get_bulk_email_importance_summaries(
     Returns summaries for all available emails. Does not throw error for missing summaries.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 

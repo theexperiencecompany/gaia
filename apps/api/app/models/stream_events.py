@@ -103,6 +103,12 @@ class ApprovalRequestEntryData(BaseModel):
     feedback: str | None
     auto_reason: str | None
     timeout_seconds: int
+    # Ledger-backed approvals (executor-free HIL): the agent's one-line why, age in
+    # seconds, and the row version the client saw (echoed back on decide; stale v
+    # never overwrites). All optional — old-path cards omit them.
+    rationale: str | None = None
+    age_seconds: int | None = None
+    ledger_version: int | None = None
 
 
 class ApprovalRequestEntry(BaseModel):
@@ -128,6 +134,21 @@ class ToolOutputPayload(BaseModel):
     subagent_id: str | None = None
 
 
+class MessageBoundaryPayload(BaseModel):
+    """End of one assistant message inside a turn.
+
+    ``discarded`` is true when that message turned out to carry tool calls, which
+    makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
+    the user must not keep — the real reply arrives as the next message. The
+    frame exists because the wire streams that text BEFORE the tool call, so a
+    live consumer has already shown it by the time we know, and has to retract
+    it rather than leave a duplicate reply on screen.
+    """
+
+    message_id: str
+    discarded: bool
+
+
 class ReasoningPayload(BaseModel):
     """A streamed reasoning ("thinking") delta from the model."""
 
@@ -140,6 +161,10 @@ class SubagentStartPayload(BaseModel):
 
     subagent_id: str
     subagent_name: str
+    #: The subagent's stable id (todos, gmail): what a playbook's handoff: names.
+    #: subagent_id is this dispatch's row (unique per call) — right for nesting,
+    #: wrong for matching a call back to the subagent that made it.
+    subagent: str | None = None
     agent_type: str
     started_at: str
     icon_url: str | None = None
@@ -197,6 +222,26 @@ class MainResponseCompleteFrame(BaseModel):
 
     main_response_complete: bool
     usage: dict[str, Any] | None = None
+
+
+class EmojiAckPayload(BaseModel):
+    """What the reaction badge needs: the emoji and the message it reacts to."""
+
+    emoji: str
+    reacts_to_message_id: str
+
+
+class EmojiAckFrame(BaseModel):
+    """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
+
+    The driver never streams a directive's text (visible_comms_text), so this
+    frame is the turn's whole visible outcome: the emoji is a reaction badge on
+    the ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
+    the interactive path (background executor results announce the same outcome
+    over the WebSocket notification instead).
+    """
+
+    emoji_ack: EmojiAckPayload
 
 
 class TodoProgressFrame(BaseModel):

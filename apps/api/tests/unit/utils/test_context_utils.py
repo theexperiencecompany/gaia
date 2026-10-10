@@ -107,8 +107,7 @@ class TestExecuteTool:
     @patch(_COMPOSIO_SERVICE_PATCH)
     @pytest.mark.regression
     def test_output_model_datetimes_come_back_json_safe(self, mock_get_service: MagicMock) -> None:
-        """The return crosses into agent text as JSON — a validated datetime must
-        be an ISO string, not the native object json.dumps cannot encode."""
+        """A validated datetime must serialize as an ISO string, not the object json.dumps can't encode."""
         run_at = datetime.now(UTC) + timedelta(hours=1)
         mock_get_service.return_value = _make_composio_service(
             {"successful": True, "data": {"name": "Job", "run_at": run_at}}

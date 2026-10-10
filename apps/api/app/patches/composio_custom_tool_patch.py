@@ -1,23 +1,17 @@
 # Monkey patch for Composio CustomTool to inject ``user_id`` into ``auth_credentials``.
 
-"""Patch that re-injects ``user_id`` into the ``auth_credentials`` dict that
-Composio passes to custom tool functions.
+"""Re-inject user_id into auth_credentials for Composio custom tools.
 
-Composio 1.0.0 reworked custom-tool dispatch. Tools are now invoked through
-``CustomTools.execute(slug, request, user_id)`` -> ``CustomTool.invoke_trusted``,
-and Composio deliberately keeps ``user_id`` OUT of ``auth_credentials`` (it is
-treated as a structurally separate, trusted parameter so an LLM-controlled
-``user_id`` cannot smuggle its way into credential lookup).
+Composio 1.0.0 keeps user_id out of auth_credentials by design (a trusted,
+structurally separate parameter an LLM can't smuggle into credential lookup).
+GAIA's custom tools read user_id from auth_credentials to route requests
+through app.services.composio.proxy_client, so this wraps the private,
+name-mangled method both dispatch paths funnel through —
+CustomTool.__get_auth_credentials — and re-adds user_id from the trusted SDK
+parameter only.
 
-GAIA's custom tools read ``user_id`` from ``auth_credentials`` to route provider
-requests through ``app.services.composio.proxy_client``. To restore that contract
-without reintroducing the smuggling risk, we wrap the single private method that
-both dispatch paths funnel through -- ``CustomTool.__get_auth_credentials(user_id)``
--- and re-add ``user_id`` from the trusted SDK parameter (never from request input).
-
-This couples to a name-mangled private method. If a future Composio bump renames
-or removes it, the assert below fails loudly at import time rather than letting
-every custom tool silently 500 with "Missing user_id in auth_credentials".
+If a future Composio bump renames or removes that method, the assert below
+fails loudly at import time instead of every custom tool silently 500ing.
 """
 
 from composio.core.models.custom_tools import CustomTool
@@ -39,9 +33,9 @@ _original_get_auth_credentials = getattr(CustomTool, _PRIVATE_AUTH_METHOD)
 
 
 def _patched_get_auth_credentials(self: CustomTool, user_id: str) -> dict:
-    """Return Composio's auth credentials with the trusted ``user_id`` added.
+    """Return Composio's auth credentials with the trusted user_id added.
 
-    ``user_id`` comes from the SDK's structurally-separate parameter, not from
+    user_id comes from the SDK's structurally-separate parameter, not from
     LLM-controlled request input, so re-adding it here does not reopen the
     credential-smuggling hole Composio closed.
     """

@@ -9,10 +9,10 @@ import {
   BookOpen01Icon,
   Calendar01Icon,
 } from "@icons";
+import type { MemoryEpisode } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEpisode } from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
 
@@ -27,7 +27,7 @@ export function MemoryTimeline() {
   const atToday = isToday(rangeEnd);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
     const fetchEpisodes = async () => {
       setLoading(true);
       try {
@@ -35,7 +35,7 @@ export function MemoryTimeline() {
           format(subDays(rangeEnd, JOURNAL_RANGE_DAYS - 1), ISO_DATE_FORMAT),
           format(rangeEnd, ISO_DATE_FORMAT),
         );
-        if (!cancelled) {
+        if (mounted) {
           setEpisodes(
             [...(response.episodes ?? [])].sort((a, b) =>
               b.date.localeCompare(a.date),
@@ -43,14 +43,14 @@ export function MemoryTimeline() {
           );
         }
       } catch {
-        if (!cancelled) setEpisodes([]);
+        if (mounted) setEpisodes([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
     fetchEpisodes();
     return () => {
-      cancelled = true;
+      mounted = false;
     };
   }, [rangeEnd]);
 

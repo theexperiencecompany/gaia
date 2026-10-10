@@ -3,11 +3,11 @@
 import { Skeleton } from "@heroui/skeleton";
 import { Spinner } from "@heroui/spinner";
 import { Folder01Icon } from "@icons";
+import type { MemoryEntry, MemoryTreeNode } from "@shared/api/generated";
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight } from "@/components/shared/icons";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry, MemoryTreeNode } from "@/features/memory/api/types";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
 import { MemoryRow } from "@/features/memory/components/MemoryRow";
 import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";
@@ -90,6 +90,15 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
   const [expanded, setExpanded] = useState(false);
   const [memories, setMemories] = useState<MemoryEntry[] | null>(node.memories);
   const [loadingMemories, setLoadingMemories] = useState(false);
+
+  // A tree refetch yields a new `node` — resync the lazily-loaded list so a
+  // stale copy of the old node's memories isn't kept around. Render-phase
+  // adjustment (React: "adjusting state when a prop changes").
+  const [prevNode, setPrevNode] = useState(node);
+  if (node !== prevNode) {
+    setPrevNode(node);
+    setMemories(node.memories);
+  }
 
   const handleForget = useCallback(
     async (target: MemoryEntry) => {

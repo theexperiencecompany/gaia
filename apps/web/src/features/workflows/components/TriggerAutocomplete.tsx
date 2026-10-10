@@ -4,13 +4,11 @@ import {
   AutocompleteSection,
 } from "@heroui/autocomplete";
 import { Skeleton } from "@heroui/skeleton";
-import Fuse from "fuse.js";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useTriggerFilter } from "@/features/workflows/hooks/useTriggerFilter";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
-import { findTriggerSchema } from "@/features/workflows/triggers/utils";
 
 interface TriggerAutocompleteProps {
   selectedTrigger: string | null;
@@ -27,6 +25,51 @@ function formatIntegrationName(integrationId: string): string {
     .join(" ");
 }
 
+// HeroUI collections need Section/Item elements as direct children, so this is a render helper, not a component.
+function renderTriggerSections(
+  groupedTriggers: Record<string, TriggerSchema[]>,
+  integrationStatusMap: Map<string, boolean>,
+) {
+  return Object.entries(groupedTriggers)
+    .sort(([aId], [bId]) => {
+      const aConnected = integrationStatusMap.get(aId) ?? false;
+      const bConnected = integrationStatusMap.get(bId) ?? false;
+      if (aConnected && !bConnected) return -1;
+      if (!aConnected && bConnected) return 1;
+      return 0;
+    })
+    .map(([integrationId, schemas]) => (
+      <AutocompleteSection
+        key={integrationId}
+        classNames={{
+          base: "mb-1",
+          heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
+        }}
+        title={formatIntegrationName(integrationId)}
+      >
+        {(schemas || []).map((schema) => (
+          <AutocompleteItem
+            key={schema.slug}
+            textValue={schema.name}
+            startContent={getToolCategoryIcon(schema.integration_id, {
+              width: 20,
+              height: 20,
+              showBackground: false,
+            })}
+            className="group"
+          >
+            <div className="flex flex-col">
+              <span className="text-small">{schema.name}</span>
+              <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
+                {schema.description}
+              </span>
+            </div>
+          </AutocompleteItem>
+        ))}
+      </AutocompleteSection>
+    ));
+}
+
 export function TriggerAutocomplete({
   selectedTrigger,
   onTriggerChange,
@@ -34,65 +77,14 @@ export function TriggerAutocomplete({
   isLoading,
   integrationStatusMap,
 }: TriggerAutocompleteProps) {
-  const [filterValue, setFilterValue] = useState("");
-
-  const selectedSchema = findTriggerSchema(
-    triggerSchemas,
-    selectedTrigger ?? "",
-  );
+  const {
+    filterValue,
+    setFilterValue,
+    selectedSchema,
+    filteredSchemas,
+    groupedTriggers,
+  } = useTriggerFilter(selectedTrigger, triggerSchemas);
   const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
-
-  useEffect(() => {
-    if (selectedSchema && selectedTrigger) {
-      setFilterValue(selectedSchema.name);
-    } else if (!selectedTrigger) {
-      setFilterValue("");
-    } else if (selectedTrigger && triggerSchemas !== undefined) {
-      // Schemas loaded but this trigger slug wasn't found — clear the display
-      // so it doesn't appear as a ghost selection
-      setFilterValue("");
-    }
-  }, [selectedTrigger, selectedSchema?.slug, triggerSchemas]);
-
-  const fuse = useMemo(() => {
-    if (!triggerSchemas) return null;
-    return new Fuse(triggerSchemas, {
-      keys: [
-        "name",
-        "description",
-        "integration_id",
-        { name: "slug", weight: 0.5 },
-      ],
-      threshold: 0.3,
-      distance: 100,
-    });
-  }, [triggerSchemas]);
-
-  const filteredSchemas = useMemo(() => {
-    if (!triggerSchemas) return [];
-    if (!filterValue) return triggerSchemas;
-    if (selectedSchema && filterValue === selectedSchema.name) {
-      return triggerSchemas;
-    }
-    if (fuse) {
-      return fuse.search(filterValue).map((result) => result.item);
-    }
-    return triggerSchemas;
-  }, [triggerSchemas, filterValue, fuse, selectedSchema]);
-
-  const groupedTriggers = useMemo(() => {
-    return filteredSchemas.reduce(
-      (acc, schema) => {
-        const integrationId = schema.integration_id || "other";
-        if (!acc[integrationId]) {
-          acc[integrationId] = [];
-        }
-        acc[integrationId].push(schema);
-        return acc;
-      },
-      {} as Record<string, TriggerSchema[]>,
-    );
-  }, [filteredSchemas]);
 
   const handleSelectionChange = (key: React.Key | null) => {
     if (!key) {
@@ -161,50 +153,7 @@ export function TriggerAutocomplete({
           emptyContent: "No matching triggers found.",
         }}
       >
-        {Object.entries(groupedTriggers)
-          .sort(([aId], [bId]) => {
-            const aConnected = integrationStatusMap.get(aId) ?? false;
-            const bConnected = integrationStatusMap.get(bId) ?? false;
-            if (aConnected && !bConnected) return -1;
-            if (!aConnected && bConnected) return 1;
-            return 0;
-          })
-          .map(([integrationId, schemas]) => {
-            const schemaList = schemas || [];
-
-            const triggerItems = schemaList.map((schema) => (
-              <AutocompleteItem
-                key={schema.slug}
-                textValue={schema.name}
-                startContent={getToolCategoryIcon(schema.integration_id, {
-                  width: 20,
-                  height: 20,
-                  showBackground: false,
-                })}
-                className="group"
-              >
-                <div className="flex flex-col">
-                  <span className="text-small">{schema.name}</span>
-                  <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
-                    {schema.description}
-                  </span>
-                </div>
-              </AutocompleteItem>
-            ));
-
-            return (
-              <AutocompleteSection
-                key={integrationId}
-                classNames={{
-                  base: "mb-1",
-                  heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
-                }}
-                title={formatIntegrationName(integrationId)}
-              >
-                {triggerItems}
-              </AutocompleteSection>
-            );
-          })}
+        {renderTriggerSections(groupedTriggers, integrationStatusMap)}
       </Autocomplete>
 
       {selectedSchema && (

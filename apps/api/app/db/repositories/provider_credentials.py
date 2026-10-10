@@ -1,8 +1,8 @@
-"""Repository for the ``provider_credentials`` collection — encrypted provider configs.
+"""Repository for the provider_credentials collection: encrypted provider configs.
 
 One document per user-configured provider, holding only the Fernet ciphertext
-of the JSON payload (encryption lives in ``provider_credentials_service``).
-Keyed by the business ``provider`` field; writes are upserts. No cache: the
+of the JSON payload (encryption lives in provider_credentials_service).
+Keyed by the business provider field and written as upserts. No cache: the
 service layer owns the short-TTL decrypted-payload cache, and the raw row is
 only read on its miss path.
 """
@@ -24,16 +24,16 @@ class ProviderCredentialsRepository(
     cache_policy = None
 
     async def find_by_provider(self, provider: str) -> ProviderCredentialDocument | None:
-        """The stored credential for ``provider``, or ``None`` when unconfigured."""
+        """Return the stored credential for provider, or None when unconfigured."""
         return await self._find_one({"provider": provider})
 
     async def exists(self, provider: str) -> bool:
-        """Whether any stored credential row exists for ``provider``."""
+        """Whether any stored credential row exists for provider."""
         collection = get_async_collection(self.collection_name)
         return await collection.count_documents({"provider": provider}, limit=1) > 0
 
     async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
-        """Insert or replace the ciphertext for ``provider`` in one round trip."""
+        """Insert or replace the ciphertext for provider in one round trip."""
         await self._apply_raw_update_unfetched(
             {"provider": provider},
             {"$set": {"data_encrypted": data_encrypted}},

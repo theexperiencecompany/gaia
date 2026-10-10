@@ -20,6 +20,9 @@ const SETTINGS_FILE = "desktop-settings.json";
 const DEFAULT_SETTINGS: DesktopSettings = {
   popupShortcut: DEFAULT_POPUP_SHORTCUT,
   appIcon: DEFAULT_APP_ICON,
+  // Pairing this Mac is the opt-in; once paired, reconnect on launch by default.
+  bridgeAutoStart: true,
+  launchAtLogin: false,
 };
 
 let cached: DesktopSettings | null = null;
@@ -41,6 +44,14 @@ export function getDesktopSettings(): DesktopSettings {
         typeof raw.appIcon === "string" && raw.appIcon
           ? raw.appIcon
           : DEFAULT_SETTINGS.appIcon,
+      bridgeAutoStart:
+        typeof raw.bridgeAutoStart === "boolean"
+          ? raw.bridgeAutoStart
+          : DEFAULT_SETTINGS.bridgeAutoStart,
+      launchAtLogin:
+        typeof raw.launchAtLogin === "boolean"
+          ? raw.launchAtLogin
+          : DEFAULT_SETTINGS.launchAtLogin,
     };
   } catch {
     cached = { ...DEFAULT_SETTINGS };

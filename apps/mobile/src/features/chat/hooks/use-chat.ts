@@ -1,14 +1,13 @@
-import type { ToolDataEntry } from "@gaia/shared/chat";
-import {
-  mergeToolOutputIntoToolData,
-  upsertApprovalToolData,
-} from "@gaia/shared/chat";
+import type { TurnAccumulator } from "@gaia/shared/chat";
+import { applyStreamEvent, createTurnAccumulator } from "@gaia/shared/chat";
+import { foldReactionAcks } from "@gaia/shared/utils";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
+import { usePaywallStore } from "@/stores/paywall-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
@@ -59,8 +58,14 @@ export function useChat(
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef<string | null>(null);
-  const streamingResponseRef = useRef<string>("");
-  const streamingToolDataRef = useRef<ToolDataEntry[]>([]);
+  /**
+   * Shared, tested turn accumulator (@gaia/shared/chat) — the single source
+   * of truth for the in-flight assistant message. Every parsed stream event
+   * folds into it via applyStreamEvent, so response text, tool data,
+   * approvals (upserted per approval_id), reasoning steps, subagent groups
+   * and todo progress all assemble identically to web and background runs.
+   */
+  const turnAccumulatorRef = useRef<TurnAccumulator>(createTurnAccumulator());
   /**
    * Settle function for the in-flight turn. Every terminal path (done, error,
    * user cancel) funnels through it and only the first call wins — this is
@@ -135,7 +140,15 @@ export function useChat(
     ),
   );
 
-  const messages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
+  const rawMessages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
+
+  // Reaction acks fold onto their targets here so an emoji-ack renders as a
+  // badge on the answered message instead of a stray bubble — web parity via
+  // the same shared fold `useConversation` uses. Stored records stay unfolded.
+  const messages = useMemo(
+    () => foldReactionAcks(rawMessages, (message) => message.text),
+    [rawMessages],
+  );
 
   const streamingState = useChatStore(
     useShallow((state) => state.streamingState),
@@ -287,15 +300,16 @@ export function useChat(
         isStreaming: true,
         conversationId: storeKey,
       });
-      streamingResponseRef.current = "";
-      streamingToolDataRef.current = [];
+      // Clear any previous wall: if the user has since subscribed this send
+      // succeeds, and leaving the old notice up would say otherwise. A still
+      // unsubscribed user gets another 402 and the wall comes straight back.
+      usePaywallStore.getState().clearBlock();
+      turnAccumulatorRef.current = createTurnAccumulator();
       streamIdRef.current = null;
 
-      // --- Single-settle turn finalization --------------------------------
-      // Exactly one of done / error / aborted ever runs. The SSE layer can
-      // fire multiple terminal signals (error then close, abort then close);
-      // without this guard each of them re-persisted state and raced the
-      // reconcile refetch.
+      // Single-settle turn finalization: exactly one of done/error/aborted ever
+      // runs. The SSE layer can fire multiple terminal signals (error then close,
+      // abort then close); without this guard each would re-persist state and race the reconcile refetch.
       let settled: "done" | "error" | "aborted" | null = null;
       const settle = (cause: "done" | "error" | "aborted") => {
         if (settled) return;
@@ -375,70 +389,52 @@ export function useChat(
             onStreamId: (id) => {
               streamIdRef.current = id;
             },
-            onConversationCreated: (
-              newConvId,
-              userMsgId,
-              botMsgId,
-              description,
-            ) => {
-              const liveStore = useChatStore.getState();
-              const msgs = liveStore.messagesByConversation[storeKey] || [];
-
-              const updatedMsgs = msgs.map((msg, idx) => {
-                if (idx === msgs.length - 2) return { ...msg, id: userMsgId };
-                if (idx === msgs.length - 1) return { ...msg, id: botMsgId };
-                return msg;
-              });
-
-              if (!chatId && newConvId) {
-                liveStore.setMessages(newConvId, updatedMsgs);
-                liveStore.clearMessages(storeKey);
-                liveStore.setStreamingState({ conversationId: newConvId });
-                liveStore.setActiveChatId(newConvId);
-
-                // The server-assigned bot id replaces our temp id — keep the
-                // retry binding pointing at the real message.
-                if (lastRequestRef.current) {
-                  lastRequestRef.current = {
-                    ...lastRequestRef.current,
-                    assistantMessageId: botMsgId,
-                  };
-                }
-
-                // Show the new conversation in the sidebar immediately by
-                // prepending to the React Query cache (the sidebar's single
-                // source of truth); the background refetch confirms it.
-                queryClient.setQueryData(
-                  chatKeys.conversations(),
-                  (prev: Conversation[] | undefined) => {
-                    if (!prev) return prev;
-                    if (prev.some((c) => c.id === newConvId)) return prev;
-                    const now = new Date().toISOString();
-                    const entry = {
-                      id: newConvId,
-                      title: description || "New conversation",
-                      created_at: now,
-                      updated_at: now,
-                    };
-                    return [entry, ...prev];
-                  },
-                );
-
-                activeConvIdRef.current = newConvId;
-                setCurrentConversationId(newConvId);
-                options?.onNavigate?.(newConvId);
-              } else {
-                liveStore.setMessages(storeKey, updatedMsgs);
-              }
-            },
-            onChunk: (chunk) => {
-              streamingResponseRef.current += chunk;
+            onMessageIds: (userMsgId, botMsgId) => {
+              // Server ids let an emoji_ack find the user message it reacts to.
               useChatStore
                 .getState()
-                .updateLastMessage(
-                  activeConvIdRef.current!,
-                  streamingResponseRef.current,
-                );
+                .adoptTurnMessageIds(storeKey, userMsgId, botMsgId);
+              // Keep the retry binding pointing at the real message.
+              if (lastRequestRef.current) {
+                lastRequestRef.current = {
+                  ...lastRequestRef.current,
+                  assistantMessageId: botMsgId,
+                };
+              }
+            },
+            onConversationCreated: (newConvId, description) => {
+              if (chatId) return;
+              const liveStore = useChatStore.getState();
+              liveStore.setMessages(
+                newConvId,
+                liveStore.messagesByConversation[storeKey] || [],
+              );
+              liveStore.clearMessages(storeKey);
+              liveStore.setStreamingState({ conversationId: newConvId });
+              liveStore.setActiveChatId(newConvId);
+
+              // Show the new conversation in the sidebar immediately by
+              // prepending to the React Query cache (the sidebar's single
+              // source of truth); the background refetch confirms it.
+              queryClient.setQueryData(
+                chatKeys.conversations(),
+                (prev: Conversation[] | undefined) => {
+                  if (!prev) return prev;
+                  if (prev.some((c) => c.id === newConvId)) return prev;
+                  const now = new Date().toISOString();
+                  const entry = {
+                    id: newConvId,
+                    title: description || "New conversation",
+                    created_at: now,
+                    updated_at: now,
+                  };
+                  return [entry, ...prev];
+                },
+              );
+
+              activeConvIdRef.current = newConvId;
+              setCurrentConversationId(newConvId);
+              options?.onNavigate?.(newConvId);
             },
             onProgress: (message, toolName) => {
               useChatStore.getState().setStreamingState({
@@ -446,39 +442,64 @@ export function useChat(
                 progressToolName: toolName ?? null,
               });
             },
-            onFollowUpActions: (actions) => {
-              useChatStore
-                .getState()
-                .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
-            },
-            onToolData: (entry) => {
-              // A HIL approval frame replaces the prior frame for its
-              // approval_id in place; every other entry is appended.
-              streamingToolDataRef.current = upsertApprovalToolData(
-                streamingToolDataRef.current,
-                entry,
+            onStreamEvent: (event) => {
+              // Fold every parsed frame into the shared turn accumulator, then
+              // derive live UI state from it — the reducer already upserts
+              // approvals, coalesces reasoning into tool_calls_data, nests subagent groups, and upserts todo progress.
+              turnAccumulatorRef.current = applyStreamEvent(
+                turnAccumulatorRef.current,
+                event,
               );
-              // Keep the last AI message in sync with accumulated tool data
-              // so tool cards render live during streaming.
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  toolData: streamingToolDataRef.current,
-                });
-            },
-            onToolOutput: (output) => {
-              // Backend streams the tool result on a separate event keyed
-              // by tool_call_id; merge it into the matching tool_data entry
-              // (web parity, mirrors useChatStream.handleToolOutput).
-              streamingToolDataRef.current = mergeToolOutputIntoToolData(
-                streamingToolDataRef.current,
-                output,
-              );
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  toolData: streamingToolDataRef.current,
-                });
+              const acc = turnAccumulatorRef.current;
+              const convId = activeConvIdRef.current;
+              if (!convId) return;
+              const liveStore = useChatStore.getState();
+
+              switch (event.type) {
+                case "response":
+                  liveStore.updateLastMessage(convId, acc.responseText);
+                  return;
+                case "emoji_ack":
+                  // The turn is a reaction: foldReactionAcks badges the emoji
+                  // onto the user's message instead of rendering this bubble.
+                  liveStore.updateLastAssistantMessage(convId, {
+                    text: event.emoji,
+                    kind: "emoji_ack",
+                    reacts_to_message_id: event.reactsToMessageId,
+                  });
+                  return;
+                case "tool_data":
+                case "tool_output":
+                case "reasoning":
+                case "subagent_start":
+                case "subagent_end":
+                case "todo_progress":
+                  // Keep the last AI message in sync with accumulated tool
+                  // data so tool cards render live during streaming.
+                  liveStore.updateLastAssistantMessage(convId, {
+                    toolData: acc.toolData,
+                    imageData: acc.imageData,
+                  });
+                  return;
+                case "unknown": {
+                  // Image-generation frames arrive as untyped payloads; the
+                  // accumulator turns them into first-class image state
+                  // (generating = url "" until the real URL lands).
+                  if (acc.imageData === null && !acc.generatingImage) return;
+                  liveStore.updateLastAssistantMessage(convId, {
+                    toolData: acc.toolData,
+                    imageData: acc.imageData,
+                  });
+                  return;
+                }
+                case "follow_up_actions":
+                  liveStore.updateLastMessageFollowUp(convId, event.actions);
+                  return;
+                default:
+                  // Lifecycle frames (progress, done, keepalive, …) are
+                  // handled by their own callbacks below or ignored.
+                  return;
+              }
             },
             onDone: () => settle("done"),
             onTransportClosed: () => {
@@ -489,6 +510,18 @@ export function useChat(
                 .getState()
                 .updateLastAssistantMessage(activeConvIdRef.current!, {
                   error: "Connection lost before the response finished.",
+                });
+              settle("error");
+            },
+            onSubscriptionRequired: (detail) => {
+              // Not a failure to retry — the account simply isn't subscribed. The
+              // wall (with checkout link) renders above the composer; the assistant
+              // bubble just says why it stopped, with no retry affordance.
+              usePaywallStore.getState().setBlocked(detail);
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  error: detail.message,
                 });
               settle("error");
             },

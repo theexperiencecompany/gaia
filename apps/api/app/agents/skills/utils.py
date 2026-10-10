@@ -9,7 +9,8 @@ This module provides utility functions for:
 """
 
 import os
-from urllib.parse import urlparse
+from typing import TypedDict
+from urllib.parse import quote, urlparse
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -19,6 +20,29 @@ GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
 
 MAX_SKILLS_PER_REPO = 100
 SKILL_FILENAMES = ["SKILL.md", "skill.md"]
+
+
+class GitHubTreeEntry(TypedDict):
+    """One entry of a Git Trees API response, limited to the keys discovery reads."""
+
+    path: str
+    type: str
+
+
+class GitHubTree(TypedDict):
+    """A Git Trees API response."""
+
+    tree: list[GitHubTreeEntry]
+    truncated: bool
+
+
+class GitHubContentEntry(TypedDict):
+    """One entry of a Contents API response; download_url is null for directories."""
+
+    name: str
+    path: str
+    type: str
+    download_url: str | None
 
 
 def get_github_token() -> str | None:
@@ -38,14 +62,8 @@ def get_github_headers() -> dict[str, str]:
 def parse_github_url(url: str) -> tuple[str, str]:
     """Parse GitHub URL into owner and repo.
 
-    Args:
-        url: GitHub URL or owner/repo string
-
-    Returns:
-        Tuple of (owner, repo)
-
     Raises:
-        ValueError: If URL is invalid
+        ValueError: If URL is invalid.
     """
     url = url.strip()
     if not url:
@@ -71,22 +89,24 @@ def parse_github_url(url: str) -> tuple[str, str]:
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def find_skill_files(tree_entries: list[dict]) -> list[str]:
-    """Find all SKILL.md and skill.md files in the tree.
+def github_url(base: str, *parts: str) -> str:
+    """Join caller-supplied parts onto a GitHub base URL, percent-encoding every path segment."""
+    segments = [segment for part in parts for segment in part.split("/")]
+    # httpx collapses dot segments, so one would steer the server's token to any GitHub endpoint
+    if any(segment in {"", ".", ".."} for segment in segments):
+        raise ValueError(f"Invalid GitHub path segment in {'/'.join(parts)!r}")
+    return "/".join([base, *(quote(segment) for segment in segments)])
 
-    Args:
-        tree_entries: List of tree entries from Git Tree API
 
-    Returns:
-        List of paths to skill files
-    """
+def find_skill_files(tree_entries: list[GitHubTreeEntry]) -> list[str]:
+    """Find all SKILL.md and skill.md files in the tree entries from Git Tree API."""
     skill_files = []
 
     for entry in tree_entries:
-        if entry.get("type") != "blob":
+        if entry["type"] != "blob":
             continue
 
-        path = entry.get("path", "")
+        path = entry["path"]
         filename = path.split("/")[-1] if "/" in path else path
 
         if filename in SKILL_FILENAMES:
@@ -96,14 +116,7 @@ def find_skill_files(tree_entries: list[dict]) -> list[str]:
 
 
 def get_folder_path(file_path: str) -> str:
-    """Get the folder path from a file path.
-
-    Args:
-        file_path: Path to the file
-
-    Returns:
-        Folder path (empty string if in root)
-    """
+    """Get the folder path from a file path (empty string if in root)."""
     if "/" not in file_path:
         return ""
     return file_path.rsplit("/", 1)[0]
@@ -112,18 +125,7 @@ def get_folder_path(file_path: str) -> str:
 def get_folder_priority(file_path: str) -> int:
     """Get priority for folder sorting (lower = higher priority).
 
-    Priority order:
-    1. Root (empty path)
-    2. skills/
-    3. .claude/skills/, .cursor/skills/, etc.
-    4. .claude/
-    5. Other folders
-
-    Args:
-        file_path: Path to the skill file
-
-    Returns:
-        Priority value (lower = higher priority)
+    Order: root, skills/, .claude(cursor)/skills/, .claude/, other folders.
     """
     folder = get_folder_path(file_path)
 
@@ -144,7 +146,7 @@ def get_folder_priority(file_path: str) -> int:
     return 10
 
 
-def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
+def check_tree_truncated(tree_data: GitHubTree, owner: str, repo: str) -> None:
     """Log a warning if the tree is truncated.
 
     Args:
@@ -152,7 +154,7 @@ def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
         owner: Repository owner
         repo: Repository name
     """
-    if tree_data.get("truncated"):
+    if tree_data["truncated"]:
         log.warning(
             f"{LogTag.SKILLS} Repository tree is truncated; some skills may not be discovered",
             owner=owner,

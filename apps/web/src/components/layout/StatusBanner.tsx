@@ -1,7 +1,6 @@
 "use client";
 
 import { Alert01Icon, Cancel01Icon } from "@icons";
-import axios from "axios";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -23,8 +22,10 @@ export default function StatusBanner() {
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await axios.get(PING_URL);
-      if (res.status >= 200 && res.status < 300) {
+      // A status probe, not an API call: in production it targets the public
+      // ping endpoint directly, so it stays off the app's API client.
+      const res = await fetch(PING_URL, { cache: "no-store" });
+      if (res.ok) {
         setIsDown(false);
       } else {
         setIsDown(true);
@@ -71,6 +72,7 @@ export default function StatusBanner() {
       </div>
       <button
         type="button"
+        aria-label="Dismiss status banner"
         onClick={() => setDismissed(true)}
         className="shrink-0 rounded p-0.5 hover:bg-amber-500/20"
       >

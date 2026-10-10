@@ -1,7 +1,7 @@
-"""Repository for the ``integration_instructions`` collection.
+"""Repository for the integration_instructions collection.
 
-User-scoped; one document per ``(user_id, integration_id)`` (unique index). The
-incidental Mongo ``_id`` is preserved as ``id`` because the editor surfaces it.
+User-scoped; one document per (user_id, integration_id) (unique index). The
+incidental Mongo _id is preserved as id because the editor surfaces it.
 """
 
 from app.db.repositories.base import UserScopedRepository
@@ -38,8 +38,10 @@ class IntegrationInstructionsRepository(
         content: str,
         updated_by: InstructionsEditor,
     ) -> IntegrationInstructionsDocument:
-        """Create or replace one integration's instructions. ``updated_at`` is
-        stamped by the base; on an insert the new document is returned."""
+        """Create or replace one integration's instructions.
+
+        updated_at is stamped by the base; on an insert the new document is returned.
+        """
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": {"content": content, "updated_by": updated_by.value}},

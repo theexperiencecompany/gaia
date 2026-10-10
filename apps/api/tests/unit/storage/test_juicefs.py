@@ -1,13 +1,13 @@
 """Layer 1 — JuiceFS mount primitives: containment, paging arithmetic, mount gating.
 
 Every workspace byte a user or an agent ever writes goes through this module, and
-``_contained`` / ``ensure_safe_path_id`` are the only thing standing between one
+_contained / ensure_safe_path_id are the only thing standing between one
 user's conversation and another's tree. So the filesystem is NOT mocked here: the
-mount root is a real ``tmp_path``, with real ``..`` segments, real symlinks and
+mount root is a real tmp_path, with real .. segments, real symlinks and
 real files, because string-level path logic that is never resolved against a real
 FS is exactly how traversal bugs survive a green suite.
 
-The single genuine mock is ``_is_mounted()`` — a FUSE mountpoint cannot be created
+The single genuine mock is _is_mounted() — a FUSE mountpoint cannot be created
 in a unit test. Tests that care about the *absence* of the mount leave it real
 (a tmpdir is never a mountpoint), which is also how the "an existing empty dir is
 not a mount" regression is pinned.
@@ -36,6 +36,7 @@ from app.services.storage.juicefs import (
     resolve_user_file,
     sandbox_session_path,
     session_root,
+    to_workspace_relative_path,
     user_owns_regular_file,
     user_skills_path,
     user_workspace_path,
@@ -53,7 +54,7 @@ CONV = "conv-a"
 def mount_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the module at a real tmpdir, still reporting itself as unmounted.
 
-    Used by the tests that assert the mount gate fires; `mount` layers the
+    Used by the tests that assert the mount gate fires; mount layers the
     "it is mounted" lie on top.
     """
     root = tmp_path / "jfs"
@@ -64,10 +65,10 @@ def mount_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def mount(mount_root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real tmpdir that also passes the mountpoint check.
+    """Provide a real tmpdir that also passes the mountpoint check.
 
-    ``Path.is_mount()`` is False for any tmpdir, so without this every helper
-    would raise ``JuiceFSUnavailable`` and every "rejects a bad path" assertion
+    Path.is_mount() is False for any tmpdir, so without this every helper
+    would raise JuiceFSUnavailable and every "rejects a bad path" assertion
     would pass for the wrong reason.
     """
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
@@ -76,7 +77,7 @@ def mount(mount_root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def outside(tmp_path: Path) -> Path:
-    """A directory outside the mount — the target every escape test aims at."""
+    """Create a directory outside the mount — the target every escape test aims at."""
     d = tmp_path / "outside"
     d.mkdir()
     (d / "secret.txt").write_text("victim data")
@@ -243,6 +244,22 @@ def test_the_sandbox_session_path_is_workspace_relative_not_host_absolute() -> N
     # This string is handed to the model and to the sandbox; leaking the host
     # mount root would make every tool call reference an unreachable path.
     assert sandbox_session_path(CONV) == f"/workspace/sessions/{CONV}"
+
+
+@pytest.mark.parametrize(
+    ("given", "want"),
+    [
+        ("/workspace/sessions/c/x.pdf", "sessions/c/x.pdf"),
+        ("/uploads/deck.pdf", "uploads/deck.pdf"),
+        ("sessions/c/x.pdf", "sessions/c/x.pdf"),
+        ("  /workspace/a.txt  ", "a.txt"),
+    ],
+)
+def test_to_workspace_relative_path_strips_sandbox_prefix(given: str, want: str) -> None:
+    # Agents hand us sandbox-visible paths; resolvers take workspace-relative ones.
+    # A surviving leading "/" would discard the base in `base / rel` and escape
+    # containment, so stripping it is load-bearing, not cosmetic.
+    assert to_workspace_relative_path(given) == want
 
 
 # ── mount gating ─────────────────────────────────────────────────────

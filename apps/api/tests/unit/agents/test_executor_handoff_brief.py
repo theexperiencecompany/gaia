@@ -14,6 +14,7 @@ import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools.executor_tool import call_executor
+from app.constants.agents import DONE_EVIDENCE_RULE
 
 
 class TestComposeTaskBrief:
@@ -42,11 +43,24 @@ class TestComposeTaskBrief:
         assert out.startswith("Original request (verbatim):\npls archive the junk mail")
         assert "archive the promos and flag the offer letter" in out
 
+    def test_the_previous_run_folds_in_after_the_task(self):
+        out = compose_executor_brief(
+            "run the morning briefing",
+            ["digest sent"],
+            last_run="<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>\n",
+        )
+
+        assert out == (
+            "run the morning briefing"
+            "\n\n"
+            "<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n- digest sent\n"
+            f"{DONE_EVIDENCE_RULE}"
+        )
+
     def test_the_brief_layout_is_exact(self):
-        """The executor reads this back as its own instructions, so the layout is
-        the contract: sections separated by a blank line, criteria one per line.
-        Run the criteria together and the definition of done becomes one unreadable
-        line the model is asked to satisfy item by item."""
+        """The layout is the contract: sections separated by a blank line, criteria one per line."""
         out = compose_executor_brief(
             "triage my inbox",
             ["promos archived", "offer flagged"],
@@ -59,7 +73,7 @@ class TestComposeTaskBrief:
             "triage my inbox"
             "\n\n"
             "Definition of done (every item must be true before you finish):\n"
-            "- promos archived\n- offer flagged"
+            f"- promos archived\n- offer flagged\n{DONE_EVIDENCE_RULE}"
         )
 
 
@@ -97,7 +111,7 @@ class TestVerbatimRequestComesFromTheServer:
     Routing it through the model made it a model output: asked to emit the full
     task AND re-transcribe a request that may run to MAX_MESSAGE_LENGTH, the
     comms model degenerates — repeating tokens and spilling the schema's own key
-    names into `acceptance_criteria`. The server already holds the user's words,
+    names into acceptance_criteria. The server already holds the user's words,
     so the model is no longer asked for them.
     """
 
@@ -114,9 +128,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert "verbatim_request" not in call_executor.args
 
     async def test_a_long_request_is_carried_unclipped(self):
-        """`user_messages` is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim
-        backstop must not be, or long asks — exactly the ones that broke the model —
-        silently lose their tail."""
+        """user_messages is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim backstop must not be."""
         long_request = "archive the promo from " + ", ".join(
             f"sender{n}@example.com" for n in range(200)
         )
@@ -138,6 +150,65 @@ class TestVerbatimRequestComesFromTheServer:
 
         assert "Original request (verbatim)" not in dispatched_task
         assert dispatched_task.startswith("triage inbox")
+
+
+class TestPreviousRunReachesTheExecutor:
+    """A workflow run's checkpoint threads are dropped before it starts.
+
+    The previous run reaches the worker tier here or not at all.
+    """
+
+    async def test_a_workflow_run_carries_its_previous_run_into_the_brief(self):
+        last_run = '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>\n'
+
+        with patch(
+            "app.agents.tools.executor_tool.get_last_run_brief",
+            new=AsyncMock(return_value=last_run),
+        ) as mock_last_run:
+            dispatched_task = await _dispatched_brief(
+                {"task": "run the briefing", "acceptance_criteria": ["digest sent"]},
+                {"thread_id": "conv-1", "workflow_id": "wf-1", "user_id": "u-1"},
+            )
+
+        mock_last_run.assert_awaited_once_with("wf-1", "u-1")
+        assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
+
+    async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
+        """Asked about the wrong workflow or user, the check answers about a run that never happened."""
+        with (
+            patch(
+                "app.agents.tools.executor_tool.get_last_run_brief",
+                new=AsyncMock(return_value=""),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.playbook_check_brief",
+                new=AsyncMock(return_value=""),
+            ) as mock_check,
+        ):
+            await _dispatched_brief(
+                {"task": "run the briefing", "acceptance_criteria": ["digest sent"]},
+                {
+                    "thread_id": "conv-1",
+                    "workflow_id": "wf-1",
+                    "user_id": "u-1",
+                    "playbook_fallback": "the replay stopped at step 3",
+                },
+            )
+
+        assert mock_check.await_args.args == ("wf-1", "u-1")
+        assert mock_check.await_args.kwargs == {"fallback_note": "the replay stopped at step 3"}
+
+    async def test_an_interactive_chat_turn_never_looks_for_one(self):
+        with patch(
+            "app.agents.tools.executor_tool.get_last_run_brief", new=AsyncMock(return_value="")
+        ) as mock_last_run:
+            dispatched_task = await _dispatched_brief(
+                {"task": "triage inbox", "acceptance_criteria": ["promos archived"]},
+                {"thread_id": "conv-1", "user_id": "u-1"},
+            )
+
+        mock_last_run.assert_not_awaited()
+        assert "last_run" not in dispatched_task
 
 
 if __name__ == "__main__":

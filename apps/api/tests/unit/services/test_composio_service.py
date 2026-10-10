@@ -5,6 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.composio import composio_service
+from shared.py.wide_events import log
+
 # ---------------------------------------------------------------------------
 # ComposioService tests
 # ---------------------------------------------------------------------------
@@ -292,6 +295,61 @@ class TestStoreToolMetadata:
             await svc._store_tool_metadata("gmail", [tool])
 
 
+class TestComposioEventTotals:
+    """get_tools and get_tools_by_name add to the request's composio totals, never replace them."""
+
+    @pytest.mark.asyncio
+    async def test_get_tools_appends_its_toolkit_and_adds_its_tool_count(self):
+        svc = _make_service()
+        kept = MagicMock()
+        kept.name = "TOOL_A"
+        svc.composio.tools.get = MagicMock(side_effect=[[kept], [kept]])
+        svc._store_tool_metadata = AsyncMock()
+        log.reset()
+        log.set(composio={"toolkits": ["slack"], "tools_loaded": 2, "provider": "kept"})
+
+        with (
+            patch("app.services.composio.composio_service.custom_tools_registry") as mock_reg,
+            patch(
+                "app.services.composio.composio_service.before_execute", return_value=lambda f: f
+            ),
+            patch("app.services.composio.composio_service.after_execute", return_value=lambda f: f),
+            patch(
+                "app.services.composio.composio_service.schema_modifier", return_value=lambda f: f
+            ),
+        ):
+            mock_reg.get_tool_names.return_value = []
+            await svc.get_tools("gmail")
+
+        assert log.get()["composio"] == {
+            "toolkits": ["slack", "gmail"],
+            "tools_loaded": 3,
+            "provider": "kept",
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_tools_by_name_adds_its_tool_count(self):
+        svc = _make_service()
+        tool = MagicMock()
+        tool.name = "TOOL_A"
+        svc.composio.tools.get = MagicMock(return_value=[tool])
+        log.reset()
+        log.set(composio={"tools_loaded": 4})
+
+        with (
+            patch(
+                "app.services.composio.composio_service.before_execute", return_value=lambda f: f
+            ),
+            patch("app.services.composio.composio_service.after_execute", return_value=lambda f: f),
+            patch(
+                "app.services.composio.composio_service.schema_modifier", return_value=lambda f: f
+            ),
+        ):
+            await svc.get_tools_by_name(["TOOL_A"])
+
+        assert log.get()["composio"] == {"tools_loaded": 5}
+
+
 class TestGetToolsByName:
     @pytest.mark.asyncio
     async def test_get_tools_by_name_all_hooks(self):
@@ -570,11 +628,7 @@ class TestDeleteConnectedAccount:
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_proxy_cache(self):
-        """Disconnect must flush the proxy_client connected_account_id cache.
-
-        Otherwise the 10-minute TTL keeps the deleted account ID in memory and
-        every subsequent proxy request fails until the entry expires.
-        """
+        """Disconnect must flush the proxy_client cache, or its 10-minute TTL keeps serving the deleted account id."""
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
@@ -605,11 +659,7 @@ class TestDeleteConnectedAccount:
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_proxy_cache_when_no_active_account(self):
-        """Even idempotent disconnects (no active account) must flush the cache.
-
-        A previous session may have cached an ID that has since been revoked
-        outside this code path; the next request should re-resolve.
-        """
+        """Even an idempotent disconnect with no active account must flush the cache, since a prior session may have cached a since-revoked id."""
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
@@ -680,6 +730,8 @@ class TestGetComposioService:
             from app.services.composio.composio_service import get_composio_service
 
             assert get_composio_service() == mock_svc
+        # The same name @lazy_provider registered the service under.
+        mock_providers.get.assert_called_once_with(composio_service.COMPOSIO_SERVICE_PROVIDER)
 
     def test_raises_when_none(self):
         with patch("app.services.composio.composio_service.providers") as mock_providers:
@@ -751,9 +803,9 @@ class TestInitComposioService:
 
 
 class TestAuthHeaders:
-    """The `_auth_headers` helper was removed in the Composio proxy migration.
+    """The _auth_headers helper was removed in the Composio proxy migration.
 
-    Gmail tools now route every request through `proxy_request_sync`, which
+    Gmail tools now route every request through proxy_request_sync, which
     Composio authenticates server-side. Bearer-token construction is no longer
     a Gmail-tools concern, so the helper and its tests no longer exist.
     See test_composio_gmail_tools.py for the replacement coverage.
@@ -817,9 +869,6 @@ class TestRegisterGmailCustomTools:
         assert len(result) == 9
 
 
-# Behavior tests for MARK_AS_READ / STAR_EMAIL / GET_UNREAD_COUNT /
-# GET_CONTACT_LIST live in test_composio_gmail_tools.py — they invoke the
-# registered tool functions with the proxy mocked at the module boundary.
-# The previous tests here duplicated production logic inline (constructing
-# payloads in the test body instead of calling the tool), which provided
-# false confidence; they have been removed in the Composio proxy migration.
+# Behavior tests for MARK_AS_READ/STAR_EMAIL/GET_UNREAD_COUNT/GET_CONTACT_LIST
+# live in test_composio_gmail_tools.py. Removed here: they duplicated
+# production logic inline, giving false confidence.

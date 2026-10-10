@@ -183,12 +183,9 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         summary_parts: list[str] = []
         added: list[str] = []
 
-        # Validate the whole batch before applying any of it. Two reasons this is
-        # all-or-nothing rather than best-effort: a silently skipped entry told
-        # the model "no changes" while reporting success, so it moved on with a
-        # checklist that never advanced; and partial application makes the
-        # model's retry non-idempotent — the valid additions would land twice
-        # once it corrects the bad entry and resends the batch.
+        # Validate the whole batch before applying any of it: a partial apply
+        # would make the model's retry non-idempotent (valid additions landing
+        # twice once it resends the corrected batch).
         problems: list[str] = []
         if not updates:
             problems.append("the updates list was empty")
@@ -210,7 +207,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                     "messages": [
                         ToolMessage(
                             content=(
-                                "Updated nothing — " + "; ".join(problems) + ". "
+                                "Updated nothing: " + "; ".join(problems) + ". "
                                 "Nothing in this batch was applied; fix the entry and resend "
                                 "the whole batch. Current task ids: "
                                 + (", ".join(todo_map) if todo_map else "none")

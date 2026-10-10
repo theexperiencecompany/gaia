@@ -28,8 +28,8 @@ name: Deploy Web (Cloudflare)
 #   scope + endpoint is dashboard-only for some plans). A best-effort API
 #   probe is included in the `preflight` step and logged to the job summary.
 #   If the probe reports "connected", perform the manual step above. See
-#   scripts/ci/disable-cf-builds.sh for a local manual API attempt:
-#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/disable-cf-builds.sh
+#   scripts/ci/release.sh disable-cf-builds for a local manual API attempt:
+#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/release.sh disable-cf-builds
 #
 # After disabling, pushes to master deploy ONLY via this workflow (visible
 # duration + failure in GitHub). PRs deploy a preview version alias.
@@ -73,6 +73,9 @@ jobs:
     name: build (cf:build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production environment,
+    # so only a master build bakes them in; PR previews build without them.
+    environment: ${{ github.event_name == 'pull_request' && 'Preview' || 'production' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -91,11 +94,31 @@ jobs:
       # 32592594996: build step itself is only 179s of the 545s job).
       # The Next.js compiler cache above is what actually warms next build.
 
-      # No Cloudflare secrets here — preflight moved to preview/deploy (environment-gated)
+      # NEXT_PUBLIC_* vars are inlined into the JS at build time — there is no
+      # runtime override on Workers (wrangler.jsonc has no [vars]), so the
+      # bundle that deploy-prod ships MUST be built with the prod API URL.
+      # PR previews keep the fake URL (render check only, no backend). The
+      # deploy-prod verify step fails the run if a fake-URL bundle ever
+      # reaches it, so a misconfigured build can't silently ship prod broken.
       - name: Build Cloudflare bundle
         env:
-          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+          NEXT_PUBLIC_API_BASE_URL: ${{ github.event_name == 'pull_request' && 'http://fake-api-for-build.example.com' || 'https://api.heygaia.io/api/v1/' }}
+          NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+          NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
+          NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
+          # A production bundle missing a public value ships a dead link or silent analytics.
+          if [ "$IS_PR" != "true" ]; then
+            missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+            if [ -n "$missing" ]; then
+              echo "::error::Empty in the production environment's variables: $(echo $missing). Set them under Settings → Environments → production."
+              exit 1
+            fi
+          fi
           echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
           time pnpm --filter ./apps/web cf:build
           echo "::endgroup::"
@@ -162,13 +185,24 @@ jobs:
           test -f apps/web/.open-next/worker.js || { echo "::error::worker.js missing — build artifact not restored"; exit 1; }
           du -h apps/web/.open-next/worker.js
           du -sh apps/web/.open-next
+          # NEXT_PUBLIC_API_BASE_URL is baked into the JS at build time. A
+          # PR-preview bundle (fake URL) must never ship to production — refuse
+          # to deploy instead of shipping a silently backend-less frontend.
+          if grep -rq "fake-api-for-build" apps/web/.open-next --include='*.js'; then
+            echo "::error::Production bundle contains the fake preview API URL — NEXT_PUBLIC_API_BASE_URL was wrong at build time. Refusing to deploy."
+            exit 1
+          fi
 
       - name: Deploy to Cloudflare Workers (production)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler deploy --config apps/web/wrangler.jsonc
+          # wrangler is a dependency of apps/web; under the isolated linker its
+          # bin only exists in that package's node_modules, not the repo root.
+          # A token deploy has no author; the tag and message say which commit and run shipped it.
+          pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc \
+            --tag "${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"
 
       - name: Report deploy duration
         if: always()
@@ -193,7 +227,15 @@ jobs:
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
-    if: github.event_name == 'pull_request'
+    # Preview uploads need CLOUDFLARE_API_TOKEN, and Actions secrets are not
+    # exposed to Dependabot PRs or to PRs from forks. Without this guard the
+    # job still runs, wrangler exits 1 on an empty token, and the PR shows a
+    # red check that has nothing to do with the change under review. The build
+    # job above still runs everywhere, so the bundle is always validated.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: preview
@@ -226,7 +268,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
+          pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc \
+            --tag "pr-${{ github.event.number }}-${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"
 
       - name: Report preview duration
         if: always()
@@ -249,19 +292,48 @@ jobs:
           echo "### ❌ Preview deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check token scopes and that Workers Gradual Rollouts / Versions is enabled for this worker." >> "$GITHUB_STEP_SUMMARY"
 
+      # Post as the "Cloudflare Deployment" GitHub App (its avatar is the
+      # Cloudflare logo) when its credentials are configured; the default
+      # workflow token always renders as github-actions[bot] and cannot be
+      # renamed. Without the secrets the step is skipped and the comment falls
+      # back to the default token, so the preview comment never goes missing.
+      - name: Mint a Cloudflare Deployment app token
+        id: cf_app_token
+        if: success() && vars.CLOUDFLARE_DEPLOYMENT_APP_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CLOUDFLARE_DEPLOYMENT_APP_ID }}
+          private-key: ${{ secrets.CLOUDFLARE_DEPLOYMENT_APP_PRIVATE_KEY }}
+
       - name: Comment PR with preview URL
         if: success()
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          github-token: ${{ steps.cf_app_token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
+            // One persistent comment per PR, found by a hidden marker and
+            // updated in place on every deploy, so the thread never fills up
+            // with one "preview deployed" line per commit.
             const pr = context.issue.number;
             const alias = `pr-${pr}`;
-            const body = `☁️ Cloudflare preview deployed — alias \`${alias}\`\n\n` +
-              `Expected URL: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
-              `> Preview requires Workers preview_urls / route. Check job summary for duration.`;
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: pr,
-              body
-            }).catch(e => core.warning(`PR comment failed: ${e.message}`));
+            const marker = '<!-- cloudflare-preview-comment -->';
+            const sha = context.payload.pull_request?.head?.sha ?? context.sha;
+            const logo = '<img src="https://upload.wikimedia.org/wikipedia/commons/9/94/Cloudflare_Logo.png" alt="Cloudflare" height="16" valign="middle">';
+            const body = `${marker}\n${logo} **Cloudflare preview deployed**: alias \`${alias}\`\n\n` +
+              `Preview: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
+              `Last deployed commit: \`${sha.slice(0, 7)}\` at ${new Date().toISOString()}\n\n` +
+              `> Render check only: no API behind it, so anything that calls the backend will not work here.`;
+            const { owner, repo } = context.repo;
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr, per_page: 100,
+              });
+              const existing = comments.find(c => c.body && c.body.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr, body });
+              }
+            } catch (e) {
+              core.warning(`PR comment failed: ${e.message}`);
+            }

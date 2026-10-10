@@ -8,6 +8,19 @@
  * Integration category values - synced with backend INTEGRATION_CATEGORIES
  * (apps/api/app/services/integrations/category_inference_service.py)
  */
+import type {
+  CommunityIntegrationCreator,
+  IntegrationTool,
+} from "../api/generated";
+
+export type {
+  CreateCustomIntegrationRequest,
+  IntegrationTool,
+  IntegrationToolsResponse,
+  MyIntegrationItem,
+  MyIntegrationsResponse,
+} from "../api/generated";
+
 export type IntegrationCategory =
   | "productivity"
   | "communication"
@@ -45,23 +58,16 @@ export interface IntegrationConnectionData {
   integration_id: string;
   message: string;
   expired?: boolean;
+  // Lets the card render a header before the live catalog (/integrations/me)
+  // loads. Optional: absent on messages streamed before the field existed.
+  integration_name?: string;
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
 export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
 
-export interface IntegrationTool {
-  name: string;
-  description?: string | null;
-  /** HIL default: gated (irreversible) unless the user overrides it. */
-  destructive?: boolean;
-}
-
-export interface IntegrationCreator {
-  name: string | null;
-  picture: string | null;
-}
+export type IntegrationCreator = CommunityIntegrationCreator;
 
 export interface Integration {
   id: string;
@@ -164,50 +170,17 @@ export interface IntegrationStatusRecord {
  * `MyIntegrationItem`. Fetch full tools on demand from
  * `GET /integrations/{id}/tools` (`IntegrationToolsResponse`).
  */
-export interface MyIntegrationItem {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  source: "platform" | "custom";
-  managedBy: IntegrationManagedBy;
-  status: IntegrationStatusValue;
-  /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
-  expiredAt?: string | null;
-  requiresAuth: boolean;
-  authType?: IntegrationAuthType | null;
-  isFeatured: boolean;
-  displayPriority: number;
-  available: boolean;
-  iconUrl?: string | null;
-  slug?: string | null;
-  toolCount: number;
-  isPublic?: boolean | null;
-  createdBy?: string | null;
-  publishedAt?: string | null;
-  cloneCount: number;
-  creator?: IntegrationCreator | null;
-}
 
 /**
  * The full integration catalog personalized for one user (platform + their own
  * custom integrations), each carrying connection status. Replaces the
  * client-side merge of /config + /status + /users/me/integrations.
  */
-export interface MyIntegrationsResponse {
-  integrations: MyIntegrationItem[];
-  total: number;
-}
 
 /**
  * Full tool list for a single integration, fetched on demand from
  * `GET /integrations/{id}/tools`. Mirrors the backend `IntegrationToolsResponse`.
  */
-export interface IntegrationToolsResponse {
-  integrationId: string;
-  tools: IntegrationTool[];
-  count: number;
-}
 
 export interface CommunityIntegrationsResponse {
   integrations: CommunityIntegration[];
@@ -230,15 +203,4 @@ export interface PublicIntegrationResponse extends CommunityIntegration {
     authType: string | null;
   } | null;
   authType?: IntegrationAuthType | null;
-}
-
-export interface CreateCustomIntegrationRequest {
-  name: string;
-  description?: string;
-  category?: string;
-  server_url: string;
-  requires_auth?: boolean;
-  auth_type?: "none" | "oauth" | "bearer";
-  is_public?: boolean;
-  bearer_token?: string;
 }

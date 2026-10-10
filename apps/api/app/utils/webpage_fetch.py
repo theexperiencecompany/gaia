@@ -26,9 +26,10 @@ from app.constants.search import (
 )
 from app.decorators.caching import Cacheable
 from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
     resolve as resolve_firecrawl_config,
 )
-from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
+from app.utils.crawl4ai_utils import CrawlBatchParams, batch_fetch_with_crawl4ai
 from app.utils.exceptions import FetchError
 from app.utils.url_safety import assert_public_http_url, open_public_http_url
 from shared.py.wide_events import log
@@ -53,7 +54,7 @@ def _elapsed_ms(start: float) -> float:
 async def _ensure_url_allowed(url: str) -> None:
     """SSRF guard for the agent-controlled fetch URL (delegates to the shared policy).
 
-    Raises ``FetchError`` if the URL isn't HTTP(S) or resolves to a non-public
+    Raises FetchError if the URL isn't HTTP(S) or resolves to a non-public
     address (loopback, private, link-local incl. cloud metadata, or reserved).
     """
     try:
@@ -63,7 +64,7 @@ async def _ensure_url_allowed(url: str) -> None:
 
 
 class WebpageFetcher(ABC):
-    """One webpage-fetching engine. ``fetch`` returns markdown or raises ``FetchError``."""
+    """One webpage-fetching engine. fetch returns markdown or raises FetchError."""
 
     name: str
 
@@ -73,7 +74,7 @@ class WebpageFetcher(ABC):
 
     @abstractmethod
     async def fetch(self, url: str) -> str:
-        """Render ``url`` to markdown, raising ``FetchError`` on failure."""
+        """Render url to markdown, raising FetchError on failure."""
 
 
 class Crawl4aiFetcher(WebpageFetcher):
@@ -82,18 +83,20 @@ class Crawl4aiFetcher(WebpageFetcher):
     name = "crawl4ai"
 
     def is_configured(self) -> bool:
-        """Always available — no external credentials required."""
+        """Return True unconditionally — no external credentials required."""
         return True
 
     async def fetch(self, url: str) -> str:
         """Render the page with crawl4ai and return its markdown."""
         contents, errors = await batch_fetch_with_crawl4ai(
             [url],
-            page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
-            total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
-            semaphore_count=1,
-            context_name="webpage_fetch",
-            thorough=True,
+            CrawlBatchParams(
+                page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+                total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+                semaphore_count=1,
+                context_name="webpage_fetch",
+                thorough=True,
+            ),
         )
         content = contents.get(url, "")
         if content.strip():
@@ -113,7 +116,12 @@ class FirecrawlFetcher(WebpageFetcher):
         self._client: FirecrawlApp | None = None
 
     def is_configured(self) -> bool:
-        """True when a Firecrawl API key is configured."""
+        """Report whether a Firecrawl API key is configured.
+
+        The resolved key, not the env var: a key saved in the credential store
+        reaches this fetcher through _default_fetchers and would otherwise be
+        reported unconfigured.
+        """
         return bool(self._api_key)
 
     def _get_client(self) -> FirecrawlApp:
@@ -145,7 +153,7 @@ class HttpxFetcher(WebpageFetcher):
     name = "httpx"
 
     def is_configured(self) -> bool:
-        """Always available — pure-Python, no external service."""
+        """Return True unconditionally — pure-Python, no external service."""
         return True
 
     async def fetch(self, url: str) -> str:
@@ -186,13 +194,13 @@ class HttpxFetcher(WebpageFetcher):
 
 
 async def _default_fetchers() -> list[WebpageFetcher]:
-    """The fetch waterfall, cheapest/most-capable first.
+    """Return the fetch waterfall, cheapest/most-capable first.
 
     The Firecrawl key resolves per chain through the credential store (with
     the service's env fallback), so a key configured in Settings works without
     a restart and wins over the environment.
     """
-    config = await resolve_firecrawl_config("firecrawl")
+    config: ProviderConfig | None = await resolve_firecrawl_config("firecrawl")
     firecrawl_api_key = config["api_key"] if config else None
     return [Crawl4aiFetcher(), FirecrawlFetcher(firecrawl_api_key), HttpxFetcher()]
 
@@ -201,7 +209,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     """Try each configured engine in order, returning the first success.
 
     Records every engine attempt (outcome, latency, content length) in a single
-    ``webpage_fetch`` wide-event field, keyed by host for high-cardinality drill-down.
+    webpage_fetch wide-event field, keyed by host for high-cardinality drill-down.
     """
     fetchers = fetchers if fetchers is not None else await _default_fetchers()
     host = urlparse(url).hostname or ""

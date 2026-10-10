@@ -1,47 +1,13 @@
-"""Local Docker-exec sandbox — a drop-in stand-in for `e2b.AsyncSandbox`.
+"""Local Docker-exec sandbox: a drop-in stand-in for the E2B AsyncSandbox.
 
-Self-host instances usually have no E2B API key. This module gives them real
-code execution by shelling out to the host's Docker daemon: each user gets a
-dedicated sibling container (``gaia-sandbox-<user_id>``) and every sandbox
-operation is one `docker exec` / `docker cp` invocation away.
+Self-host instances without an E2B key get per-user sibling containers with
+the same commands and files surface the coding tools use. Results are genuine
+E2B dataclasses and failures raise genuine E2B exceptions so existing handlers
+keep matching.
 
-Interface contract (mirrors the e2b surface the coding tools actually use):
-
-    sbx.commands.run(cmd, *, background, envs, user, cwd, on_stdout,
-                     on_stderr, timeout)
-        → CommandResult(.exit_code, .stdout, .stderr); raises
-          CommandExitException on non-zero exit, TimeoutException on timeout.
-    sbx.files.read(path, format="text" | "bytes")  → raises NotFoundException
-    sbx.files.write(path, data: str | bytes)       → WriteInfo
-    sbx.files.rename(src, dst)                     → EntryInfo
-    sbx.files.remove(path) / make_dir(path) / get_info(path) → EntryInfo
-    sbx.is_running(request_timeout=None), set_timeout(seconds),
-    sbx.beta_pause(), sbx.kill(), sbx.sandbox_id
-
-Types, deliberately NOT re-implemented: results are genuine e2b dataclasses
-(``CommandResult``, ``WriteInfo``, ``EntryInfo``) and failures raise the
-genuine e2b exceptions. The tools catch ``e2b.CommandExitException`` /
-``e2b.TimeoutException`` / ``e2b.NotFoundException`` directly — a parallel
-local hierarchy would sail past those handlers and turn normal non-zero exits
-into tool errors. They are re-exported below so callers of this module need no
-e2b import.
-
-Divergences from E2B, all intentional:
-  - ``set_timeout`` is a validated no-op: plain containers have no server-side
-    kill timer; lifetime is managed by the compose restart policy and explicit
-    ``kill()``.
-  - ``beta_pause`` stops the container: filesystem state survives (it lives on
-    a shared named volume) but in-memory processes do not — irrelevant here,
-    since nothing in this codebase resumes a paused process tree.
-  - ``files.remove`` is idempotent (``rm -rf`` semantics): deleting an absent
-    path succeeds instead of raising NotFoundException.
-  - ``commands.run(background=True)`` is rejected loudly: no current caller
-    uses it (bash_tool detaches via nohup inside the command itself), and a
-    fake handle would be worse than an honest error.
-
-Workspace durability: every container mounts the shared named volume
-``LOCAL_SANDBOX_VOLUME`` at ``/workspace``, so files survive container
-recreation (kill → next acquire starts a fresh container).
+Divergences are intentional: set timeout is a validated no-op, beta pause
+stops the container, remove is idempotent, and background runs are rejected.
+Files survive recreation on the shared workspace volume.
 """
 
 from __future__ import annotations
@@ -118,7 +84,7 @@ def _raise_filetool_error(op: str, path: str, exit_code: int, stderr: str) -> No
 
 
 def _tar_bytes(name: str, content: bytes) -> bytes:
-    """Build an in-memory single-file tar for `docker cp - <container>:<dir>`."""
+    """Build an in-memory single-file tar for docker cp upload."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as tar:
         info = tarfile.TarInfo(name=name)
@@ -144,12 +110,10 @@ def _kill_process_group(pid: int) -> None:
 
 
 def container_name_for(user_id: str) -> str:
-    """Return the Docker container name for a user's local sandbox.
+    """Return the Docker container name for a user local sandbox.
 
-    Container names only allow ``[a-zA-Z0-9][a-zA-Z0-9_.-]*``; user ids are not
-    guaranteed to fit, so anything else is collapsed to ``-``. A short digest
-    suffix keeps distinct users from colliding after sanitization — sharing a
-    container would be cross-user workspace contamination.
+    Unsafe characters collapse to dashes with a short digest suffix so two users
+    can never share a container after sanitization.
     """
     clean = re.sub(r"[^a-zA-Z0-9_.-]+", "-", user_id).strip("-.") or "user"
     if clean != user_id:
@@ -181,12 +145,10 @@ async def _spawn_process(
 
 
 class LocalDockerSandbox:
-    """Per-user sandbox backed by `docker exec` against a sibling container.
+    """Per-user sandbox backed by docker exec against a sibling container.
 
-    One instance per user per API process (see :func:`get_local_sandbox`).
-    Instances hold no durable state — everything lives in the Docker daemon
-    and the shared workspace volume — so a restarted API process simply
-    re-inspects and reuses (or recreates) containers on demand.
+    One instance per user per process holding no durable state, so a restarted
+    process re-inspects and recreates containers on demand.
     """
 
     def __init__(
@@ -221,7 +183,7 @@ class LocalDockerSandbox:
     # ── low-level docker plumbing ────────────────────────────────────────
 
     async def _run_docker(self, *args: str, stdin: bytes | None = None) -> tuple[int, bytes, str]:
-        """Run `docker <args>` on the host; return (exit_code, stdout_bytes, stderr_text)."""
+        """Run docker with the given args on the host and return exit code and output."""
         proc = await _spawn_process(["docker", *args], stdin=stdin)
         stdout, stderr = await proc.communicate(stdin)
         return proc.returncode or 0, stdout, stderr.decode("utf-8", errors="replace")
@@ -234,7 +196,7 @@ class LocalDockerSandbox:
         envs: dict[str, str] | None = None,
         cwd: str | None = None,
     ) -> list[str]:
-        """Build `docker exec ... <container> <cmd_args>` argv (never a shell)."""
+        """Build docker exec argv for a container command, never a shell string."""
         argv = ["exec"]
         if user:
             argv += ["--user", user]
@@ -275,13 +237,10 @@ class LocalDockerSandbox:
         )
 
     async def ensure_started(self) -> None:
-        """Start the user's container, creating it on first ever acquire.
+        """Start the user container, creating it on first acquire.
 
-        Idempotent: a running container is left untouched, a stopped one is
-        started (after beta_pause or a manual `docker stop`), a missing one is
-        created from the lightweight image with the shared workspace volume
-        mounted. Bounded end-to-end so a cold image pull can't stall the agent
-        indefinitely.
+        Idempotent across running, stopped, and missing states; bounded so a cold
+        image pull cannot stall the agent indefinitely.
         """
         async with self._start_lock, asyncio.timeout(LOCAL_SANDBOX_START_TIMEOUT_SECONDS):
             state = await self._container_state()
@@ -322,11 +281,9 @@ class LocalDockerSandbox:
         )
 
     async def is_running(self, request_timeout: float | None = None) -> bool:
-        """True while the container exists and runs. Missing ⇒ False.
+        """Return True while the container exists and runs, False when missing.
 
-        ``request_timeout`` is accepted for interface parity with e2b and
-        ignored: callers already bound this externally (the lifecycle health
-        probe wraps it in ``asyncio.wait_for``).
+        The request timeout arg exists for interface parity only and is ignored.
         """
         del request_timeout
         try:
@@ -341,12 +298,9 @@ class LocalDockerSandbox:
         return state.running
 
     async def set_timeout(self, timeout: float) -> None:
-        """Validated no-op: local containers have no server-side kill timer.
+        """Validate the timeout as a no-op; local containers have no kill timer.
 
-        Interface parity with e2b — the lifecycle calls this on reuse to keep
-        an actively-used cloud sandbox alive. Nothing expires server-side here;
-        the container persists until ``kill()``, the compose restart policy, or
-        the host goes down.
+        Parity with E2B only: the container persists until kill or host shutdown.
         """
         if float(timeout) <= 0:
             raise ValueError(f"timeout must be positive, got {timeout}")
@@ -379,7 +333,7 @@ class LocalDockerSandbox:
     # ── commands ─────────────────────────────────────────────────────────
 
     class CommandsFacade:
-        """`sbx.commands.run(...)` namespace."""
+        """Namespace for the commands run entrypoint."""
 
         def __init__(self, sandbox: LocalDockerSandbox) -> None:
             self._sandbox = sandbox
@@ -423,13 +377,10 @@ class LocalDockerSandbox:
         on_stderr: Callable[[str], None] | None = None,
         timeout: float | None = 60,
     ) -> CommandResult:
-        """Run `cmd` in the container via `/bin/bash -l -c` (e2b parity).
+        """Run a command in the container through a login shell.
 
-        Streams decoded chunks to ``on_stdout``/``on_stderr`` as they arrive.
-        Non-zero exits raise ``CommandExitException`` carrying the captured
-        output (the tools rely on this to treat failing commands as results);
-        exceeding ``timeout`` kills the whole process group and raises
-        ``TimeoutException``. ``None`` or ``0`` disables the deadline.
+        Non-zero exits raise CommandExitException with captured output; exceeding
+        the timeout kills the process group and raises TimeoutException.
         """
         if background:
             raise NotImplementedError(
@@ -490,17 +441,13 @@ class LocalDockerSandbox:
     # ── files ────────────────────────────────────────────────────────────
 
     class FilesFacade:
-        """`sbx.files.*` namespace."""
+        """Namespace for the files entrypoints."""
 
         def __init__(self, sandbox: LocalDockerSandbox) -> None:
             self._sandbox = sandbox
 
         async def read(self, path: str, format: str = "text") -> str | bytes:
-            """Read a file through `cat` (byte-exact, binary-safe).
-
-            Missing paths raise NotFoundException; any other failure is a loud
-            LocalSandboxError rather than a silent empty read.
-            """
+            """Read a file byte-exact; missing paths raise NotFoundException."""
             if format not in ("text", "bytes"):
                 raise ValueError(f"unsupported read format: {format!r}")
             exit_code, stdout, stderr = await self._sandbox._exec_capture(["cat", "--", path])
@@ -509,11 +456,9 @@ class LocalDockerSandbox:
             return stdout.decode("utf-8", errors="replace") if format == "text" else stdout
 
         async def write(self, path: str, data: str | bytes) -> WriteInfo:
-            """Write content via one-file tar piped through `docker cp`.
+            """Write content via tar stream; parents are created first like E2B.
 
-            Creates the parent directory first (matches e2b's auto-mkdir; the
-            canary and run-log writes depend on it). Bytes ride as a tar
-            stream on stdin — never through a shell, so any content is safe.
+            Content never passes through a shell, so any bytes are safe.
             """
             if isinstance(data, str):
                 data = data.encode("utf-8")
@@ -552,24 +497,22 @@ class LocalDockerSandbox:
             return await self.get_info(new_path)
 
         async def remove(self, path: str) -> None:
-            """Idempotent delete (`rm -rf`)."""
+            """Delete a path idempotently; missing paths succeed."""
             exit_code, _, stderr = await self._sandbox._exec_capture(["rm", "-rf", "--", path])
             if exit_code != 0:
                 _raise_filetool_error("files.remove", path, exit_code, stderr)
 
         async def make_dir(self, path: str) -> bool:
-            """Create ``path`` and any missing parents. Always True."""
+            """Create a path and any missing parents, always returning True."""
             exit_code, _, stderr = await self._sandbox._exec_capture(["mkdir", "-p", "--", path])
             if exit_code != 0:
                 _raise_filetool_error("files.make_dir", path, exit_code, stderr)
             return True
 
         async def get_info(self, path: str) -> EntryInfo:
-            """Stat an entry into an e2b EntryInfo (naive-UTC modified_time).
+            """Stat an entry into an E2B EntryInfo with naive UTC modified time.
 
-            ``modified_time`` is deliberately naive UTC — e2b's protobuf
-            Timestamp.ToDatetime() behaves the same, and ``atomic_write``
-            re-tags UTC before computing epochs.
+            Naive matches the E2B timestamp behavior callers already expect.
             """
             exit_code, stdout, stderr = await self._sandbox._exec_capture(
                 ["stat", "-L", "-c", _STAT_FORMAT, "--", path]

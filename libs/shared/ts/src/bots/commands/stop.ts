@@ -7,7 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { wideLog } from "../utils/wide-events";
+import { reportCommandFailure } from "../utils/commands";
 
 /** `/stop` command definition. */
 export const stopCommand: BotCommand = {
@@ -16,11 +16,17 @@ export const stopCommand: BotCommand = {
 
   async execute({ gaia, target, ctx }: CommandExecuteParams): Promise<void> {
     try {
-      await gaia.resetSession(ctx.platform, ctx.platformUserId, ctx.channelId);
+      await gaia.resetSession(
+        ctx.platform,
+        ctx.platformUserId,
+        ctx.channelId,
+        ctx.isDm,
+      );
       await target.sendEphemeral("⏹️ Stopped. Starting a new conversation.");
     } catch (error) {
-      wideLog.error("stop_command_error", undefined, error);
-      await target.sendEphemeral("❌ Failed to stop. Please try again.");
+      await target.sendEphemeral(
+        reportCommandFailure("reset_session", error, ctx),
+      );
     }
   },
 };

@@ -23,7 +23,7 @@ export default function GeneratedImageSheet({
         prompt: imageData.prompt,
         improved_prompt: imageData.improvedPrompt,
       }
-    : { url: "" };
+    : { url: "", prompt: "" };
 
   return (
     <Sheet open={openImage} onOpenChange={setOpenImage}>
@@ -36,6 +36,7 @@ export default function GeneratedImageSheet({
               fill={true}
               src={imageData.src}
               objectFit="contain"
+              sizes="(max-width: 640px) 100vw, 640px"
             />
           )}
         </div>

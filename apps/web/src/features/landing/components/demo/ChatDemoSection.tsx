@@ -18,6 +18,7 @@ import Link from "next/link";
 import {
   forwardRef,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -167,6 +168,57 @@ const OgImage = memo(function OgImage() {
     />
   );
 });
+
+interface DemoLoadingIndicatorProps {
+  conversationId: string;
+  visible: boolean;
+  icon: ReactNode;
+  text: string;
+  textKey: number;
+}
+
+/** Thinking row with animated label swaps; the boundary stays mounted so exit animations can run. */
+function DemoLoadingIndicator({
+  conversationId,
+  visible,
+  icon,
+  text,
+  textKey,
+}: DemoLoadingIndicatorProps) {
+  return (
+    <AnimatePresence mode="wait">
+      {visible && (
+        <m.div
+          key={`loading-${conversationId}-${textKey}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={tx}
+          className="mb-4 flex items-center gap-3"
+        >
+          {icon ?? <MiniWaveSpinner />}
+          <AnimatePresence mode="wait">
+            <m.span
+              key={textKey}
+              variants={slideUp}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={tx}
+              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
+              }}
+            >
+              {text}
+            </m.span>
+          </AnimatePresence>
+        </m.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 function ChatDemoWindow() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
@@ -635,37 +687,13 @@ function ChatDemoWindow() {
                     )}
 
                     {/* Loading indicator */}
-                    <AnimatePresence mode="wait">
-                      {showLoading && (
-                        <m.div
-                          key={`loading-${uc.id}-${loadingKey}`}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -6 }}
-                          transition={tx}
-                          className="mb-4 flex items-center gap-3"
-                        >
-                          {toolIcon ?? <MiniWaveSpinner />}
-                          <AnimatePresence mode="wait">
-                            <m.span
-                              key={loadingKey}
-                              variants={slideUp}
-                              initial="initial"
-                              animate="animate"
-                              exit="exit"
-                              transition={tx}
-                              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
-                              style={{
-                                backgroundImage:
-                                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
-                              }}
-                            >
-                              {loadingText}
-                            </m.span>
-                          </AnimatePresence>
-                        </m.div>
-                      )}
-                    </AnimatePresence>
+                    <DemoLoadingIndicator
+                      conversationId={uc.id}
+                      visible={showLoading}
+                      icon={toolIcon}
+                      text={loadingText}
+                      textKey={loadingKey}
+                    />
 
                     {/* Bot row: tool calls → text → final card */}
                     <div

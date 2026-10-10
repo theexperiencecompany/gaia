@@ -50,11 +50,11 @@ from app.services.analytics_service import AnalyticsEvents, capture_context_even
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
-router = APIRouter(prefix="/skills", tags=["skills"])
+router = APIRouter(prefix="/skills")
 
 
 def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -65,7 +65,7 @@ def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
 
 async def _validate_target(user_id: str, target: str) -> None:
     """Reject a target that isn't the executor or one of the user's connected
-    integration subagents. Keeps the UI from scoping a skill to something the
+    integrations. Keeps the UI from scoping a skill to something the
     agent can never run."""
     targets = await get_skill_targets(user_id)
     allowed = {t.value for t in targets}
@@ -84,7 +84,7 @@ async def list_skill_targets_endpoint(
     user_id: Annotated[str, Depends(_get_user_id)],
 ) -> SkillTargetsResponse:
     """List the targets a skill can run in: the executor plus the user's
-    connected integration subagents."""
+    connected integrations."""
     log.set(operation="list_skill_targets")
     targets = await get_skill_targets(user_id)
     log.set(result_count=len(targets), outcome="success")
@@ -102,7 +102,7 @@ async def list_builtin_skills_endpoint(
     connected_ids = await get_connected_integration_ids(user_id)
 
     def _is_available(subagent_id: str) -> bool:
-        # The executor and non-integration builtin subagents (docgen, knowledge
+        # The executor and non-integration builtins (docgen, knowledge
         # guide) are always available; integration-backed ones need a connection.
         if subagent_id == EXECUTOR_SUBAGENT_ID:
             return True
@@ -356,6 +356,7 @@ async def update_skill_endpoint(
                 detail=f"Skill {skill_id} not found",
             )
         log.set(skill_name=updated.name, outcome="success")
+        capture_context_event(AnalyticsEvents.SKILL_UPDATED)
         return updated
     except HTTPException:
         raise
@@ -453,6 +454,8 @@ async def enable_skill_endpoint(
     try:
         success = await enable_skill(user_id, skill_id)
         log.set(outcome="success")
+        if success:
+            capture_context_event(AnalyticsEvents.SKILL_ENABLED)
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=True)
     except Exception as e:
         log.error(
@@ -478,6 +481,8 @@ async def disable_skill_endpoint(
     try:
         success = await disable_skill(user_id, skill_id)
         log.set(outcome="success")
+        if success:
+            capture_context_event(AnalyticsEvents.SKILL_DISABLED)
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=False)
     except Exception as e:
         log.error(

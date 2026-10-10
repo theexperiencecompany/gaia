@@ -1,20 +1,33 @@
-"""
-Provider Metadata Service
+"""Fetch and store provider-specific user metadata (e.g., username) when OAuth integrations connect.
 
-Service for fetching and storing provider-specific user metadata (e.g., username)
-when OAuth integrations are connected. This metadata is used to enhance agent
-system prompts with user context.
+Used to enhance agent system prompts with user context.
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
 from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
-from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from app.services.composio.composio_service import ComposioService
+
+
+def get_composio_service() -> "ComposioService":
+    """Resolve the Composio service at call time rather than at module import.
+
+    Importing app.services.composio.composio_service (Composio SDK,
+    app.patches, every custom tool) costs seconds, and this module is imported
+    by things like the agent context sections that shouldn't pay for it.
+    """
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- defers the Composio SDK import chain out of module import
+        get_composio_service as _get_composio_service,
+    )
+
+    return _get_composio_service()
 
 
 def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
@@ -119,8 +132,11 @@ async def fetch_tool_response(
 
 
 async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[str, str] | None:
-    """Fetch user info from a provider, calling each tool in metadata_config and
-    extracting its configured variables into a name -> value dict (or None)."""
+    """Fetch user info from a provider by calling each tool in metadata_config.
+
+    Extracts each tool's configured variables into a name -> value dict, or
+    None if nothing could be extracted.
+    """
     log.set(provider_metadata_user_id=user_id, provider_metadata_integration=integration_id)
     integration = get_integration_by_id(integration_id)
 
@@ -130,9 +146,7 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
 
     metadata: dict[str, str] = {}
 
-    # Iterate through each tool configuration
     for tool_config in integration.metadata_config.tools:
-        # Fetch response from this tool
         response = await fetch_tool_response(user_id, tool_config.tool, integration_id)
 
         if not response:

@@ -25,10 +25,10 @@ ts/                  - @gaia/shared TypeScript package
 
 ```bash
 # Lint Python
-nx lint shared-python          # runs: uvx ruff check .
+nx lint shared-python          # runs: uvx ruff@0.14.13 check .
 
 # Format Python
-nx format shared-python        # runs: uvx ruff format .
+nx format shared-python        # runs: uvx ruff@0.14.13 format .
 
 # TypeScript has no separate build — imported directly via path alias
 ```

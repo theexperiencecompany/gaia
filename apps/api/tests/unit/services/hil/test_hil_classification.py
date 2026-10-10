@@ -6,19 +6,23 @@ Two invariants carry the security weight, and both are attacked here:
   must resolve to *destructive*. A classifier that returns False when it is broken is a
   classifier that runs destructive tools unattended.
 * **The MCP hint escalates only.** An untrusted MCP server may flag danger but must never
-  clear it: ``destructiveHint=False`` and ``readOnlyHint=True`` mean "defer", not "safe".
+  clear it: destructiveHint=False and readOnlyHint=True mean "defer", not "safe".
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
+from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
+    _classify_with_llm,
     _ClassifyResult,
     is_tool_destructive,
     mcp_destructive_hint,
 )
+from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import make_tool
@@ -215,3 +219,48 @@ class TestRegistryAndCache:
         assert persisted.is_destructive is True
         assert persisted.tool_name == "wipe_db"
         registry.mark_tool_destructive.assert_called_once_with("wipe_db", True)
+
+
+class TestTheClassifierCallItself:
+    """The verdict is cached per tool per user forever, so this call runs exactly once.
+
+    A mislabelled call lands its COGS on the wrong lane, and an unbounded one
+    holds the first gated call of a tool open for as long as the provider takes.
+    """
+
+    async def test_the_call_is_labelled_bounded_and_deliberately_unattributed(
+        self,
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(
+                return_value=_ClassifyResult(is_destructive=True, rationale="it deletes")
+            ),
+        ) as llm:
+            result = await _classify_with_llm("delete_file", "Deletes a file.")
+
+        assert result.is_destructive is True
+        schema, prompt = llm.await_args.args
+        assert schema is _ClassifyResult
+        assert prompt == TOOL_CLASSIFY_PROMPT.format(
+            name="delete_file", description="Deletes a file."
+        )
+        assert llm.await_args.kwargs["label"] == "hil_tool_classification"
+        assert llm.await_args.kwargs["config"] == SILENT_LLM_CONFIG
+        assert llm.await_args.kwargs["options"] == StructuredCallOptions(
+            timeout=HIL_LLM_TIMEOUT_SECONDS
+        )
+
+    async def test_a_tool_with_no_description_says_so_rather_than_sending_nothing(
+        self,
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=False)),
+        ) as llm:
+            await _classify_with_llm("mystery_tool", "")
+
+        _schema, prompt = llm.await_args.args
+        assert prompt == TOOL_CLASSIFY_PROMPT.format(
+            name="mystery_tool", description="(none provided)"
+        )

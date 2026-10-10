@@ -1,13 +1,13 @@
 """Property-based never-raises tests for string parsers.
 
 Each parser is documented as having a defined outcome on arbitrary input
-(return a value or raise a specific ``ValueError``). Hypothesis sweeps all of
-``str`` — including the strings no unit test would think to write — to prove
+(return a value or raise a specific ValueError). Hypothesis sweeps all of
+str — including the strings no unit test would think to write — to prove
 no unexpected exception type can leak out of these boundaries.
 
 The fail-case each property guards: a parser change that lets a new exception
-escape (a raw ``httpx`` error, a ``ZoneInfo`` lookup failure, a bare
-``AttributeError`` on a malformed URL) would surface here as an unexpected
+escape (a raw httpx error, a ZoneInfo lookup failure, a bare
+AttributeError on a malformed URL) would surface here as an unexpected
 exception type.
 """
 
@@ -24,7 +24,7 @@ DEFINED_EXCEPTIONS = (ValueError,)
 
 
 class TestParseHttpHostPortNeverRaisesUnexpectedly:
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     @given(url=st.text())
     def test_arbitrary_text_yields_tuple_or_value_error(self, url: str) -> None:
         try:
@@ -34,7 +34,7 @@ class TestParseHttpHostPortNeverRaisesUnexpectedly:
         assert isinstance(host, str) and host != ""
         assert isinstance(port, int) and port > 0
 
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(
         scheme=st.sampled_from(["http", "https"]),
         host=st.text(alphabet=string.ascii_lowercase + string.digits, min_size=1, max_size=50),
@@ -52,7 +52,7 @@ class TestParseHttpHostPortNeverRaisesUnexpectedly:
 
 
 class TestAssertSafeUrlShapeNeverRaisesUnexpectedly:
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     @given(url=st.text())
     def test_arbitrary_text_returns_none_or_value_error(self, url: str) -> None:
         try:
@@ -63,7 +63,7 @@ class TestAssertSafeUrlShapeNeverRaisesUnexpectedly:
 
 
 class TestTimezoneParseNeverRaises:
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     @given(name=st.text())
     def test_arbitrary_text_parses_or_falls_back(self, name: str) -> None:
         # The documented contract: parsing must never raise into
@@ -73,13 +73,13 @@ class TestTimezoneParseNeverRaises:
         if tz.is_utc:
             assert tz.tzinfo is UTC
 
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     @given(name=st.text())
     def test_any_timezone_yields_aware_datetimes(self, name: str) -> None:
         instant = Timezone.parse(name).localize(datetime(2026, 6, 13, tzinfo=UTC))
         assert instant.tzinfo is not None
 
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     @given(name=st.text())
     def test_try_parse_never_raises(self, name: str) -> None:
         result: Any = Timezone.try_parse(name)

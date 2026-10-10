@@ -3,7 +3,14 @@ import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -23,6 +30,7 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
 import { pinMessage } from "../../api/chat-api";
@@ -32,10 +40,11 @@ import {
   useComposerStore,
   usePendingPrompt,
 } from "../../stores/composer-store";
-import type { ReplyToMessageData } from "../../types";
 import type { AttachmentFile } from "../composer/attachment-preview";
 import { Composer } from "../composer/composer";
 import { ChatMessage } from "./chat-message";
+import type { SelectedWorkflow } from "./composer-draft";
+import { composerDraftReducer, initialComposerDraft } from "./composer-draft";
 import { DateSeparator } from "./date-separator";
 import { EmptyChatState } from "./empty-chat-state";
 import type {
@@ -43,6 +52,7 @@ import type {
   MessageActionSheetRef,
 } from "./message-action-sheet";
 import { MessageActionSheet } from "./message-action-sheet";
+import { PaywallNotice } from "./paywall-notice";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 
 // ---------------------------------------------------------------------------
@@ -208,32 +218,31 @@ export function ChatScreenContent({
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [inputValue, setInputValue] = useState("");
+  const [draft, dispatchDraft] = useReducer(
+    composerDraftReducer,
+    initialComposerDraft,
+  );
+  const {
+    inputValue,
+    lastUserMessage,
+    selectedTool,
+    selectedWorkflow,
+    replyingTo,
+  } = draft;
+
   const pendingPrompt = usePendingPrompt();
   const consumePendingPrompt = useComposerStore(
     (state) => state.consumePendingPrompt,
   );
   useEffect(() => {
     if (pendingPrompt) {
-      setInputValue(pendingPrompt);
+      dispatchDraft({ type: "inputChanged", value: pendingPrompt });
       consumePendingPrompt();
     }
   }, [pendingPrompt, consumePendingPrompt]);
-  const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
     getRelevantThinkingMessage(""),
   );
-
-  const [selectedTool, setSelectedTool] = useState<{
-    name: string;
-    category: string;
-  } | null>(null);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-
-  const [replyingTo, setReplyingTo] = useState<ReplyToMessageData | null>(null);
 
   const actionSheetRef = useRef<MessageActionSheetRef>(null);
   const [actionConfig, setActionConfig] = useState<MessageActionConfig | null>(
@@ -247,10 +256,7 @@ export function ChatScreenContent({
 
   // Clear input state when switching conversations
   useEffect(() => {
-    setInputValue("");
-    setReplyingTo(null);
-    setSelectedTool(null);
-    setSelectedWorkflow(null);
+    dispatchDraft({ type: "conversationSwitched" });
   }, [activeChatId]);
 
   useEffect(() => {
@@ -260,7 +266,8 @@ export function ChatScreenContent({
         () => {
           setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
         },
-        2000 + Math.random() * 1000,
+        // cosmetic jitter on the thinking-message rotation; nothing security-relevant
+        2000 + Math.random() * 1000, // NOSONAR typescript:S2245
       );
       return () => clearInterval(interval);
     }
@@ -269,15 +276,14 @@ export function ChatScreenContent({
 
   const displayMessage = progress || thinkingMessage;
 
-  // Follow the stream: tokens grow the last item WITHOUT changing the list
-  // length, so keying on messages (any change) is required. Throttled so a
-  // fast token rate doesn't flood scrollToEnd calls, and only while the user
-  // is parked at the bottom — scrolling up pauses follow, like web.
+  // Follow the stream: tokens grow the last item without changing list length,
+  // so keying on messages is required; throttled to 60ms and only while parked
+  // at the bottom (scrolling up pauses follow, like web).
   const lastFollowTsRef = useRef(0);
   useEffect(() => {
     if (!isAtBottomRef.current) return;
     const now = Date.now();
-    if (now - lastFollowTsRef.current < 120) return;
+    if (now - lastFollowTsRef.current < 60) return;
     lastFollowTsRef.current = now;
     flatListRef.current?.scrollToEnd({ animated: false });
   }, [messages, flatListRef]);
@@ -319,17 +325,20 @@ export function ChatScreenContent({
 
   // Populate the input rather than immediately sending, matching web behaviour
   const handleFollowUpAction = useCallback((action: string) => {
-    setInputValue(action);
+    dispatchDraft({ type: "inputChanged", value: action });
   }, []);
 
   const handleReply = useCallback((message: Message) => {
-    setReplyingTo({
-      id: message.id,
-      content:
-        message.text.length > 150
-          ? `${message.text.slice(0, 150)}...`
-          : message.text,
-      role: message.isUser ? "user" : "assistant",
+    dispatchDraft({
+      type: "replySelected",
+      reply: {
+        id: message.id,
+        content:
+          message.text.length > 150
+            ? `${message.text.slice(0, 150)}...`
+            : message.text,
+        role: message.isUser ? "user" : "assistant",
+      },
     });
   }, []);
 
@@ -364,7 +373,6 @@ export function ChatScreenContent({
 
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
-      setLastUserMessage(text);
       void sendMessage(text, {
         replyToMessage: replyingTo,
         selectedWorkflow: selectedWorkflow
@@ -374,55 +382,47 @@ export function ChatScreenContent({
         toolCategory: selectedTool?.category ?? null,
         attachments,
       });
-      setInputValue("");
-      setSelectedTool(null);
-      setSelectedWorkflow(null);
-      setReplyingTo(null);
+      dispatchDraft({ type: "messageSent", text });
     },
     [sendMessage, replyingTo, selectedWorkflow, selectedTool],
   );
 
   const handleToolSelected = useCallback(
     (toolName: string, toolCategory: string) => {
-      setSelectedTool({ name: toolName, category: toolCategory });
-      setSelectedWorkflow(null);
+      dispatchDraft({
+        type: "toolSelected",
+        tool: { name: toolName, category: toolCategory },
+      });
     },
     [],
   );
 
-  const handleWorkflowSelected = useCallback(
-    (workflow: { id: string; title: string }) => {
-      setSelectedWorkflow(workflow);
-      setSelectedTool(null);
-    },
-    [],
-  );
+  const handleWorkflowSelected = useCallback((workflow: SelectedWorkflow) => {
+    dispatchDraft({ type: "workflowSelected", workflow });
+  }, []);
 
   const handleCommand = useCallback(
     (command: string) => {
       if (command === "new") {
         clearActiveMessages();
         setActiveChatId(null);
-        setInputValue("");
-        setLastUserMessage("");
+        dispatchDraft({ type: "newChatCommand" });
         router.replace("/");
         return true;
       }
 
       if (command === "clear") {
         clearActiveMessages();
-        setInputValue("");
-        setLastUserMessage("");
-        setReplyingTo(null);
-        setSelectedTool(null);
-        setSelectedWorkflow(null);
+        dispatchDraft({ type: "clearCommand" });
         return true;
       }
 
       if (command === "help") {
-        setInputValue(
-          "Available commands: /new, /clear, /help, /workflows, /integrations, /notifications, /settings",
-        );
+        dispatchDraft({
+          type: "inputChanged",
+          value:
+            "Available commands: /new, /clear, /help, /workflows, /integrations, /notifications, /settings",
+        });
         return true;
       }
 
@@ -588,7 +588,7 @@ export function ChatScreenContent({
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
-                  tintColor="#00bbff"
+                  tintColor={colors.brand}
                 />
               }
               onLoad={() => {
@@ -611,21 +611,24 @@ export function ChatScreenContent({
             paddingBottom: insets.bottom,
           }}
         >
+          <PaywallNotice />
           <Composer
             onSend={handleSend}
             value={inputValue}
-            onChangeText={setInputValue}
+            onChangeText={(value) =>
+              dispatchDraft({ type: "inputChanged", value })
+            }
             onCommand={handleCommand}
             isStreaming={isTyping}
             onCancel={cancelStream}
             selectedTool={selectedTool}
-            onRemoveTool={() => setSelectedTool(null)}
+            onRemoveTool={() => dispatchDraft({ type: "toolRemoved" })}
             selectedWorkflow={selectedWorkflow}
-            onRemoveWorkflow={() => setSelectedWorkflow(null)}
+            onRemoveWorkflow={() => dispatchDraft({ type: "workflowRemoved" })}
             onToolSelected={handleToolSelected}
             onWorkflowSelected={handleWorkflowSelected}
             replyTo={replyingTo}
-            onRemoveReply={() => setReplyingTo(null)}
+            onRemoveReply={() => dispatchDraft({ type: "replyRemoved" })}
           />
         </View>
       </View>

@@ -4,7 +4,7 @@ GATHER_CONTEXT_DOC = """
 Gather rich, comprehensive context from all the user's connected integrations for a specific date.
 
 This tool queries all connected providers in parallel and fetches detailed structured data
-from each — schedule, communications, tasks, and more.
+from each: schedule, communications, tasks, and more.
 
 **Use this when the user asks:**
 - "What's my day looking like?"
@@ -18,19 +18,19 @@ from each — schedule, communications, tasks, and more.
 
 | Category | Providers |
 |----------|-----------|
-| Calendar | calendar (Google Calendar — events, attendees, video links), google_meet (upcoming Meet calls) |
+| Calendar | calendar (Google Calendar: events, attendees, video links), google_meet (upcoming Meet calls) |
 | Email | gmail (inbox unread, snippets, starred, important) |
 | Project Mgmt | linear (issues, priority), asana (tasks), trello (cards), clickup (tasks) |
 | Task Mgmt | google_tasks (with due dates), todoist (with priority) |
 | Code | github (issues, PRs, review requests, notifications) |
-| Communication | slack (messages, @mentions, unread), teams (Microsoft Teams — teams, chats, unread), reddit (subscriptions, unread messages) |
+| Communication | slack (messages, @mentions, unread), teams (Microsoft Teams: teams, chats, unread), reddit (subscriptions, unread messages) |
 | Social | twitter (profile, recent tweets), instagram (profile, recent media), linkedin (profile, recent posts) |
 | Documents | notion (recent pages), google_docs (recent docs), google_sheets (recent spreadsheets) |
 | CRM | hubspot (recent contacts and deals) |
 | Database | airtable (bases and tables) |
 | Maps | google_maps (API connectivity, available services) |
 
-Each provider is self-contained — connected integrations are queried in parallel.
+Each provider is self-contained; connected integrations are queried in parallel.
 
 **What it returns:**
 Structured data per provider (events, emails, tasks, messages, etc.)

@@ -13,7 +13,7 @@ import {
   Timer02Icon,
 } from "@icons";
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FixedSizeList as List,
   type ListChildComponentProps,
@@ -57,8 +57,207 @@ function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
   );
 }
 
+/**
+ * Bulk actions bar shown above the list while emails are selected.
+ */
+function SelectionToolbar({
+  selectedCount,
+  onClearSelections,
+  onMarkAsRead,
+  onMarkAsUnread,
+  onStar,
+  onArchive,
+  onTrash,
+}: {
+  selectedCount: number;
+  onClearSelections: () => void;
+  onMarkAsRead: () => void;
+  onMarkAsUnread: () => void;
+  onStar: () => void;
+  onArchive: () => void;
+  onTrash: () => void;
+}) {
+  return (
+    <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-zinc-900 px-1 py-1 text-white backdrop-blur-xl">
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          color="default"
+          variant="flat"
+          onPress={onClearSelections}
+          startContent={<Cancel01Icon size={16} />}
+        >
+          Clear selection
+        </Button>
+        <span className="font-medium">{selectedCount} selected</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Tooltip content="Mark as read">
+          <Button
+            size="sm"
+            color="default"
+            variant="light"
+            onPress={onMarkAsRead}
+            isIconOnly
+          >
+            <CheckmarkSquare03Icon size={16} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Mark as unread">
+          <Button
+            size="sm"
+            color="default"
+            variant="light"
+            onPress={onMarkAsUnread}
+            isIconOnly
+          >
+            <SquareIcon size={16} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Star">
+          <Button
+            size="sm"
+            color="warning"
+            variant="light"
+            onPress={onStar}
+            isIconOnly
+          >
+            <StarIcon size={16} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Archive">
+          <Button
+            size="sm"
+            color="default"
+            variant="light"
+            onPress={onArchive}
+            isIconOnly
+          >
+            <Archive01Icon size={16} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Move to trash">
+          <Button
+            size="sm"
+            color="danger"
+            variant="light"
+            onPress={onTrash}
+            isIconOnly
+          >
+            <Delete02Icon size={16} />
+          </Button>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Full-page error state shown when the inbox fails to load.
+ */
+function LoadErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-center">
+      <div>
+        <h3 className="text-lg font-medium text-white">
+          Failed to load emails
+        </h3>
+        <p className="mt-1 text-sm text-gray-400">
+          Check your internet connection and try again
+        </p>
+      </div>
+      <Button color="primary" variant="flat" onPress={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Hover action buttons overlaid on a desktop email row.
+ */
+function EmailRowActions({
+  email,
+  onToggleStar,
+  onArchive,
+  onTrash,
+  onToggleRead,
+}: {
+  email: EmailData;
+  onToggleStar: (e: React.MouseEvent) => void;
+  onArchive: (e: React.MouseEvent) => void;
+  onTrash: (e: React.MouseEvent) => void;
+  onToggleRead: (e: React.MouseEvent) => void;
+}) {
+  const isUnread = !!email?.labelIds?.includes("UNREAD");
+  const isStarred = !!email?.labelIds?.includes("STARRED");
+
+  return (
+    <div className="absolute right-0 z-20 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
+      {[
+        {
+          icon: StarIcon,
+          label: "Star",
+          iconProps: {
+            color: "orange",
+            fill: isStarred ? "orange" : "transparent",
+          },
+          onClick: onToggleStar,
+        },
+        {
+          icon: Archive01Icon,
+          label: "Archive",
+          onClick: onArchive,
+        },
+        {
+          icon: Delete02Icon,
+          label: "Move to Trash",
+          iconProps: { color: "red" },
+          onClick: onTrash,
+        },
+        {
+          icon: isUnread ? CheckmarkSquare03Icon : SquareIcon,
+          label: isUnread ? "Mark as Read" : "Mark as Unread",
+          onClick: onToggleRead,
+        },
+        {
+          icon: Timer02Icon,
+          label: "Set Reminder",
+          onClick: (e: React.MouseEvent) => e.stopPropagation(),
+        },
+      ].map(({ icon: Icon, label, iconProps, onClick }) => (
+        <Tooltip
+          key={label}
+          content={label}
+          placement="top"
+          className="z-50"
+          color="foreground"
+        >
+          <button
+            type="button"
+            className="flex h-6 w-6 cursor-pointer items-center justify-center"
+            onClick={onClick}
+          >
+            <Icon size={19} {...iconProps} />
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
 export default function MailsPage() {
   const isMobileScreen: boolean = useMediaQuery("(max-width: 600px)");
+  // react-window needs a numeric pixel height; measure post-mount instead of
+  // touching `window` during server render (which crashed SSR into a full
+  // client-side fallback on every visit).
+  const [listHeight, setListHeight] = useState(600);
+  useEffect(() => {
+    const update = () => setListHeight(Math.max(300, window.innerHeight - 50));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const { toggleReadStatus: hookToggleReadStatus } = useEmailReadStatus();
   const { toggleStarStatus, archiveEmail, trashEmail } = useEmailActions();
 
@@ -138,30 +337,11 @@ export default function MailsPage() {
 
   // Show error state when emails fail to load
   if (emailsError) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-center">
-        <div>
-          <h3 className="text-lg font-medium text-white">
-            Failed to load emails
-          </h3>
-          <p className="mt-1 text-sm text-gray-400">
-            Check your internet connection and try again
-          </p>
-        </div>
-        <Button
-          color="primary"
-          variant="flat"
-          onPress={() => window.location.reload()}
-        >
-          Retry
-        </Button>
-      </div>
-    );
+    return <LoadErrorState onRetry={() => window.location.reload()} />;
   }
 
   const Row = ({ index, style }: ListChildComponentProps) => {
     const [title, setTitle] = useState("");
-    const [subtitle, setSubtitle] = useState("");
 
     if (!isItemLoaded(index)) {
       return (
@@ -188,9 +368,8 @@ export default function MailsPage() {
     const email = item.data as EmailData;
 
     const fetchSummary = (isOpen: boolean) => {
-      if (isOpen && !title && !subtitle) {
+      if (isOpen && !title) {
         setTitle(email.subject);
-        setSubtitle("Lorem ipsum");
       }
     };
 
@@ -205,11 +384,10 @@ export default function MailsPage() {
         content={
           <div className="flex w-[300px] flex-col p-1">
             <div className="text-lg leading-tight font-medium">{title}</div>
-            {/* <div>{subtitle}</div> */}
           </div>
         }
         onClose={() => {
-          return !!title && !!subtitle;
+          return !!title;
         }}
         color="foreground"
         radius="sm"
@@ -217,11 +395,19 @@ export default function MailsPage() {
         <div
           className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${email?.labelIds?.includes("UNREAD") ? "font-medium" : "font-normal text-foreground-400"} sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
           style={style}
-          onClick={() => openEmail(email)}
         >
-          {/* Add selection checkbox */}
-          <div
-            className="flex items-center justify-center px-2"
+          <button
+            type="button"
+            aria-label={`Open email: ${email.subject}`}
+            className="absolute inset-0 z-10"
+            onClick={() => openEmail(email)}
+          />
+          <button
+            type="button"
+            className="relative z-20 flex items-center justify-center px-2"
+            aria-label={
+              selectedEmails.has(email.id) ? "Deselect email" : "Select email"
+            }
             onClick={(e) => {
               e.stopPropagation();
               toggleEmailSelection(e, email.id);
@@ -232,7 +418,7 @@ export default function MailsPage() {
             ) : (
               <SquareIcon className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
             )}
-          </div>
+          </button>
 
           {isMobileScreen ? (
             <>
@@ -267,65 +453,13 @@ export default function MailsPage() {
                 />
                 {formatTime(email.time)}
               </div>
-              <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
-                {[
-                  {
-                    icon: StarIcon,
-                    label: "Star",
-                    iconProps: {
-                      color: "orange",
-                      fill: email?.labelIds?.includes("STARRED")
-                        ? "orange"
-                        : "transparent",
-                    },
-                    onClick: (e: React.MouseEvent) =>
-                      handleToggleStarStatus(e, email),
-                  },
-                  {
-                    icon: Archive01Icon,
-                    label: "Archive",
-                    onClick: (e: React.MouseEvent) =>
-                      handleArchiveEmail(e, email),
-                  },
-                  {
-                    icon: Delete02Icon,
-                    label: "Move to Trash",
-                    iconProps: { color: "red" },
-                    onClick: (e: React.MouseEvent) =>
-                      handleTrashEmail(e, email),
-                  },
-                  {
-                    icon: email?.labelIds?.includes("UNREAD")
-                      ? CheckmarkSquare03Icon
-                      : SquareIcon,
-                    label: email?.labelIds?.includes("UNREAD")
-                      ? "Mark as Read"
-                      : "Mark as Unread",
-                    onClick: (e: React.MouseEvent) =>
-                      handleToggleReadStatus(e, email),
-                  },
-                  {
-                    icon: Timer02Icon,
-                    label: "Set Reminder",
-                    onClick: (e: React.MouseEvent) => e.stopPropagation(),
-                  },
-                ].map(({ icon: Icon, label, iconProps, onClick }) => (
-                  <Tooltip
-                    key={label}
-                    content={label}
-                    placement="top"
-                    className="z-50"
-                    color="foreground"
-                  >
-                    <div
-                      className="flex h-6 w-6 cursor-pointer items-center justify-center"
-                      onClick={onClick}
-                    >
-                      <Icon size={19} {...iconProps} />
-                    </div>
-                  </Tooltip>
-                ))}
-              </div>
+              <EmailRowActions
+                email={email}
+                onToggleStar={(e) => handleToggleStarStatus(e, email)}
+                onArchive={(e) => handleArchiveEmail(e, email)}
+                onTrash={(e) => handleTrashEmail(e, email)}
+                onToggleRead={(e) => handleToggleReadStatus(e, email)}
+              />
             </>
           )}
         </div>
@@ -339,77 +473,15 @@ export default function MailsPage() {
     <div className="relative h-full w-full">
       {/* Selection toolbar */}
       {selectedEmails.size > 0 && (
-        <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-zinc-900 px-1 py-1 text-white backdrop-blur-xl">
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              color="default"
-              variant="flat"
-              onPress={clearSelections}
-              startContent={<Cancel01Icon size={16} />}
-            >
-              Clear selection
-            </Button>
-            <span className="font-medium">{selectedEmails.size} selected</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tooltip content="Mark as read">
-              <Button
-                size="sm"
-                color="default"
-                variant="light"
-                onPress={bulkMarkAsRead}
-                isIconOnly
-              >
-                <CheckmarkSquare03Icon size={16} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Mark as unread">
-              <Button
-                size="sm"
-                color="default"
-                variant="light"
-                onPress={bulkMarkAsUnread}
-                isIconOnly
-              >
-                <SquareIcon size={16} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Star">
-              <Button
-                size="sm"
-                color="warning"
-                variant="light"
-                onPress={bulkStarEmails}
-                isIconOnly
-              >
-                <StarIcon size={16} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Archive">
-              <Button
-                size="sm"
-                color="default"
-                variant="light"
-                onPress={bulkArchiveEmails}
-                isIconOnly
-              >
-                <Archive01Icon size={16} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Move to trash">
-              <Button
-                size="sm"
-                color="danger"
-                variant="light"
-                onPress={bulkTrashEmails}
-                isIconOnly
-              >
-                <Delete02Icon size={16} />
-              </Button>
-            </Tooltip>
-          </div>
-        </div>
+        <SelectionToolbar
+          selectedCount={selectedEmails.size}
+          onClearSelections={clearSelections}
+          onMarkAsRead={bulkMarkAsRead}
+          onMarkAsUnread={bulkMarkAsUnread}
+          onStar={bulkStarEmails}
+          onArchive={bulkArchiveEmails}
+          onTrash={bulkTrashEmails}
+        />
       )}
 
       <InfiniteLoader
@@ -419,7 +491,7 @@ export default function MailsPage() {
       >
         {({ onItemsRendered, ref }) => (
           <List
-            height={window.innerHeight - 50}
+            height={listHeight}
             itemCount={itemCount}
             itemSize={isMobileScreen ? 70 : 55}
             onItemsRendered={onItemsRendered}

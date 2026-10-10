@@ -1,6 +1,4 @@
-"""
-Service tests: call real create_conversation() against real MongoDB.
-"""
+"""Service tests: call real create_conversation() against real MongoDB."""
 
 from __future__ import annotations
 
@@ -9,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.utils.chat_utils import create_conversation
+from tests.factories import make_authenticated_user
 
 
 @pytest.mark.service
@@ -23,7 +22,7 @@ class TestCreateConversationReal:
         ):
             result = await create_conversation(
                 {"role": "user", "content": "Hello world"},
-                user={"user_id": "create-user-1"},
+                user=make_authenticated_user(user_id="create-user-1"),
                 selectedTool=None,
                 generate_description=False,
             )
@@ -40,13 +39,13 @@ class TestCreateConversationReal:
         ):
             r1 = await create_conversation(
                 {"role": "user", "content": "First"},
-                user={"user_id": "create-user-2"},
+                user=make_authenticated_user(user_id="create-user-2"),
                 selectedTool=None,
                 generate_description=False,
             )
             r2 = await create_conversation(
                 {"role": "user", "content": "Second"},
-                user={"user_id": "create-user-2"},
+                user=make_authenticated_user(user_id="create-user-2"),
                 selectedTool=None,
                 generate_description=False,
             )

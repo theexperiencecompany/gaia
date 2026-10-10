@@ -3,7 +3,7 @@
  * plus transcript assertions checked against the recorded events.
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 
 /** Assertions checked against the transcript events a single turn produced. */
 export interface ScenarioAssertion {
@@ -27,16 +27,28 @@ export interface ScenarioTurn {
   channelId?: string;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
+  /**
+   * Milliseconds to keep the outbound consumer alive after the reply stream
+   * closes, so this turn's proactive deliveries land in ITS events. Overrides
+   * the scenario-level {@link Scenario.settleMs}. See that field for why.
+   */
+  settleMs?: number;
 }
 
 /** A complete scenario: which platform + user, and the ordered turns. */
 export interface Scenario {
   /** Human-readable scenario name (used in reporting). */
   name: string;
-  /** Platform to emulate. */
   emulate: PlatformName;
   /** Email of the dev user to mint + link (via the dev endpoints). */
   user: string;
   /** Ordered conversation turns. */
   turns: ScenarioTurn[];
+  /**
+   * Default settle window for every turn, in milliseconds (0 = don't wait). A
+   * handoff reply closes its SSE stream on the preamble while the real answer
+   * publishes to the outbound queue seconds later; without settling, the answer
+   * lands in a later `gaia-sim` boot's unrelated transcript instead of this one.
+   */
+  settleMs?: number;
 }

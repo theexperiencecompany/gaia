@@ -1,12 +1,9 @@
-"""Live-daemon tests for LocalDockerSandbox — the real `docker exec` path.
+"""Live-daemon tests for LocalDockerSandbox: the real docker exec path.
 
-The hermetic sibling (`test_local_sandbox.py`) proves argv/exception wiring
-against fakes; these prove the actual contract against a real Docker daemon:
-commands execute, files round-trip byte-exact through tar+cp, and missing
-paths raise e2b's NotFoundException. Skipped automatically wherever the docker
-CLI is unavailable (CI sandboxes without a daemon).
-
-Each test gets its own uniquely-named container, torn down on exit.
+The hermetic sibling proves argv and exception wiring against fakes; these
+prove the actual contract against a real daemon and skip automatically where
+the docker CLI is unavailable. Each test gets its own container, torn down
+on exit.
 """
 
 from __future__ import annotations

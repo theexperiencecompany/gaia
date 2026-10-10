@@ -11,22 +11,29 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
 import pytest
 
+from app.api.v1.endpoints.bot import require_bot_api_key, router as bot_router
+from app.api.v1.middleware.logging import LoggingMiddleware
 from app.config.settings import settings
+from app.constants import error_codes
 from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
+from app.core.exception_handlers import register_exception_handlers
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
     BOT_SESSION_TOKEN_EXPIRY_MINUTES,
     create_bot_session_token,
     verify_bot_session_token,
 )
-from app.services.platform_link_service import PlatformLinkService
+import shared.py.logging as shared_logging
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -34,15 +41,16 @@ from app.services.platform_link_service import PlatformLinkService
 
 TEST_BOT_API_KEY = "test-bot-api-key-for-integration-tests"
 TEST_BOT_SESSION_SECRET = "a" * 64  # 64-char secret for JWT signing
+TEST_LOG_HASH_SECRET = "c" * 64
 TEST_USER_ID = "507f1f77bcf86cd799439011"
 TEST_PLATFORM = "discord"
 TEST_PLATFORM_USER_ID = "123456789012345678"
-TEST_USER_DOC = {
-    "_id": TEST_USER_ID,
-    "email": "botuser@example.com",
-    "name": "Bot Test User",
-    "picture": None,
-}
+TEST_USER_DOC = UserDocument(
+    id=TEST_USER_ID,
+    email="botuser@example.com",
+    name="Bot Test User",
+    picture=None,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +70,10 @@ def _bot_settings():
 
 @pytest.fixture
 def mock_platform_lookup():
-    """Mock PlatformLinkService.get_user_by_platform_id for middleware tests."""
+    """Mock the platform-id user lookup under resolve_bot_user."""
     with patch.object(
-        PlatformLinkService,
-        "get_user_by_platform_id",
+        user_repository,
+        "get_by_platform_id",
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
@@ -83,12 +91,7 @@ def mock_redis_cache():
 
 
 async def _require_bot_api_key_from_header(request: Request) -> None:
-    """Replacement for require_bot_api_key that checks the header directly.
-
-    The test app strips BotAuthMiddleware (it needs Redis). This function
-    replicates the API key verification so bot endpoints can be tested via
-    the HTTP client without the full middleware stack.
-    """
+    """Check the header directly, replacing require_bot_api_key since the test app strips BotAuthMiddleware (it needs Redis)."""
 
     api_key = request.headers.get("X-Bot-API-Key")
     bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
@@ -317,21 +320,21 @@ class TestBotAuthMiddlewareJWT:
         middleware = BotAuthMiddleware(app=MagicMock())
         await middleware.dispatch(request, _noop_call_next)
 
-        assert request.state.user["user_id"] == TEST_USER_ID
-        assert request.state.user["email"] == "botuser@example.com"
-        assert request.state.user["auth_provider"] == "bot:discord"
-        assert request.state.user["bot_authenticated"] is True
+        assert request.state.user.user_id == TEST_USER_ID
+        assert request.state.user.email == "botuser@example.com"
+        assert request.state.user.auth_provider == "bot:discord"
+        assert request.state.user.bot_authenticated is True
         assert request.state.authenticated is True
 
     async def test_jwt_auth_uses_cache(self, mock_redis_cache: dict) -> None:
         """JWT auth uses cached user info when available."""
-        cached_user = {
-            "user_id": TEST_USER_ID,
-            "email": "cached@example.com",
-            "name": "Cached User",
-            "auth_provider": "bot:discord",
-            "bot_authenticated": True,
-        }
+        cached_user = AuthenticatedUser(
+            user_id=TEST_USER_ID,
+            email="cached@example.com",
+            name="Cached User",
+            auth_provider="bot:discord",
+            bot_authenticated=True,
+        )
         mock_redis_cache["get"].return_value = cached_user
 
         token = create_bot_session_token(
@@ -389,8 +392,8 @@ class TestBotAuthMiddlewarePlatformHeaders:
         await middleware.dispatch(request, _noop_call_next)
 
         assert request.state.authenticated is True
-        assert request.state.user["user_id"] == TEST_USER_ID
-        assert request.state.user["auth_provider"] == f"bot:{TEST_PLATFORM}"
+        assert request.state.user.user_id == TEST_USER_ID
+        assert request.state.user.auth_provider == f"bot:{TEST_PLATFORM}"
         assert request.state.bot_api_key_valid is True
         assert request.state.bot_platform == TEST_PLATFORM
         assert request.state.bot_platform_user_id == TEST_PLATFORM_USER_ID
@@ -483,8 +486,8 @@ class TestBotEndpointAuthStatus:
     async def test_auth_status_with_valid_api_key(self, bot_client) -> None:
         """GET /bot/auth-status returns auth status for a platform user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -502,8 +505,8 @@ class TestBotEndpointAuthStatus:
     async def test_auth_status_unauthenticated_user(self, bot_client) -> None:
         """GET /bot/auth-status returns authenticated=False for unlinked user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -524,7 +527,7 @@ class TestBotEndpointAuthStatus:
         )
 
         assert response.status_code == 400
-        assert "Invalid platform" in response.json()["detail"]
+        assert "Invalid platform" in response.json()["message"]
 
     async def test_auth_status_without_api_key_rejected(self, bot_client) -> None:
         """GET /bot/auth-status without X-Bot-API-Key returns 401."""
@@ -550,16 +553,17 @@ class TestBotEndpointSettings:
 
     async def test_settings_for_linked_user(self, bot_client) -> None:
         """GET /bot/settings returns user settings for a linked user."""
-        user_doc = {
-            **TEST_USER_DOC,
-            "name": "Bot User",
-            "profile_image_url": "https://example.com/avatar.png",
-            "created_at": datetime(2024, 1, 15, tzinfo=UTC),
-        }
+        user_doc = TEST_USER_DOC.model_copy(
+            update={
+                "name": "Bot User",
+                "picture": "https://example.com/avatar.png",
+                "created_at": datetime(2024, 1, 15, tzinfo=UTC),
+            }
+        )
         with (
             patch.object(
-                PlatformLinkService,
-                "get_user_by_platform_id",
+                user_repository,
+                "get_by_platform_id",
                 new_callable=AsyncMock,
                 return_value=user_doc,
             ),
@@ -583,8 +587,8 @@ class TestBotEndpointSettings:
     async def test_settings_for_unlinked_user(self, bot_client) -> None:
         """GET /bot/settings returns authenticated=False for unlinked user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -606,8 +610,8 @@ class TestBotEndpointRequireBotApiKey:
     async def test_require_bot_api_key_passes_with_valid_key(self, bot_client) -> None:
         """Endpoints behind require_bot_api_key work with valid key."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -643,8 +647,8 @@ class TestBotEndpointResetSession:
     async def test_reset_session_unauthenticated_returns_401(self, bot_client) -> None:
         """POST /bot/reset-session without linked user returns 401."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -662,7 +666,7 @@ class TestBotEndpointResetSession:
             )
 
         assert response.status_code == 401
-        assert "not authenticated" in response.json()["detail"].lower()
+        assert response.json()["code"] == error_codes.BOT_ACCOUNT_NOT_LINKED
 
 
 @pytest.mark.integration
@@ -677,7 +681,7 @@ class TestBotEndpointUnlink:
         )
 
         assert response.status_code == 400
-        assert "Missing platform headers" in response.json()["detail"]
+        assert "Missing platform headers" in response.json()["message"]
 
     async def test_unlink_invalid_platform_returns_400(self, bot_client) -> None:
         """POST /bot/unlink with invalid platform returns 400."""
@@ -691,13 +695,13 @@ class TestBotEndpointUnlink:
         )
 
         assert response.status_code == 400
-        assert "Invalid platform" in response.json()["detail"]
+        assert "Invalid platform" in response.json()["message"]
 
     async def test_unlink_not_linked_returns_404(self, bot_client) -> None:
         """POST /bot/unlink for unlinked user returns 404."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -711,7 +715,7 @@ class TestBotEndpointUnlink:
             )
 
         assert response.status_code == 404
-        assert "not linked" in response.json()["detail"].lower()
+        assert "not linked" in response.json()["message"].lower()
 
 
 @pytest.mark.integration
@@ -727,8 +731,8 @@ class TestBotAuthFullChain:
         )
 
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -749,8 +753,8 @@ class TestBotAuthFullChain:
     ) -> None:
         """Bot authenticates via API key + platform headers, user is resolved."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -780,3 +784,144 @@ class TestBotAuthFullChain:
             assert payload["platform"] == platform
             assert payload["platform_user_id"] == f"{platform}-user-42"
             assert payload["user_id"] == TEST_USER_ID
+
+
+@pytest.mark.integration
+class TestSessionTokenFastPathReachesBotRoutes:
+    """The real middleware in front of the real require_bot_api_key.
+
+    Every other case here substitutes a header check for the dependency, which
+    is exactly why the fast-path 401 survived: the guard reads middleware state,
+    and the middleware only set that state on the API-key branch.
+    """
+
+    @pytest.fixture
+    def guarded_app(self) -> FastAPI:
+        app = FastAPI()
+        app.add_middleware(BotAuthMiddleware)
+
+        @app.get("/api/v1/bot/guarded", dependencies=[Depends(require_bot_api_key)])
+        async def guarded(request: Request) -> dict[str, object]:
+            return {"user_id": request.state.user.user_id}
+
+        return app
+
+    @pytest.mark.regression
+    async def test_a_valid_session_token_plus_key_is_not_401(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID,
+            platform=TEST_PLATFORM,
+            platform_user_id=TEST_PLATFORM_USER_ID,
+        )
+
+        transport = ASGITransport(app=guarded_app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/api/v1/bot/guarded",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bot-API-Key": TEST_BOT_API_KEY,
+                    "X-Bot-Platform": TEST_PLATFORM,
+                    "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["user_id"] == TEST_USER_ID
+
+    async def test_a_session_token_without_the_key_is_still_401(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        """Identifying the user is not authorising the route — the guard still bites."""
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID,
+            platform=TEST_PLATFORM,
+            platform_user_id=TEST_PLATFORM_USER_ID,
+        )
+
+        transport = ASGITransport(app=guarded_app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/api/v1/bot/guarded",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 401
+
+
+@pytest.mark.integration
+class TestBotRefusalWideEvent:
+    """A refused bot request's wide event says which account and why, through the real stack."""
+
+    @pytest.fixture
+    def logged_bot_app(self) -> FastAPI:
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(bot_router, prefix="/api/v1/bot")
+        app.add_middleware(BotAuthMiddleware)
+        app.add_middleware(LoggingMiddleware)
+        return app
+
+    async def _post_reset(self, app: FastAPI, api_key: str) -> tuple[int, dict, dict]:
+        with (
+            patch.object(settings, "BOT_LOG_HASH_SECRET", TEST_LOG_HASH_SECRET),
+            patch("app.api.v1.middleware.logging.request_logger") as request_logger,
+        ):
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/bot/reset-session",
+                    json={"platform": "telegram", "platform_user_id": TEST_PLATFORM_USER_ID},
+                    headers={
+                        "X-Bot-API-Key": api_key,
+                        "X-Bot-Platform": "telegram",
+                        "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+                    },
+                )
+        return response.status_code, response.json(), request_logger.bind.call_args.kwargs
+
+    @pytest.mark.regression
+    async def test_an_unlinked_account_401_says_account_not_linked(
+        self,
+        logged_bot_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = None
+
+        status, body, event = await self._post_reset(logged_bot_app, TEST_BOT_API_KEY)
+
+        assert status == 401
+        assert body["code"] == error_codes.BOT_ACCOUNT_NOT_LINKED
+        assert event["reason"] == "account_not_linked"
+        assert event["outcome"] == "failed"
+        assert event["platform"] == "telegram"
+        assert event["user_hash"] == shared_logging.hash_log_identifier(
+            TEST_PLATFORM_USER_ID, TEST_LOG_HASH_SECRET
+        )
+        assert TEST_PLATFORM_USER_ID not in json.dumps(event, default=str)
+
+    @pytest.mark.regression
+    async def test_a_wrong_bot_key_401_says_the_key_not_the_account(
+        self,
+        logged_bot_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        status, body, event = await self._post_reset(logged_bot_app, "not-the-key")
+
+        assert status == 401
+        assert body["code"] == error_codes.BOT_API_KEY_INVALID
+        assert event["reason"] == "bot_api_key_invalid"
+        assert event["platform"] == "telegram"
+        mock_platform_lookup.assert_not_awaited()

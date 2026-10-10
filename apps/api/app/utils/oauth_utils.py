@@ -1,17 +1,26 @@
 import io
 from urllib.parse import urlencode
 
-import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
 from app.config.token_repository import resolve_google_oauth_credentials, token_repository
 from app.constants.log_tags import LogTag
+from app.models.integrations.cloudinary import CloudinaryUploadResult
 from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient()
+
+
+class _GrantedScopes(BaseModel):
+    """A stored OAuth token, read only for the scopes it already grants."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    scope: str | None = None
 
 
 async def build_google_oauth_url(
@@ -47,7 +56,7 @@ async def build_google_oauth_url(
         try:
             token = await token_repository.get_token(str(user_id), "google", renew_if_expired=False)
             if token:
-                existing_scopes = (token.get("scope") or "").split()
+                existing_scopes = (_GrantedScopes.model_validate(token).scope or "").split()
         except Exception as e:
             log.debug(
                 f"{LogTag.OAUTH} Could not get existing scopes for user",
@@ -85,7 +94,7 @@ async def build_google_oauth_url(
 
 
 async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
-    log.set(operation="upload_user_picture", cloudinary_public_id=public_id)
+    log.set(operation="upload_user_picture")
     """
     Uploads image bytes to Cloudinary and returns the secure URL.
 
@@ -106,7 +115,7 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             public_id=public_id,
             overwrite=True,
         )
-        image_url: str | None = upload_result.get("secure_url")
+        image_url = CloudinaryUploadResult.model_validate(upload_result).secure_url
         if not image_url:
             log.error(f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from image service")
@@ -120,4 +129,4 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Image upload failed")
+        raise HTTPException(status_code=500, detail="Image upload failed") from e

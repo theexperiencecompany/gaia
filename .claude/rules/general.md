@@ -10,6 +10,17 @@ Before writing any utility, type, hook, service, or model, grep the codebase for
 - Shared TypeScript logic belongs in `libs/shared/ts/src/` — consumed as `@gaia/shared`
 - If you find the same logic in two places while working, consolidate before adding more
 - Duplicated code that diverges silently is worse than no abstraction at all
+- **API request/response types come ONLY from `@gaia/shared/api/generated`** — every Pydantic model under its own name (`import type { TodoResponse } from "@gaia/shared/api/generated"`), plus `paths`/`operations` and the `ErrorEnvelope`. Never hand-write a TypeScript type that mirrors a Pydantic model — it is a copy that drifts the moment the model changes. The types are generated from `apps/api/openapi.json` by `mise api:types` (a prek hook runs it when `apps/api` Python changes); CI's `api-schema` lane regenerates and fails on drift, and `checks.mjs api-schema-types` fails any `.ts`/`.tsx` that declares an `interface`/`type` named after a schema component — the only allowed forms are the re-export `export type { X } from "…/generated"` and the alias `export type Y = X` that names a generated type for a feature's consumers. Two API models may not share a class name: the export refuses it instead of letting FastAPI mangle one into `app__models__…`.
+- **Renaming a model's shape does not make it a different type.** `api-schema-types` enforces the rule four ways, not one: a declaration NAMED after a component schema; **any** declaration inside an API-type directory (`apps/web/src/features/*/api`, `apps/web/src/types/api`, `apps/mobile/src/**/api`, `libs/shared/ts/src/{types,chat,bots/api}`) that is not one of the two allowed forms — those directories name the API contract and nothing else; a declaration whose **fields** are a schema's fields under another name (≥80% match once `created_at`/`createdAt` normalise to one spelling); and an untyped `apiService` call in web feature code. The last two ratchet against `scripts/ci/baselines/api-declared-types.txt` and `api-shape-twins.txt`, which only ever shrink — a line that stops matching is reported as removable and does not fail the gate.
+- **A zod schema that mirrors an API model derives from the generated type.** A form-validation schema is legitimate and stays hand-written — it carries UI-only fields and human error messages (`apps/web/src/features/workflows/schemas/workflowFormSchema.ts` validates `activeTab`/`selectedTrigger`, which no model has). A schema that validates a wire shape is a twin, and is tied to the generated type with a satisfies-check so drift is a compile error instead of a parser that silently rejects live payloads:
+
+  ```ts
+  import type { ToolDataEntry } from "../api/generated";
+  const ToolDataEntrySchema = z.object({ … }).loose() satisfies z.ZodType<ToolDataEntry>;
+  ```
+
+  A parse boundary may accept more than the model promises (extra keys, a wider `unknown`), never less.
+- **The raw HTTP clients are importable only from their own lib.** `@/lib/api/client`, `@/lib/api/service` and any axios instance may be imported only inside `apps/web/src/lib/api/**` — Biome's `style/noRestrictedImports`, path-scoped by an override in `biome.json` whose `includes` negates the call sites that predate it. The mobile half (`apps/mobile/src/lib/api`) is `checks.mjs api-client-imports`, a baseline ratchet rather than a Biome rule because switching a rule off for its 25 call-site files would protect nothing. **`biome.json` must stay comment-free**: it is parsed as strict JSON, and a single `//` line makes Biome fall back to defaults and silently check zero files while still exiting 1.
 
 ### Libraries Over Hand-Rolling
 
@@ -97,6 +108,59 @@ learn what one of them does.
 - A comment that restates what the code obviously does is noise, not documentation
 - Reserve comments for non-obvious decisions: why something is done a particular way, not what it does
 - If a function needs a long comment to be understood, the function probably needs to be refactored
+
+### Docstrings and comments — the mechanical bar
+
+Enforced by `tools/lints/docstring_slop.py` + `comment_slop.py` (Python, `app/`
+and `tests/`), `checks.mjs doc-comments` (TS), and ruff `D`/`DOC` — in the
+edit hook, pre-commit and CI, with no allowlist and no `noqa`.
+
+- A docstring is the contract: one imperative summary line, then only what the
+  signature does not say. Max 6 lines on a function, 12 on a class, 15 on a
+  module. Plain text — no backticks, no RST, no `Examples:`.
+- No `Args:` entry that restates the name (`user_id: The user ID.`) and no type
+  in an `Args:` entry — the signature carries both.
+- A test's name is its doc. One line at most, and only for what the name
+  cannot say (`Regression for #859: …`).
+- A comment is one line of *why* at the point of surprise. Never more than 3
+  consecutive lines; keep the numbers and constraints, drop the story. No
+  `# ---- banners ----` or `# Step N` inside a function — split it instead.
+  Module- and class-level banners are fine: a constants file is sectioned.
+- The *why* of a change lives in its PR, not in the code it changed.
+
+Before:
+
+```python
+async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool:
+    """One background dispatch per handoff tool call, durable across node replays.
+
+    A ``handoff`` sharing its node run with ``wait_for_subagents`` re-runs when the
+    join's interrupt is resumed; ``tool_call_id`` lives in the checkpointed AI message,
+    so this SETNX makes the side effect (spawning the subagent) idempotent as the
+    pre-interrupt code must be. ``True`` = first dispatch, proceed.
+    """
+```
+
+After:
+
+```python
+async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool:
+    """Claim the one dispatch slot for a handoff tool call; False when a node replay already did."""
+```
+
+Before / after, comments:
+
+```python
+# jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
+# implicit conversational queries ("what do I do for a living" -> the job
+# fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
+RERANKER_MODEL = "jinaai/jina-reranker-v1-turbo-en"
+```
+
+```python
+# beats ms-marco-MiniLM on implicit queries (top-3 gold 4/6 vs 2/6, same ~30ms)
+RERANKER_MODEL = "jinaai/jina-reranker-v1-turbo-en"
+```
 
 ## Cleanup Is Part of the Task
 

@@ -1,20 +1,7 @@
-"""
-Rate limiting configuration for all features.
-Single source of truth for rate limits.
+"""Rate limiting configuration for all features — the single source of truth.
 
-Rate limits are enforced across two time periods:
-- Daily: Medium-term usage control
-- Monthly: Long-term subscription limits
-
-Both limits are checked on each request. If any limit is exceeded,
-the request is rejected with a 429 status code.
-
-Usage:
-    @tiered_rate_limit("generate_image")
-    async def generate_image(user: dict = Depends(get_current_user)):
-        # This endpoint will be limited by daily (50/1000) and monthly (1000/25000)
-        # limits based on user's plan
-        pass
+Limits are enforced across daily and monthly periods; either being exceeded
+rejects the request with a 429.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -28,6 +15,7 @@ from app.constants.llm import (
     PRO_DAILY_COST_BUDGET_USD,
     PRO_PER_REQUEST_TOKEN_CEILING,
 )
+from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY
 from app.models.payment_models import PlanType
 
 
@@ -58,10 +46,9 @@ class TieredRateLimits(BaseModel):
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
     info: FeatureInfo
-    # Whether a successful call is a deliberate user action that shows on the
-    # activity heatmap. False for infra/polling endpoints (artifact fetches,
-    # agent file reads, system notifications) that would otherwise drown it out
-    # and distort the cross-user percentile thresholds.
+    # False for infra/polling endpoints (artifact fetches, agent file reads,
+    # system notifications) that would otherwise drown out the activity
+    # heatmap and distort the cross-user percentile thresholds.
     counts_as_activity: bool = True
 
 
@@ -69,17 +56,12 @@ class TieredRateLimits(BaseModel):
 FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
-        # Free has NO daily message count either: the rolling daily COST budget
-        # (FREE_DAILY_COST_BUDGET_USD) is the real wall, so a message tally
-        # would just double-wall the same thing less honestly. The monthly count
-        # stays only as an extreme abuse backstop a human can't reach before the
-        # cost wall stops them (day=0 = counted but not enforced, so day-by-day
-        # usage charts still get data).
+        # No daily count: FREE_DAILY_COST_BUDGET_USD is the real wall. Monthly
+        # is only an abuse backstop (day=0 = counted, not enforced, so usage
+        # charts still get data).
         free=RateLimitConfig(day=0, month=2000),  # TUNE — abuse backstop, not a wall
-        # Pro has NO daily message count: usage is priced by the cost budgets
-        # (daily abuse guard + monthly economic guard), not by counting
-        # messages. The monthly count stays only as an extreme abuse backstop
-        # a human can never hit.
+        # No daily count: priced by the cost budgets instead. Monthly count is
+        # only an extreme abuse backstop a human can never hit.
         pro=RateLimitConfig(day=0, month=60000),
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
@@ -156,6 +138,18 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
         info=FeatureInfo(title="Document Generation", description="Generate documents and reports"),
     ),
+    # ONBOARDING (LLM calls made while setting the account up)
+    "onboarding_generation": TieredRateLimits(
+        free=RateLimitConfig(day=0, month=0),  # Paid-only: onboarding is gated too
+        # A "regenerate" button the user taps a handful of times at most; the
+        # cap is an abuse backstop, not a wall a real setup can reach.
+        pro=RateLimitConfig(day=20, month=200),
+        info=FeatureInfo(
+            title="Onboarding Generation",
+            description="Generate onboarding questions and writing-style examples",
+        ),
+        counts_as_activity=False,  # setup, not day-to-day product use
+    ),
     # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
         # Search itself is cheap (Exa free tier + self-hosted fallback), but
@@ -200,6 +194,18 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         # System-driven fires, not user actions: counting them let a user's own
         # automation keep them "active" forever (masking dormancy) and inflated
         # the activity heatmap / percentile badges with runs nobody performed.
+        counts_as_activity=False,
+    ),
+    "trigger_todo_executions": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),  # Mirrors the workflow trial cap
+        pro=RateLimitConfig(day=1500, month=45000),
+        info=FeatureInfo(
+            title="Trigger Todo Executions",
+            description="Tracked todos executed by an integration event they subscribed to",
+        ),
+        # Separate from trigger_workflow_executions so a chatty subscription cannot
+        # exhaust the budget a user's workflows depend on, and vice versa.
+        # System-driven, so it does not count toward activity — same as workflows.
         counts_as_activity=False,
     ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
@@ -311,6 +317,15 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
     ),
+    # BROWSER AUTOMATION (Heaviest: a real browser + vision model per task)
+    "browser_task": TieredRateLimits(
+        free=RateLimitConfig(day=2, month=10),
+        pro=RateLimitConfig(day=30, month=600),
+        info=FeatureInfo(
+            title="Browser Automation",
+            description="Autonomously operate a web browser to complete a task",
+        ),
+    ),
     # UTILITY
     "weather_checks": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Unchanged
@@ -351,6 +366,27 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Register a phone number on the GAIA iMessage pool",
         ),
     ),
+    PLATFORM_LINK_CODE_FEATURE_KEY: TieredRateLimits(
+        # Minted once per visit to the onboarding platform-pick step, so real use
+        # is a handful. Wide enough for a re-run of onboarding, tight enough that
+        # a stolen session cannot flood Redis with live link credentials.
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=50, month=500),
+        info=FeatureInfo(
+            title="Platform Link Code",
+            description="Mint a one-tap code that links a messaging platform",
+        ),
+    ),
+    "account_platform_connect": TieredRateLimits(
+        # Abuse guard: minting link credentials from chat. Conservative —
+        # connecting a platform is rare; even 5/day is far above real use.
+        free=RateLimitConfig(day=5, month=25),
+        pro=RateLimitConfig(day=10, month=50),
+        info=FeatureInfo(
+            title="Platform Connect",
+            description="Generate platform connection links from chat",
+        ),
+    ),
 }
 
 
@@ -370,7 +406,9 @@ def get_feature_limits(feature_key: str) -> TieredRateLimits:
 def get_limits_for_plan(feature_key: str, plan_type: PlanType) -> RateLimitConfig:
     """Get rate limits for a specific feature and plan."""
     limits = get_feature_limits(feature_key)
-    return limits.free if plan_type == PlanType.FREE else limits.pro
+    # Dispatch on PRO, not "not FREE": an unrecognized plan should fall back to
+    # the restrictive tier, never silently receive the paid allowance.
+    return limits.pro if plan_type == PlanType.PRO else limits.free
 
 
 def get_reset_time(period: RateLimitPeriod) -> datetime:
@@ -411,7 +449,7 @@ def get_per_request_token_ceiling(plan_type: PlanType) -> int:
 
 
 def get_daily_cost_budget_usd(plan_type: PlanType) -> float:
-    """Rolling daily USD cost budget, by plan. Free = usage wall, pro = abuse guard."""
+    """Return the rolling daily USD cost budget for plan_type (free = usage wall, pro = abuse guard)."""
     return FREE_DAILY_COST_BUDGET_USD if plan_type == PlanType.FREE else PRO_DAILY_COST_BUDGET_USD
 
 
@@ -426,10 +464,10 @@ def get_feature_info(feature_key: str) -> FeatureInfo:
 
 
 def _is_cost_walled(limits: TieredRateLimits) -> bool:
-    """A feature whose daily use is gated by the rolling cost budget, not a
-    message count: day == 0 on BOTH tiers (so the count never caps daily use)
-    while free still has monthly access. Chat is the canonical case — its free
-    wall is FREE_DAILY_COST_BUDGET_USD, not a per-day message tally.
+    """Return True when daily use is gated by the cost budget, not a message count.
+
+    True when day == 0 on both tiers while free still has monthly access
+    (chat is the canonical case).
     """
     return limits.free.day == 0 and limits.pro.day == 0 and limits.free.month > 0
 
@@ -441,11 +479,9 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     strongest possible pitch.
     """
     limits = FEATURE_LIMITS[feature_key]
-    # Cost-walled feature (chat): daily use is capped by the rolling cost budget,
-    # never a message count, so the pitch stays qualitative and count-free.
-    # Naming a per-month number ("60,000 instead of 2,000") would be dishonest
-    # (the month is only an abuse backstop, not the wall a user feels) and
-    # off-strategy — Pro's real chat win is far more daily AI usage.
+    # Cost-walled feature (chat): naming a per-month number would be dishonest
+    # (month is only an abuse backstop, not the wall a user feels), so the
+    # pitch stays qualitative.
     if _is_cost_walled(limits):
         return {"title": limits.info.title, "detail": "unlimited daily messages"}
     if limits.free.day > 0:
@@ -464,47 +500,47 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     return None
 
 
-def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, str]]:
-    """Build upsell bullets from FEATURE_LIMITS — the same config that enforces
-    the limits, so the promised benefits can never drift from reality.
+def _hit_feature_benefit(hit_feature: str, seen: set[str]) -> list[dict[str, str]]:
+    delta = _free_pro_delta(hit_feature) if hit_feature in FEATURE_LIMITS else None
+    if not delta:
+        return []
+    seen.add(hit_feature)
+    return [delta]
 
-    Order: (1) the feature the user just hit, (2) Pro-only features (no free
-    access at all), (3) features whose daily use is not count-capped on Pro —
-    either free-capped daily with no pro cap, or cost-walled (day 0 on both
-    tiers, e.g. chat messages), (4) the largest free->pro daily multipliers.
-    """
+
+def _pro_only_benefits(seen: set[str]) -> list[dict[str, str]]:
     benefits: list[dict[str, str]] = []
-    seen: set[str] = set()
-
-    if hit_feature in FEATURE_LIMITS:
-        delta = _free_pro_delta(hit_feature)
-        if delta:
-            benefits.append(delta)
-            seen.add(hit_feature)
-
     for key, limits in FEATURE_LIMITS.items():
-        if key in seen:
-            continue
         free_gated = limits.free.day <= 0 and limits.free.month <= 0
         pro_has_access = limits.pro.day > 0 or limits.pro.month > 0
-        if free_gated and pro_has_access:
+        if key not in seen and free_gated and pro_has_access:
             benefits.append({"title": limits.info.title, "detail": "included with Pro"})
             seen.add(key)
+    return benefits
 
-    # Features whose daily use is uncapped on Pro (pro.day == 0) are the
-    # strongest non-gated pitch, but the multiplier section below can't reach
-    # them (division by pro.day). This covers both free-capped-daily features
-    # and cost-walled ones (chat: day 0 on both tiers). Surface them explicitly
-    # so a wall on any feature still advertises e.g. unlimited chat messages.
+
+def _uncapped_daily_benefits(seen: set[str]) -> list[dict[str, str]]:
+    """Features whose daily use is uncapped on Pro (pro.day == 0).
+
+    The strongest non-gated pitch, but the multiplier section can't reach them
+    (division by pro.day). Covers both free-capped-daily features and cost-walled
+    ones (chat: day 0 on both tiers), so a wall on any feature still advertises
+    e.g. unlimited chat messages.
+    """
+    # With no Pro daily cap, _free_pro_delta is non-empty exactly for the
+    # free-capped-daily and cost-walled cases; nothing here can reach the
+    # multiplier section (it needs a Pro daily cap), so ``seen`` is read-only.
+    benefits: list[dict[str, str]] = []
     for key, limits in FEATURE_LIMITS.items():
-        if key in seen:
+        if key in seen or limits.pro.day > 0:
             continue
-        if limits.pro.day <= 0 and (limits.free.day > 0 or _is_cost_walled(limits)):
-            delta = _free_pro_delta(key)
-            if delta:
-                benefits.append(delta)
-                seen.add(key)
+        delta = _free_pro_delta(key)
+        if delta:
+            benefits.append(delta)
+    return benefits
 
+
+def _largest_multiplier_benefits(seen: set[str], max_other: int) -> list[dict[str, str]]:
     multipliers = sorted(
         (
             (limits.pro.day / limits.free.day, key)
@@ -513,9 +549,21 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
         ),
         reverse=True,
     )
-    for _, key in multipliers[:max_other]:
-        delta = _free_pro_delta(key)
-        if delta:
-            benefits.append(delta)
+    return [
+        delta for _, key in multipliers[:max_other] if (delta := _free_pro_delta(key)) is not None
+    ]
 
-    return benefits
+
+def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, str]]:
+    """Build upsell bullets from FEATURE_LIMITS, so benefits can't drift from the enforced limits.
+
+    Order: (1) the feature just hit, (2) Pro-only features, (3) features not
+    count-capped on Pro, (4) the largest free->pro daily multipliers.
+    """
+    seen: set[str] = set()
+    return [
+        *_hit_feature_benefit(hit_feature, seen),
+        *_pro_only_benefits(seen),
+        *_uncapped_daily_benefits(seen),
+        *_largest_multiplier_benefits(seen, max_other),
+    ]

@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
@@ -58,10 +59,7 @@ class TestPrettyPrintMessages:
         assert _pretty_print_messages(messages) == expected
 
     def test_context_over_the_cap_keeps_exactly_the_newest_chars(self):
-        # A maxed-out executor result used to flow verbatim into the follow-up
-        # request. The cap trims the HEAD, never the tail: follow-ups react to
-        # the newest exchange, so dropping the end would suggest actions for a
-        # turn that already scrolled past.
+        # The cap trims the HEAD, never the tail: follow-ups react to the newest exchange.
         messages = [HumanMessage(content="A" * 4_000), AIMessage(content="B" * 4_000)]
         full = "".join(m.pretty_repr() for m in messages)
         assert len(full) > _FOLLOW_UP_CONTEXT_MAX_CHARS
@@ -128,6 +126,70 @@ class TestFollowUpActionsNode:
         assert {"follow_up_actions": []} in written_values
 
     @pytest.mark.asyncio
+    async def test_node_emits_latency_span(self):
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "node-test-agent",
+            },
+        }
+        before = (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            or 0.0
+        )
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            return_value=mock_writer,
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            == before + 1
+        )
+
+    @pytest.mark.asyncio
+    async def test_node_records_the_exact_elapsed_seconds(self):
+        # Two pinned clock reads land exactly 0.25; a sign error (end + start) would
+        # record 20.25, so this pins the direction of the subtraction, not just that
+        # an observation happened.
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "span-test-agent",
+            },
+        }
+        labels = {"node": "follow_up_actions", "agent": "span-test-agent"}
+        before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.time.perf_counter",
+                side_effect=[10.0, 10.25],
+            ),
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert REGISTRY.get_sample_value("graph_node_seconds_sum", labels) == before + 0.25
+
+    @pytest.mark.asyncio
     async def test_happy_path_with_user_id_streams_actions(self):
         messages = [
             HumanMessage(content="Can you help me schedule a meeting?"),
@@ -171,11 +233,8 @@ class TestFollowUpActionsNode:
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
-        # The node assembles [static_system, dynamic_context]. Tool names live in
-        # the dynamic-context message so the static system prefix stays
-        # byte-identical across users (prompt-cache friendly). There is no third
-        # human message: the context used to be sent twice, and the duplicate was
-        # ~350 tokens of uncached per-turn weight for no added information.
+        # [static_system, dynamic_context]: tool names live in dynamic_context so the
+        # static prefix stays byte-identical across users (prompt-cache friendly).
         assert len(captured_llm_inputs) == 1
         msgs = captured_llm_inputs[0]
         assert len(msgs) == 2
@@ -255,16 +314,11 @@ class TestFollowUpActionsNode:
             await follow_up_actions_node(state, config, store)
 
         assert len(captured_invocations) == 1
-        # [static_system, dynamic_context, human_message]
         llm_msgs = captured_invocations[0]
-        # Two messages, not three — the context is carried once, in the
-        # dynamic-context system message, never repeated as a human turn.
+        # Two messages, not three — the context is carried once, never repeated as a human turn.
         assert len(llm_msgs) == 2
 
-        # The HumanMessage content is the pretty-printed slice of recent_messages.
         # With 6 input messages and a window of 4, only messages 2-5 must appear.
-        # The window rides in the dynamic-context message now that the duplicate
-        # human turn is gone — same content, one copy.
         context_msg = llm_msgs[1]
         for i in range(2, 6):
             assert f"message {i}" in context_msg.content

@@ -8,14 +8,14 @@ interface GoogleDocsSectionProps {
   google_docs_data: GoogleDocsData;
 }
 
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString();
+};
+
 const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
   google_docs_data,
 }) => {
   const { document, message, action } = google_docs_data;
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
 
   if (document) {
     return (

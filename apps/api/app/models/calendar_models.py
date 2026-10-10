@@ -1,22 +1,28 @@
-from datetime import UTC, datetime
+from datetime import datetime
 import re
-from typing import Any, Literal
+from typing import Literal, cast
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    GetJsonSchemaHandler,
     SerializerFunctionWrapHandler,
     ValidationInfo,
     field_validator,
     model_serializer,
     model_validator,
 )
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
 
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 
 class CalendarPreferencesUpdateRequest(BaseModel):
+    """Request to replace the user's selected-calendar preference set."""
+
     selected_calendars: list[str]
 
 
@@ -33,9 +39,23 @@ class GooglePassthroughModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     @model_serializer(mode="wrap")
-    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped = handler(self)
         return {key: value for key, value in dumped.items() if key in self.model_fields_set}
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        """The declared fields plus ``additionalProperties`` — not the serializer's ``dict``.
+
+        The wrap serializer above only narrows *which* keys are emitted; without
+        this, Pydantic documents the output as its bare ``dict`` return type and
+        every generated client type loses the fields GAIA declares.
+        """
+        without_serializer = dict(core_schema)
+        without_serializer.pop("serialization", None)
+        return handler(cast(CoreSchema, without_serializer))
 
 
 class GoogleCalendarEventDateTime(GooglePassthroughModel):
@@ -67,6 +87,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None
     recurrence: list[str] | None = None
+    htmlLink: str | None = None
     # Injected by GAIA when events are merged across several calendars; absent from
     # a raw single-event response.
     calendarId: str | None = None
@@ -90,13 +111,16 @@ class GoogleCalendarListEntry(GooglePassthroughModel):
     """One entry of Google's ``calendarList.list`` payload, forwarded to the client
     verbatim.
 
-    Only ``id`` and ``summary`` are declared — the fields the service reads.
-    Everything else (``description``, ``backgroundColor``, ``primary``, ...) rides
-    through as extras and is projected into ``CalendarSummary`` where it is needed.
+    Declared: the fields the service and the web calendar picker read. Everything
+    else Google sends rides through as extras and is projected into
+    ``CalendarSummary`` where it is needed.
     """
 
     id: str
     summary: str | None = None
+    description: str | None = None
+    backgroundColor: str | None = None
+    primary: bool | None = None
 
 
 class CalendarSummary(BaseModel):
@@ -109,7 +133,7 @@ class CalendarSummary(BaseModel):
     backgroundColor: str | None = None
 
 
-class CalendarListResponse(BaseModel):
+class CalendarListResponse(ResponseModel):
     """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
 
     ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
@@ -168,10 +192,14 @@ class CalendarSearchResult(BaseModel):
 
 
 class GoogleConferenceSolutionKey(BaseModel):
+    """The conference type (e.g. ``hangoutsMeet``) in a Google conference request."""
+
     type: str
 
 
 class GoogleConferenceCreateRequest(BaseModel):
+    """Google ``conferenceData.createRequest`` — asks Google to mint a Meet link."""
+
     requestId: str
     conferenceSolutionKey: GoogleConferenceSolutionKey
 
@@ -183,18 +211,23 @@ class GoogleConferenceData(BaseModel):
 
 
 class GoogleCalendarAttendee(BaseModel):
+    """A single attendee on a Google Calendar event write."""
+
     email: str
 
 
 class GoogleCalendarEventWrite(BaseModel):
-    """Request body GAIA sends to Google's ``events.insert`` / ``events.update``.
+    """Request body GAIA sends to Google's ``events.insert`` / ``events.update`` /
+    ``events.patch``.
 
+    Every field is optional because a patch carries only what the caller supplied.
     Serialized with ``exclude_none=True`` so an unset field is omitted rather than
     sent as an explicit ``null``, which Google rejects.
     """
 
-    summary: str
-    description: str
+    summary: str | None = None
+    description: str | None = None
+    location: str | None = None
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None
     recurrence: list[str] | None = None
@@ -293,26 +326,22 @@ class CalendarEventsQueryRequest(BaseModel):
                 raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD format.")
             try:
                 datetime.fromisoformat(v)
-            except ValueError:
-                raise ValueError(f"Invalid date: {v}")
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {v}") from e
         return v
 
 
 class EventDeleteRequest(BaseModel):
+    """Request to delete one event, identified by id and calendar."""
+
     event_id: str = Field(..., title="Event ID to delete")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Event summary for confirmation")
 
 
-class BatchEventCreateRequest(BaseModel):
-    events: list["EventCreateRequest"] = Field(..., title="List of events to create")
-
-
-class BatchEventUpdateRequest(BaseModel):
-    events: list["EventUpdateRequest"] = Field(..., title="List of events to update")
-
-
 class BatchEventDeleteRequest(BaseModel):
+    """A batch of events to delete in one call."""
+
     events: list[EventDeleteRequest] = Field(..., title="List of events to delete")
 
 
@@ -377,10 +406,10 @@ class RecurrenceRule(BaseModel):
                 # Both a bare date and a full datetime (with or without a Z
                 # suffix) are ISO 8601, and fromisoformat parses all of them.
                 datetime.fromisoformat(self.until)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
-                )
+                ) from e
 
         if self.frequency == "MONTHLY" and self.by_day and self.by_month_day:
             raise ValueError(
@@ -388,6 +417,27 @@ class RecurrenceRule(BaseModel):
             )
 
         return self
+
+    def _until_rrule_value(self) -> str:
+        """The UNTIL value in RFC 5545 basic format: a bare date becomes
+        YYYYMMDD, a datetime becomes UTC YYYYMMDDTHHMMSSZ when parseable."""
+        if "T" not in self.until:
+            try:
+                return datetime.fromisoformat(self.until).strftime("%Y%m%d")
+            except ValueError:
+                return self.until.replace("-", "")
+
+        try:
+            parsed = datetime.fromisoformat(self.until)
+        except ValueError:
+            return self.until
+        # An offset-aware value must shift to UTC before wearing a Z, or the
+        # series' end moves; a naive value is already UTC wall-clock. Subtracting
+        # the offset (not astimezone) keeps the result host-timezone independent.
+        offset = parsed.utcoffset()
+        if offset is not None:
+            parsed -= offset
+        return parsed.strftime("%Y%m%dT%H%M%SZ")
 
     def to_rrule_string(self) -> str:
         """Convert to an RFC 5545 RRULE string."""
@@ -400,24 +450,7 @@ class RecurrenceRule(BaseModel):
             components.append(f"COUNT={self.count}")
 
         if self.until is not None:
-            # Format UNTIL value according to RFC 5545
-            if "T" in self.until:  # Contains time component
-                # Ensure it ends with Z for UTC
-                until_value = self.until.replace("+00:00", "Z")
-                if not until_value.endswith("Z"):
-                    try:
-                        dt = datetime.fromisoformat(self.until)
-                        until_value = dt.strftime("%Y%m%dT%H%M%SZ")
-                    except ValueError:
-                        until_value = self.until
-            else:  # Just a date
-                try:
-                    dt = datetime.fromisoformat(self.until)
-                    until_value = dt.strftime("%Y%m%d")
-                except ValueError:
-                    until_value = self.until.replace("-", "")
-
-            components.append(f"UNTIL={until_value}")
+            components.append(f"UNTIL={self._until_rrule_value()}")
 
         if self.by_day:
             components.append(f"BYDAY={','.join(self.by_day)}")
@@ -440,8 +473,8 @@ class RecurrenceRule(BaseModel):
                     raise ValueError(f"Invalid date format: {date}. Use YYYY-MM-DD format.")
                 try:
                     datetime.fromisoformat(date)
-                except ValueError:
-                    raise ValueError(f"Invalid date: {date}")
+                except ValueError as e:
+                    raise ValueError(f"Invalid date: {date}") from e
         return v
 
     model_config = {"extra": "forbid"}
@@ -473,6 +506,8 @@ class RecurrenceData(BaseModel):
 
 
 class EventUpdateRequest(BaseModel):
+    """Request to update one event's fields, identified by id and calendar."""
+
     event_id: str = Field(..., title="Event ID to update")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Updated event summary")
@@ -523,192 +558,13 @@ class BaseCalendarEvent(BaseModel):
     model_config = {"extra": "ignore"}
 
 
-# Unwired as of 2026-06; calendar agent-tool input. Kept for future use.
-# class CalendarEventToolRequest(BaseCalendarEvent):
-#     """Model for LLM tool input with time string and duration approach."""
-#
-#     # Input fields for time specification
-#     time_str: str | None = Field(
-#         None,
-#         title="Time string: either a relative offset like '+02:30' or an ISO 8601 time",
-#     )
-#     duration_minutes: int | None = Field(
-#         30, title="Duration of the event in minutes, defaults to 30 minutes", ge=1
-#     )
-#     timezone_offset: str | None = Field(
-#         None,
-#         title="Timezone offset in `(+|-)HH:MM` format. Only provide when user explicitly mentions a timezone.",
-#     )
-#
-#     @field_validator("timezone_offset")
-#     @classmethod
-#     def validate_timezone_offset(cls, v):
-#         """Validate timezone offset format (+|-)HH:MM"""
-#         if v is not None:
-#             if not re.match(r"^[+-]\d{2}:\d{2}$", v):
-#                 raise ValueError("Timezone offset must be in (+|-)HH:MM format")
-#         return v
-#
-#     @model_validator(mode="after")
-#     def validate_event_times(self) -> "CalendarEventToolRequest":
-#         """
-#         Validate event data based on event type after model initialization.
-#         """
-#         if not self.is_all_day:
-#             # For timed events, time_str is required
-#             if not self.time_str:
-#                 raise ValueError("time_str is required for timed events")
-#
-#             # Validate the format of time_str
-#             if self.time_str.startswith("+"):
-#                 # This is a relative time offset, validate the format
-#                 if not re.match(r"^\+\d{2}:\d{2}$", self.time_str):
-#                     raise ValueError("Relative time offset must be in the format '+HH:MM'")
-#             else:
-#                 # This is an absolute time, try to parse it
-#                 try:
-#                     # Replace space with T if needed
-#                     time_str = (
-#                         self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-#                     )
-#                     datetime.fromisoformat(time_str)
-#                 except ValueError:
-#                     raise ValueError(
-#                         f"Invalid time format: {self.time_str}. Use ISO format (YYYY-MM-DDTHH:MM:SS) for absolute times."
-#                     )
-#
-#         # For recurring events, ensure time_str is provided for non-all-day events
-#         if self.recurrence and not self.is_all_day and not self.time_str:
-#             raise ValueError("Recurring events must have time_str specified")
-#
-#         return self
-#
-#     @property
-#     def event_date(self) -> str:
-#         """
-#         Returns the date part for all-day events.
-#         For all-day events without time_str, returns today's date in YYYY-MM-DD format.
-#         """
-#         if self.is_all_day and not self.time_str:
-#             return datetime.now().strftime("%Y-%m-%d")
-#         if self.time_str and not self.time_str.startswith("+"):
-#             # Extract date part from ISO datetime string
-#             return self.time_str.split("T")[0] if "T" in self.time_str else self.time_str
-#
-#         return datetime.now().strftime("%Y-%m-%d")
-#
-#     def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
-#         """Apply timezone offset to datetime object."""
-#         # Parse offset string (+|-)HH:MM
-#         sign = 1 if offset_str.startswith("+") else -1
-#         hours, minutes = map(int, offset_str[1:].split(":"))
-#         offset_seconds = sign * (hours * 3600 + minutes * 60)
-#         tz = timezone(timedelta(seconds=offset_seconds))
-#         return dt.replace(tzinfo=tz)
-#
-#     def process_times(self, user_time: str) -> "EventCreateRequest":
-#         """
-#         Process time strings and calculate start/end times, converting to EventCreateRequest.
-#
-#         Args:
-#             user_time: Current user time in ISO format for timezone reference
-#
-#         Returns:
-#             EventCreateRequest with processed start/end times
-#         """
-#         # Extract user's timezone from user_time
-#         user_datetime = datetime.fromisoformat(user_time)
-#         user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
-#
-#         # Skip processing for all-day events
-#         if self.is_all_day:
-#             # For all-day events, use the date without time component
-#             event_date = self.event_date
-#
-#             # Return a new EventCreateRequest with start/end set to event_date
-#             return EventCreateRequest(
-#                 summary=self.summary,
-#                 description=self.description,
-#                 is_all_day=True,
-#                 start=event_date,
-#                 end=event_date,
-#                 calendar_id=self.calendar_id,
-#                 recurrence=self.recurrence,
-#                 timezone=None,
-#                 attendees=self.attendees,
-#                 create_meeting_room=self.create_meeting_room,
-#             )
-#
-#         # Check if time_str is provided
-#         if not self.time_str:
-#             raise ValueError("time_str is required for timed events")
-#
-#         # Process time based on format
-#         try:
-#             if self.time_str.startswith("+"):
-#                 # Relative time offset (e.g., "+02:30")
-#                 offset_hours, offset_minutes = map(int, self.time_str[1:].split(":"))
-#                 offset_seconds = offset_hours * 3600 + offset_minutes * 60
-#
-#                 # Calculate the future time (from user's current time)
-#                 start_time = user_datetime + timedelta(seconds=offset_seconds)
-#
-#                 # Calculate end time based on duration
-#                 end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-#
-#                 # Return new EventCreateRequest with calculated times
-#                 return EventCreateRequest(
-#                     summary=self.summary,
-#                     description=self.description,
-#                     is_all_day=False,
-#                     start=start_time.isoformat(),
-#                     end=end_time.isoformat(),
-#                     calendar_id=self.calendar_id,
-#                     recurrence=self.recurrence,
-#                     timezone=None,
-#                     attendees=self.attendees,
-#                     create_meeting_room=self.create_meeting_room,
-#                 )
-#
-#             # Absolute time (ISO format)
-#             time_str = self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-#             dt = datetime.fromisoformat(time_str)
-#
-#             # Apply timezone if specified
-#             if self.timezone_offset:
-#                 # User explicitly provided timezone
-#                 start_time = self._apply_timezone_offset(dt, self.timezone_offset)
-#             else:
-#                 # Use user's timezone
-#                 start_time = dt.replace(tzinfo=user_timezone)
-#
-#             # Calculate end time based on duration
-#             end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-#
-#             # Return new EventCreateRequest with calculated times
-#             return EventCreateRequest(
-#                 summary=self.summary,
-#                 description=self.description,
-#                 is_all_day=False,
-#                 start=start_time.isoformat(),
-#                 end=end_time.isoformat(),
-#                 calendar_id=self.calendar_id,
-#                 recurrence=self.recurrence,
-#                 timezone=None,
-#                 attendees=self.attendees,
-#                 create_meeting_room=self.create_meeting_room,
-#             )
-#
-#         except ValueError as e:
-#             raise ValueError(f"Invalid time format: {self.time_str}. Error: {e}")
-
-
 class EventCreateRequest(BaseCalendarEvent):
     """Model for calendar event creation for service layer."""
 
-    # Direct time fields for service operations
-    start: str = Field(..., title="Start time in ISO format or date for all-day events")
-    end: str = Field(..., title="End time in ISO format or date for all-day events")
+    # Optional on the wire: an all-day event may omit them (service picks
+    # bounds); a timed event without them is rejected by the service, not the schema.
+    start: str | None = Field(None, title="Start time in ISO format or date for all-day events")
+    end: str | None = Field(None, title="End time in ISO format or date for all-day events")
     timezone: str | None = Field(
         None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
@@ -716,26 +572,23 @@ class EventCreateRequest(BaseCalendarEvent):
     # Validate that start and end times are in ISO format or date format
     @field_validator("start", "end")
     @classmethod
-    def validate_time_format(cls, v: str, info: ValidationInfo) -> str:
+    def validate_time_format(cls, v: str | None, info: ValidationInfo) -> str | None:
+        if v is None:
+            return None
         field_name = info.field_name
 
         try:
-            # Try to parse as ISO datetime
             datetime.fromisoformat(v)
         except ValueError:
-            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD).
-            # strptime leniently accepts unpadded dates that fromisoformat
-            # rejects; the parsed value is a validity probe and is discarded
-            # after this check. Keep it UTC-anchored: a naive parse must not
-            # count as a valid all-day date.
+            # strptime accepts unpadded YYYY-MM-DD that fromisoformat rejects; the
+            # parsed value is a validity probe only, discarded after this check —
+            # never treat it as UTC-aware.
             try:
-                parsed_date = datetime.strptime(v, "%Y-%m-%d").replace(tzinfo=UTC)
-                if parsed_date.tzinfo is None:
-                    raise ValueError
-            except ValueError:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError as e:
                 raise ValueError(
                     f"{field_name} must be in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD)"
-                )
+                ) from e
 
         return v
 
@@ -757,6 +610,18 @@ class EventCreateRequest(BaseCalendarEvent):
         return self
 
 
+class BatchEventCreateRequest(BaseModel):
+    """A batch of events to create in one call."""
+
+    events: list[EventCreateRequest] = Field(..., title="List of events to create")
+
+
+class BatchEventUpdateRequest(BaseModel):
+    """A batch of events to update in one call."""
+
+    events: list[EventUpdateRequest] = Field(..., title="List of events to update")
+
+
 class SingleEventInput(BaseModel):
     """Single event definition for creation."""
 
@@ -765,8 +630,13 @@ class SingleEventInput(BaseModel):
         ...,
         description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's local time.",
     )
-    duration_hours: float = Field(default=0, description="Duration hours (0-23)", ge=0, le=23)
-    duration_minutes: float = Field(default=30, description="Duration minutes (0-59)", ge=0, le=59)
+    end_datetime: str | None = Field(
+        default=None,
+        description=(
+            "End time in ISO format, same style as start_datetime. "
+            "Omit for a 30-minute event. For all-day events this is the last day (inclusive)."
+        ),
+    )
     calendar_id: str = Field(default="primary", description="Calendar ID")
     description: str | None = Field(default=None, description="Event description")
     location: str | None = Field(default=None, description="Event location")
@@ -781,19 +651,22 @@ class SingleEventInput(BaseModel):
 
 
 class CreateEventInput(BaseModel):
-    """Input for creating one or more calendar events."""
+    """Input for creating one or more calendar events.
+
+    Creation is immediate: under HIL the approval card is the confirmation,
+    so there is no draft mode (removed — it split approval from execution
+    across two ungated surfaces and confused models into double-confirming).
+    """
 
     events: list[SingleEventInput] = Field(
         ...,
         description="List of events to create",
     )
-    confirm_immediately: bool = Field(
-        default=False,
-        description="If True, create events immediately. If False (default), send to frontend for confirmation.",
-    )
 
 
 class ListCalendarsInput(BaseModel):
+    """Input for the list-calendars tool."""
+
     short: bool = Field(
         default=True,
         description="Return only essential fields (id, summary, description, backgroundColor)",
@@ -803,9 +676,9 @@ class ListCalendarsInput(BaseModel):
 class FetchEventsInput(BaseModel):
     """Input for fetching events from one or more calendars."""
 
-    calendar_ids: list[str] = Field(
-        default_factory=list,
-        description="Calendar IDs to fetch from. If empty, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    calendar_ids: list[str] | None = Field(
+        default=None,
+        description="Calendar IDs to fetch from. None or an empty list fetches from all the user's selected calendars. Use ['primary'] for just the primary calendar.",
     )
     time_min: str | None = Field(
         default=None,
@@ -827,6 +700,8 @@ class GetDaySummaryInput(BaseModel):
 
 
 class FindEventInput(BaseModel):
+    """Input for the find-event text-search tool."""
+
     query: str = Field(..., description="Search query text")
     calendar_id: str = Field(default="primary", description="Calendar ID to search")
     time_min: str | None = Field(default=None, description="Start time filter (ISO format)")
@@ -863,6 +738,8 @@ class DeleteEventInput(BaseModel):
 
 
 class PatchEventInput(BaseModel):
+    """Input for the patch-event tool."""
+
     event_id: str = Field(..., description="Event ID to update")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     summary: str | None = Field(default=None, description="New title")
@@ -875,6 +752,8 @@ class PatchEventInput(BaseModel):
 
 
 class AddRecurrenceInput(BaseModel):
+    """Input for the add-recurrence tool."""
+
     event_id: str = Field(..., description="Event ID to add recurrence to")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
@@ -906,3 +785,39 @@ class AddRecurrenceInput(BaseModel):
         if self.count > 0 and self.until_date:
             raise ValueError("Cannot specify both 'count' and 'until_date'")
         return self
+
+
+class EventToolFailure(BaseModel):
+    """One event a get/delete tool could not act on, keyed like its ``EventReference``."""
+
+    event_id: str
+    calendar_id: str
+    error: str
+
+
+class FetchedEvent(BaseModel):
+    """One event the get-event tool fetched, alongside the reference that asked for it."""
+
+    event_id: str
+    calendar_id: str
+    event: GoogleCalendarEventResource
+
+
+class EventDraftFailure(BaseModel):
+    """One event of a create batch rejected before any Google call."""
+
+    index: int
+    summary: str
+    error: str
+
+
+class CreatedEventSummary(BaseModel):
+    """What the create-event tool reports for an event Google accepted."""
+
+    index: int
+    summary: str
+    event_id: str | None
+    calendar_id: str
+    link: str | None
+    start: GoogleCalendarEventDateTime
+    end: GoogleCalendarEventDateTime

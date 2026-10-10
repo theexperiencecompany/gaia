@@ -147,7 +147,9 @@ export async function checkPortConflicts(
     };
   }
 
-  const requiredPorts = [3000, 8000, 5432, 6379, 27017, 5672, 15672, 8080, 8083];
+  const requiredPorts = [
+    3000, 8000, 5432, 6379, 27017, 5672, 15672, 8080, 8083,
+  ];
   const effectivePorts = requiredPorts.map((p) => overrides[p] ?? p);
 
   let results: Awaited<ReturnType<typeof checkPortsWithFallback>>;
@@ -227,13 +229,9 @@ export function evaluateSetupReadiness(
     },
   ];
 
-  // Billing is a hosted-tier concern: the backend pins billing_enabled to
-  // ENV !== "selfhost" and self-host seeds the Free plan unconditionally, so
-  // a local-auth instance can never satisfy this item and would warn forever.
-  // AUTH_MODE=local is the payload's self-host marker (the backend refuses to
-  // boot local auth outside selfhost/dev, and `gaia setup` provisions it for
-  // every selfhost install). Unknown/absent auth_mode keeps the hosted
-  // behavior — warning on unconfigured billing is the safe default there.
+  // Billing never applies under local auth (backend pins it off for selfhost),
+  // so skip it there to avoid a permanent warning. Unknown auth_mode keeps
+  // the hosted behavior — warn on unconfigured billing by default.
   if (payload.auth_mode !== "local") {
     items.push({
       label: "billing enabled",

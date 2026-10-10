@@ -1,6 +1,4 @@
-"""
-Google Docs trigger handler.
-"""
+"""Google Docs trigger handler."""
 
 from typing import Any, ClassVar
 
@@ -50,7 +48,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        _workflow_id: str,
+        _owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

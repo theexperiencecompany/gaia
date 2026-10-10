@@ -2,10 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUpAnswerResolver } from "../../src/lib/answers.js";
 import { readConfig } from "../../src/lib/config.js";
 
-// Simulate a schema that marks OPENROUTER_API_KEY required and a world where
-// no infrastructure defaults resolve — isolating the resolver's fail-loud
-// branch (non-TTY + required + hinted + unresolved) which today's real
-// vendored data cannot reach (MONGO/REDIS always resolve from defaults).
+// Simulate a required OPENROUTER_API_KEY with no infra defaults resolving,
+// isolating the fail-loud branch (non-TTY + required + hinted + unresolved)
+// unreachable with real vendored data (MONGO/REDIS always resolve).
 vi.mock("../../src/lib/env-parser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/env-parser.js")>();

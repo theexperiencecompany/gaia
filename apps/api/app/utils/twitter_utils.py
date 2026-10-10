@@ -1,13 +1,28 @@
 """Twitter API utility functions for custom tools.
 
 These helpers wrap Twitter API v2 calls behind Composio's proxy. The proxy
-attaches the user's OAuth token server-side; callers only supply `user_id`.
+attaches the user's OAuth token server-side; callers only supply user_id.
 """
 
-from typing import Any
+from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
-from app.services.composio.proxy_client import proxy_request_sync
+from app.models.integrations.composio import ProxyErrorMeta
+from app.models.integrations.twitter import (
+    TwitterCreatedTweet,
+    TwitterCreateTweetRequest,
+    TwitterCreateTweetResponse,
+    TwitterFollowRequest,
+    TwitterSearchResponse,
+    TwitterTweetMedia,
+    TwitterTweetReply,
+    TwitterUser,
+    TwitterUserLookupResponse,
+    TwitterUserResponse,
+)
+from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -15,32 +30,64 @@ TWITTER_API_BASE = "https://api.twitter.com/2"
 TWITTER_TOOLKIT = "TWITTER"
 
 
+@dataclass(slots=True, frozen=True)
+class TwitterOutcome:
+    """Whether one Twitter call went through; error is the provider's answer when it did not."""
+
+    success: bool
+    error: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class TwitterTweetOutcome:
+    """create_tweet's result: the created tweet, or the provider's error."""
+
+    success: bool
+    tweet: TwitterCreatedTweet | None = None
+    error: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class TwitterSearchOutcome:
+    """search_tweets's result: the search payload, or the provider's error."""
+
+    success: bool
+    data: TwitterSearchResponse | None = None
+    error: str | None = None
+
+
 def _proxy(
     user_id: str,
     *,
     endpoint: str,
-    method: str,
-    body: dict[str, Any] | None = None,
-    query: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    response: dict[str, Any] | None = proxy_request_sync(
-        user_id=user_id,
-        toolkit=TWITTER_TOOLKIT,
-        endpoint=endpoint,
-        method=method,  # type: ignore[arg-type]  # proxy accepts any HTTP verb literal; twitter caller passes one narrowed per endpoint
-        body=body,
-        query=query,
+    method: ProxyMethod,
+    body: BaseModel | None = None,
+    query: dict[str, str | int] | None = None,
+) -> object:
+    """Send one Twitter request; the result is untyped because every endpoint answers its own shape."""
+    return proxy_request_sync(
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=TWITTER_TOOLKIT,
+            endpoint=endpoint,
+            method=method,
+            body=body.model_dump(exclude_none=True) if body is not None else None,
+            query=query,
+        )
     )
-    return response
+
+
+def _provider_error(e: AppError) -> str:
+    return f"HTTP {e.status_code}: {ProxyErrorMeta.model_validate(e.meta).provider_response}"
 
 
 def get_my_user_id(user_id: str) -> str | None:
     """Get the authenticated user's Twitter ID."""
     log.set(operation="twitter_get_my_user_id")
     try:
-        data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/users/me", method="GET")
-        twitter_user_id: str | None = (data or {}).get("data", {}).get("id")
-        return twitter_user_id
+        return TwitterUserResponse.model_validate(
+            _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/users/me", method="GET")
+        ).data.id
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error getting user ID",
@@ -51,21 +98,21 @@ def get_my_user_id(user_id: str) -> str | None:
         return None
 
 
-def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | None:
+def lookup_user_by_username(user_id: str, username: str) -> TwitterUser | None:
     """Look up a user by username."""
     try:
-        data = _proxy(
-            user_id,
-            endpoint=f"{TWITTER_API_BASE}/users/by/username/{username.lstrip('@')}",
-            method="GET",
-            query={
-                "user.fields": (
-                    "id,name,username,description,profile_image_url,verified,public_metrics"
-                ),
-            },
-        )
-        user: dict[str, Any] | None = (data or {}).get("data")
-        return user
+        return TwitterUserLookupResponse.model_validate(
+            _proxy(
+                user_id,
+                endpoint=f"{TWITTER_API_BASE}/users/by/username/{username.lstrip('@')}",
+                method="GET",
+                query={
+                    "user.fields": (
+                        "id,name,username,description,profile_image_url,verified,public_metrics"
+                    ),
+                },
+            )
+        ).data
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error looking up user",
@@ -77,41 +124,33 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
         return None
 
 
-def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
-    """Follow a user by ID."""
+def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> TwitterOutcome:
     try:
-        data = _proxy(
+        _proxy(
             user_id,
             endpoint=f"{TWITTER_API_BASE}/users/{my_user_id}/following",
             method="POST",
-            body={"target_user_id": target_user_id},
+            body=TwitterFollowRequest(target_user_id=target_user_id),
         )
-        return {"success": True, "data": data}
+        return TwitterOutcome(success=True)
     except AppError as e:
-        return {
-            "success": False,
-            "error": f"HTTP {e.status_code}: {e.meta.get('provider_response')}",
-        }
+        return TwitterOutcome(success=False, error=_provider_error(e))
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return TwitterOutcome(success=False, error=str(e))
 
 
-def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
-    """Unfollow a user by ID."""
+def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> TwitterOutcome:
     try:
-        data = _proxy(
+        _proxy(
             user_id,
             endpoint=(f"{TWITTER_API_BASE}/users/{my_user_id}/following/{target_user_id}"),
             method="DELETE",
         )
-        return {"success": True, "data": data}
+        return TwitterOutcome(success=True)
     except AppError as e:
-        return {
-            "success": False,
-            "error": f"HTTP {e.status_code}: {e.meta.get('provider_response')}",
-        }
+        return TwitterOutcome(success=False, error=_provider_error(e))
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return TwitterOutcome(success=False, error=str(e))
 
 
 def create_tweet(
@@ -120,55 +159,52 @@ def create_tweet(
     reply_to_tweet_id: str | None = None,
     media_ids: list[str] | None = None,
     quote_tweet_id: str | None = None,
-) -> dict[str, Any]:
-    """Create a tweet."""
+) -> TwitterTweetOutcome:
     try:
-        body: dict[str, Any] = {"text": text}
-        if reply_to_tweet_id:
-            body["reply"] = {"in_reply_to_tweet_id": reply_to_tweet_id}
-        if media_ids:
-            body["media"] = {"media_ids": media_ids}
-        if quote_tweet_id:
-            body["quote_tweet_id"] = quote_tweet_id
-
-        data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/tweets", method="POST", body=body)
-        return {"success": True, "data": (data or {}).get("data", {})}
+        body = TwitterCreateTweetRequest(
+            text=text,
+            reply=TwitterTweetReply(in_reply_to_tweet_id=reply_to_tweet_id)
+            if reply_to_tweet_id
+            else None,
+            media=TwitterTweetMedia(media_ids=media_ids) if media_ids else None,
+            quote_tweet_id=quote_tweet_id or None,
+        )
+        created = TwitterCreateTweetResponse.model_validate(
+            _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/tweets", method="POST", body=body)
+        )
+        return TwitterTweetOutcome(success=True, tweet=created.data)
     except AppError as e:
-        return {
-            "success": False,
-            "error": f"HTTP {e.status_code}: {e.meta.get('provider_response')}",
-        }
+        return TwitterTweetOutcome(success=False, error=_provider_error(e))
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return TwitterTweetOutcome(success=False, error=str(e))
 
 
 def search_tweets(
     user_id: str,
     query: str,
     max_results: int = 10,
-) -> dict[str, Any]:
+) -> TwitterSearchOutcome:
     """Search recent tweets."""
     log.set(operation="twitter_search_tweets", search_query=query, max_results=max_results)
     try:
-        data = _proxy(
-            user_id,
-            endpoint=f"{TWITTER_API_BASE}/tweets/search/recent",
-            method="GET",
-            query={
-                "query": query,
-                "max_results": min(max_results, 100),
-                "user.fields": (
-                    "id,name,username,description,profile_image_url,verified,"
-                    "public_metrics,created_at,location"
-                ),
-                "expansions": "author_id",
-            },
+        data = TwitterSearchResponse.model_validate(
+            _proxy(
+                user_id,
+                endpoint=f"{TWITTER_API_BASE}/tweets/search/recent",
+                method="GET",
+                query={
+                    "query": query,
+                    "max_results": min(max_results, 100),
+                    "user.fields": (
+                        "id,name,username,description,profile_image_url,verified,"
+                        "public_metrics,created_at,location"
+                    ),
+                    "expansions": "author_id",
+                },
+            )
         )
-        return {"success": True, "data": data}
+        return TwitterSearchOutcome(success=True, data=data)
     except AppError as e:
-        return {
-            "success": False,
-            "error": f"HTTP {e.status_code}: {e.meta.get('provider_response')}",
-        }
+        return TwitterSearchOutcome(success=False, error=_provider_error(e))
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return TwitterSearchOutcome(success=False, error=str(e))

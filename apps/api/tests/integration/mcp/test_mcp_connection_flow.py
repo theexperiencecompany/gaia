@@ -35,16 +35,8 @@ def _patch_external_io(
 ):
     """Return a context-manager stack that patches only external I/O boundaries.
 
-    Patched surfaces:
-    - IntegrationResolver.resolve  – avoids MongoDB calls
-    - BaseMCPClient                – avoids real HTTP transport
-    - ResilientLangChainAdapter    – avoids real MCP session tool listing
-    - store_mcp_tools              – avoids MongoDB writes
-    - update_user_integration_status – avoids MongoDB writes
-    - delete_cache                 – avoids Redis calls
-
-    Internal MCPClient logic (_build_config, _tools dict, _connecting event,
-    _clients dict) is NOT patched and runs for real.
+    Internal MCPClient logic (_build_config, _tools/_clients dicts, _connecting
+    event) is NOT patched and runs for real.
     """
     if adapter_tools is None:
         adapter_tools = [_make_fake_tool("tool_a"), _make_fake_tool("tool_b")]
@@ -124,6 +116,7 @@ def _build_client_with_no_auth(user_id: str = "test-user") -> MCPClient:
     client.token_store.get_bearer_token = AsyncMock(return_value=None)
     client.token_store.get_oauth_token = AsyncMock(return_value=None)
     client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+    client.token_store.get_refresh_token = AsyncMock(return_value=None)
     client.token_store.store_unauthenticated = AsyncMock()
     client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
     client.token_store.delete_credentials = AsyncMock()
@@ -144,12 +137,6 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_cached_tools_returned_on_second_connect(self):
-        """connect() must short-circuit if _tools already holds the key.
-
-        The critical invariant: once a key is in _tools the method returns
-        immediately without touching any external service.  If someone removes
-        the early-return guard in connect(), this test fails.
-        """
         client = _build_client_with_no_auth("user-cache-hit")
         pre_seeded = [_make_fake_tool("cached_tool")]
         client._tools["my-integration"] = pre_seeded
@@ -161,16 +148,84 @@ class TestMCPConnectionFlow:
         assert len(result) == 1
 
     # ------------------------------------------------------------------
+    # 1b. A revoked integration must not keep working off the warm session
+    # ------------------------------------------------------------------
+
+    async def test_ensure_connected_refuses_an_integration_revoked_elsewhere(self):
+        """The DB is authorization; the warm session pool has no TTL and a 5000-entry LRU cap, so status must gate it."""
+        client = _build_client_with_no_auth("user-revoked-elsewhere")
+        client._tools["gone"] = [_make_fake_tool("stale_tool")]
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        with pytest.raises(ValueError, match="not connected"):
+            await client.ensure_connected("gone")
+
+    async def test_ensure_connected_drops_the_stale_session_it_refused(self):
+        """The warm entry must be evicted too — _find_integration_id_by_server_url routes proxy calls off _clients directly."""
+        client = _build_client_with_no_auth("user-revoked-cleanup")
+        client._tools["gone"] = [_make_fake_tool("stale_tool")]
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        with pytest.raises(ValueError):
+            await client.ensure_connected("gone")
+
+        assert "gone" not in client._tools
+        assert "gone" not in client._clients
+
+    async def test_server_url_routing_skips_an_integration_revoked_elsewhere(self):
+        """The MCP-App iframe's /mcp/proxy/tool-call path routes off _clients directly, bypassing ensure_connected, so it must gate on status itself."""
+        client = _build_client_with_no_auth("user-proxy-revoked")
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        resolved = MagicMock()
+        resolved.mcp_config = MagicMock(server_url="https://mcp.example.com/sse")
+        with (
+            patch(
+                "app.services.mcp.mcp_client.IntegrationResolver.resolve",
+                AsyncMock(return_value=resolved),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+
+        assert found is None, "routed a tool call to a revoked integration"
+
+    async def test_server_url_routing_still_resolves_a_live_integration(self):
+        """Control: a connected integration must still route off the warm session."""
+        client = _build_client_with_no_auth("user-proxy-live")
+        client._clients["live"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=True)
+
+        resolved = MagicMock()
+        resolved.mcp_config = MagicMock(server_url="https://mcp.example.com/sse")
+        with patch(
+            "app.services.mcp.mcp_client.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ):
+            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+
+        assert found == "live"
+
+    async def test_ensure_connected_still_serves_a_live_integration_from_cache(self):
+        """Control: a still-connected integration keeps its warm-path return."""
+        client = _build_client_with_no_auth("user-still-live")
+        warm = [_make_fake_tool("live_tool")]
+        client._tools["live"] = warm
+        client.is_connected_db = AsyncMock(return_value=True)
+
+        assert await client.ensure_connected("live") is warm
+
+    # ------------------------------------------------------------------
     # 2. _tools dict is populated after a fresh connect
     # ------------------------------------------------------------------
 
     async def test_connect_updates_internal_tools_dict(self):
-        """After connect() the integration key must exist in _tools with the
-        tool list returned by the adapter.
-
-        This test would fail if _do_connect() stopped assigning to
-        self._tools[integration_id].
-        """
         resolved, adapter_tools = _patch_external_io()
 
         with _MockExternalIO(resolved, adapter_tools):
@@ -192,11 +247,6 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_connect_registers_base_client_in_clients_dict(self):
-        """After connect() the BaseMCPClient instance must be in _clients.
-
-        If the assignment self._clients[integration_id] = client is removed,
-        this test fails.
-        """
         resolved, adapter_tools = _patch_external_io()
 
         with _MockExternalIO(resolved, adapter_tools) as ctx:
@@ -226,10 +276,6 @@ class TestMCPConnectionFlow:
         new=AsyncMock(return_value=None),
     )
     async def test_disconnect_removes_client_from_pool(self, mock_clear_tools, mock_delete_cache):
-        """disconnect() must pop the integration from both _clients and _tools.
-
-        If either del statement is removed from disconnect(), this test fails.
-        """
         client = _build_client_with_no_auth("user-disconnect")
 
         # Pre-populate state as if connect() had already run
@@ -249,13 +295,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_concurrent_connect_deduplication(self):
-        """Calling connect() twice concurrently for the same integration must
-        only create a single BaseMCPClient / session pair.
-
-        The _connecting asyncio.Event guard is the mechanism under test.
-        If it is removed, two concurrent coroutines could both enter
-        _do_connect() and make duplicate connections.
-        """
+        """Guarded by the _connecting asyncio.Event — without it, two concurrent coroutines could both enter _do_connect()."""
         resolved, adapter_tools = _patch_external_io()
         create_session_call_count = 0
 
@@ -321,13 +361,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_connect_with_bearer_token(self):
-        """When token_store.get_bearer_token() returns a value, connect() must
-        embed it in the BaseMCPClient config (auth field).
-
-        This exercises _build_config()'s bearer-token branch.  If the
-        assignment `server_config["auth"] = raw_token` is removed, a mock
-        that asserts on the config dict passed to BaseMCPClient will catch it.
-        """
+        """Exercises _build_config()'s bearer-token branch — the token must land in the config's auth field."""
         bearer_token = "my-static-bearer-token"  # nosec B105
 
         resolved = MagicMock()
@@ -403,14 +437,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_connect_with_oauth_token(self):
-        """When token_store.get_oauth_token() returns a value (and the
-        integration requires_auth=True), connect() must embed the token in
-        the BaseMCPClient config.
-
-        This exercises the requires_auth branch in _build_config().  If the
-        fallback `stored_token = await self.token_store.get_oauth_token(...)`
-        is removed, the captured config will have no auth key.
-        """
+        """Exercises the requires_auth branch in _build_config() — the OAuth token must land in the config's auth field."""
         oauth_token = "oauth-access-token-xyz"  # nosec B105
 
         resolved = MagicMock()
@@ -482,13 +509,6 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_connect_raises_when_auth_required_but_no_token(self):
-        """If requires_auth=True and no token is available, connect() must
-        raise ValueError rather than silently connecting without credentials.
-
-        This guards the guard clause in _build_config():
-            elif mcp_config.requires_auth:
-                raise ValueError(...)
-        """
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
         resolved.mcp_config.server_url = "http://secure-server"  # NOSONAR
@@ -522,13 +542,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_connect_strips_bearer_prefix_from_stored_token(self):
-        """_build_config() must strip a leading 'Bearer ' prefix so that
-        mcp-use does not double-prefix it when setting Authorization headers.
-
-        Regression test for the stripping logic:
-            if stored_token.lower().startswith("bearer "):
-                raw_token = stored_token[7:]
-        """
+        """Strips the prefix so mcp-use does not double-prefix it when setting the Authorization header."""
         # Token with "Bearer " prefix as it might be stored
         stored_with_prefix = "Bearer my-raw-token-value"  # nosec B105
         expected_raw = "my-raw-token-value"
@@ -596,21 +610,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_token_refresh_on_401(self):
-        """When _do_connect() receives a 401-style error it must attempt a
-        token refresh and retry the connection exactly once.
-
-        The mechanism under test is the ``_retry_<integration_id>`` flag inside
-        _do_connect() (lines 470-499 of mcp_client.py).  On the first call
-        BaseMCPClient.create_session raises a RuntimeError that contains "401",
-        which triggers _try_refresh_token().  After a successful refresh the
-        method calls _do_connect() recursively; on that second call
-        create_session succeeds.
-
-        We verify:
-        - create_session is called twice (initial failure + retry)
-        - _try_refresh_token is called once with the correct integration_id
-        - the returned tools come from the retry path (not empty / exception)
-        """
+        """Retries once via the _retry_<integration_id> flag in _do_connect() after a 401 triggers _try_refresh_token()."""
         oauth_token_after_refresh = "refreshed-oauth-token"  # nosec B105
 
         resolved = MagicMock()
@@ -699,21 +699,7 @@ class TestMCPConnectionFlow:
     # ------------------------------------------------------------------
 
     async def test_tools_executable_after_connection(self):
-        """After connect() the returned tools can be invoked and produce output.
-
-        This test ensures that:
-        1. The tool objects placed in _tools are functional (not broken mocks)
-        2. Calling a tool returns a result rather than raising unexpectedly
-
-        We use a real MagicMock(spec=BaseTool) with a concrete arun/invoke
-        so the tool itself can be called.  The important production path verified
-        here is that wrap_tools_with_null_filter does not break tool invocability
-        — if it accidentally replaced real tools with broken wrappers, calling
-        the tool would raise AttributeError / TypeError.
-
-        Note: wrap_tools_with_null_filter is left un-patched so that the real
-        wrapper runs; BaseMCPClient and network I/O are still mocked.
-        """
+        """wrap_tools_with_null_filter is left unpatched so the real wrapper's effect on tool invocability is exercised."""
         from langchain_core.tools import BaseTool
 
         # Build a concrete fake tool that actually executes

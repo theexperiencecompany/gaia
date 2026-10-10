@@ -29,19 +29,22 @@ import {
   hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
   wideLog,
   withWideEvent,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import {
   ActionRowBuilder,
-  ActivityType,
   ButtonBuilder,
   ButtonStyle,
   type ChatInputCommandInteraction,
@@ -53,122 +56,11 @@ import {
   type MessageContextMenuCommandInteraction,
   MessageFlags,
   Partials,
+  type SendableChannels,
+  type User,
 } from "discord.js";
 import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
-
-// ---------------------------------------------------------------------------
-// Rotating presence statuses
-// ---------------------------------------------------------------------------
-
-// Discord renders the activity type itself: ActivityType.Listening shows as
-// "Listening to {name}" and ActivityType.Competing as "Competing in {name}".
-// So Listening/Competing names must NOT repeat that preposition, otherwise the
-// client shows "Listening to to …". Watching/Playing take the name verbatim.
-const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
-  { type: ActivityType.Watching, name: "over your goals" },
-  { type: ActivityType.Listening, name: "your inner procrastinator" },
-  { type: ActivityType.Playing, name: "personal assistant to legends" },
-  { type: ActivityType.Competing, name: "the productivity Olympics" },
-  { type: ActivityType.Watching, name: "your productivity soar" },
-  { type: ActivityType.Listening, name: "the sound of getting things done" },
-  { type: ActivityType.Playing, name: "life admin simulator" },
-  { type: ActivityType.Competing, name: "the rematch with your past self" },
-  { type: ActivityType.Watching, name: "for tasks worth automating" },
-  { type: ActivityType.Listening, name: "great ideas happen" },
-  { type: ActivityType.Playing, name: "the long game with you" },
-  { type: ActivityType.Competing, name: "the race for most helpful AI" },
-  { type: ActivityType.Watching, name: "your potential unfold" },
-  { type: ActivityType.Listening, name: "your todo list grow" },
-  { type: ActivityType.Playing, name: "chess with your calendar" },
-  { type: ActivityType.Competing, name: "the task completion marathon" },
-  { type: ActivityType.Watching, name: "the chaos become clarity" },
-  { type: ActivityType.Listening, name: "your ambitions" },
-  { type: ActivityType.Playing, name: "catch-up with your goals" },
-  { type: ActivityType.Watching, name: "your habits build momentum" },
-  { type: ActivityType.Listening, name: "your 3am ideas" },
-  { type: ActivityType.Playing, name: "scheduler extraordinaire" },
-  { type: ActivityType.Competing, name: "a rematch against yesterday's you" },
-  { type: ActivityType.Watching, name: "your dreams take shape" },
-  { type: ActivityType.Listening, name: "the rhythm of your workflow" },
-  { type: ActivityType.Playing, name: "productivity coach unlocked" },
-  { type: ActivityType.Watching, name: "out for your deadlines" },
-  { type: ActivityType.Listening, name: "your best ideas yet" },
-  { type: ActivityType.Playing, name: "your favorite AI companion" },
-  { type: ActivityType.Competing, name: "the best-assistant league" },
-  { type: ActivityType.Watching, name: "you crush it today" },
-  { type: ActivityType.Listening, name: "'I should write that down' moments" },
-  { type: ActivityType.Playing, name: "executive assistant" },
-  { type: ActivityType.Watching, name: "your workflow evolve" },
-  { type: ActivityType.Listening, name: "a todo list that never quits" },
-  { type: ActivityType.Playing, name: "the AI you didn't know you needed" },
-  { type: ActivityType.Watching, name: "your future unfold" },
-  { type: ActivityType.Listening, name: "your daily wins" },
-  { type: ActivityType.Playing, name: "personal concierge" },
-  { type: ActivityType.Competing, name: "the AI showdown (and winning)" },
-  { type: ActivityType.Watching, name: "every task you complete" },
-  { type: ActivityType.Listening, name: "the grind (it's paying off)" },
-  { type: ActivityType.Playing, name: "co-pilot to your ambitions" },
-  { type: ActivityType.Watching, name: "your back (and your calendar)" },
-  { type: ActivityType.Listening, name: "success stories (yours)" },
-  { type: ActivityType.Playing, name: "second brain for first-class minds" },
-  { type: ActivityType.Watching, name: "for shortcuts to suggest" },
-  { type: ActivityType.Listening, name: "the future you're building" },
-  { type: ActivityType.Playing, name: "AI companion to visionaries" },
-  { type: ActivityType.Watching, name: "you level up" },
-  { type: ActivityType.Listening, name: "creative sparks ignite" },
-  { type: ActivityType.Playing, name: "Swiss Army AI" },
-  { type: ActivityType.Competing, name: "the habit-building championship" },
-  { type: ActivityType.Watching, name: "your productivity metrics" },
-  { type: ActivityType.Listening, name: "plans become reality" },
-  { type: ActivityType.Playing, name: "assistant to the ambitious" },
-  { type: ActivityType.Watching, name: "you outpace expectations" },
-  { type: ActivityType.Listening, name: "ambitions become plans" },
-  { type: ActivityType.Playing, name: "the AI that actually remembers" },
-  { type: ActivityType.Watching, name: "for the next big breakthrough" },
-  { type: ActivityType.Listening, name: "the productivity beat" },
-  { type: ActivityType.Playing, name: "life optimizer" },
-  { type: ActivityType.Competing, name: "the race for your favorite app slot" },
-  { type: ActivityType.Watching, name: "you build good habits" },
-  { type: ActivityType.Listening, name: "ideas worth capturing" },
-  { type: ActivityType.Playing, name: "the kindest productivity nag" },
-  { type: ActivityType.Watching, name: "you turn chaos into clarity" },
-  { type: ActivityType.Listening, name: "your workflow's rhythm" },
-  { type: ActivityType.Playing, name: "your personal AI, always on" },
-  { type: ActivityType.Watching, name: "for things you might forget" },
-  { type: ActivityType.Listening, name: "for 'hey GAIA'" },
-  { type: ActivityType.Playing, name: "the long game (like you)" },
-  { type: ActivityType.Competing, name: "the focus championship" },
-  { type: ActivityType.Watching, name: "1,000 tasks at once" },
-  { type: ActivityType.Listening, name: "every whisper of an idea" },
-  { type: ActivityType.Playing, name: "digital chief of staff" },
-  { type: ActivityType.Watching, name: "deadlines approach (very calmly)" },
-  { type: ActivityType.Listening, name: "your calendar breathe" },
-  { type: ActivityType.Playing, name: "memory palace curator" },
-  { type: ActivityType.Competing, name: "the race to be most proactive" },
-  { type: ActivityType.Watching, name: "your goals get checked off" },
-  { type: ActivityType.Listening, name: "every great plan you make" },
-  { type: ActivityType.Playing, name: "task whisperer" },
-  { type: ActivityType.Watching, name: "you build something great" },
-  { type: ActivityType.Listening, name: "your procrastinator's excuses" },
-  { type: ActivityType.Playing, name: "your cognitive offloading device" },
-  { type: ActivityType.Competing, name: "the inbox zero marathon" },
-  { type: ActivityType.Watching, name: "the todo pile (it's growing)" },
-  { type: ActivityType.Listening, name: "your inner visionary" },
-  { type: ActivityType.Playing, name: "second brain, first priority" },
-  { type: ActivityType.Watching, name: "patterns in your day" },
-  { type: ActivityType.Listening, name: "the future being planned" },
-  { type: ActivityType.Playing, name: "accountability partner" },
-  { type: ActivityType.Competing, name: "the deep work tournament" },
-  { type: ActivityType.Watching, name: "you stay ahead of the curve" },
-  { type: ActivityType.Listening, name: "your morning intentions" },
-  { type: ActivityType.Playing, name: "the AI that has your back" },
-  { type: ActivityType.Watching, name: "every goal inch closer" },
-  { type: ActivityType.Listening, name: "tasks get done" },
-  { type: ActivityType.Playing, name: "your productivity operating system" },
-  { type: ActivityType.Watching, name: "over everything, so you can focus" },
-];
-
-const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
+import { ROTATING_STATUSES, STATUS_ROTATION_INTERVAL_MS } from "./statuses";
 
 /** Discord shows the typing indicator for ~10s; refresh just before it expires. */
 const TYPING_REFRESH_INTERVAL_MS = 8000;
@@ -239,12 +131,22 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async () => {
           this.startStatusRotation(c.user);
-          // Pre-warm DM channels for linked users. discord.js cannot reconstruct
-          // a DM channel from a cold MESSAGE_CREATE payload (it lacks
-          // type/recipients), so an uncached DM channel makes inbound DMs
-          // silently dropped after a restart. Opening each linked user's DM
-          // caches it so their DMs resolve.
+          // discord.js can't reconstruct a DM channel from a cold MESSAGE_CREATE
+          // (no type/recipients), so an uncached channel drops DMs after a
+          // restart; pre-warm each linked user's DM to cache it.
           await this.prewarmDmChannels();
+        },
+      );
+    });
+
+    // discord.js emits gateway and websocket failures as 'error'; with no listener
+    // the EventEmitter throws and takes the bot down. Recorded like Slack's app.error.
+    this.client.on(Events.Error, (error) => {
+      void withWideEvent(
+        "bot_runtime_error",
+        { platform: this.platform, component: "adapter" },
+        async () => {
+          recordBotFailure("discord_client_error", error);
         },
       );
     });
@@ -309,33 +211,73 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.client;
   }
 
+  /**
+   * Resolves where an outbound message is sent: the channel itself for a
+   * group/channel conversation, else the user, whose `send` is their DM.
+   */
+  private async resolveOutboundTarget(
+    destinationId: string,
+    isChannel: boolean,
+  ): Promise<SendableChannels | User> {
+    if (!isChannel) return this.client.users.fetch(destinationId);
+    const channel = await this.client.channels.fetch(destinationId);
+    if (channel?.isTextBased() && "send" in channel) return channel;
+    throw new Error(
+      `Discord destination ${destinationId} is not a sendable text channel`,
+    );
+  }
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
+    isChannel: boolean,
   ): Promise<void> {
-    const user = await this.client.users.fetch(destinationId);
-    await user.send(text);
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send(text);
   }
 
   /**
-   * Delivers an agent-generated file artifact to a Discord user. Fetches the
-   * bytes from GAIA (bot-authenticated) and DMs them as a message attachment.
-   * The destination is the stored Discord user id.
+   * Uploads an agent-generated file artifact as a message attachment: into the
+   * channel when `isChannel`, else a DM to the stored Discord user id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, filename, caption }: OutboundFile,
+    isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const user = await this.client.users.fetch(destinationId);
-    await user.send({
-      content: attachment.caption ?? undefined,
-      files: [{ attachment: artifact.data, name: attachment.filename }],
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send({
+      content: caption,
+      files: [{ attachment: data, name: filename }],
     });
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    try {
+      const channel = isChannel
+        ? await this.client.channels.fetch(destinationId)
+        : await (await this.client.users.fetch(destinationId)).createDM();
+      if (!channel?.isTextBased() || !("messages" in channel)) {
+        throw new Error(
+          `Discord destination ${destinationId} has no fetchable messages`,
+        );
+      }
+      const message = await channel.messages.fetch(platformMessageId);
+      await message.react(emoji);
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...(err instanceof Error
+          ? { error_type: err.name, error: err.message }
+          : { error: String(err) }),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
+    }
   }
 
   /**
@@ -430,6 +372,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     const message = interaction.options.getString("message", true);
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
+    const isDm = !interaction.guild;
 
     await interaction.deferReply();
     let isFirstMessage = true;
@@ -438,7 +381,7 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "discord", platformUserId: userId, channelId },
+      { message, platform: "discord", platformUserId: userId, channelId, isDm },
       async (content: string) => {
         if (isFirstMessage) {
           await interaction.editReply({ content });
@@ -457,9 +400,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       async (authUrl: string) => {
         const publicContent =
-          "To use GAIA, please authenticate first — check your DMs for the link.";
+          "To use GAIA, please authenticate first. Check your DMs for the link.";
         const publicContentFallback =
-          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+          "To use GAIA, please authenticate first. An ephemeral link has been sent above.";
         try {
           await interaction.user.send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
@@ -469,7 +412,8 @@ export class DiscordAdapter extends BaseBotAdapter {
           } else if (lastFollowUp) {
             await lastFollowUp.edit({ content: publicContent });
           }
-        } catch {
+        } catch (dmError) {
+          wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
           await interaction.followUp({
             content: renderForPlatform(
               buildAuthLinkMessage(authUrl),
@@ -558,12 +502,9 @@ export class DiscordAdapter extends BaseBotAdapter {
     header: string,
   ): Promise<void> {
     let replied = false;
-    // The header owns the deferred reply; every bubble of the answer is its own
-    // follow-up. Editing the reply for extra bubbles (as this used to) silently
-    // overwrote the previous bubble, so a multi-bubble or over-length answer
-    // arrived as only its last piece. Keeping the header out of the streamed
-    // content also keeps the bubbles inside Discord's 2000-char limit, which
-    // the shared streamer sizes them against.
+    // Header owns the deferred reply; each bubble is its own follow-up (editing
+    // the reply for extra bubbles used to silently overwrite the prior one).
+    // Keeping the header out of streamed content keeps bubbles under Discord's 2000-char limit.
     await interaction.editReply({ content: `**${header}**` });
     let lastFollowUp: Message | null = null;
     await handleStreamingChat(
@@ -573,6 +514,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         platform: "discord",
         platformUserId: userId,
         channelId,
+        isDm: !interaction.guild,
       },
       async (text: string) => {
         replied = true;
@@ -599,14 +541,16 @@ export class DiscordAdapter extends BaseBotAdapter {
             ),
           });
           replied = true;
-        } catch {
+        } catch (replyError) {
+          wideLog.warning("auth_reply_failed", sanitizeErrorForLog(replyError));
           try {
             await interaction.user.send(
               renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
             );
             replied = true;
-          } catch {
-            // both deliveries failed — leave replied false so error callback can run
+          } catch (dmError) {
+            // Neither the reply nor the DM reached the user: the link is lost.
+            wideLog.error("auth_link_undelivered", undefined, dmError);
           }
         }
       },
@@ -715,6 +659,8 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: userId,
           channelId: message.channelId,
+          isDm: true,
+          platformMessageId: message.id,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -759,6 +705,8 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(userId),
+        (emoji: string) =>
+          this.reactToMessage(userId, message.id, emoji, false),
       );
 
       stopTyping();
@@ -785,13 +733,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       .setColor(0x6366f1)
       .setTitle("Hey, I'm GAIA 👋")
       .setDescription(
-        "Your personal AI — built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
+        "Your personal AI, built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
       )
       .addFields(
         {
           name: "Chat",
           value:
-            "Just type anything — ask questions, brainstorm, think out loud.",
+            "Just type anything: ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
@@ -931,12 +879,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
       );
       dmSent = true;
-    } catch {
-      // DM failed — public message below will instruct the user
+    } catch (dmError) {
+      // The public message below tells the user to open their DMs.
+      wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
     }
     await send(
       dmSent
-        ? "To use GAIA here, please link your account — check your DMs for the link."
+        ? "To use GAIA here, please link your account. Check your DMs for the link."
         : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
     );
   }
@@ -971,6 +920,8 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: message.author.id,
           channelId: message.channelId,
+          isDm: !message.guild,
+          platformMessageId: message.id,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -996,6 +947,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(message.author.id),
+        (emoji: string) =>
+          message.guild
+            ? this.reactToMessage(message.channelId, message.id, emoji, true)
+            : this.reactToMessage(message.author.id, message.id, emoji, false),
       );
 
       stopTyping();
@@ -1042,6 +997,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       platform: "discord",
       userId: interaction.user.id,
       channelId: interaction.channelId,
+      isDm: !interaction.guild,
       profile: {
         username: interaction.user.username,
         displayName: interaction.user.globalName ?? interaction.user.username,

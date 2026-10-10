@@ -11,10 +11,12 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Components } from "react-markdown";
+// The renderer takes streamdown's Components, not react-markdown's: the two are
+// structurally incompatible, and react-markdown's is not assignable to it.
+import type { Components } from "streamdown";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { MentionChip } from "@/features/integrations/components/MentionChip";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import type { Integration } from "@/features/integrations/types";
@@ -51,19 +53,19 @@ export const IntegrationInstructionsModal = ({
 }: IntegrationInstructionsModalProps) => {
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
-  const wasOpenRef = useRef(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
   const { isMac, modifierKeyName } = usePlatform();
 
-  // Reset the draft to the persisted content only on the closed->open
-  // transition — not on every savedContent change, which would clobber
-  // in-progress edits if the query refetches while the modal is open.
-  useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
+  // Reset the draft to persisted content only on the closed->open transition,
+  // not on every savedContent change (would clobber in-progress edits on
+  // refetch). Render-phase state adjustment, not an effect, avoids a stale frame.
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
       setValue(savedContent);
       setTab("write");
     }
-    wasOpenRef.current = isOpen;
-  }, [isOpen, savedContent]);
+  }
 
   // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
   // and the backend already normalizes whitespace-only content to empty.
@@ -71,13 +73,15 @@ export const IntegrationInstructionsModal = ({
   const canMention = toolNames.length > 0;
 
   const renderMentionIcon = useCallback(
-    () =>
-      getToolCategoryIcon(
-        integration.id,
-        { size: 16, width: 16, height: 16, showBackground: false },
-        integration.iconUrl,
-      ),
-    [integration.id, integration.iconUrl],
+    () => (
+      <IntegrationIcon
+        integrationId={integration.id}
+        iconUrl={integration.iconUrl}
+        category={integration.category}
+        size={16}
+      />
+    ),
+    [integration.id, integration.iconUrl, integration.category],
   );
 
   // Preview: mentions become `mention:` links the anchor override renders as
@@ -115,7 +119,9 @@ export const IntegrationInstructionsModal = ({
   // stable while always reading the latest state. (Escape is handled by the
   // Modal's built-in dismiss.)
   const saveShortcutRef = useRef({ isMac, canSave, handleSave });
-  saveShortcutRef.current = { isMac, canSave, handleSave };
+  useEffect(() => {
+    saveShortcutRef.current = { isMac, canSave, handleSave };
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -147,11 +153,12 @@ export const IntegrationInstructionsModal = ({
       <ModalContent>
         <ModalHeader className="flex gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
-            {getToolCategoryIcon(
-              integration.id,
-              { size: 26, width: 26, height: 26, showBackground: false },
-              integration.iconUrl,
-            )}
+            <IntegrationIcon
+              integrationId={integration.id}
+              iconUrl={integration.iconUrl}
+              category={integration.category}
+              size={26}
+            />
           </div>
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-lg font-semibold text-zinc-100">
@@ -210,7 +217,7 @@ export const IntegrationInstructionsModal = ({
                   />
                 ) : (
                   <p className="py-12 text-center text-sm text-zinc-500">
-                    Nothing to preview yet — switch to Write and add some
+                    Nothing to preview yet. Switch to Write and add some
                     guidance.
                   </p>
                 )}

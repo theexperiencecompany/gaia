@@ -6,16 +6,13 @@ import type {
 } from "../types/index";
 
 /**
- * Silero VAD gate (v3/v4 signature, bundled with openWakeWord v0.5.1).
+ * Silero VAD gate (v3/v4 signature, bundled with openWakeWord v0.5.1). Model signature (probed
+ * empirically, see models/.fetch/probe.py): inputs input [batch,sequence] f32, sr [] i64,
+ * h/c [2,batch,64] f32; outputs output [batch,1] f32, hn/cn [2,batch,64] f32.
  *
- * Model signature (probed empirically, see models/.fetch/probe.py):
- *   inputs:  input [batch, sequence] f32, sr [] i64, h [2,batch,64] f32, c [2,batch,64] f32
- *   outputs: output [batch, 1] f32, hn [2,batch,64] f32, cn [2,batch,64] f32
- *
- * We use 512-sample windows (Silero's recommended frame size for 16 kHz).
- * The "gate" semantics: remember the most recent moment we saw probability
- * above `threshold`, and stay open for `hangoverMs` after that. Sustained
- * background noise pulses below threshold → gate closes; speech keeps it open.
+ * Uses 512-sample windows (Silero's recommended frame size for 16 kHz). Gate semantics: remember
+ * the last moment probability exceeded `threshold`, stay open for `hangoverMs` after — sustained
+ * noise below threshold closes it, speech keeps it open.
  */
 export class VadGate {
   static readonly FRAME_SAMPLES = 512;

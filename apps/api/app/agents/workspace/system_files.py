@@ -1,15 +1,15 @@
 """System-owned workspace files — one logical copy for ALL users.
 
-``INDEX.md``, the per-area ``GUIDE.md`` docs, and the built-in skill bodies are
+INDEX.md, the per-area GUIDE.md docs, and the built-in skill bodies are
 authored by GAIA and identical for every user. This module is the single
-enumeration of them — each one's canonical ``/workspace``-relative path and its
+enumeration of them — each one's canonical /workspace-relative path and its
 body (already in process memory) — so the same list can drive:
 
-  - the ``read`` tool's memory fast-path (serve these without touching JuiceFS),
-  - writing the shared ``_system`` subtree once (no per-user duplication),
+  - the read tool's memory fast-path (serve these without touching JuiceFS),
+  - writing the shared _system subtree once (no per-user duplication),
   - symlinking them into each user's workspace.
 
-Bodies come from ``operational_docs`` / ``skill_loader`` (process memory; see the
+Bodies come from operational_docs / skill_loader (process memory; see the
 scale notes there). Paths use the SAME constants the materializers write, so this
 list can never drift from what lands on JuiceFS.
 """
@@ -24,12 +24,24 @@ from app.agents.workspace.skill_loader import (
     load_builtin_skills,
 )
 from app.agents.workspace.system_docs import (
+    ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD,
+    ACCOUNT_GUIDE_MD,
+    ACCOUNT_LINKED_ACCOUNTS_GUIDE_MD,
+    ACCOUNT_NOTIFICATIONS_GUIDE_MD,
+    ACCOUNT_PREFERENCES_GUIDE_MD,
+    ACCOUNT_SUBSCRIPTION_GUIDE_MD,
+    ACCOUNT_USAGE_GUIDE_MD,
+    ACCOUNT_VOICES_GUIDE_MD,
     GAIA_TASKS_GUIDE_MD,
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
     MEMORY_GUIDE_MD,
     SESSIONS_GUIDE_MD,
     USER_TODOS_GUIDE_MD,
+)
+from app.constants.account import (
+    ACCOUNT_DIR,
+    ACCOUNT_GUIDES_DIRNAME,
 )
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, SKILL_BODY_FILENAME
 
@@ -50,24 +62,36 @@ _STATIC_DOCS: list[tuple[str, str]] = [
     ("gaia-tasks/GUIDE.md", GAIA_TASKS_GUIDE_MD),
     ("todos/GUIDE.md", USER_TODOS_GUIDE_MD),
     ("memory/GUIDE.md", MEMORY_GUIDE_MD),
+    (f"{ACCOUNT_DIR}/GUIDE.md", ACCOUNT_GUIDE_MD),
+    *(
+        (f"{ACCOUNT_DIR}/{ACCOUNT_GUIDES_DIRNAME}/{name}.md", body)
+        for name, body in [
+            ("subscription", ACCOUNT_SUBSCRIPTION_GUIDE_MD),
+            ("usage", ACCOUNT_USAGE_GUIDE_MD),
+            ("notifications", ACCOUNT_NOTIFICATIONS_GUIDE_MD),
+            ("preferences", ACCOUNT_PREFERENCES_GUIDE_MD),
+            ("custom-instructions", ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD),
+            ("voices", ACCOUNT_VOICES_GUIDE_MD),
+            ("linked-accounts", ACCOUNT_LINKED_ACCOUNTS_GUIDE_MD),
+        ]
+    ),
 ]
 
 
 def builtin_skill_root_rel(skill: BuiltinSkill) -> str:
-    """``/workspace``-relative directory of a builtin skill — matches materialize_skills."""
+    """/workspace-relative directory of a builtin skill — matches materialize_skills."""
     if skill.subagent_id == EXECUTOR_SUBAGENT_ID:
         return f"skills/{skill.slug}"
     return f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}"
 
 
 def builtin_skill_rel_path(skill: BuiltinSkill) -> str:
-    """``/workspace``-relative path of a builtin skill body — matches materialize_skills."""
+    """/workspace-relative path of a builtin skill body — matches materialize_skills."""
     return f"{builtin_skill_root_rel(skill)}/{SKILL_BODY_FILENAME}"
 
 
 def system_files() -> list[SystemFile]:
-    """Every system-owned file: static docs + builtin skill bodies + the skills'
-    bundled resources (templates/, reference.md, scripts/…)."""
+    """Every system-owned file: static docs, builtin skill bodies, and their bundled resources."""
     files = [SystemFile(path, body) for path, body in _STATIC_DOCS]
     for skill in load_builtin_skills():
         root = builtin_skill_root_rel(skill)

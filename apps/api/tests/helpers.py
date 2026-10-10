@@ -1,6 +1,7 @@
 """Shared test utilities for GAIA API tests."""
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 import math
 import os
@@ -11,22 +12,26 @@ from typing import Any, ClassVar
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp
+import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
+from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log, log_context
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
-    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
+    """Compute a comparable allowance for a period under RateLimitConfig's 0-semantics.
 
-    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
-    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
-    (returns ``math.inf``). Lets free and pro allowances be ordered directly
+    0 is overloaded: a tier with BOTH periods 0 has no access at all
+    (returns 0.0); otherwise a period of 0 means that period is uncapped
+    (returns math.inf). Lets free and pro allowances be ordered directly
     despite 0 meaning either "no access" or "unlimited" by context.
     """
     if config.day <= 0 and config.month <= 0:
@@ -46,24 +51,29 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-# Test suites that use this helper ``flushdb()`` their Redis client on teardown,
-# so the resolved DB must NEVER be the application's live database. A URL with no
-# DB path (the repo default ``redis://localhost:6379``) and one that pins ``/0``
-# both resolve to DB 0 — the app's live DB — so an unguarded offset (``0 + gw0``)
-# would wipe it. Runs therefore land in a dedicated high-DB block (8–15) whenever
-# the URL pins no DB or DB 0, and the resolved DB is never 0 for any worker. An
-# explicitly configured non-zero DB is a deliberate caller choice and is preserved
-# (offset per worker).
-_TEST_REDIS_DB_BLOCK_START = 8  # first DB of the throwaway block (8–15)
+# Resolved DB is never 0 (the app's live DB, flushed by this helper's teardown).
+# GAIA_REDIS_DB_BASE (default 8) moves the high-DB block; CI lanes get 8 + r*32
+# (scripts/ci/test-services.sh runs Redis with --databases 448).
+try:
+    _TEST_REDIS_DB_BLOCK_START = int(os.environ.get("GAIA_REDIS_DB_BASE", "8"))
+except ValueError:
+    _TEST_REDIS_DB_BLOCK_START = 8
+# Each lane owns a 32-DB stripe, giving 24 flushable DBs (8-31 for base 8,
+# 40-63 for base 40, ...) with DB 0 of the server untouched.
+_TEST_REDIS_STRIPE = 32
+_TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
+    _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
+)
+_TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
 
 
 def worker_redis_url(base_url: str) -> str:
     """Return a Redis URL with a per-xdist-worker DB number that is safe to flush.
 
-    Each xdist worker gets its own logical DB so ``flushdb()`` teardown cannot wipe
-    another worker's in-flight keys, and the resolved DB is never 0 — so teardown
-    can never touch the application's live database. When the URL pins no DB (or
-    pins DB 0), the run is relocated into a dedicated high-DB block (8–15).
+    The resolved DB is never 0 (the app's live DB); an unpinned or DB-0 URL is
+    relocated into a high-DB block of 24 DBs starting at GAIA_REDIS_DB_BASE
+    (default 8). Setting that to 8 + lane*32 gives each CI lane its own
+    32-DB stripe on one shared Redis (see scripts/ci/test-services.sh).
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -72,29 +82,31 @@ def worker_redis_url(base_url: str) -> str:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
     configured_db = int(match.group(1)) if match else 0
+    # The per-lane block is 24 DBs wide, room for 24 workers with no wrapping;
+    # wrapping only happens past 24 workers, a deliberate documented degradation.
     if configured_db:
-        # Deliberate non-zero DB: offset per worker, but never wrap onto DB 0.
-        db = (configured_db + worker_num) % 16 or _TEST_REDIS_DB_BLOCK_START
+        # Deliberate non-zero DB: offset per worker within this lane's stripe,
+        # but never land on the stripe's DB 0.
+        offset = (configured_db + worker_num) % _TEST_REDIS_STRIPE
+        db = _TEST_REDIS_STRIPE_BASE + offset if offset else _TEST_REDIS_DB_BLOCK_START
     else:
-        # No DB or DB 0 (the app's live DB): use the throwaway block, wrapping
-        # within 8–15 so the flush target is always an isolated test database.
-        block_size = 16 - _TEST_REDIS_DB_BLOCK_START
-        db = _TEST_REDIS_DB_BLOCK_START + (worker_num % block_size)
+        db = _TEST_REDIS_DB_BLOCK_START + (worker_num % _TEST_REDIS_DB_BLOCK_SIZE)
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
 
 
-def worker_mongo_db_name(base_name: str = "gaia_test") -> str:
+def worker_mongo_db_name(base_name: str | None = None) -> str:
     """Return a per-xdist-worker MongoDB database name.
 
-    The same reason ``worker_redis_url`` exists: the service fixtures wipe collections
-    with ``delete_many({})`` on setup and teardown, so on a shared database one worker
-    clears another worker's in-flight documents and its conversation vanishes mid-test.
-    Giving each worker its own database makes that impossible rather than unlikely.
+    Same reason as worker_redis_url: fixtures wipe collections with
+    delete_many({}) on setup/teardown, so a shared database lets one worker
+    clear another's in-flight documents. Base defaults to GAIA_MONGO_DB_BASE
+    (default gaia_test) so CI lanes can share one mongod without colliding.
     """
+    base = base_name if base_name is not None else os.environ.get("GAIA_MONGO_DB_BASE", "gaia_test")
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
-    return f"{base_name}_{worker}"
+    return f"{base}_{worker}"
 
 
 class BindableToolsFakeModel(FakeMessagesListChatModel):
@@ -111,14 +123,49 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
     graph-building tests on the same contract.
     """
 
-    # The bind_tools() override below stays on purpose: langchain-core's
-    # inherited implementation returns a NEW RunnableBinding instead of self,
-    # and dozens of tests (plus create_agent's re-binding flow) rely on the
-    # fake remaining the same object with its scripted responses intact.
+    # bind_tools() override stays on purpose: the inherited implementation
+    # returns a NEW RunnableBinding, but callers rely on the fake staying the same object.
     profile: dict[str, int] = Field(default={"max_input_tokens": 100_000})
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
+
+
+#: One (namespace, mode, payload) triple of a graph's astream(subgraphs=True).
+GraphStreamEvent = tuple[tuple[str, ...], str, Any]
+
+
+class ScriptedGraph:
+    """A graph whose astream replays exactly the events handed to it.
+
+    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    real model wire never produces: an id-less message, a tool call announced
+    before its text, arguments that never parse, a retraction mid-node.
+    """
+
+    def __init__(self, events: Sequence[tuple[Any, ...]]) -> None:
+        self._events = events
+
+    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
+        events = self._events
+
+        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
+            for event in events:
+                yield event
+
+        return stream()
+
+
+def message_chunk_event(
+    *, message_id: str | None, content: str = "", **kwargs: Any
+) -> GraphStreamEvent:
+    """Build a messages-mode event carrying one assistant chunk."""
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
+
+
+def agent_update_event(message: AIMessage) -> GraphStreamEvent:
+    """Build an updates-mode event closing the agent node with message as its reply."""
+    return ((), "updates", {"agent": {"messages": [message]}})
 
 
 def create_fake_llm(responses: list[str]) -> BindableToolsFakeModel:
@@ -138,23 +185,15 @@ def create_fake_llm_with_tool_calls(
 
 
 class PassthroughFakeLLM:
-    """Base for hand-rolled fake LLMs that ``create_agent`` drives directly.
+    """Base for hand-rolled fake LLMs that create_agent drives directly.
 
-    ``create_agent`` reshapes the model before every call — ``with_config``,
-    ``bind_tools``, ``bind`` (the OpenRouter sticky-routing key), and
-    ``with_retry`` via ``with_llm_retry`` — and each returns a new runnable in
-    production. A fake only needs them to hand itself back, so they live here
-    once: subclasses write ``ainvoke`` and nothing else.
-
-    Duck-typed rather than a ``BaseChatModel`` subclass on purpose — these
-    fakes answer from the messages they are shown, which is what makes them
-    replay-safe, and ``FakeMessagesListChatModel`` answers from a fixed list
-    instead. The shared base is what stops the next reshaping call production
-    adds from breaking every one of them separately.
-
-    Carries the two model attributes production middleware reads without
-    invoking: ``_llm_type`` (token-counter selection) and ``profile``
-    (fractional-token triggers) — same invariant every real chat LLM meets.
+    create_agent reshapes the model before every call (with_config,
+    bind_tools, bind, with_retry); each returns a new runnable in production,
+    so these hand themselves back once here — subclasses write only ainvoke.
+    Duck-typed rather than a BaseChatModel subclass so these answer from the
+    messages they are shown, unlike FakeMessagesListChatModel's fixed list.
+    Carries _llm_type and profile, the two attributes production middleware
+    reads without invoking.
     """
 
     _llm_type = "passthrough-fake"
@@ -197,7 +236,7 @@ class MockAuthMiddleware(BaseHTTPMiddleware):
     under test — only the login step no automated test can perform for real.
     """
 
-    def __init__(self, app, user: dict):
+    def __init__(self, app, user: AuthenticatedUser):
         super().__init__(app)
         self._user = user
 
@@ -217,21 +256,20 @@ class NoAuthMiddleware(BaseHTTPMiddleware):
 
 
 class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
-    """Test-only stand-in for WorkOSAuthMiddleware that trusts an
-    ``X-Test-User-Id`` header instead of a real WorkOS session.
+    """Test-only stand-in for WorkOSAuthMiddleware that trusts an X-Test-User-Id header.
 
     Unlike MockAuthMiddleware (one fixed user baked in at app-construction
     time), this lets a single live server be hit as several different
-    signed-in users — simulating separate browsers/accounts — by varying a
-    request header, which a plain httpx client pointed at a real bound port
-    can do per-call.
+    signed-in users by varying a request header per call.
     """
 
     async def dispatch(self, request: Request, call_next):
         user_id = request.headers.get("x-test-user-id")
         if user_id:
             request.state.authenticated = True
-            request.state.user = {"user_id": user_id, "email": f"{user_id}@test.local"}
+            request.state.user = AuthenticatedUser(
+                user_id=user_id, auth_provider="workos", email=f"{user_id}@test.local"
+            )
         else:
             request.state.authenticated = False
             request.state.user = None
@@ -239,7 +277,7 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
 
 
 def real_services_available() -> bool:
-    """True when the run is allowed to dial real service containers.
+    """Return True when the run is allowed to dial real service containers.
 
     CI (the Dagger service container) sets USE_REAL_SERVICES=1 explicitly; a
     bare local run must stay offline.
@@ -265,15 +303,11 @@ def skip_items_without_real_services(
 
 
 class AssertNumDbCalls:
-    """Assert exactly N SQL statements executed inside the block (Django's
-    assertNumQueries pattern).
+    """Assert exactly N SQL statements executed inside the block (Django's assertNumQueries pattern).
 
-    Listens for SQLAlchemy ``before_cursor_execute`` on the given engine
-    (sync or async — the event fires on both) and asserts the count,
-    dumping every captured statement on mismatch so the accidental query is
-    visible, not just counted. ``warmup`` excludes the first statements that
-    only establish the pool, so a warm-up connection is never mistaken for
-    a query.
+    Listens for SQLAlchemy before_cursor_execute on the given engine (sync or
+    async) and dumps every captured statement on mismatch. warmup excludes
+    the first statements that only establish the pool.
     """
 
     def __init__(self, expected: int, engine: Any, *, warmup: int = 0) -> None:
@@ -312,26 +346,121 @@ class AssertNumDbCalls:
 
 
 def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> AssertNumDbCalls:
-    """Context manager: fail if the block runs anything but ``expected`` SQL
-    statements against ``engine``. Attach to a real engine at the repository
-    layer — N+1 and accidental-query regressions die here."""
+    """Context manager: fail if the block runs anything but expected SQL statements against engine.
+
+    Attach to a real engine at the repository layer — N+1 and
+    accidental-query regressions die here.
+    """
     return AssertNumDbCalls(expected, engine, warmup=warmup)
+
+
+class WideEventRecorder:
+    """Captures every wide event a boundary flushes through the loguru sink.
+
+    log.get() only ever sees the INNERMOST open boundary, so it cannot read
+    fields a nested wide_task owns — and a fire-and-forget task that opens
+    its own boundary (memory ingestion, ARQ jobs) is exactly that case. This
+    stands in for the sink instead, so the assertion reads the event the code
+    actually emitted:
+
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            await work()
+        assert recorder.event("memory_retain")["memory_ingest"] == {...}
+    """
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+        self._ctx: dict[str, Any] = {}
+
+    def bind(self, **kwargs: Any) -> "WideEventRecorder":
+        self._ctx = kwargs
+        return self
+
+    def log(self, level: str, message: str) -> None:
+        self.events.append({**self._ctx, "_message": message})
+
+    def opt(self, **kwargs: Any) -> "WideEventRecorder":
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        return lambda *a, **k: None
+
+    def event(self, task: str) -> dict[str, Any]:
+        """Return the single event emitted by the wide_task/log_context named task.
+
+        Raises if that boundary emitted nothing or emitted twice.
+        """
+        matches = [event for event in self.events if event.get("task") == task]
+        if len(matches) != 1:
+            raise AssertionError(
+                f"expected exactly one {task!r} event, got {len(matches)}; "
+                f"emitted: {[event.get('task') for event in self.events]}"
+            )
+        return matches[0]
 
 
 @asynccontextmanager
 async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str, Any]]:
     """Run a block inside a real wide-event boundary, exposing its live fields.
 
-    ``log.warning``/``log.error`` append to the event's ``warnings``/``errors``
-    ONLY inside a boundary — outside one every write is discarded — so this is
-    what a test needs to prove a swallowed failure is actually observable
-    rather than silent. That claim is the entire justification for swallowing,
-    and without a boundary it cannot be asserted at all.
-
-        async with captured_wide_event() as event:
-            await build_core_memory_block(ctx)
-        (warning,) = event["warnings"]
-        assert warning["error_type"] == "RuntimeError"
+    log.warning/log.error append to the event's warnings/errors only inside
+    a boundary — outside one every write is discarded — so this is what a
+    test needs to prove a swallowed failure is actually observable.
     """
     async with log_context(operation):
         yield log.get()
+
+
+@asynccontextmanager
+async def pg_advisory_lock(
+    conninfo: str, lock_id: int = LANGGRAPH_SETUP_LOCK_ID
+) -> AsyncIterator[None]:
+    """Hold Postgres advisory lock lock_id for the block, across processes."""
+    import psycopg
+
+    async with await psycopg.AsyncConnection.connect(conninfo, autocommit=True) as conn:
+        await conn.execute("SELECT pg_advisory_lock(%s)", (lock_id,))
+        try:
+            yield
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+
+
+#: The CDP URL of the fake Browser-Use sessions the patch tests drive.
+OBSCURA_TEST_CDP_URL = "ws://obscura.test:9300/devtools/browser/run-1"
+
+
+#: How long a test's in-process ASGI server gets to start listening.
+_ASGI_STARTUP_TIMEOUT_SECONDS = 5
+
+
+@asynccontextmanager
+async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
+    """Serve an ASGI app on a port the OS picks; yield its base URL.
+
+    Binding port 0 leaves no window for another process to take a pre-picked
+    port, and a server that never starts fails the test instead of yielding.
+    """
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
+    )
+    task = asyncio.create_task(server.serve())
+    try:
+        async with asyncio.timeout(_ASGI_STARTUP_TIMEOUT_SECONDS):
+            while not server.started:
+                if task.done():
+                    task.result()
+                    raise RuntimeError("test ASGI server exited before it started")
+                await asyncio.sleep(0)
+    except BaseException:
+        # A server stuck in startup never sees should_exit; cancel it rather than wait forever.
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    try:
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await task

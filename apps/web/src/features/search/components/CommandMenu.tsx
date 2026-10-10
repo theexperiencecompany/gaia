@@ -2,6 +2,7 @@
 
 import { Kbd } from "@heroui/kbd";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
+import type { SearchResultsResponse } from "@shared/api/generated";
 import { Command } from "cmdk";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -15,17 +16,18 @@ import React, {
 } from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
-import { type ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
+import { searchApi } from "../api/searchApi";
 import {
   ANIMATION_CONFIG,
   COMMAND_MENU_STYLES,
   MENU_SECTIONS,
   type MenuItemConfig,
+  type MenuSectionConfig,
 } from "../config/commandMenuConfig";
 
 interface CommandMenuProps {
@@ -33,10 +35,141 @@ interface CommandMenuProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type CommandMenuItem = MenuItemConfig & { onSelect: () => void };
+type CommandMenuSection = Omit<MenuSectionConfig, "items"> & {
+  items: CommandMenuItem[];
+};
+
+/** Deep-link search results for conversations, capped at 3 entries. */
+function ConversationResults({
+  conversations,
+  onOpen,
+}: Readonly<{
+  conversations: SearchResultsResponse["conversations"];
+  onOpen: (conversationId: string) => void;
+}>) {
+  if (conversations.length === 0) return null;
+  return (
+    <Command.Group heading="Conversations">
+      {conversations.slice(0, 3).map((conversation) => (
+        <Command.Item
+          key={`conversation-${conversation.conversation_id}`}
+          value={conversation.description || "Conversation"}
+          onSelect={() => {
+            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+              result_type: "conversation",
+              conversation_id: conversation.conversation_id,
+            });
+            onOpen(conversation.conversation_id);
+          }}
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <MessageMultiple02Icon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitle}>
+              {conversation.description || "Conversation"}
+            </div>
+            <div className={COMMAND_MENU_STYLES.resultSubtitle}>
+              Conversation
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+/** Deep-link search results for messages, capped at 3 entries. */
+function MessageResults({
+  messages,
+  onOpen,
+}: Readonly<{
+  messages: SearchResultsResponse["messages"];
+  onOpen: (conversationId: string) => void;
+}>) {
+  if (messages.length === 0) return null;
+  return (
+    <Command.Group heading="Messages">
+      {messages.slice(0, 3).map((message) => (
+        <Command.Item
+          key={`message-${message.message.message_id}`}
+          value={message.snippet}
+          onSelect={() => {
+            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+              result_type: "message",
+              conversation_id: message.conversation_id,
+              message_id: message.message.message_id,
+            });
+            onOpen(message.conversation_id);
+          }}
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <SearchIcon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitleClamp}>
+              {message.snippet}
+            </div>
+            <div
+              className={COMMAND_MENU_STYLES.resultSubtitle}
+              suppressHydrationWarning
+            >
+              {message.message.date
+                ? new Date(message.message.date).toLocaleDateString()
+                : null}
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+/** The static (non-search) menu sections built from config. */
+function MenuSectionsList({
+  sections,
+  showSeparators,
+}: Readonly<{ sections: CommandMenuSection[]; showSeparators: boolean }>) {
+  return (
+    <>
+      {sections.map((section, sectionIndex) => (
+        <React.Fragment key={section.key}>
+          {sectionIndex > 0 && showSeparators && (
+            <Command.Separator className={COMMAND_MENU_STYLES.separator} />
+          )}
+          <Command.Group
+            heading={section.heading}
+            className="pt-1! pb-3!"
+            style={{ padding: 0 }}
+          >
+            {section.items.map((item) => (
+              <Command.Item
+                key={item.id}
+                value={item.label}
+                onSelect={item.onSelect}
+                className={COMMAND_MENU_STYLES.item}
+              >
+                {item.icon}
+                <span className={COMMAND_MENU_STYLES.flexOne}>
+                  {item.label}
+                </span>
+                {item.shortcut && (
+                  <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
+                    {item.shortcut}
+                  </kbd>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown } = useIsPaid();
   const { data: setupStatus } = useSetupStatus();
   // Self-host instances have no billing — the upgrade CTA makes no sense there.
   const billingHidden = setupStatus?.billing_enabled === false;
@@ -44,23 +177,23 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] =
-    useState<ComprehensiveSearchResponse>({
-      conversations: [],
-      messages: [],
-      notes: [],
-    });
+  const [searchResults, setSearchResults] = useState<SearchResultsResponse>({
+    conversations: [],
+    messages: [],
+    notes: [],
+  });
   const [isSearching, setIsSearching] = useState(false);
 
   // Reset and focus
   useEffect(() => {
-    if (open) {
-      trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
+    if (!open) {
       setSearch("");
       setSearchResults({ conversations: [], messages: [], notes: [] });
+      return;
     }
+    trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(focusTimer);
   }, [open]);
 
   // SearchIcon with debouncing
@@ -88,11 +221,13 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   }, [search, handleSearch]);
 
   const openRef = useRef(open);
-  openRef.current = open;
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
   const routerRef = useRef(router);
-  routerRef.current = router;
+  useEffect(() => {
+    openRef.current = open;
+    onOpenChangeRef.current = onOpenChange;
+    routerRef.current = router;
+  });
 
   // Keyboard shortcuts — registered once, reads latest values via refs
   useEffect(() => {
@@ -132,6 +267,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     onOpenChange(false);
   }, [router, onOpenChange]);
 
+  const openConversation = useCallback(
+    (conversationId: string) => {
+      router.push(`/c/${conversationId}`);
+      onOpenChange(false);
+    },
+    [router, onOpenChange],
+  );
+
   // Build menu items from config
   const buildMenuItem = useCallback(
     (config: MenuItemConfig): MenuItemConfig & { onSelect: () => void } => {
@@ -151,6 +294,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             window.open(
               link?.href || `https://${config.externalUrl}.heygaia.io`,
               "_blank",
+              "noopener,noreferrer",
             );
             onOpenChange(false);
           },
@@ -179,29 +323,39 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     [handleNewChat, router, onOpenChange],
   );
 
-  // Get filtered menu sections
+  // Get filtered menu sections — built in a single pass over sections/items
   const menuSections = useMemo(() => {
-    return MENU_SECTIONS.map((section) => ({
-      ...section,
-      items: section.items
-        .filter((item) => {
-          // Filter out upgrade if subscribed
-          if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
-            return false;
-          }
-          // Filter out billing CTAs on self-host (no billing)
-          if (item.hideWhenBillingDisabled && billingHidden) {
-            return false;
-          }
-          // Filter by search
-          if (search) {
-            return item.label.toLowerCase().includes(search.toLowerCase());
-          }
-          return true;
-        })
-        .map(buildMenuItem),
-    })).filter((section) => section.items.length > 0);
-  }, [search, subscriptionStatus, billingHidden, buildMenuItem]);
+    const sections: CommandMenuSection[] = [];
+    for (const section of MENU_SECTIONS) {
+      const items: CommandMenuItem[] = [];
+      for (const item of section.items) {
+        // Filter out "upgrade" once the user is paid, and also while status is
+        // unknown — showing an upgrade prompt is exactly the free-tier UI a
+        // paying user reloading mid-fetch must never see.
+        if (item.hideWhenSubscribed && (isUnknown || isPaid)) {
+          continue;
+        }
+        // Self-host instances have no billing — the upgrade CTA makes no sense
+        // there, so it is hidden rather than offering a purchase that cannot
+        // happen.
+        if (item.hideWhenBillingDisabled && billingHidden) {
+          continue;
+        }
+        // Filter by search
+        if (
+          search &&
+          !item.label.toLowerCase().includes(search.toLowerCase())
+        ) {
+          continue;
+        }
+        items.push(buildMenuItem(item));
+      }
+      if (items.length > 0) {
+        sections.push({ ...section, items });
+      }
+    }
+    return sections;
+  }, [search, isUnknown, isPaid, billingHidden, buildMenuItem]);
 
   return (
     <AnimatePresence>
@@ -245,90 +399,15 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 {/* Search Results */}
                 {search && (
                   <>
-                    {searchResults.conversations.length > 0 && (
-                      <Command.Group heading="Conversations">
-                        {searchResults.conversations
-                          .slice(0, 3)
-                          .map((conversation) => (
-                            <Command.Item
-                              key={`conversation-${conversation.conversation_id}`}
-                              value={conversation.description || "Conversation"}
-                              onSelect={() => {
-                                trackEvent(
-                                  ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                  {
-                                    result_type: "conversation",
-                                    conversation_id:
-                                      conversation.conversation_id,
-                                  },
-                                );
-                                router.push(
-                                  `/c/${conversation.conversation_id}`,
-                                );
-                                onOpenChange(false);
-                              }}
-                              className={COMMAND_MENU_STYLES.item}
-                            >
-                              <MessageMultiple02Icon width={16} height={16} />
-                              <div
-                                className={COMMAND_MENU_STYLES.contentWrapper}
-                              >
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultTitle}
-                                >
-                                  {conversation.description || "Conversation"}
-                                </div>
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultSubtitle}
-                                >
-                                  Conversation
-                                </div>
-                              </div>
-                            </Command.Item>
-                          ))}
-                      </Command.Group>
-                    )}
+                    <ConversationResults
+                      conversations={searchResults.conversations}
+                      onOpen={openConversation}
+                    />
 
-                    {searchResults.messages.length > 0 && (
-                      <Command.Group heading="Messages">
-                        {searchResults.messages.slice(0, 3).map((message) => (
-                          <Command.Item
-                            key={`message-${message.message.message_id}`}
-                            value={message.snippet}
-                            onSelect={() => {
-                              trackEvent(
-                                ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                {
-                                  result_type: "message",
-                                  conversation_id: message.conversation_id,
-                                  message_id: message.message.message_id,
-                                },
-                              );
-                              router.push(`/c/${message.conversation_id}`);
-                              onOpenChange(false);
-                            }}
-                            className={COMMAND_MENU_STYLES.item}
-                          >
-                            <SearchIcon width={16} height={16} />
-                            <div className={COMMAND_MENU_STYLES.contentWrapper}>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultTitleClamp}
-                              >
-                                {message.snippet}
-                              </div>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultSubtitle}
-                                suppressHydrationWarning
-                              >
-                                {new Date(
-                                  message.message.date,
-                                ).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </Command.Item>
-                        ))}
-                      </Command.Group>
-                    )}
+                    <MessageResults
+                      messages={searchResults.messages}
+                      onOpen={openConversation}
+                    />
 
                     <Command.Separator
                       className={COMMAND_MENU_STYLES.separator}
@@ -337,39 +416,10 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 )}
 
                 {/* Menu Sections */}
-                {menuSections.map((section, sectionIndex) => (
-                  <React.Fragment key={section.key}>
-                    {sectionIndex > 0 && !search && (
-                      <Command.Separator
-                        className={COMMAND_MENU_STYLES.separator}
-                      />
-                    )}
-                    <Command.Group
-                      heading={section.heading}
-                      className="pt-1! pb-3!"
-                      style={{ padding: 0 }}
-                    >
-                      {section.items.map((item) => (
-                        <Command.Item
-                          key={item.id}
-                          value={item.label}
-                          onSelect={item.onSelect}
-                          className={COMMAND_MENU_STYLES.item}
-                        >
-                          {item.icon}
-                          <span className={COMMAND_MENU_STYLES.flexOne}>
-                            {item.label}
-                          </span>
-                          {item.shortcut && (
-                            <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
-                              {item.shortcut}
-                            </kbd>
-                          )}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  </React.Fragment>
-                ))}
+                <MenuSectionsList
+                  sections={menuSections}
+                  showSeparators={!search}
+                />
               </Command.List>
 
               {/* Footer */}

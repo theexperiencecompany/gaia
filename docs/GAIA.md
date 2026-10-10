@@ -183,13 +183,13 @@ My system separates user interaction from heavy-duty task execution to ensure re
 
 **Dynamic Tooling:** It uses Semantic Discovery to "search" for relevant capabilities based on your intent (e.g., "search for email tools") rather than keeping every tool active at once.
 
-**Handoffs:** For domain-specific tasks, it hands off control to specialized Subagents.
+**Activation:** For domain-specific tasks, it loads that integration's tools, instructions, and account context into its own turn and acts itself — no handoffs, no cold starts.
 
-### Level 3: Subagents (The Specialists)
+### Level 3: Workers (Isolated Execution)
 
-**Role:** Specialized, isolated agents for specific domains (e.g., Gmail, GitHub, or Custom Integrations).
+**Role:** Separate agents for work that must run isolated: custom MCP integrations (whose tools are issued per user and can't load in-context) and bulky parallel chunks the executor splits off to keep its own context lean.
 
-**Integrations as Subagents:** Every connected integration runs as its own subagent. This ensures they have their own focused context and tools, preventing confusion between different services.
+**Custom integrations as workers:** Every connected custom integration runs in its own worker. This gives it focused context and tools, preventing confusion between different services.
 
 ## Infinite Extensibility
 

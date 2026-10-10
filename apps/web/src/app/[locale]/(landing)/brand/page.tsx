@@ -38,32 +38,32 @@ export const metadata: Metadata = generatePageMetadata({
   image: "/og-image.webp",
 });
 
-export default function BrandPage() {
-  const brandSchema = {
-    "@context": "https://schema.org" as const,
-    "@type": "WebPage" as const,
-    name: "Brand Guidelines & Press Kit",
-    description:
-      "Official brand assets and press kit for The Experience Company and GAIA",
-    url: `${siteConfig.url}/brand`,
-    about: [
-      {
-        "@type": "Organization" as const,
-        name: "The Experience Company",
-        url: siteConfig.url,
-      },
-      {
-        "@type": "Organization" as const,
-        name: "GAIA",
-        alternateName: "General-purpose AI Assistant",
-        url: siteConfig.url,
-      },
-    ],
-  };
+const BRAND_SCHEMA = {
+  "@context": "https://schema.org" as const,
+  "@type": "WebPage" as const,
+  name: "Brand Guidelines & Press Kit",
+  description:
+    "Official brand assets and press kit for The Experience Company and GAIA",
+  url: `${siteConfig.url}/brand`,
+  about: [
+    {
+      "@type": "Organization" as const,
+      name: "The Experience Company",
+      url: siteConfig.url,
+    },
+    {
+      "@type": "Organization" as const,
+      name: "GAIA",
+      alternateName: "General-purpose AI Assistant",
+      url: siteConfig.url,
+    },
+  ],
+};
 
+export default function BrandPage() {
   return (
     <>
-      <JsonLd data={brandSchema} />
+      <JsonLd data={BRAND_SCHEMA} />
       <div className="flex min-h-screen w-full justify-center py-28">
         <div className="w-full max-w-(--breakpoint-lg) space-y-16 px-4 sm:px-6 lg:px-8">
           <section>

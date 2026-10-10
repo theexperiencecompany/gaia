@@ -43,7 +43,7 @@ async def proxy_mcp_tool_call(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyToolCallResponse:
     """Proxy a tools/call request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
@@ -100,7 +100,7 @@ async def proxy_mcp_resources_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourcesListResponse:
     """Proxy a resources/list request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_resources_list")
@@ -147,7 +147,7 @@ async def proxy_mcp_resource_templates_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourceTemplatesListResponse:
     """Proxy a resources/templates/list request from an MCP App iframe."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_resource_templates_list")
@@ -196,7 +196,7 @@ async def proxy_mcp_resource_read(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourceReadResponse:
     """Proxy a resources/read request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
@@ -247,7 +247,7 @@ async def proxy_mcp_prompts_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyPromptsListResponse:
     """Proxy a prompts/list request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_prompts_list")

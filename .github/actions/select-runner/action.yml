@@ -1,0 +1,82 @@
+name: Select runner (home with fallback)
+description: >
+  Probe the GitHub self-hosted runner API for the given label. If the home
+  server (16c/46Gi, 100.126.190.120 via Tailscale) is online, select
+  ["self-hosted","<label>"] — queueing behind a busy pool, since the box's
+  environment setup is ~30x cheaper than a GitHub-hosted runner's; otherwise
+  fall back to the GitHub-hosted runner so the job never queues on an offline
+  label. Fork PRs, PRs whose author is not an organisation member, and bot
+  actors always get the fallback. Never opens inbound ports — the home runner
+  polls GitHub over HTTPS:443 outbound.
+
+inputs:
+  runner-label:
+    description: Label of the home runner to probe
+    required: false
+    default: gaia-home
+  fallback-runner:
+    description: JSON array fallback for standard jobs (e.g. '["ubuntu-latest"]')
+    required: false
+    default: '["ubuntu-latest"]'
+  force-home:
+    description: 'If true, fail instead of falling back (for smoke tests)'
+    required: false
+    default: 'false'
+  force-github:
+    description: 'If true, skip the probe and select the fallback (exercises the GitHub-hosted path)'
+    required: false
+    default: 'false'
+  github-token:
+    description: Token used to query the runners API (GITHUB_TOKEN is enough)
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  runner:
+    description: 'JSON array string for runs-on: e.g. ["self-hosted","gaia-home"] or ["ubuntu-latest"]'
+    value: ${{ steps.probe.outputs.runner }}
+  runner_label:
+    description: 'Human label: gaia-home | ubuntu-latest'
+    value: ${{ steps.probe.outputs.runner_label }}
+  is_self_hosted:
+    description: 'true when home runner was selected'
+    value: ${{ steps.probe.outputs.is_self_hosted }}
+  reason:
+    description: 'Why this runner was chosen (online-idle | online-busy-queued | offline | not-registered | api-unavailable | fork | untrusted-author | bot-actor | forced-github)'
+    value: ${{ steps.probe.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - name: Probe home runner liveness
+      id: probe
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        RUNNER_LABEL: ${{ inputs.runner-label }}
+        FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
+        FORCE_HOME: ${{ inputs.force-home }}
+        FORCE_GITHUB: ${{ inputs.force-github }}
+        # Empty on push/dispatch; on a PR it names the head repo, and a head
+        # repo that is not this one is a fork.
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        # OWNER / MEMBER / COLLABORATOR / CONTRIBUTOR / FIRST_TIME_CONTRIBUTOR /
+        # NONE on a PR; empty otherwise. Only the first two get the box.
+        PR_AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        GITHUB_ACTOR: ${{ github.actor }}
+      run: |
+        set -euo pipefail
+        # Single source of truth: scripts/ci/runner.sh select from the checkout.
+        # A colocated copy used to shadow it and went stale — it checked only
+        # the first runner instance, so a busy #1 sent every lane to GitHub
+        # even with idle instances on the box.
+        SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.sh"
+        if [[ -f "$SCRIPT" ]]; then
+          bash "$SCRIPT" select
+        else
+          echo "::error::scripts/ci/runner.sh not found in the checkout" >&2
+          ls -R "${{ github.action_path }}" >&2 | head -n 50
+          ls -R "scripts/ci" >&2 | head -n 50 || true
+          exit 127
+        fi

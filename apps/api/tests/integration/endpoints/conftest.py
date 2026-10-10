@@ -1,13 +1,12 @@
 """Fixtures for the setup-API endpoint tests.
 
-Drives the router over ASGITransport with its parallel-agent seams (provider
-credentials service, instance/local repositories, startup-validation seed
-checks) rebound to in-memory fakes via ``monkeypatch`` on the endpoint module's
-own namespace — so no test touches Mongo/Redis and nothing leaks past the test.
-Fakes mirror the real APIs (``any_exists``, ``find_by_key``/``upsert_value``,
-``resolve``/``upsert``/``delete``/``invalidate``).
+Drives the router over ASGITransport with its external seams (provider
+credentials service, instance and local repositories, startup-validation seed
+checks) rebound to in-memory fakes via monkeypatch on the endpoint module own
+namespace, so no test touches Mongo or Redis. Fakes mirror the real APIs
+(any_exists, find_by_key and upsert_value, resolve, upsert, delete, invalidate).
 
-HTTP probes use ``respx`` — the repo-wide pattern for mocking ``httpx``.
+HTTP probes use respx, the repo-wide pattern for mocking httpx.
 """
 
 from typing import Any
@@ -23,6 +22,7 @@ from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
 from app.models.auth_models import LocalCredentialDocument
 from app.models.runtime_models import InstanceSettingsDocument
+from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import ProviderConfig
 
 FAKE_USER_ID = "setup-test-admin"
@@ -71,7 +71,7 @@ class FakeProviderService:
 
 
 class FakeInstanceSettingsRepository:
-    """Key → JSON-value docs; ``find_by_key`` yields a real document model."""
+    """Key to JSON-value docs; find_by_key yields a real document model."""
 
     def __init__(self) -> None:
         self.docs: dict[str, dict[str, Any]] = {}
@@ -91,9 +91,9 @@ class FakeInstanceSettingsRepository:
 class FakeLocalCredentialsRepository:
     """The single locally-registered admin account (or none).
 
-    ``admin_user_id`` is ``None`` before first signup; otherwise the row's
-    owner. Mirrors the real repository's read surface used by the setup
-    module: ``any_exists`` and ``get_by_user_id``.
+    admin_user_id is None before first signup, otherwise the row owner.
+    Mirrors the real read surface used by the setup module: any_exists
+    and get_by_user_id.
     """
 
     def __init__(self) -> None:
@@ -112,7 +112,7 @@ class FakeLocalCredentialsRepository:
 
 
 class FakeSeedState:
-    """Flags backing fake ``startup_validation`` seed checks."""
+    """Flags backing fake startup_validation seed checks."""
 
     def __init__(self) -> None:
         self.reset()
@@ -135,10 +135,9 @@ async def _fake_is_payment_setup() -> bool:
 def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point every external seam of the setup module at controlled fakes.
 
-    The setup endpoints run under their design environment (self-host); the
-    admin-guard dependency reads ``settings.ENV`` at call time, so pinning it
-    here keeps the suite independent of the local ``.env``. Individual tests
-    override with their own ``monkeypatch.setattr`` as needed.
+    The admin guard reads settings ENV and AUTH_MODE at call time and refuses
+    anything but ENV selfhost plus AUTH_MODE local, so pinning both here keeps
+    the suite independent of the local dot-env file.
     """
     monkeypatch.setattr(setup_module, "resolve_provider_config", provider_service.resolve)
     monkeypatch.setattr(setup_module, "stored_credential_exists", provider_service.stored_exists)
@@ -152,6 +151,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(setup_module, "is_payment_setup", _fake_is_payment_setup)
     monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
 
 @pytest.fixture(autouse=True)
@@ -166,7 +166,7 @@ def _client(*, authenticated: bool, user_id: str = FAKE_USER_ID) -> AsyncClient:
     app = FastAPI()
     app.include_router(setup_router, prefix=API)
     if authenticated:
-        app.dependency_overrides[get_current_user] = lambda: {"user_id": user_id}
+        app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(user_id=user_id)
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",  # NOSONAR

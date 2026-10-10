@@ -1,8 +1,8 @@
 "use client";
 
+import type { MemoryEntry } from "@shared/api/generated";
 import { useCallback, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry } from "@/features/memory/api/types";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 

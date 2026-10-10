@@ -5,19 +5,216 @@ These hooks implement schema modifiers for customizing tool descriptions,
 before/after hooks for data processing, and frontend streaming via writer.
 """
 
-from typing import Any
+from dataclasses import dataclass
+from typing import TypedDict
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
+from app.models.integrations.composio_hooks import (
+    ComposioToolCall,
+    ComposioToolResponse,
+    JsonSchemaNode,
+)
+from app.models.integrations.twitter import TwitterCreateTweetResponse
+from app.models.integrations.twitter_hooks import (
+    TwitterCreatePostArguments,
+    TwitterHookTweet,
+    TwitterHookUser,
+    TwitterSearchArguments,
+    TwitterTweetPage,
+    TwitterUserLookupData,
+    TwitterUserPage,
+)
 from shared.py.wide_events import log
 
 from .registry import (
+    AfterHookResponse,
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
 )
+
+_MAX_RESULTS_PARAM = "max_results"
+_LLM_TEXT_LIMIT = 200
+_LLM_TWEET_LIMIT = 10
+_LLM_USER_LIMIT = 20
+_UNKNOWN_AUTHOR_USERNAME = "unknown"
+_UNKNOWN_AUTHOR_NAME = "Unknown"
+
+
+class TweetSummary(TypedDict):
+    """One tweet as the LLM sees it in a search page."""
+
+    id: str
+    text: str
+    author_username: str
+    author_name: str
+    likes: int
+    retweets: int
+
+
+class TweetSearchSummary(TypedDict):
+    tweets: list[TweetSummary]
+    result_count: int
+    has_more: bool
+
+
+class TimelineTweetSummary(TypedDict):
+    id: str
+    text: str
+    author: str
+    likes: int
+
+
+class TimelineSummary(TypedDict):
+    tweets: list[TimelineTweetSummary]
+    count: int
+
+
+class UserLookupSummary(TypedDict):
+    id: str
+    username: str
+    name: str
+    followers: int
+    following: int
+    verified: bool | None
+
+
+class UserLookupsSummary(TypedDict):
+    users: list[UserLookupSummary]
+
+
+class FollowUserSummary(TypedDict):
+    id: str
+    username: str
+    name: str
+    followers: int
+
+
+class FollowListSummary(TypedDict):
+    users: list[FollowUserSummary]
+    count: int
+    has_more: bool
+
+
+class PostCreatedSummary(TypedDict):
+    success: bool
+    id: str
+    text: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthoredTweet:
+    """A tweet joined to its author from the page's includes, when X expanded one."""
+
+    tweet: TwitterHookTweet
+    author: TwitterHookUser | None
+
+
+def _metrics_payload(obj: TwitterHookTweet | TwitterHookUser) -> dict[str, object]:
+    """Return public_metrics exactly as X sent it, or {} when it was not requested."""
+    return obj.public_metrics.model_dump(exclude_unset=True) if obj.public_metrics else {}
+
+
+def _author_identity(author: TwitterHookUser | None) -> dict[str, object]:
+    """Return the author fields every tweet card shows; a placeholder when X expanded no author."""
+    if author is None:
+        return {"username": _UNKNOWN_AUTHOR_USERNAME, "name": _UNKNOWN_AUTHOR_NAME}
+    return {
+        "id": author.id,
+        "username": author.username,
+        "name": author.name,
+        "profile_image_url": author.profile_image_url,
+        "verified": author.verified,
+    }
+
+
+def _search_tweet_card(item: _AuthoredTweet) -> dict[str, object]:
+    """Render a search result as the chat card shows it, author bio and metrics included."""
+    author = _author_identity(item.author)
+    if item.author is not None:
+        author["description"] = item.author.description
+        author["public_metrics"] = _metrics_payload(item.author)
+    return {
+        "id": item.tweet.id,
+        "text": item.tweet.text,
+        "created_at": item.tweet.created_at,
+        "author": author,
+        "public_metrics": _metrics_payload(item.tweet),
+        "conversation_id": item.tweet.conversation_id,
+    }
+
+
+def _timeline_tweet_card(item: _AuthoredTweet) -> dict[str, object]:
+    return {
+        "id": item.tweet.id,
+        "text": item.tweet.text,
+        "created_at": item.tweet.created_at,
+        "author": _author_identity(item.author),
+        "public_metrics": _metrics_payload(item.tweet),
+    }
+
+
+def _profile_card(user: TwitterHookUser) -> dict[str, object]:
+    """Render a looked-up user as the profile card shows them."""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "description": user.description,
+        "profile_image_url": user.profile_image_url,
+        "verified": user.verified,
+        "public_metrics": _metrics_payload(user),
+        "created_at": user.created_at,
+        "location": user.location,
+        "url": user.url,
+    }
+
+
+def _follow_card(user: TwitterHookUser) -> dict[str, object]:
+    """Render a follower / followed user as the list card shows them."""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "profile_image_url": user.profile_image_url,
+        "verified": user.verified,
+        "description": user.description,
+        "public_metrics": _metrics_payload(user),
+    }
+
+
+def _with_authors(page: TwitterTweetPage) -> list[_AuthoredTweet]:
+    users_by_id = {user.id: user for user in page.includes.users}
+    return [_AuthoredTweet(tweet, users_by_id.get(tweet.author_id)) for tweet in page.data]
+
+
+def _llm_text(text: str) -> str:
+    return text[:_LLM_TEXT_LIMIT] + "..." if len(text) > _LLM_TEXT_LIMIT else text
+
+
+def _likes(tweet: TwitterHookTweet) -> int:
+    return tweet.public_metrics.like_count if tweet.public_metrics else 0
+
+
+def _retweets(tweet: TwitterHookTweet) -> int:
+    return tweet.public_metrics.retweet_count if tweet.public_metrics else 0
+
+
+def _followers(user: TwitterHookUser) -> int:
+    return user.public_metrics.followers_count if user.public_metrics else 0
+
+
+def _following(user: TwitterHookUser) -> int:
+    return user.public_metrics.following_count if user.public_metrics else 0
+
+
+def _result_count(page: TwitterTweetPage, tweets: list[_AuthoredTweet]) -> int:
+    """Return meta.result_count when X sent one, else the number of tweets on the page."""
+    return page.meta.result_count if page.meta.result_count is not None else len(tweets)
 
 
 @register_schema_modifier(tools=["TWITTER_RECENT_SEARCH"])
@@ -50,9 +247,7 @@ def twitter_search_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Too
 
 @register_schema_modifier(tools=["TWITTER_FOLLOW_USER"])
 def twitter_follow_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Add guidance to search for user first if username is unknown.
-    """
+    """Add guidance to search for user first if username is unknown."""
     guidance = (
         "\n\n💡 USER DISCOVERY TIP: If the user doesn't provide a username:\n"
         "1. Use TWITTER_RECENT_SEARCH with the person's name to find their tweets\n"
@@ -66,9 +261,7 @@ def twitter_follow_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Too
 
 @register_schema_modifier(tools=["TWITTER_CREATION_OF_A_POST"])
 def twitter_create_post_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Add guidance for creating tweets with media and threads.
-    """
+    """Add guidance for creating tweets with media and threads."""
     guidance = (
         "\n\n📱 POSTING TIPS:\n"
         "• For media: Upload first with TWITTER_UPLOAD_MEDIA, then use media_media_ids\n"
@@ -82,23 +275,19 @@ def twitter_create_post_schema_modifier(tool: str, toolkit: str, schema: Tool) -
 
 @register_schema_modifier(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
 def twitter_timeline_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Set sensible defaults for timeline requests.
-    """
-    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
-    # (including this codebase's own test doubles) don't always hand us a real,
-    # validated `Tool`, so this stays defensive against a non-dict value.
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
+    """Set sensible defaults for timeline requests."""
+    input_params = JsonSchemaNode.parse(schema.input_parameters)
+    if input_params is None:
         return schema
 
-    props = input_params.get("properties", {})
-    if not isinstance(props, dict):
+    props = input_params.properties
+    if props is None:
         return schema
 
-    if "max_results" in props and isinstance(props["max_results"], dict):
-        props["max_results"]["default"] = 20
+    if (max_results := props.get(_MAX_RESULTS_PARAM)) is not None:
+        max_results.default = 20
 
+    schema.input_parameters = input_params.as_schema()
     return schema
 
 
@@ -112,15 +301,17 @@ def twitter_create_post_before_hook(
         if writer is None:
             return params
 
-        arguments = params.get("arguments", {})
+        arguments = TwitterCreatePostArguments.model_validate(
+            ComposioToolCall.model_validate(params).arguments
+        )
 
         # Build post preview data for frontend
         post_data = {
-            "text": arguments.get("text", ""),
-            "quote_tweet_id": arguments.get("quote_tweet_id"),
-            "reply_to_tweet_id": arguments.get("reply_in_reply_to_tweet_id"),
-            "media_ids": arguments.get("media_media_ids", []),
-            "poll_options": arguments.get("poll_options", []),
+            "text": arguments.text,
+            "quote_tweet_id": arguments.quote_tweet_id,
+            "reply_to_tweet_id": arguments.reply_in_reply_to_tweet_id,
+            "media_ids": arguments.media_media_ids,
+            "poll_options": arguments.poll_options,
         }
 
         payload = {
@@ -148,10 +339,11 @@ def twitter_search_before_hook(
         if writer is None:
             return params
 
-        arguments = params.get("arguments", {})
-        query = arguments.get("query", "")
+        arguments = TwitterSearchArguments.model_validate(
+            ComposioToolCall.model_validate(params).arguments
+        )
 
-        payload = {"progress": f"Searching tweets for: {query}..."}
+        payload = {"progress": f"Searching tweets for: {arguments.query}..."}
         writer(payload)
 
     except Exception as e:
@@ -167,80 +359,51 @@ def twitter_search_before_hook(
 @register_after_hook(tools=["TWITTER_RECENT_SEARCH", "TWITTER_FULL_ARCHIVE_SEARCH"])
 def twitter_search_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process search response and send tweet data to frontend."""
     log.set(twitter_tool=tool, toolkit=toolkit)
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response["data"]
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        data = response.get("data", {})
-        tweets = data.get("data", [])
-        includes = data.get("includes", {})
-        users_map = {}
-
-        # Build user lookup map
-        for user in includes.get("users", []):
-            users_map[user.get("id")] = {
-                "id": user.get("id"),
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "profile_image_url": user.get("profile_image_url"),
-                "verified": user.get("verified", False),
-                "description": user.get("description", ""),
-                "public_metrics": user.get("public_metrics", {}),
-            }
-
-        # Process tweets for frontend display
-        processed_tweets = []
-        for tweet in tweets:
-            author_id = tweet.get("author_id")
-            author = users_map.get(author_id, {"username": "unknown", "name": "Unknown"})
-
-            processed_tweet = {
-                "id": tweet.get("id"),
-                "text": tweet.get("text"),
-                "created_at": tweet.get("created_at"),
-                "author": author,
-                "public_metrics": tweet.get("public_metrics", {}),
-                "conversation_id": tweet.get("conversation_id"),
-            }
-            processed_tweets.append(processed_tweet)
+        page = TwitterTweetPage.model_validate(raw)
+        tweets = _with_authors(page)
 
         # Send to frontend
-        if writer is not None and processed_tweets:
+        if writer is not None and tweets:
             payload = {
                 "twitter_search_data": {
-                    "tweets": processed_tweets,
-                    "result_count": data.get("meta", {}).get("result_count", len(processed_tweets)),
-                    "next_token": data.get("meta", {}).get("next_token"),
+                    "tweets": [_search_tweet_card(item) for item in tweets],
+                    "result_count": _result_count(page, tweets),
+                    "next_token": page.meta.next_token,
                 },
             }
             writer(payload)
 
         # Return cleaned data for LLM (minimize tokens)
-        llm_tweets = []
-        for tweet in processed_tweets[:10]:  # Limit to 10 for LLM context
-            llm_tweets.append(
-                {
-                    "id": tweet["id"],
-                    "text": tweet["text"][:200] + "..."
-                    if len(tweet["text"]) > 200
-                    else tweet["text"],
-                    "author_username": tweet["author"].get("username"),
-                    "author_name": tweet["author"].get("name"),
-                    "likes": tweet["public_metrics"].get("like_count", 0),
-                    "retweets": tweet["public_metrics"].get("retweet_count", 0),
-                }
-            )
+        llm_tweets: list[TweetSummary] = [
+            {
+                "id": item.tweet.id,
+                "text": _llm_text(item.tweet.text),
+                "author_username": item.author.username
+                if item.author
+                else _UNKNOWN_AUTHOR_USERNAME,
+                "author_name": item.author.name if item.author else _UNKNOWN_AUTHOR_NAME,
+                "likes": _likes(item.tweet),
+                "retweets": _retweets(item.tweet),
+            }
+            for item in tweets[:_LLM_TWEET_LIMIT]
+        ]
 
-        return {
+        summary: TweetSearchSummary = {
             "tweets": llm_tweets,
-            "result_count": data.get("meta", {}).get("result_count", len(processed_tweets)),
-            "has_more": bool(data.get("meta", {}).get("next_token")),
+            "result_count": _result_count(page, tweets),
+            "has_more": bool(page.meta.next_token),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -248,63 +411,52 @@ def twitter_search_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER_USER_LOOKUP_BY_USERNAMES"])
 def twitter_user_lookup_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process user lookup and stream profile data to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response["data"]
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        data = response.get("data", {})
-        user_data = data.get("data", data)
-
-        # Handle both single user and multiple users
-        users = user_data if isinstance(user_data, list) else [user_data] if user_data else []
-
-        processed_users = []
-        for user in users:
-            processed_user = {
-                "id": user.get("id"),
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "description": user.get("description", ""),
-                "profile_image_url": user.get("profile_image_url"),
-                "verified": user.get("verified", False),
-                "public_metrics": user.get("public_metrics", {}),
-                "created_at": user.get("created_at"),
-                "location": user.get("location"),
-                "url": user.get("url"),
-            }
-            processed_users.append(processed_user)
+        # Handle both single user and multiple users; a payload without a
+        # ``data`` envelope is the bare user object itself.
+        users: list[TwitterHookUser]
+        if isinstance(raw, dict) and "data" not in raw:
+            users = [TwitterHookUser.model_validate(raw)] if raw else []
+        else:
+            user_data = TwitterUserLookupData.model_validate(raw).data
+            users = user_data if isinstance(user_data, list) else [user_data] if user_data else []
 
         # Send to frontend
-        if writer is not None and processed_users:
+        if writer is not None and users:
             payload = {
-                "twitter_user_data": processed_users,
+                "twitter_user_data": [_profile_card(user) for user in users],
             }
             writer(payload)
 
         # Return for LLM
-        return {
+        summary: UserLookupsSummary = {
             "users": [
                 {
-                    "id": u["id"],
-                    "username": u["username"],
-                    "name": u["name"],
-                    "followers": u["public_metrics"].get("followers_count", 0),
-                    "following": u["public_metrics"].get("following_count", 0),
-                    "verified": u["verified"],
+                    "id": u.id,
+                    "username": u.username,
+                    "name": u.name,
+                    "followers": _followers(u),
+                    "following": _following(u),
+                    "verified": u.verified,
                 }
-                for u in processed_users
+                for u in users
             ]
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -312,73 +464,46 @@ def twitter_user_lookup_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
 def twitter_timeline_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process timeline and stream tweets to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response["data"]
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        data = response.get("data", {})
-        tweets = data.get("data", [])
-        includes = data.get("includes", {})
-        users_map = {}
-
-        # Build user lookup map
-        for user in includes.get("users", []):
-            users_map[user.get("id")] = {
-                "id": user.get("id"),
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "profile_image_url": user.get("profile_image_url"),
-                "verified": user.get("verified", False),
-            }
-
-        # Process tweets
-        processed_tweets = []
-        for tweet in tweets:
-            author_id = tweet.get("author_id")
-            author = users_map.get(author_id, {"username": "unknown", "name": "Unknown"})
-
-            processed_tweets.append(
-                {
-                    "id": tweet.get("id"),
-                    "text": tweet.get("text"),
-                    "created_at": tweet.get("created_at"),
-                    "author": author,
-                    "public_metrics": tweet.get("public_metrics", {}),
-                }
-            )
+        tweets = _with_authors(TwitterTweetPage.model_validate(raw))
 
         # Send to frontend
-        if writer is not None and processed_tweets:
+        if writer is not None and tweets:
             payload = {
                 "twitter_timeline_data": {
-                    "tweets": processed_tweets,
+                    "tweets": [_timeline_tweet_card(item) for item in tweets],
                 }
             }
             writer(payload)
 
         # Return cleaned for LLM
-        return {
+        summary: TimelineSummary = {
             "tweets": [
                 {
-                    "id": t["id"],
-                    "text": t["text"][:200] + "..." if len(t["text"]) > 200 else t["text"],
-                    "author": t["author"].get("username"),
-                    "likes": t["public_metrics"].get("like_count", 0),
+                    "id": t.tweet.id,
+                    "text": _llm_text(t.tweet.text),
+                    "author": t.author.username if t.author else _UNKNOWN_AUTHOR_USERNAME,
+                    "likes": _likes(t.tweet),
                 }
-                for t in processed_tweets[:10]
+                for t in tweets[:_LLM_TWEET_LIMIT]
             ],
-            "count": len(processed_tweets),
+            "count": len(tweets),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -386,59 +511,47 @@ def twitter_timeline_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER_FOLLOWING_BY_USER_ID"])
 def twitter_followers_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process followers/following list and stream to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response["data"]
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        data = response.get("data", {})
-        users = data.get("data", [])
-
-        processed_users = []
-        for user in users:
-            processed_users.append(
-                {
-                    "id": user.get("id"),
-                    "username": user.get("username"),
-                    "name": user.get("name"),
-                    "profile_image_url": user.get("profile_image_url"),
-                    "verified": user.get("verified", False),
-                    "description": user.get("description", ""),
-                    "public_metrics": user.get("public_metrics", {}),
-                }
-            )
+        page = TwitterUserPage.model_validate(raw)
+        users = page.data
 
         # Send to frontend
-        if writer is not None and processed_users:
+        if writer is not None and users:
             action = "followers" if "FOLLOWERS" in tool else "following"
             payload = {
-                f"twitter_{action}_data": processed_users,
+                f"twitter_{action}_data": [_follow_card(user) for user in users],
             }
             writer(payload)
 
         # Return for LLM
-        return {
+        summary: FollowListSummary = {
             "users": [
                 {
-                    "id": u["id"],
-                    "username": u["username"],
-                    "name": u["name"],
-                    "followers": u["public_metrics"].get("followers_count", 0),
+                    "id": u.id,
+                    "username": u.username,
+                    "name": u.name,
+                    "followers": _followers(u),
                 }
-                for u in processed_users[:20]
+                for u in users[:_LLM_USER_LIMIT]
             ],
-            "count": len(processed_users),
-            "has_more": bool(data.get("meta", {}).get("next_token")),
+            "count": len(users),
+            "has_more": bool(page.meta.next_token),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -446,39 +559,41 @@ def twitter_followers_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["TWITTER_CREATION_OF_A_POST"])
 def twitter_post_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Send created post data to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response["data"]
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        data = response.get("data", {})
-        post_data = data.get("data", {})
+        post = TwitterCreateTweetResponse.model_validate(raw).data
+        url = f"https://twitter.com/i/status/{post.id}"
 
-        if writer is not None and post_data:
+        if writer is not None:
             payload = {
                 "twitter_post_created": {
-                    "id": post_data.get("id"),
-                    "text": post_data.get("text"),
-                    "url": f"https://twitter.com/i/status/{post_data.get('id')}",
+                    "id": post.id,
+                    "text": post.text,
+                    "url": url,
                 },
             }
             writer(payload)
 
-        return {
+        summary: PostCreatedSummary = {
             "success": True,
-            "id": post_data.get("id"),
-            "text": post_data.get("text"),
-            "url": f"https://twitter.com/i/status/{post_data.get('id')}",
+            "id": post.id,
+            "text": post.text,
+            "url": url,
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -486,4 +601,4 @@ def twitter_post_created_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw

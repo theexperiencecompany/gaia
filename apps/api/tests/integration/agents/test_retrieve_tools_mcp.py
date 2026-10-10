@@ -1,18 +1,13 @@
 """retrieve_tools must surface per-user MCP tools end-to-end.
 
-After the resilience rewrite removed per-user `mcp_{iid}_{user_id}` categories
-from ToolRegistry, MCP tool names no longer appear in
-`tool_registry.get_tool_names()`. retrieve_tools had two filters keyed against
-that set — one in discovery mode (Chroma post-processing) and one in binding
-mode (exact_tool_names validation). Both used to drop every MCP tool as
-"unknown."
+After the resilience rewrite removed per-user mcp_{iid}_{user_id} categories from ToolRegistry,
+MCP tool names stopped appearing in tool_registry.get_tool_names(). retrieve_tools had two filters
+keyed against that set -- one in discovery mode (Chroma post-processing), one in binding mode
+(exact_tool_names validation) -- and both dropped every MCP tool as "unknown".
 
-These tests exercise the live `retrieve_tools` factory with mocked Chroma /
-MCPClient boundaries and verify:
-
-1. Discovery mode returns posthog tool names from a Chroma hit.
-2. Binding mode validates posthog tool names directly via MCPClient.
-3. User A's tools never leak into user B's retrieve_tools results.
+Exercises the live retrieve_tools factory with the Chroma and MCPClient boundaries mocked:
+discovery mode returns the tool names from a Chroma hit, binding mode validates them directly via
+MCPClient, and user A's tools never leak into user B's results.
 """
 
 from __future__ import annotations
@@ -43,12 +38,19 @@ def _fake_search_item(key: str, namespace: tuple, score: float = 0.95):
 
 
 def _fake_mcp_client(integration_tools_map: dict[str, list[Any]]):
-    """Build a MagicMock MCPClient whose `_tools` dict contains the given tools.
+    """Build a MagicMock MCPClient whose _tools dict contains the given tools.
 
-    integration_tools_map: {integration_id: [tool, tool, ...]}
+    Models the two lookups the execute resolver performs (find_integration +
+    async get_tools) so proxied schema-doc rendering exercises the same
+    per-user scoping the name filters do.
     """
     client = MagicMock()
     client._tools = integration_tools_map
+    client.find_integration = lambda name: next(
+        (iid for iid, tools in integration_tools_map.items() if any(t.name == name for t in tools)),
+        None,
+    )
+    client.get_tools = AsyncMock(side_effect=lambda iid: integration_tools_map.get(iid, []))
     return client
 
 
@@ -61,9 +63,9 @@ def _config(user_id: str) -> RunnableConfig:
 
 @pytest.mark.integration
 class TestRetrieveToolsBindingMode:
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_binding_resolves_mcp_names_from_mcp_client(self):
-        """exact_tool_names that come from a user's posthog MCP should validate
-        even though they're not in tool_registry.get_tool_names()."""
+        """exact_tool_names from a user's posthog MCP validate even though absent from tool_registry."""
         user_id = "user-a"
         mcp_tools = [_fake_tool("persons-list"), _fake_tool("query-trends")]
 
@@ -75,13 +77,23 @@ class TestRetrieveToolsBindingMode:
                 new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
             ),
             patch(
+                "app.agents.tools.execute.resolver.get_mcp_client",
+                new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
+            ),
+            patch(
                 "app.agents.tools.core.retrieval.get_tool_registry",
                 new_callable=AsyncMock,
             ) as get_registry,
+            patch(
+                "app.agents.tools.execute.resolver.get_tool_registry",
+                new_callable=AsyncMock,
+            ) as get_resolver_registry,
         ):
             registry = MagicMock()
             registry.get_tool_names = MagicMock(return_value=["search_memory"])
+            registry.get_tool_meta = MagicMock(return_value=None)
             get_registry.return_value = registry
+            get_resolver_registry.return_value = registry
 
             result = await retrieve_tools(
                 store=MagicMock(),
@@ -89,15 +101,18 @@ class TestRetrieveToolsBindingMode:
                 exact_tool_names=["persons-list", "unknown-tool"],
             )
 
-        assert "persons-list" in result["tools_to_bind"]
-        assert "unknown-tool" not in result["tools_to_bind"]
+        # Cutover: MCP tools are proxied through execute — resolved and
+        # documented, never bound as callable tools.
+        assert result["tools_to_bind"] == []
+        assert "persons-list" in result["response"]
+        assert "## persons-list" in result["response_text"]
+        assert "unknown-tool" not in result["response"]
 
 
 @pytest.mark.integration
 class TestRetrieveToolsDiscoveryMode:
     async def test_discovery_keeps_mcp_tool_hits(self):
-        """Chroma hits with posthog tool names must survive the available-names
-        filter once we union the user's MCPClient tool names in."""
+        """Chroma hits with posthog tool names must survive the available-names filter."""
         user_id = "user-a"
         mcp_tools = [_fake_tool("persons-list"), _fake_tool("query-trends")]
 
@@ -127,10 +142,6 @@ class TestRetrieveToolsDiscoveryMode:
                 "app.agents.tools.core.retrieval.search_public_integrations",
                 new=AsyncMock(return_value=[]),
             ),
-            patch(
-                "app.agents.tools.core.retrieval.all_subagents",
-                return_value=[],
-            ),
         ):
             registry = MagicMock()
             registry.get_tool_names = MagicMock(return_value=["search_memory"])
@@ -154,12 +165,9 @@ class TestRetrieveToolsDiscoveryMode:
 
 @pytest.mark.integration
 class TestRetrieveToolsCrossUserIsolation:
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_user_b_only_sees_their_own_mcp_tools(self):
-        """User A has posthog tools, user B has notion tools. retrieve_tools
-        for each user must see only that user's MCP tool names — the
-        MCPClient pool is keyed per user, and the binding filter must respect
-        that scoping.
-        """
+        """retrieve_tools for each user must see only that user's MCP tool names."""
         user_a = "user-a"
         user_b = "user-b"
         user_a_client = _fake_mcp_client({"posthog": [_fake_tool("persons-list")]})
@@ -180,13 +188,23 @@ class TestRetrieveToolsCrossUserIsolation:
                 new=AsyncMock(side_effect=per_user_get),
             ),
             patch(
+                "app.agents.tools.execute.resolver.get_mcp_client",
+                new=AsyncMock(side_effect=per_user_get),
+            ),
+            patch(
                 "app.agents.tools.core.retrieval.get_tool_registry",
                 new_callable=AsyncMock,
             ) as get_registry,
+            patch(
+                "app.agents.tools.execute.resolver.get_tool_registry",
+                new_callable=AsyncMock,
+            ) as get_resolver_registry,
         ):
             registry = MagicMock()
             registry.get_tool_names = MagicMock(return_value=[])
+            registry.get_tool_meta = MagicMock(return_value=None)
             get_registry.return_value = registry
+            get_resolver_registry.return_value = registry
 
             # User A asks for persons-list — should resolve.
             res_a = await retrieve_tools(
@@ -202,8 +220,13 @@ class TestRetrieveToolsCrossUserIsolation:
                 exact_tool_names=["persons-list", "notion-search"],
             )
 
-        assert "persons-list" in res_a["tools_to_bind"], "user A's posthog tool should resolve"
-        assert "persons-list" not in res_b["tools_to_bind"], (
-            "user B must NOT see user A's posthog tool"
+        assert "persons-list" in res_a["response"], "user A's posthog tool should resolve"
+        assert "## persons-list" in res_a["response_text"]
+        assert "persons-list" not in res_b["response"], "user B must NOT see user A's posthog tool"
+        assert "## persons-list" not in res_b["response_text"], (
+            "user B must NOT receive user A's tool schema doc"
         )
-        assert "notion-search" in res_b["tools_to_bind"], "user B's notion tool should resolve"
+        assert "notion-search" in res_b["response"], "user B's notion tool should resolve"
+        assert res_a["tools_to_bind"] == [] and res_b["tools_to_bind"] == [], (
+            "MCP tools are proxied through execute, never bound"
+        )

@@ -1,13 +1,13 @@
-"""Postgres → VFS glue for ``/workspace/memory/``.
+"""Postgres → VFS glue for /workspace/memory/.
 
 The Postgres side: core documents, the last 30 days of journal episodes,
-and live facts grouped by category folder (see ``app.memory.pg_store``).
+and live facts grouped by category folder (see app.memory.pg_store).
 
-The VFS side: :mod:`app.memory.projection`.
+The VFS side: :mod:app.memory.projection.
 
 The shared orchestration (mount check, hash gate, fire-and-forget
 scheduler, structured logging) lives in
-:mod:`app.services._vfs_scheduler`.
+:mod:app.services._vfs_scheduler.
 """
 
 from __future__ import annotations
@@ -32,26 +32,28 @@ from app.memory.projection import (
     render_facts_page,
     render_journal_page,
 )
-from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
+from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hashed_sync
 from app.services.storage.metrics import FsOps
 
 
 async def sync_user_memory_fs(user_id: str) -> int:
     """Materialize the user's memory projection to JuiceFS.
 
-    Returns the number of file bodies rewritten. ``0`` means either the
+    Returns the number of file bodies rewritten. 0 means either the
     mount is missing (native dev) or the on-disk catalog signature
     already matched Postgres — both are no-ops from the caller's POV.
     """
     return await run_hashed_sync(
         user_id,
-        fs_op=FsOps.SYNC_MEMORY_VFS,
-        fetch_fn=_fetch_projections,
-        per_doc_sig_fn=per_doc_signature,
-        materialize_fn=materialize_memory,
-        guide_md=MEMORY_GUIDE_MD,
-        catalog_marker_path_fn=memory_marker_path,
-        log_name="memory_vfs",
+        HashedSyncSpec[MemoryFileProjection](
+            fs_op=FsOps.SYNC_MEMORY_VFS,
+            fetch_fn=_fetch_projections,
+            per_doc_sig_fn=per_doc_signature,
+            materialize_fn=materialize_memory,
+            guide_md=MEMORY_GUIDE_MD,
+            catalog_marker_path_fn=memory_marker_path,
+            log_name="memory_vfs",
+        ),
     )
 
 

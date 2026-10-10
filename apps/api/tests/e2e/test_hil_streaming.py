@@ -1,46 +1,17 @@
-"""What the USER SEES across a HIL pause — the frames, not the semantics.
+"""Pin what the user sees across a HIL pause: the stream frames, not the semantics.
 
-``tests/e2e/test_hil_barrier_e2e.py`` and ``test_hil_spawn_e2e.py`` already
-prove the approval *semantics*: did the action run, did it run once, whose
-decision applied. Neither of them opens a stream. ``stream_id`` appears there
-only as a config value threaded through, and no ``subscribe_stream``, no
-``Transcript``, no ``tool_output`` assertion exists in either file. So the half
-of HIL the user actually experiences — a card that appears, a pause, and then a
-result that has to land somewhere they are watching — was untested.
-
-What is asserted here:
-
-* **the resumed result reaches the stream exactly once, carrying real output.**
-  ``claim_tool_output`` (``background/session.py``) claims each ``tool_call_id``
-  once per stream, and a resume replays the node. Two producers emitting the same
-  result renders the card twice; a claim that outlives the pause suppresses the
-  only copy and the card never fills in. Asserted on a LIST of ids, never through
-  ``Transcript.result_for`` — that returns the first match and discards the rest,
-  which is structurally blind to duplication.
-* **cancellation while parked.** A pending approval that outlives its cancelled
-  run is a prompt nobody can answer, and worse, one that can restart the run the
-  user stopped.
-* **expiry.** The sweep resolves a stale approval; the user must see the card
-  settle and the model must be told the action did not happen. And the boundary:
-  a not-yet-stale approval survives the same sweep untouched.
-* **``always_allow`` short-circuits the gate.** No approval frame is published and
-  the tool runs inline. Both halves are asserted — "it ran" alone cannot tell a
-  short-circuit from a gate that paused and was auto-approved.
-* **a turn that pauses more than once.** Several gated calls in one AI message,
-  with an ungated one running beside them: every approval has to stay answerable,
-  each action has to happen exactly once, and the ungated call has to survive
-  BOTH resumes. Mixed approve/deny is covered in either order, because a resume
-  that consumed the wrong pause strands whatever is left.
-
-The framework contract underneath all of this — that LangGraph keeps the writes of
-tasks which completed in an interrupting step, and what we do that can throw them
-away — is pinned separately in ``tests/unit/agents/test_pause_checkpointing.py``.
-
-Everything between the comms model and Redis is production code — the real chat
-stream, the real ``call_executor``, the real background runner, the real gate, the
-real ``resolution`` layer. The doubles are listed on :func:`hil_world`, and each
-one is an external service (Mongo, the notifier, the narration LLM), never a step
-in the flow under test.
+Approval semantics are proven in tests/e2e/test_hil_barrier_e2e.py and test_hil_spawn_e2e.py,
+neither of which opens a stream; that LangGraph keeps writes from tasks completing in an
+interrupting step is pinned in tests/unit/agents/test_pause_checkpointing.py. Asserted here:
+the resumed result reaches the stream exactly once carrying real output -- claim_tool_output
+in app/agents/core/background/session.py claims each tool_call_id once per stream, so assert
+on a LIST of ids, never Transcript.result_for, which returns the first match and is blind to
+duplication; a cancelled run leaves no answerable approval behind; expiry settles the card
+and tells the model the action did not happen, while a not-yet-stale approval survives the
+same sweep; always_allow publishes no approval frame AND runs the tool inline; a turn that
+pauses twice keeps every approval answerable in both approve/deny orders. Doubles are
+external services only -- Mongo, the notifier, the narration LLM -- and are listed on
+hil_world.
 """
 
 from __future__ import annotations
@@ -55,15 +26,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import fakeredis.aioredis
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.outputs import ChatGenerationChunk
 from langgraph.store.memory import InMemoryStore
+from pydantic import PrivateAttr
 import pytest
 
-from app.agents.core.background.executor_runner import QUEUED_EXECUTOR_TASK_NAME
-from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import teardown_session
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.core.subagents import spawn_agent
+from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_SYSTEM_PROMPT
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_DECIDED_UNRESUMED_GRACE_SECONDS
 from app.constants.memory import ReconcileOutcome
@@ -71,10 +46,12 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.users import user_repository
 from app.memory.ingestion import RetainedMemory
+from app.models.chat_models import ToolDataEntry
 from app.models.hil_models import (
     HILApprovalRecord,
     HILApprovalStatus,
@@ -87,25 +64,25 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.hil import resolution
-from app.utils import background_tasks
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
+from tests.e2e._harness.background import drain_background_runs, drain_publishes
+from tests.e2e._harness.saved_messages import SavedToolData
 from tests.e2e._harness.transcript import Frame, Transcript
-from tests.e2e.test_agent_chain import call, streaming_model
+from tests.e2e.test_agent_chain import StreamingScriptedModel, call, streaming_model
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
-USER: AuthenticatedUser = {
-    "user_id": "u-hil-stream",
-    "email": "hil-stream@test.local",
-    "name": "Test User",
-}
+USER = AuthenticatedUser(
+    user_id="u-hil-stream",
+    email="hil-stream@test.local",
+    name="Test User",
+)
 
 FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
 
-#: The gated tool. Pure and real: its body runs for real and returns real mermaid
-#: source, so "the result reached the stream" can be asserted on the CONTENT
-#: rather than on "a string arrived" — a denial, a gate error and a missing
-#: ``user_id`` all produce perfectly joinable strings.
+#: Pure and real: returns real mermaid source, so "reached the stream" is
+#: asserted on CONTENT — a denial, a gate error, or a missing user_id would
+#: otherwise also produce a perfectly joinable string.
 GATED_TOOL = "create_flowchart"
 GATED_ARGS = {"description": "how an approved action reaches the user", "direction": "LR"}
 #: Emitted by the executor's model, so it is the id the card and the result are
@@ -114,32 +91,29 @@ GATED_CALL_ID = "tc_gated"
 
 
 def executor_script() -> list[Any]:
-    """retrieve the gated tool, call it, then answer.
+    """Retrieve the gated tool, call it, then answer.
 
     Three model calls, and the third is only reached after the approval resumes
     the run — so a resume that never happens shows up as a missing final answer
     rather than as a silently shorter stream.
     """
     return [
-        call("retrieve_tools", {"exact_tool_names": [GATED_TOOL]}, id="tc_retrieve"),
-        call(GATED_TOOL, GATED_ARGS, id=GATED_CALL_ID),
+        call("retrieve_tools", {"exact_tool_names": [GATED_TOOL]}, call_id="tc_retrieve"),
+        call(GATED_TOOL, GATED_ARGS, call_id=GATED_CALL_ID),
         "Drew the flowchart.",
     ]
 
 
 def comms_script() -> list[Any]:
-    return [call("call_executor", {"task": "draw the flowchart"}, id="tc_exec"), "On it."]
+    return [call("call_executor", {"task": "draw the flowchart"}, call_id="tc_exec"), "On it."]
 
 
 def assert_real_tool_output(output: str) -> None:
-    """The frame carries what the tool's own body produced, not a stand-in.
+    """Assert output is create_flowchart's real return, not a stand-in.
 
-    ``create_flowchart`` interpolates both of its arguments into what it returns,
-    so a result containing them can only have come from the tool running. Every
-    way this flow goes wrong instead produces a perfectly joinable string that a
-    truthiness or ``is not None`` check would accept: a HIL denial
-    (``DENIED_TEMPLATE``), a gate failure (``GATE_ERROR_TEMPLATE``), an unbound
-    tool's correction, and a missing ``user_id``.
+    create_flowchart interpolates its own args into what it returns. A HIL
+    denial (DENIED_TEMPLATE), gate failure (GATE_ERROR_TEMPLATE), unbound-tool
+    correction, or missing user_id would each still produce a joinable string.
     """
     assert GATED_ARGS["description"] in output, (
         f"the stream must carry the tool's REAL output, got {output[:300]!r}"
@@ -155,15 +129,15 @@ def assert_real_tool_output(output: str) -> None:
 
 
 class InMemoryApprovals:
-    """The ``hil_approvals`` collection, in a dict.
+    """The hil_approvals collection, in a dict.
 
     Mongo is the only reason these scenarios would otherwise need live infra, and
     the record store is not what is under test here — the frames are. Every method
     below mirrors the real repository's contract exactly, including the two that
-    carry a guarantee: ``create_if_absent`` is a no-op on a duplicate id (a resume
-    replay must not re-publish the card) and ``mark_decided`` transitions only from
-    ``pending`` (a racing decision must lose). Those same two guarantees are proven
-    against real Mongo in ``tests/contracts`` and ``tests/unit/services/hil``.
+    carry a guarantee: create_if_absent is a no-op on a duplicate id (a resume
+    replay must not re-publish the card) and mark_decided transitions only from
+    pending (a racing decision must lose). Those same two guarantees are proven
+    against real Mongo in tests/contracts and tests/unit/services/hil.
     """
 
     def __init__(self) -> None:
@@ -223,7 +197,7 @@ class InMemoryApprovals:
             for r in self.records.values()
             if r.status in statuses
             and r.resumed_at is None
-            and r.resume_item is not None
+            and (r.resume_item is not None or r.subagent_resume is not None)
             and r.decided_at is not None
             and r.decided_at < cutoff
         ]
@@ -246,8 +220,8 @@ class InMemoryApprovals:
                 r
                 for r in self.records.values()
                 if r.conversation_id == conversation_id
-                and r.subagent_thread_id is not None
-                and r.subagent_collected_at is None
+                and r.subagent_resume is not None
+                and r.resumed_at is None
             ),
             key=lambda r: r.created_at,
         )
@@ -261,7 +235,7 @@ class InMemoryApprovals:
         return next(iter(self.records.values()))
 
     def for_tool(self, tool_name: str) -> HILApprovalRecord:
-        """The single approval for ``tool_name``; fails loud on zero or several."""
+        """Return the single approval for tool_name; fail loud on zero or several."""
         matches = [r for r in self.records.values() if r.tool_name == tool_name]
         assert len(matches) == 1, (
             f"expected exactly one approval for {tool_name!r}, got "
@@ -270,8 +244,7 @@ class InMemoryApprovals:
         return matches[0]
 
     def for_call(self, tool_call_id: str) -> HILApprovalRecord:
-        """The approval for one specific call — the only way to tell apart two
-        gated calls of the SAME tool in one turn, which ``for_tool`` cannot."""
+        """Return the approval for one specific call — the only way to tell apart two gated calls of the same tool, which for_tool cannot."""
         matches = [r for r in self.records.values() if r.tool_call_id == tool_call_id]
         assert len(matches) == 1, (
             f"expected exactly one approval for call {tool_call_id!r}, got "
@@ -280,7 +253,7 @@ class InMemoryApprovals:
         return matches[0]
 
     def statuses(self) -> dict[str, str]:
-        """tool name -> recorded status, for asserting a whole batch at once."""
+        """Tool name -> recorded status, for asserting a whole batch at once."""
         return {r.tool_name: r.status for r in self.records.values()}
 
 
@@ -305,6 +278,8 @@ class HilWorld:
     #: cancel path never settles on the stream.
     cancelled_broadcasts: list[dict[str, Any]] = field(default_factory=list)
     overrides_set: list[tuple[str, str, bool | None]] = field(default_factory=list)
+    #: The turn's saved cards, as a reload would read them back.
+    saved: SavedToolData = field(default_factory=SavedToolData)
     delivered: list[tuple[str, str]] = field(default_factory=list)
 
     #: Streams opened by a chat turn, oldest first. More than one when a later
@@ -318,8 +293,8 @@ class HilWorld:
         """Every frame on every stream of this conversation, in stream order.
 
         The user's timeline spans streams: a resume publishes on a NEW stream id
-        (``prepare_run_from_item``), and the client follows it via the
-        ``executor.stream_started`` event. Asserting on one stream alone would
+        (prepare_run_from_item), and the client follows it via the
+        executor.stream_started event. Asserting on one stream alone would
         read a duplicate as an absence, or an absence as a duplicate.
         """
         await drain_publishes()
@@ -330,7 +305,7 @@ class HilWorld:
         return collected
 
     async def approval_cards(self) -> list[dict[str, Any]]:
-        """Every ``approval_request`` card the user was shown, in order."""
+        """Every approval_request card the user was shown, in order."""
         cards: list[dict[str, Any]] = []
         for frame in await self.frames():
             if frame.kind != "tool_data":
@@ -351,13 +326,10 @@ class HilWorld:
     ) -> HILApprovalRecord:
         """Answer a pending approval, and wait out the run it wakes.
 
-        The production entry point every decision source funnels through — the
-        approve/deny buttons, a bot's interactive component, the conversational
-        resolver — so this is the same code path a click takes.
-
-        ``tool`` selects which approval when a turn gated several calls, and
-        ``call_id`` when two of them are the same tool; without either, the turn
-        must have exactly one.
+        The same code path every decision source (buttons, bot, conversational
+        resolver) funnels through. tool selects which approval when a turn
+        gated several calls, call_id when two are the same tool; otherwise the
+        turn must have exactly one.
         """
         if call_id is not None:
             record = self.approvals.for_call(call_id)
@@ -366,7 +338,7 @@ class HilWorld:
         else:
             record = self.approvals.only_record()
         await resolution.resolve_approval(
-            approval_id=record.approval_id, user_id=str(USER["user_id"]), kind=kind, scope=scope
+            approval_id=record.approval_id, user_id=USER.user_id, kind=kind, scope=scope
         )
         await drain_resumes()
         reloaded = await self.approvals.get(record.approval_id)
@@ -374,7 +346,7 @@ class HilWorld:
         return reloaded
 
     async def cards_for(self, gated_tool_name: str) -> list[str]:
-        """The card statuses the user saw for one gated tool, in order."""
+        """Return the card statuses the user saw for one gated tool, in order."""
         return [
             card["status"]
             for card in await self.approval_cards()
@@ -382,15 +354,15 @@ class HilWorld:
         ]
 
     def overrides_for(self, tool_name: str) -> list[bool | None]:
-        """Every preference write-back for one tool — ``[]`` when untouched."""
+        """Every preference write-back for one tool — [] when untouched."""
         return [ask for _user, tool, ask in self.overrides_set if tool == tool_name]
 
     async def tool_output_ids(self) -> list[str]:
-        """Every ``tool_output`` frame's id, in order and WITH repeats.
+        """Every tool_output frame's id, in order and WITH repeats.
 
         A list, not a set and not a lookup: the frontend renders one card per
         id, so a second frame for an id it has already filled in is a duplicate
-        card. ``Transcript.result_for`` cannot express this — it returns the
+        card. Transcript.result_for cannot express this — it returns the
         first match and discards the rest.
         """
         return [
@@ -400,9 +372,9 @@ class HilWorld:
         ]
 
     async def outputs_for(self, tool_call_id: str) -> list[str]:
-        """Every ``tool_output`` carrying this id — a LIST, so duplicates show up.
+        """Every tool_output carrying this id — a LIST, so duplicates show up.
 
-        ``Transcript.result_for`` returns the first match and discards the rest,
+        Transcript.result_for returns the first match and discards the rest,
         which cannot express "exactly once"; that blindness is how the last
         duplicate-card bug hid.
         """
@@ -413,34 +385,10 @@ class HilWorld:
         ]
 
 
-def _tasks_named(*names: str) -> list[asyncio.Task[object]]:
-    """Live background tasks carrying any of ``names``.
-
-    Filtering by name rather than draining the whole keep-alive set: that set
-    also holds work which outlives a single turn, so awaiting all of it would
-    hang here forever instead of failing a test.
-    """
-    wanted = set(names)
-    return [t for t in background_tasks._background_tasks if t.get_name() in wanted]
-
-
-async def drain_publishes() -> None:
-    """Wait out the fire-and-forget XADDs the background writer scheduled.
-
-    ``make_redis_stream_writer`` is a *sync* callable that schedules each publish
-    through ``spawn_background_task``. A test reading the log after the turn must
-    wait, or it reads a truncated stream and asserts about timing instead of
-    behaviour. Draining the canonical keep-alive set is a superset of the
-    publishes, which is what "wait until the turn is quiet" wants.
-    """
-    while pending := _tasks_named(STREAM_PUBLISH_TASK_NAME):
-        await asyncio.gather(*pending, return_exceptions=True)
-
-
 async def drain_resumes() -> None:
-    """Wait out the executor runs ``resolve_approval`` dispatched.
+    """Wait out the executor runs resolve_approval dispatched.
 
-    ``_dispatch_resume`` spawns the resumed run with ``asyncio.create_task`` and
+    _dispatch_resume spawns the resumed run with asyncio.create_task and
     returns immediately — the decision endpoint does not wait for the action. A
     test that does not wait here reads the stream before the approved tool has
     run and would assert zero results as "exactly zero duplicates".
@@ -450,28 +398,6 @@ async def drain_resumes() -> None:
     await drain_publishes()
 
 
-async def drain_background_runs() -> None:
-    """Wait out every executor task still in flight, whatever spawned it.
-
-    Two module-level keep-alive sets — the canonical ``spawn_background_task``
-    set (publishes and queued executor runs) and HIL's own resume set — and a run
-    in either can spawn into the other: a resume finalizes, hands the busy lock to
-    a queued task, and that task's own finalize can queue a collection turn.
-    Draining one set once is therefore not enough — this loops until both empty.
-
-    Load-bearing for isolation, not tidiness. The patches installed by
-    :func:`hil_world` are process-wide while they are active, so a run that
-    outlives its own test executes against the NEXT test's approval store and
-    scripted models. That showed up as this file's only flake: the following
-    test's turn produced no approval record at all.
-    """
-    while pending := [
-        *_tasks_named(STREAM_PUBLISH_TASK_NAME, QUEUED_EXECUTOR_TASK_NAME),
-        *resolution._resume_tasks,
-    ]:
-        await asyncio.gather(*pending, return_exceptions=True)
-
-
 @asynccontextmanager
 async def hil_world(
     *,
@@ -479,30 +405,14 @@ async def hil_world(
     tool_overrides: dict[str, bool],
     comms: Sequence[Any] | None = None,
     executor: Sequence[Any] | None = None,
+    executor_model: Any | None = None,
 ) -> AsyncIterator[HilWorld]:
-    """A live conversation with HIL configured, held open across a pause.
+    """Build a live conversation with HIL configured, held open across a pause.
 
-    Held open on purpose: a resume re-enters the SAME executor graph, on the same
-    in-memory checkpoint and the same scripted model, exactly as a running process
-    would. Building a second graph would resume a thread that does not exist.
-
-    The doubles, and why none of them is a step in the flow under test:
-
-    * ``hil_approval_repository`` — Mongo. Replaced by :class:`InMemoryApprovals`,
-      which keeps the two contracts the flow depends on (create-once,
-      decide-once).
-    * ``user_repository`` — Mongo. Supplies the HIL preferences the policy reads,
-      and records the ``always_tool`` override write-back.
-    * ``notify_approval_pending`` — WebSocket push + Expo. Fire-and-forget beside
-      the card, never part of it.
-    * ``get_tools_store`` / ``get_checkpointer_manager`` — ChromaDB and Postgres.
-      Binding by ``exact_tool_names`` never searches the store, so the retrieval
-      hop stays real.
-    * ``save_conversation_async`` / ``append_message_tool_data`` /
-      ``deliver_result`` / ``list_conversation_files`` — Mongo writes and the
-      executor's separate narration LLM, all downstream of the stream.
-    * the memory engine and the follow-up generator — the comms graph's two
-      external end-graph edges.
+    Held open on purpose: a resume re-enters the SAME executor graph, on the
+    same in-memory checkpoint and scripted model, as a running process would.
+    Every dependency patched below is an external service (Mongo, WebSocket,
+    ChromaDB, Postgres) — never a step in the flow under test.
     """
     conversation_id = str(uuid4())
     comms_stream_id = str(uuid4())
@@ -522,11 +432,9 @@ async def hil_world(
     async def _set_override(user_id: str, tool_name: str, ask: bool | None) -> None:
         """Persist the override the way Mongo would, not just record it.
 
-        Load-bearing, not convenience: an ``always_tool`` approval writes this
-        mid-turn, and the very next thing that happens is the node REPLAYING and
-        re-resolving that same tool's policy. A recorder that threw the write
-        away would leave the tool still gated on the replay and quietly hide
-        every consequence of it becoming un-gated.
+        Load-bearing: an always_tool approval writes this mid-turn, and the
+        node immediately replays and re-resolves that tool's policy — a
+        no-op recorder would leave it gated on the replay.
         """
         world.overrides_set.append((user_id, tool_name, ask))
         overrides = stored_user.hil_preferences["tool_overrides"]
@@ -541,7 +449,14 @@ async def hil_world(
         elif payload.get("type") == WS_EVENT_EXECUTOR_CANCELLED:
             world.cancelled_broadcasts.append(payload)
 
-    async def _deliver(_run: Any, text: str, result_type: str, _note: str) -> tuple[str, str]:
+    async def _deliver(
+        _run: Any,
+        text: str,
+        result_type: str,
+        _note: str,
+        *,
+        tool_data: list[ToolDataEntry] | None,
+    ) -> tuple[str, str]:
         world.delivered.append((text, result_type))
         return text, "executor-message-1"
 
@@ -575,6 +490,9 @@ async def hil_world(
             "list_parked_subagents_for_conversation",
             new=approvals.list_parked_subagents_for_conversation,
         ),
+        # The ledger path is off in these worlds, so the ledger holds no rows.
+        patch.object(approval_ledger_repository, "list_open", new=AsyncMock(return_value=[])),
+        patch.object(conversation_repository, "refresh_live_approval_flag", new=AsyncMock()),
         patch.object(user_repository, "get", new=AsyncMock(return_value=stored_user)),
         patch.object(user_repository, "set_hil_tool_override", new=_set_override),
         patch("app.services.hil.bridge.notify_approval_pending", new=AsyncMock()),
@@ -583,6 +501,15 @@ async def hil_world(
             build_graph_module, "get_tools_store", AsyncMock(return_value=InMemoryStore())
         ),
         patch.object(build_graph_module, "get_checkpointer_manager", AsyncMock(return_value=None)),
+        # A spawn's graph is compiled once per process and cached by model type, so a
+        # world gets a fresh cache (its own scripted model) and an in-memory thread.
+        patch.dict(spawn_agent._graph_cache, clear=True),
+        patch.object(spawn_agent, "get_tools_store", AsyncMock(return_value=InMemoryStore())),
+        patch.object(
+            spawn_agent,
+            "get_checkpointer_manager",
+            AsyncMock(side_effect=RuntimeError("no postgres in tests")),
+        ),
         patch(
             f"{FOLLOW_UP_NODE}.ainvoke_structured",
             new=AsyncMock(return_value=FollowUpActions(actions=[])),
@@ -595,7 +522,15 @@ async def hil_world(
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),
         patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
         patch.object(
-            conversation_repository, "append_message_tool_data", new=AsyncMock(return_value=True)
+            conversation_repository,
+            "append_message_tool_data",
+            new=world.saved.append_message_tool_data,
+        ),
+        patch.object(conversation_repository, "get_message", new=world.saved.get_message),
+        patch.object(
+            conversation_repository,
+            "extend_subagent_group",
+            new=world.saved.extend_subagent_group,
         ),
         patch("app.agents.core.background.executor_runner.deliver_result", new=_deliver),
         patch(
@@ -615,7 +550,7 @@ async def hil_world(
             )
             executor_graph = await stack.enter_async_context(
                 build_graph_module.build_executor_graph(
-                    chat_llm=streaming_model(executor or executor_script()),
+                    chat_llm=executor_model or streaming_model(executor or executor_script()),
                     in_memory_checkpointer=True,
                 )
             )
@@ -630,15 +565,13 @@ async def hil_world(
             try:
                 yield world
             finally:
-                # A leaked busy lock survives 30 minutes and does not error — it
-                # queues the NEXT test's executor onto its own stream id, and the
-                # test then asserts an empty stream and passes for the wrong
-                # reason. Freed before the drain so nothing new can be handed it.
+                # A leaked busy lock survives 30 minutes silently, queuing the
+                # next test's executor onto its own stream — freed before the
+                # drain so nothing new can be handed it.
                 await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-                # Both INSIDE the patch scope, deliberately: a run that escapes
-                # this block executes against the next test's approval store and
-                # scripted models, and a session left in the process-wide
-                # registry keeps that stream's claims alive.
+                # Both inside the patch scope deliberately: an escaping run
+                # executes against the next test's store/models, and a leaked
+                # session keeps that stream's claims alive.
                 await drain_background_runs()
                 for stream_id in world.stream_ids():
                     teardown_session(stream_id)
@@ -649,7 +582,7 @@ async def hil_world(
 async def run_turn(world: HilWorld, prompt: str, *, follow_up: bool = False) -> None:
     """Drive one full chat turn through the real orchestrator.
 
-    ``follow_up`` opens a second stream for a later turn in the same
+    follow_up opens a second stream for a later turn in the same
     conversation — a real client does exactly that, and the first turn's stream
     is already closed by the time a parked run is cancelled.
     """
@@ -659,7 +592,7 @@ async def run_turn(world: HilWorld, prompt: str, *, follow_up: bool = False) -> 
     await stream_manager.start_stream(
         stream_id=stream_id,
         conversation_id=world.conversation_id,
-        user_id=str(USER["user_id"]),
+        user_id=USER.user_id,
     )
     await chat_stream.run_chat_stream_background(
         stream_id=stream_id,
@@ -678,7 +611,7 @@ def expire(world: HilWorld) -> None:
     """Move the turn's approval past its deadline.
 
     The window is six hours, so the clock cannot be waited out; the sweep's own
-    ``expires_at`` predicate is what is under test, not the passage of time.
+    expires_at predicate is what is under test, not the passage of time.
     """
     record = world.approvals.only_record()
     world.approvals.records[record.approval_id] = record.model_copy(
@@ -689,7 +622,7 @@ def expire(world: HilWorld) -> None:
 async def sweep() -> str:
     """Run the ARQ cron task and wait out whatever it re-dispatched.
 
-    The worker's own entry point, not ``sweep_approvals`` directly, so the task
+    The worker's own entry point, not sweep_approvals directly, so the task
     wrapper's return string is covered too — it is what shows up in worker logs
     as the only record that a sweep did anything.
     """
@@ -700,12 +633,12 @@ async def sweep() -> str:
 
 @pytest.fixture(autouse=True)
 def _registry(real_tool_registry: Any) -> None:
-    """Real tool categories — every ``tool_data`` frame resolves through them."""
+    """Real tool categories — every tool_data frame resolves through them."""
 
 
 @pytest.fixture(autouse=True)
 async def fake_redis() -> AsyncIterator[Any]:
-    """A fresh in-process Redis with real Streams per test."""
+    """Create a fresh in-process Redis with real Streams per test."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original = redis_cache.redis
     # fakeredis is structurally compatible but not a nominal subtype of the
@@ -724,23 +657,7 @@ async def fake_redis() -> AsyncIterator[Any]:
 
 class TestAlwaysAllowShortCircuits:
     async def test_no_approval_frame_is_published_and_the_tool_runs_inline(self) -> None:
-        """Both halves, because "it ran" alone cannot tell the two apart.
-
-        A gate that paused and was auto-approved also ends with the tool having
-        run — and would have published a card and a record on the way. The claim
-        is that ``always_allow`` returns before any of that happens, so the
-        absence of the card and the absence of the record are the assertion, and
-        the real output is what proves the tool was not merely skipped.
-
-        The tool carries an explicit ``always ask`` override, so the only thing
-        that can make this pass is the mode itself winning over it.
-
-        Its A/B partner is
-        ``TestResumedResultReachesTheStreamOnce.test_the_turn_parks_with_a_pending_card_and_no_result``:
-        same tool, same override, same harness, one word different in the
-        preferences — and there a card IS published and a record IS written. The
-        pair is what makes an absence here evidence rather than a blind spot.
-        """
+        """The tool carries an explicit always-ask override — only always_allow's mode winning over it can make this pass."""
         async with hil_world(mode="always_allow", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
 
@@ -762,12 +679,7 @@ class TestAlwaysAllowShortCircuits:
 
 class TestResumedResultReachesTheStreamOnce:
     async def test_the_turn_parks_with_a_pending_card_and_no_result(self) -> None:
-        """Before the decision: the user sees the ask, and nothing has run.
-
-        The precondition for the exactly-once claim below, asserted separately
-        because a run that never paused at all would satisfy "exactly one result"
-        trivially — and would be a HIL failure, not a success.
-        """
+        """Precondition for the exactly-once claim below: an unpaused run would trivially satisfy "one result" too, and that would be a HIL failure."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
 
@@ -789,24 +701,7 @@ class TestResumedResultReachesTheStreamOnce:
             )
 
     async def test_after_approval_the_result_lands_exactly_once_with_real_output(self) -> None:
-        """The claim: approve it, and the card fills in — once, with real content.
-
-        Two failure modes this is pointed at, and both have shipped before:
-
-        * **suppressed.** ``claim_tool_output`` claims a ``tool_call_id`` once per
-          stream and a resume REPLAYS the node. If the resumed run reused the
-          pre-pause stream, the claim taken before the pause would swallow the
-          resumed result — the user approves an action, it executes, and the card
-          never populates.
-        * **doubled.** Two producers (the comms driver in ``agent_helpers`` and the
-          executor's own driver in ``subagent_runner``) both see the same
-          ToolMessage, and the card renders twice (05c14b3b7, 1bdc0e6a7).
-
-        Counted over EVERY stream of the conversation and as a list, not a lookup:
-        the resume publishes on a fresh stream id, so a single-stream assertion
-        would read the move as an absence, and ``Transcript.result_for`` returns
-        the first match and discards the rest.
-        """
+        """Guards two shipped bugs: a suppressed result (claim taken pre-pause) and a duplicate card (05c14b3b7, 1bdc0e6a7); counted across every stream, not a single first-match lookup."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
             assert await world.outputs_for(GATED_CALL_ID) == []
@@ -828,13 +723,7 @@ class TestResumedResultReachesTheStreamOnce:
             )
 
     async def test_the_card_settles_and_the_run_finishes_on_the_resumed_stream(self) -> None:
-        """A resume moves the turn to a NEW stream, and the user must be told.
-
-        ``prepare_run_from_item`` mints a fresh ``queued_*`` stream and broadcasts
-        ``executor.stream_started`` — that event is the client's only way to find
-        where the rest of the turn is happening. Without it the approved action
-        runs into a stream nobody is watching.
-        """
+        """prepare_run_from_item mints a fresh queued_* stream and broadcasts executor.stream_started — the client's only way to find where the turn moved."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
             await world.decide("approve")
@@ -856,19 +745,13 @@ class TestResumedResultReachesTheStreamOnce:
     async def test_approve_and_stop_asking_records_the_preference_and_still_runs_once(
         self,
     ) -> None:
-        """ "Approve, and don't ask again" is two promises, and both are on this path.
-
-        The gate writes the ``always_tool`` override BEFORE handing the call to
-        the handler, so a tool that then fails still leaves the preference set —
-        the user said "stop asking about this", not "stop asking if it works".
-        The action itself must still happen exactly once on this turn.
-        """
+        """The gate writes the always_tool override before handling the call, so a failing tool still leaves the preference set."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
 
             await world.decide("approve", scope="always_tool")
 
-            assert world.overrides_set == [(str(USER["user_id"]), GATED_TOOL, False)], (
+            assert world.overrides_set == [(USER.user_id, GATED_TOOL, False)], (
                 "approving with always_tool must clear the tool's ask-override so the "
                 f"user is never asked again, got {world.overrides_set}"
             )
@@ -877,13 +760,7 @@ class TestResumedResultReachesTheStreamOnce:
             assert_real_tool_output(outputs[0])
 
     async def test_a_denied_action_produces_a_refusal_and_never_the_real_output(self) -> None:
-        """The mirror image, so "exactly one result" cannot pass by accident.
-
-        A denial still ends with exactly one frame carrying that ``tool_call_id`` —
-        the gate's refusal ToolMessage — so counting alone cannot distinguish it
-        from an approval. Only the CONTENT can, which is why the approval test
-        asserts on the tool's own output rather than on arity.
-        """
+        """A denial produces exactly one frame too — only content, not count, distinguishes a refusal from an approval."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
 
@@ -917,17 +794,16 @@ SIBLING_CALL_ID = "tc_sibling"
 
 
 def sibling_executor_script() -> list[Any]:
-    """One AI message carrying BOTH calls — the shape a model emits for
-    "check the weather and draw me a flowchart"."""
+    """One AI message carrying BOTH calls — the shape a model emits for "check the weather and draw me a flowchart"."""
     return [
         call(
             "retrieve_tools",
             {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]},
-            id="tc_retrieve",
+            call_id="tc_retrieve",
         ),
         [
-            call(SIBLING_TOOL, SIBLING_ARGS, id=SIBLING_CALL_ID),
-            call(GATED_TOOL, GATED_ARGS, id=GATED_CALL_ID),
+            call(SIBLING_TOOL, SIBLING_ARGS, call_id=SIBLING_CALL_ID),
+            call(GATED_TOOL, GATED_ARGS, call_id=GATED_CALL_ID),
         ],
         "Checked the weather and drew the flowchart.",
     ]
@@ -935,12 +811,11 @@ def sibling_executor_script() -> list[Any]:
 
 @asynccontextmanager
 async def sibling_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
-    """A turn whose one AI message carries an ungated call and a gated one.
+    """Yield a turn whose one AI message carries an ungated call and a gated one, plus the ungated tool's execution log.
 
-    Yields the world and the ungated tool's execution log — the outbound HTTP
-    call inside ``get_weather`` is the only thing doubled, so the tool's body,
-    its stream frames and its rate-limit accounting are all genuine, and the
-    double is a counter because "how many times did it happen" is the claim.
+    Only get_weather's outbound HTTP call is doubled — the tool's body, its
+    stream frames and its rate-limit accounting are all genuine; the double
+    is a counter, since "how many times did it happen" is the claim.
     """
     calls: list[str] = []
 
@@ -948,11 +823,9 @@ async def sibling_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
         calls.append(location)
         return {"temperature": "31C", "conditions": "humid"}
 
-    # Patched where it is USED, not where it is defined: ``weather_tool`` does
-    # ``from app.utils.weather_utils import user_weather``, which binds by value,
-    # so patching the source module only takes effect for a process that has not
-    # imported the tool yet — it works in the first test of a session and
-    # silently no-ops in every one after it.
+    # Patched where used, not defined: weather_tool imports user_weather by
+    # value, so patching the source module only takes effect before the
+    # tool's first import — works once per session, silently no-ops after.
     with patch("app.agents.tools.weather_tool.user_weather", new=_weather):
         async with hil_world(
             mode="always_ask",
@@ -964,14 +837,7 @@ async def sibling_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
 
 class TestUngatedSiblingAcrossThePause:
     async def test_each_card_still_fills_in_exactly_once(self) -> None:
-        """The user-facing half: a replayed node must not double any card.
-
-        The pause splits this turn across two streams and replays the node that
-        produced both calls, which is the exact shape that would render a card
-        twice. ``claim_tool_output`` is per-stream, so the split is what makes it
-        safe — and what makes a regression here invisible to a single-stream
-        assertion.
-        """
+        """claim_tool_output is per-stream, so the pause splitting this turn across two streams is what keeps the replayed node from doubling a card."""
         async with sibling_world() as (world, _calls):
             await run_turn(world, "check the weather and draw me a flowchart")
             await world.decide("approve")
@@ -985,33 +851,7 @@ class TestUngatedSiblingAcrossThePause:
             ), f"each of the turn's results must reach the user exactly once, got {ids}"
 
     async def test_the_ungated_sibling_body_runs_only_once(self) -> None:
-        """An ungated sibling of a gated call must not execute twice.
-
-        Was a defect. Each tool call is its own node task (``create_agent`` fans
-        them out with ``Send``), and when one of them interrupts, LangGraph
-        discards the whole step's writes and replays every task — so a sibling
-        that already completed ran a second time. ``policy.has_pausing_sibling``
-        exists for exactly this ("verified: one send became two") but guarded
-        only AUTO mode; a call whose policy is ``allow`` never reached it.
-
-        Confirmed on this harness before the fix: the tool's body was entered
-        twice while the stream showed its card exactly once (the pre-pause
-        ToolMessage never reaches the wire, the replayed one does) — so the
-        second execution was INVISIBLE, the worst shape a double-execution can
-        take. Blast radius was bounded to tools HIL classified as
-        non-destructive, but not empty: a second API round trip and a second
-        decrement of the user's rate-limit quota, every time.
-
-        LangGraph already prevents this on its own: each tool call is its own node
-        task, and the writes of the tasks that COMPLETED in an interrupting step are
-        persisted, so they are not re-run on resume. We were throwing that checkpoint
-        away — ``durability="exit"`` makes the run-exit save the only write there is,
-        and the runner used to abandon the stream the instant it saw the pause.
-
-        Asserted in two halves on purpose. The first pins that the sibling DID run,
-        so this cannot pass by the work never happening at all; the second that the
-        resume did not repeat it.
-        """
+        """Regression: has_pausing_sibling only guarded AUTO mode, so an allow-policy sibling replayed invisibly once durability="exit" discarded LangGraph's own replay protection."""
         async with sibling_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
             assert calls == [SIBLING_ARGS["location"]], (
@@ -1034,14 +874,14 @@ class TestUngatedSiblingAcrossThePause:
 def cancelling_comms_script() -> list[Any]:
     """Two turns on one thread: delegate, then stop it.
 
-    Driven through ``cancel_executor`` rather than by calling the service
+    Driven through cancel_executor rather than by calling the service
     directly, because the tool is what a user's "stop that" actually reaches and
-    it is the only caller of ``cancel_conversation_approvals``.
+    it is the only caller of cancel_conversation_approvals.
     """
     return [
-        call("call_executor", {"task": "draw the flowchart"}, id="tc_exec"),
+        call("call_executor", {"task": "draw the flowchart"}, call_id="tc_exec"),
         "On it.",
-        call("cancel_executor", {"task_ids": []}, id="tc_cancel"),
+        call("cancel_executor", {"task_ids": []}, call_id="tc_cancel"),
         "Stopped.",
     ]
 
@@ -1050,17 +890,7 @@ class TestCancellationWhileParked:
     async def test_the_parked_approval_is_closed_and_can_no_longer_restart_the_run(
         self,
     ) -> None:
-        """A cancel has to reach the approval, not just the run.
-
-        ``cancel_executor`` stops the task and drops the busy lock, but the
-        approval record is *decision* state and outlives both. Left pending, a
-        later "Approve" — or the timeout sweep, with no user involved at all —
-        re-dispatches the very run the user stopped, on a fresh stream the cancel
-        flag does not cover. Closing the record is what makes the cancel stick.
-
-        Deliberately closed WITHOUT resuming: there is no run left to wake, which
-        is the whole difference from an abandonment.
-        """
+        """cancel_executor drops the busy lock but not the approval record, which outlives it — closed without resuming, since no run is left to wake."""
         async with hil_world(
             mode="always_ask",
             tool_overrides={GATED_TOOL: True},
@@ -1081,22 +911,19 @@ class TestCancellationWhileParked:
                 "pass would bring the cancelled run back"
             )
 
-            # Two different guards refuse it, in this order, and the pair is what
-            # proves the record is genuinely closed: the approve is stopped by the
-            # missing re-dispatch context (checked BEFORE the transition, so a
-            # decision that cannot be acted on never reports success), and the
-            # deny gets as far as the transition and loses it, because the record
-            # is no longer pending. Both leave the run dead.
+            # Two different guards refuse it: approve fails on the missing
+            # re-dispatch context (checked before the transition), deny fails
+            # because the record is no longer pending. Both leave the run dead.
             with pytest.raises(resolution.ApprovalNotResumableError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
-                    user_id=str(USER["user_id"]),
+                    user_id=USER.user_id,
                     kind="approve",
                 )
             with pytest.raises(resolution.ApprovalRequestNotFoundError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
-                    user_id=str(USER["user_id"]),
+                    user_id=USER.user_id,
                     kind="deny",
                 )
             assert world.approvals.only_record().status == "abandoned", (
@@ -1110,16 +937,7 @@ class TestCancellationWhileParked:
             )
 
     async def test_the_user_is_told_and_the_card_never_settles_on_the_stream(self) -> None:
-        """What the user actually sees — and the one thing they do not.
-
-        The cancel is announced out of band (``executor.cancelled`` over the
-        WebSocket, which is how a client learns of a cancel it did not initiate
-        and clears its in-flight cards). No resolved ``approval_request`` frame is
-        ever published: ``cancel_conversation_approvals`` writes the record and
-        stops, because the stream that carried the card is already closed and the
-        run that would have published to a new one is gone. So the card's last
-        SSE state stays ``pending`` and only the WebSocket event finalizes it.
-        """
+        """Cancel is announced out-of-band via executor.cancelled on the WebSocket — the card's last SSE state stays "pending", never a resolved frame."""
         async with hil_world(
             mode="always_ask",
             tool_overrides={GATED_TOOL: True},
@@ -1145,17 +963,7 @@ class TestCancellationWhileParked:
 
 class TestApprovalExpiry:
     async def test_a_stale_approval_times_out_and_the_run_is_told_it_expired(self) -> None:
-        """The sweep must resolve the record AND wake the run it stranded.
-
-        A pending approval nobody answers holds its conversation's executor lock
-        and hijacks every later message via the conversational resolver. The sweep
-        resolves it as a timeout, which re-dispatches the paused thread so the
-        model learns the request expired and can wrap up.
-
-        ``expires_at`` is moved into the past rather than waited out — the window
-        is six hours, and the sweep's own predicate is what is under test, not the
-        clock.
-        """
+        """expires_at is moved into the past rather than waited out — the window is six hours, and the sweep's predicate, not the clock, is under test."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
             expire(world)
@@ -1186,14 +994,7 @@ class TestApprovalExpiry:
             )
 
     async def test_an_approval_that_is_not_yet_stale_survives_the_sweep_untouched(self) -> None:
-        """The boundary, without which the test above passes on a sweep that
-        expires everything it can find.
-
-        Same turn, same sweep, one difference: ``expires_at`` is left alone. The
-        approval must still be answerable afterwards — the user has six hours, and
-        a sweep that takes their prompt away early is worse than one that never
-        runs.
-        """
+        """Boundary for the test above: expires_at is left alone, so the approval — still inside its six-hour window — must survive the sweep untouched."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
 
@@ -1217,19 +1018,9 @@ class TestApprovalExpiry:
             assert len(await world.outputs_for(GATED_CALL_ID)) == 1
 
 
-# ---------------------------------------------------------------------------
-# D1 / D2 — two gated calls in ONE AI message, decided differently
-# ---------------------------------------------------------------------------
-#
-# The shape both defects live in, and an ordinary one: "check the weather and
-# draw me a flowchart" with HIL on for both. The tool node runs a message's
-# calls in a sequential loop, so gate A pauses first and gate B is only reached
-# once A is decided — and every decision replays the WHOLE node from the top.
-#
-# Both tools are real. ``get_weather``'s single outbound HTTP call is doubled
-# with a counter because "how many times did it happen" is the claim;
-# ``create_flowchart`` is pure and interpolates its arguments into its result,
-# so "did it run" can be read off the stream.
+# D1/D2 — two gated calls in one AI message, decided differently. The tool
+# node runs calls sequentially: gate A pauses first, and every decision
+# replays the whole node from the top.
 
 GATE_A_TOOL = SIBLING_TOOL
 GATE_A_CALL_ID = "tc_gate_a"
@@ -1239,10 +1030,14 @@ GATE_B_CALL_ID = "tc_gate_b"
 
 def two_gated_calls_script() -> list[Any]:
     return [
-        call("retrieve_tools", {"exact_tool_names": [GATE_A_TOOL, GATE_B_TOOL]}, id="tc_retrieve"),
+        call(
+            "retrieve_tools",
+            {"exact_tool_names": [GATE_A_TOOL, GATE_B_TOOL]},
+            call_id="tc_retrieve",
+        ),
         [
-            call(GATE_A_TOOL, SIBLING_ARGS, id=GATE_A_CALL_ID),
-            call(GATE_B_TOOL, GATED_ARGS, id=GATE_B_CALL_ID),
+            call(GATE_A_TOOL, SIBLING_ARGS, call_id=GATE_A_CALL_ID),
+            call(GATE_B_TOOL, GATED_ARGS, call_id=GATE_B_CALL_ID),
         ],
         "Checked the weather and drew the flowchart.",
     ]
@@ -1250,7 +1045,7 @@ def two_gated_calls_script() -> list[Any]:
 
 @asynccontextmanager
 async def two_gate_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
-    """A turn with two gated calls in one AI message, plus gate A's run counter."""
+    """Build a turn with two gated calls in one AI message, plus gate A's run counter."""
     calls: list[str] = []
 
     async def _weather(location: str) -> dict[str, Any]:
@@ -1271,31 +1066,20 @@ async def two_gate_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
 class TestTwoGatedCallsInOneTurn:
     """Two destructive actions in one AI message — the case HIL is designed for.
 
-    ``policy.has_pausing_sibling`` states the intent outright: "several
-    destructive actions in one turn are confirmed together, which is the
-    behaviour worth having anyway." The gate delivers exactly that — both calls
-    are asked about at once, and empirically both reach the gate in a single node
-    pass (verified by instrumenting ``decide_tool_call``: one turn produces
-    ``middleware:get_weather`` then ``middleware:create_flowchart``, and two
-    ``pending`` records).
+    policy.has_pausing_sibling: several destructive actions in one turn are
+    confirmed together. Both reach the gate in one node pass (verified:
+    middleware:get_weather then middleware:create_flowchart, two pending
+    records).
 
-    Answering them took two fixes. ``resolution._dispatch_resume`` sends a bare
-    ``Command(resume={...})``, which LangGraph rejects once a thread holds more
-    than one pending interrupt — ``subagent_runner._address_resume`` now aims it
-    at the interrupt carrying its own ``approval_id``. And the pause reports one
-    ``__interrupt__`` event PER paused task, so both ids have to be accumulated;
-    keeping only one left the other record without ``resume_item``, permanently
-    un-decidable.
+    Needed two fixes: _dispatch_resume's bare Command(resume=...) is
+    rejected once a thread holds more than one pending interrupt, so it now
+    targets the interrupt carrying its own approval_id; and LangGraph emits
+    one __interrupt__ event per paused task, so both ids must be
+    accumulated.
     """
 
     async def test_both_gated_calls_are_asked_about_together(self) -> None:
-        """The precondition, and the one part that works.
-
-        Asserted on its own so the failures below cannot be misread as "the batch
-        never formed". It also pins the intended behaviour, so a fix that stops
-        batching (asking about one call and silently refusing the other) is a
-        visible change rather than a silent one.
-        """
+        """Asserted separately so the failures below can't be misread as "the batch never formed"."""
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
@@ -1307,15 +1091,7 @@ class TestTwoGatedCallsInOneTurn:
             assert calls == [], "and neither may run before the user decides"
 
     async def test_deciding_one_of_them_actually_runs_it(self) -> None:
-        """Approving one of two batched actions performs that one, straight away.
-
-        The user answered; making them wait on an unrelated second approval before
-        anything happens would be its own bug. It works only because BOTH approvals
-        got re-dispatch context: LangGraph emits one ``__interrupt__`` event PER
-        paused task, and the runner used to keep only the last one it saw — leaving
-        the other record with no ``resume_item``, so deciding it raised
-        ApprovalNotResumableError and that decision could never be applied.
-        """
+        """Regression: the runner kept only the last of LangGraph's per-task __interrupt__ events, leaving the other record without a resume_item (ApprovalNotResumableError)."""
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
@@ -1329,13 +1105,7 @@ class TestTwoGatedCallsInOneTurn:
             )
 
     async def test_answering_both_runs_each_exactly_once(self) -> None:
-        """The turn goes ahead once every approval in it has an answer.
-
-        The other half of the test above, and the one that stops "runs nothing yet"
-        from passing by the turn being permanently wedged — which is what a bare
-        ``Command(resume=...)`` used to cause, LangGraph refusing the dispatch
-        outright while two interrupts were pending.
-        """
+        """Regression: a bare Command(resume=...) was refused by LangGraph while two interrupts were pending, permanently wedging the turn."""
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
@@ -1351,14 +1121,7 @@ class TestTwoGatedCallsInOneTurn:
             )
 
     async def test_the_turn_does_not_die_with_an_executor_error(self) -> None:
-        """The failed resume must not reach the user as an error result.
-
-        ``_execute_executor`` catches the LangGraph exception and returns
-        ``result_type == "error"``, which ``deliver_result`` then sends on as the
-        turn's outcome. Separated from the assertion above because they are
-        different failures: one is work not happening, this one is the user being
-        told the assistant broke.
-        """
+        """_execute_executor catches the LangGraph exception and returns result_type == "error", which deliver_result sends on as the turn's outcome."""
         async with two_gate_world() as (world, _calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
@@ -1371,15 +1134,7 @@ class TestTwoGatedCallsInOneTurn:
             )
 
     async def test_the_user_is_never_shown_raw_framework_internals(self) -> None:
-        """No LangGraph error text may reach the user verbatim.
-
-        The text this used to leak named ``interrupt id``, tells the reader to "specify" one, and links to
-        docs.langchain.com — an instruction aimed at whoever wrote the graph, not
-        at somebody who just pressed Approve. Every other executor failure path is
-        careful about this (``EXECUTOR_STEP_LIMIT_MESSAGE`` exists precisely so a
-        recursion limit reaches the user as guidance rather than a traceback);
-        this one is not.
-        """
+        """The leaked text named an interrupt id and linked docs.langchain.com — unlike EXECUTOR_STEP_LIMIT_MESSAGE, which turns a recursion limit into user guidance instead of a traceback."""
         async with two_gate_world() as (world, _calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
@@ -1396,15 +1151,7 @@ class TestTwoGatedCallsInOneTurn:
             )
 
     async def test_the_second_approval_is_still_answerable_afterwards(self) -> None:
-        """Answering one of the two must not cost the user the other.
-
-        It stays ``pending`` — the user has not decided it — and that is only
-        correct if it is still ANSWERABLE. Asserted by actually answering it and
-        watching its action run, because "still pending" is exactly what a
-        stranded card looks like too: while the resume was addressed positionally
-        this decision raised, ended the run, and left a card nothing could ever
-        action.
-        """
+        """Regression: addressing the resume positionally instead of by approval_id raised, ending the run and leaving gate B's card permanently unanswerable."""
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
             await world.decide("approve", tool=GATE_A_TOOL)
@@ -1430,12 +1177,9 @@ class TestTwoGatedCallsInOneTurn:
 def orphan_the_resume(world: HilWorld) -> None:
     """Make the turn's decided approval look like a crashed resume dispatch.
 
-    Exactly the shape ``list_decided_unresumed`` hunts for: decided, older than
-    the grace period, still carrying its ``resume_item``, and with no
-    ``resumed_at`` stamp. In production that record is written by a process that
-    died between the decided-transition and the run spawn — and it is the sweep's
-    whole reason for existing, so re-dispatching it is the intended behaviour,
-    not an abuse of the harness.
+    Exactly the shape list_decided_unresumed hunts for: decided, past the
+    grace period, still carrying resume_item, with no resumed_at stamp —
+    the sweep's reason for existing.
     """
     record = world.approvals.only_record()
     world.approvals.records[record.approval_id] = record.model_copy(
@@ -1450,26 +1194,18 @@ def orphan_the_resume(world: HilWorld) -> None:
 class TestResumeAgainstAThreadWithNoInterrupt:
     """D3: a resume that finds nothing to resume still reports success.
 
-    LangGraph returns the thread's final state for a resume against a thread with
-    no pending interrupt — the node body never executes (verified directly:
-    ``result: {'gated_done': True} | RUNS = []``). In GAIA that empty run leaves
-    ``complete_message == ""``, the narration-only branch needs a truthy message
-    so it is skipped, and ``final_message = complete_message or "Task completed"``
-    (subagent_runner.py) hands back a success string for a run that did nothing.
+    LangGraph returns the thread's final state when there is no pending
+    interrupt — the node body never executes (verified: result:
+    {'gated_done': True} | RUNS = []). complete_message == "" then falls
+    back to the literal "Task completed" (subagent_runner.py), reporting
+    success for a run that did nothing.
 
-    Reached here through the sweep's crashed-resume pass, which is a real
-    production path; a busy-lock lapse or a lost checkpoint gets there too.
-
+    Reached via the sweep's crashed-resume pass, a real production path.
     RED on today's code.
     """
 
     async def test_a_second_resume_does_not_report_a_completed_task(self) -> None:
-        """The user must not be told the work is done twice, once falsely.
-
-        The first delivery is the genuine one and is asserted, so this cannot
-        pass by the turn never having worked. The second is the defect: a
-        re-dispatch that executed nothing, delivered as a completed task.
-        """
+        """The first delivery is genuine (asserted first); the second must not falsely report a completed task for a re-dispatch that executed nothing."""
         async with hil_world(mode="always_ask", tool_overrides={GATED_TOOL: True}) as world:
             await run_turn(world, "draw me a flowchart")
             await world.decide("approve")
@@ -1513,11 +1249,15 @@ SECOND_GATE_ARGS = {"description": "the second approved action", "direction": "T
 def one_ungated_two_gated_script() -> list[Any]:
     """One AI message: a harmless call and two that need approval."""
     return [
-        call("retrieve_tools", {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]}, id="tc_retrieve"),
+        call(
+            "retrieve_tools",
+            {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]},
+            call_id="tc_retrieve",
+        ),
         [
-            call(SIBLING_TOOL, SIBLING_ARGS, id=SIBLING_CALL_ID),
-            call(GATED_TOOL, FIRST_GATE_ARGS, id=FIRST_GATE_CALL_ID),
-            call(GATED_TOOL, SECOND_GATE_ARGS, id=SECOND_GATE_CALL_ID),
+            call(SIBLING_TOOL, SIBLING_ARGS, call_id=SIBLING_CALL_ID),
+            call(GATED_TOOL, FIRST_GATE_ARGS, call_id=FIRST_GATE_CALL_ID),
+            call(GATED_TOOL, SECOND_GATE_ARGS, call_id=SECOND_GATE_CALL_ID),
         ],
         "Checked the weather and drew both flowcharts.",
     ]
@@ -1525,7 +1265,7 @@ def one_ungated_two_gated_script() -> list[Any]:
 
 @asynccontextmanager
 async def compound_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
-    """A turn needing TWO decisions, with an ungated call running beside them."""
+    """Build a turn needing TWO decisions, with an ungated call running beside them."""
     calls: list[str] = []
 
     async def _weather(location: str) -> dict[str, Any]:
@@ -1641,14 +1381,7 @@ class TestAnUngatedCallAcrossTwoResumes:
             )
 
     async def test_both_approvals_are_registered_for_re_dispatch(self) -> None:
-        """Every paused call must carry the context to restart its run.
-
-        The defect this pins: LangGraph reports one ``__interrupt__`` event PER
-        paused task, and the runner used to keep only one. The approval left out
-        got no ``resume_item``, so deciding it raised ApprovalNotResumableError — the
-        user presses Approve and nothing can ever happen. Asserted on the records
-        directly, because through the UI it looks like a silent no-op.
-        """
+        """Regression: keeping only one of LangGraph's per-task __interrupt__ events left the other approval with no resume_item (ApprovalNotResumableError)."""
         async with compound_world() as (world, _calls):
             await run_turn(world, "check the weather and draw both flowcharts")
 
@@ -1658,3 +1391,171 @@ class TestAnUngatedCallAcrossTwoResumes:
                     f"{call_id} parked without re-dispatch context, so its decision "
                     "could never be applied"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Scenario — a background spawn's approval card, its decision, and its resume
+# ---------------------------------------------------------------------------
+
+SPAWN_TASK = "draw the flowchart of how an approved action reaches the user"
+
+
+class TierRoutedModel(StreamingScriptedModel):
+    """The executor and the spawns it runs share one model object; each tier replays its own script.
+
+    A background spawn's model calls interleave with the executor's in scheduling
+    order, so one shared script would hand responses to whichever tier asked first.
+    """
+
+    _spawn: StreamingScriptedModel | None = PrivateAttr(default=None)
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        spawned = any(
+            isinstance(m, SystemMessage) and SPAWN_SUBAGENT_SYSTEM_PROMPT in str(m.content)
+            for m in messages
+        )
+        model: StreamingScriptedModel = self._spawn if spawned and self._spawn else self
+        stream = (
+            model._astream(messages, stop, run_manager, **kwargs)
+            if model is not self
+            else super()._astream(messages, stop, run_manager, **kwargs)
+        )
+        async for chunk in stream:
+            yield chunk
+
+
+def tier_routed_model(executor: Sequence[Any], spawn: Sequence[Any]) -> TierRoutedModel:
+    model = TierRoutedModel(responses=streaming_model(executor).responses)
+    model._spawn = streaming_model(spawn)
+    return model
+
+
+def background_spawn_executor_script() -> list[Any]:
+    # The live turn dispatches and answers; the park note and the landed result each
+    # wake a collection run (padded for the completion guard's nudges).
+    return [
+        call("spawn_subagent", {"task": SPAWN_TASK}, call_id="tc_spawn"),
+        "Started the flowchart in the background.",
+        *["The flowchart is waiting on your approval."] * 3,
+        *["The flowchart is drawn."] * 3,
+    ]
+
+
+def gated_spawn_script() -> list[Any]:
+    return [
+        call("retrieve_tools", {"exact_tool_names": [GATED_TOOL]}, call_id="tc_spawn_retrieve"),
+        call(GATED_TOOL, GATED_ARGS, call_id=GATED_CALL_ID),
+        "Drew the flowchart.",
+    ]
+
+
+async def _cards_by_stream(world: HilWorld) -> dict[str, list[str]]:
+    """Each stream's approval-card statuses for the gated tool, in order."""
+    await drain_publishes()
+    seen: dict[str, list[str]] = {}
+    for stream_id in world.stream_ids():
+        chunks = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
+        for frame in Transcript.from_sse("".join(chunks)).frames():
+            if frame.kind != "tool_data":
+                continue
+            entries = frame.data if isinstance(frame.data, list) else [frame.data]
+            for entry in entries:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("tool_name") == APPROVAL_REQUEST_TOOL_NAME
+                    and entry["data"]["gated_tool_name"] == GATED_TOOL
+                ):
+                    seen.setdefault(stream_id, []).append(entry["data"]["status"])
+    return seen
+
+
+class TestABackgroundSpawnsApproval:
+    @asynccontextmanager
+    async def _world(self) -> AsyncIterator[tuple[HilWorld, TierRoutedModel]]:
+        model = tier_routed_model(background_spawn_executor_script(), gated_spawn_script())
+        async with hil_world(
+            mode="always_ask", tool_overrides={GATED_TOOL: True}, executor_model=model
+        ) as world:
+            await run_turn(world, "draw me a flowchart")
+            await drain_background_runs()
+            yield world, model
+
+    @staticmethod
+    def _shown_to_the_executor(model: TierRoutedModel) -> list[str]:
+        return [
+            str(message.content)
+            for prompt in model.prompts
+            for message in prompt
+            if isinstance(message, HumanMessage)
+        ]
+
+    async def test_the_card_is_raised_on_the_spawns_own_stream(self) -> None:
+        """The spawn outlives the turn that started it, so its card must not ride the turn's stream."""
+        async with self._world() as (world, _model):
+            cards = await _cards_by_stream(world)
+
+            assert world.comms_stream_id not in cards, (
+                "the background spawn's card landed on the parent turn's stream"
+            )
+            ((stream_id, statuses),) = cards.items()
+            assert stream_id in world.started_streams
+            assert statuses == ["pending"]
+            assert await world.outputs_for(GATED_CALL_ID) == [], "nothing runs before approval"
+
+    async def test_the_parked_spawn_carries_its_recipe_and_tells_the_executor(self) -> None:
+        async with self._world() as (world, model):
+            record = world.approvals.only_record()
+
+            assert record.subagent_resume is not None
+            assert record.subagent_resume["task"] == SPAWN_TASK
+            assert record.subagent_thread_id is not None
+            assert await world.approvals.list_parked_subagents_for_conversation(
+                world.conversation_id
+            ) == [record]
+            assert any(
+                "is waiting for the user's approval" in text and record.approval_id in text
+                for text in self._shown_to_the_executor(model)
+            ), "the executor was never told its spawn is waiting on the user"
+
+    async def test_approving_resumes_the_spawn_which_runs_the_tool_once(self) -> None:
+        async with self._world() as (world, model):
+            decided = await world.decide("approve")
+            await drain_background_runs()
+
+            assert decided.resumed_at is not None
+            outputs = await world.outputs_for(GATED_CALL_ID)
+            assert len(outputs) == 1, f"expected one result frame, got {len(outputs)}"
+            assert_real_tool_output(outputs[0])
+            # The settled card reached the stream the resumed spawn runs on.
+            statuses = [s for per in (await _cards_by_stream(world)).values() for s in per]
+            assert statuses == ["pending", "approved"]
+            assert any(
+                "): Drew the flowchart." in text for text in self._shown_to_the_executor(model)
+            ), "the resumed spawn's result never reached the executor"
+            assert any("The flowchart is drawn." in text for text, _type in world.delivered)
+            # What a reload shows: one row for the spawn (both segments' calls) and one card.
+            saved = world.saved.entries()
+            rows = [e for e in saved if e["tool_name"] == "subagent_group"]
+            assert len(rows) == 1
+            assert GATED_CALL_ID in [c.get("tool_call_id") for c in rows[0]["data"]["tool_calls"]]
+            assert len([e for e in saved if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME]) == 1
+
+    async def test_denying_resumes_the_spawn_which_never_runs_the_tool(self) -> None:
+        async with self._world() as (world, model):
+            await world.decide("deny")
+            await drain_background_runs()
+
+            outputs = await world.outputs_for(GATED_CALL_ID)
+            assert outputs, "the spawn must be told it was declined"
+            assert not any(GATED_ARGS["description"] in output for output in outputs), (
+                "a denied call must never produce the tool's real output"
+            )
+            assert any(
+                "): Drew the flowchart." in text for text in self._shown_to_the_executor(model)
+            ), "the resumed spawn must still land its outcome"

@@ -17,6 +17,7 @@
  * ./text so sibling modules can import them without a barrel import cycle.
  */
 
+export { segmentIntoBubbles } from "./bubbles";
 export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
@@ -33,6 +34,12 @@ export {
   handleWorkflowList,
 } from "./commands";
 export { sendChunked } from "./delivery";
+export type { BotFailureReason } from "./failure-reasons";
+export {
+  BOT_FAILURE_REASON,
+  classifyBotFailure,
+  recordBotFailure,
+} from "./failure-reasons";
 export { fetchBytesCapped, readResponseBytesCapped } from "./fetch-bytes";
 export {
   buildAuthLinkMessage,
@@ -77,6 +84,8 @@ export {
   unfetchableMediaMessage,
   unsupportedMediaMessage,
 } from "./media";
+export type { ReactionOutcome } from "./reaction-outcome";
+export { REACTION_OUTCOME } from "./reaction-outcome";
 export {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,

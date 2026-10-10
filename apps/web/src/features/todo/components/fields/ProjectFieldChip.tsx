@@ -4,6 +4,7 @@ import { Folder02Icon } from "@icons";
 import type { Project } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";
+import FieldChipOption from "./FieldChipOption";
 
 interface ProjectFieldChipProps {
   value?: string;
@@ -43,19 +44,19 @@ export default function ProjectFieldChip({
       {({ onClose }) => (
         <div className="p-1">
           {projects.map((project) => (
-            <div
+            <FieldChipOption
               key={project.id}
-              onClick={() => {
+              onSelect={() => {
                 onChange(project.id);
                 onClose();
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+              className="gap-2 rounded-md text-zinc-300"
             >
               <div style={{ color: project.color || "#71717a" }}>
                 <Folder02Icon width={18} height={18} />
               </div>
               <span className="truncate">{project.name}</span>
-            </div>
+            </FieldChipOption>
           ))}
 
           {/* Hint */}

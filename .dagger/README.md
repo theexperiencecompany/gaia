@@ -27,6 +27,11 @@ dagger call test
 dagger call dead-code
 dagger call validate-release
 
+# The test-python slices, exactly as main.yml runs them: the same
+# scripts/ci/lib/test-slices.json and the same scripts/ci/pytest.sh slice
+dagger call test-python                          # all four, one after another
+dagger call test-python --slice-name unit-a      # one slice
+
 # Integration tests (spins up Postgres, Redis, MongoDB automatically)
 dagger call integration-test
 
@@ -75,7 +80,7 @@ All six run concurrently from the same base container. Dagger deduplicates the s
 
 ### CI integration
 
-`.github/workflows/main.yml` runs `dagger call quality-checks` as its only quality gate step. The workflow is three steps total: checkout, master promotion policy check, Dagger. All toolchain setup and dependency installation happen inside the Dagger container.
+`.github/workflows/main.yml` does **not** call Dagger. It runs its lanes natively on the runner (`build`, `test-python`'s unit/integration/bridge slices, `coverage`, `test-typescript`, `docker-image`, …), and the hygiene lanes live in `code-quality.yml`. `quality-checks` is the local mirror of that work: it is what you run on a laptop to reproduce the CI lanes in one command, not what CI itself invokes.
 
 ---
 

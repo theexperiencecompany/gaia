@@ -23,7 +23,12 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)}d ago`;
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // UTC keeps the rendered date identical between SSR and the browser.
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 // Format number for display

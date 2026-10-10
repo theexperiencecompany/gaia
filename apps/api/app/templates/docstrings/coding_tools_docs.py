@@ -1,7 +1,7 @@
 """Docstrings for the persistent coding tools (bash / read / write / edit).
 
 All four tools operate inside the user's persistent E2B sandbox. The
-sandbox's `/workspace` is backed by Cloudflare R2 via JuiceFS, so files,
+sandbox's /workspace is backed by Cloudflare R2 via JuiceFS, so files,
 installed packages, and any state created by the agent survive across
 conversations.
 """
@@ -13,13 +13,13 @@ The command runs in your session's working directory by default. The
 sandbox has Python, Node.js, and common Linux tools. Anything you install
 via `pip install` or `npm install` persists across conversations because
 the workspace is on a durable filesystem. The sandbox user has no `sudo`
-and cannot install system packages — use the language-level package
+and cannot install system packages: use the language-level package
 managers instead.
 
 Path conventions inside your session:
 - Relative paths resolve against your session root. Put intermediate work in
   `./scratch/`.
-- Files in `./user-uploaded/` are user-attached and read-only — copy them to
+- Files in `./user-uploaded/` are user-attached and read-only: copy them to
   `./scratch/` before modifying.
 - Anything you place in `./artifacts/` is shown to the user in the chat
   UI: HTML, Markdown, and images render inline; other types appear as
@@ -33,6 +33,22 @@ USE FOR:
 - Filesystem inspection: `ls`, `tree`, `find`, `grep`
 - Git operations: `git clone …`, `git status`, `git diff`
 - Quick one-liners and pipelines that don't fit `read`/`write`/`edit`
+
+GAIA TOOLS FROM SCRIPTS (code mode):
+Python scripts you run here can call GAIA integration tools directly:
+    from gaia import execute
+    emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
+`execute(tool_name, data)` returns the tool's parsed JSON output, or raises
+GaiaToolError whose message carries the exact validation errors: fix `data`
+and rerun. Get a tool's args from retrieve_tools first. When its doc has no
+Returns line, or a depth-collapsed one, call `schema(tool_name)` (also importable
+from gaia) or read the cached file at /workspace/.gaia/tools/<TOOL_NAME>.json
+before writing code that consumes the output; never guess shapes. Prefer ONE
+script that fetches, filters/computes in Python, acts, and prints a concise
+summary; large payloads stay in variables instead of the conversation. Calls
+are budgeted per bash run; batch work rather than looping one call at a time.
+If the import fails with "No module named 'gaia'", code mode is not configured
+on this deployment; use the execute tool from the conversation instead.
 
 DO NOT USE FOR:
 - Reading a single file when you just want to see it (use `read`)
@@ -69,7 +85,7 @@ inspect code you've written, uploaded files, or data. The file must be inside
 the workspace.
 
 Image files (png, jpg, jpeg, webp, gif) are returned as the actual image when
-the model can view images, or as a detailed text description otherwise —
+the model can view images, or as a detailed text description otherwise;
 `offset`/`limit` are ignored for images.
 
 PARAMETERS:
@@ -95,12 +111,12 @@ WRITE_TOOL = """
 Write content to a file in the persistent workspace, overwriting if it exists.
 
 Creates parent directories as needed. Refuses to write outside the workspace.
-Use `edit` if you want to change part of an existing file — `write` always
+Use `edit` if you want to change part of an existing file: `write` always
 replaces the whole file.
 
 PARAMETERS:
 - path (str): Workspace path. Relative paths resolve against your session
-  root. Writing into `./user-uploaded/` is rejected (read-only) — copy to
+  root. Writing into `./user-uploaded/` is rejected (read-only); copy to
   `./scratch/` first.
 - content (str): Full file contents.
 
@@ -110,7 +126,7 @@ EXAMPLES:
 ✅ write("artifacts/report.html", "<h1>Done</h1>")
 
 Files written under `./artifacts/` are surfaced to the user through the
-chat UI — HTML, Markdown, and images render inline; other types appear as
+chat UI: HTML, Markdown, and images render inline; other types appear as
 download cards.
 """
 
@@ -118,22 +134,22 @@ EDIT_TOOL = """
 Replace a string inside an existing file in the workspace.
 
 The replacement is exact: `old_string` must appear verbatim in the file. By
-default it must appear exactly once — set `replace_all=True` to replace every
+default it must appear exactly once; set `replace_all=True` to replace every
 occurrence (e.g. renaming a variable).
 
 PARAMETERS:
 - path (str): Path to an existing workspace file. Relative paths resolve
   against your session root. Editing `./user-uploaded/` is rejected
-  (read-only) — copy to `./scratch/` first.
+  (read-only); copy to `./scratch/` first.
 - old_string (str): The exact text to replace. Include enough context to make
   it unique.
 - new_string (str): Text to substitute. May be empty (to delete the match).
 - replace_all (bool): If true, replaces every occurrence. Default false.
 
 ERRORS:
-- "File not found" — path doesn't exist
-- "old_string not found" — verbatim match failed; re-read the file
-- "old_string appears N times" — disambiguate by adding context, or pass
+- "File not found": path doesn't exist
+- "old_string not found": verbatim match failed; re-read the file
+- "old_string appears N times": disambiguate by adding context, or pass
   `replace_all=True`
 
 EXAMPLES:
@@ -145,7 +161,7 @@ QUERY_JSON_TOOL = """
 Query a single JSON or JSONL workspace file: filter, project, sort, count, dedupe, group.
 
 Built for mining files that a tool offloaded (e.g. a large Gmail fetch writes a
-JSONL file, one JSON object per line — each line a record). Extracts just what
+JSONL file, one JSON object per line, each line a record). Extracts just what
 you need instead of reading the whole file back into context. Read-only.
 
 PARAMETERS:

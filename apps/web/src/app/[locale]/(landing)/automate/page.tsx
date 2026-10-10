@@ -184,7 +184,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
                 <Link
                   key={combo.slug}
                   href={`/automate/${combo.slug}`}
-                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <div className="flex items-center -space-x-2">
                     <ToolFavicon

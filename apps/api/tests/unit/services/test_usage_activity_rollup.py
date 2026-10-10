@@ -1,22 +1,11 @@
-"""The durable usage rollup: what ``record_cost`` books, and what ``get_activity`` shows.
+"""The durable usage rollup: what record_cost books, and what get_activity shows.
 
-Two invariants, both of them money:
-
-1. Charged work and auxiliary background work must land in disjoint fields.
-   ``cost``/``*_tokens`` are the exact durable mirror of the Redis windows the
-   budget wall enforces; ``aux_*`` is COGS the user is never charged for. A
-   crossed wire either eats a user's allowance for work they never asked for,
-   or hides real spend from the wall.
-2. Tokens must survive a pricing failure. ``record_llm_call`` books
-   ``cost_usd=0`` when the pricing lookup misses, so gating the rollup on cost
-   alone would silently drop the raw usage the call has to be re-priced from.
-
-The repository is the seam (its own ``$inc`` semantics are proven against real
-Mongo in ``tests/contracts/test_usage_daily_repository.py``); everything inside
-``usage_activity`` runs for real.
+Two invariants, both of them money: charged cost/*_tokens and aux_* (uncharged COGS) must land in disjoint fields, or a crossed wire eats a user's allowance or hides real spend from the budget wall; and tokens must survive a pricing failure, since record_llm_call books cost_usd=0 on a pricing miss, so gating the rollup on cost alone would drop the raw usage needed to re-price it. The repository's own $inc semantics are proven against real Mongo in tests/contracts/test_usage_daily_repository.py; everything inside usage_activity runs for real.
 """
 
 from collections.abc import Iterator
+import os
+import time
 from unittest.mock import AsyncMock, patch
 
 from pymongo.errors import PyMongoError
@@ -24,7 +13,12 @@ import pytest
 import time_machine
 
 from app.db.redis import redis_cache
-from app.db.repositories.usage_daily import UsageDailyDocument, usage_daily_repository
+from app.db.repositories.usage_daily import (
+    UsageDailyDocument,
+    UsageDailyIncrement,
+    usage_daily_repository,
+)
+from app.services import usage_activity
 from app.services.usage_activity import get_activity, record_cost
 
 USER = "user-activity-1"
@@ -38,10 +32,41 @@ def _row(date: str, **fields: object) -> UsageDailyDocument:
 
 @pytest.fixture(autouse=True)
 def frozen_clock() -> Iterator[None]:
-    """Both functions read ``datetime.now(UTC)`` to decide which day a write or
-    a window belongs to, so the day boundary has to be pinned."""
+    """Pin datetime.now(UTC) so both functions agree on which day a write belongs to."""
     with time_machine.travel(FROZEN, tick=False):
         yield
+
+
+@pytest.fixture
+def a_box_a_day_ahead_of_utc() -> Iterator[None]:
+    """Simulate a worker whose local calendar day runs ahead of the UTC one."""
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = "Pacific/Kiritimati"  # UTC+14
+    time.tzset()
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        time.tzset()
+
+
+def _spend(
+    cost: float = 0.0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cached_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> UsageDailyIncrement:
+    return UsageDailyIncrement(
+        cost=cost,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
 
 
 @pytest.fixture
@@ -55,47 +80,37 @@ class TestRecordCost:
     async def test_charged_spend_books_cost_and_tokens_under_the_charged_fields(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(
-            USER,
-            0.02,
-            charged=True,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
-        )
+        await record_cost(USER, _spend(0.02, 300, 120, 50, 40), charged=True)
 
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            cost=0.02,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
+            charged=True,
         )
 
     async def test_auxiliary_spend_books_everything_under_the_aux_mirrors(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(
-            USER,
-            0.02,
-            charged=False,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
-        )
+        await record_cost(USER, _spend(0.02, 300, 120, 50, 40), charged=False)
 
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            aux_cost=0.02,
-            aux_input_tokens=300,
-            aux_output_tokens=120,
-            aux_cached_tokens=50,
-            aux_reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
+            charged=False,
         )
 
     async def test_tokens_still_land_when_pricing_failed_and_the_cost_is_zero(
@@ -103,16 +118,13 @@ class TestRecordCost:
     ) -> None:
         # The real shape of a pricing-table miss: real usage, no dollar figure.
         # Dropping this write would make the call unrepriceable forever.
-        await record_cost(USER, 0.0, charged=True, input_tokens=300, output_tokens=120)
+        await record_cost(USER, _spend(0.0, 300, 120), charged=True)
 
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            cost=0.0,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            UsageDailyIncrement(cost=0.0, input_tokens=300, output_tokens=120),
+            charged=True,
         )
 
     @pytest.mark.parametrize(
@@ -121,10 +133,10 @@ class TestRecordCost:
     async def test_any_single_token_field_alone_is_enough_to_write(
         self, increment: AsyncMock, token_field: str
     ) -> None:
-        await record_cost(USER, 0.0, charged=True, **{token_field: 7})
+        await record_cost(USER, UsageDailyIncrement(**{token_field: 7}), charged=True)
 
         increment.assert_awaited_once()
-        assert increment.await_args.kwargs[token_field] == 7
+        assert getattr(increment.await_args.args[2], token_field) == 7
 
     async def test_priced_spend_lands_even_when_the_token_counts_are_missing(
         self, increment: AsyncMock
@@ -132,16 +144,10 @@ class TestRecordCost:
         # The mirror image of the pricing miss: a provider that priced the call
         # but returned no usage metadata. Spend without tokens is still spend,
         # and dropping it would under-bill the day's rollup against Redis.
-        await record_cost(USER, 0.02, charged=True)
+        await record_cost(USER, _spend(0.02), charged=True)
 
         increment.assert_awaited_once_with(
-            USER,
-            TODAY,
-            cost=0.02,
-            input_tokens=0,
-            output_tokens=0,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            USER, TODAY, UsageDailyIncrement(cost=0.02), charged=True
         )
 
     async def test_spend_is_charged_unless_the_caller_says_otherwise(
@@ -149,22 +155,30 @@ class TestRecordCost:
     ) -> None:
         # Defaulting to the aux bucket would quietly stop the durable rollup
         # mirroring the Redis windows the wall enforces.
-        await record_cost(USER, 0.02, input_tokens=300)
+        await record_cost(USER, _spend(0.02, 300))
 
-        assert "cost" in increment.await_args.kwargs
-        assert "aux_cost" not in increment.await_args.kwargs
+        assert increment.await_args.kwargs["charged"] is True
 
     async def test_a_call_with_no_spend_and_no_tokens_writes_nothing(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(USER, 0.0, charged=True)
+        await record_cost(USER, _spend(0.0), charged=True)
 
         increment.assert_not_awaited()
 
     async def test_a_call_without_a_user_writes_nothing(self, increment: AsyncMock) -> None:
-        await record_cost("", 0.02, charged=True, input_tokens=300)
+        await record_cost("", _spend(0.02, 300), charged=True)
 
         increment.assert_not_awaited()
+
+    async def test_the_rollup_day_is_the_utc_one_not_the_boxs_local_one(
+        self, increment: AsyncMock, a_box_a_day_ahead_of_utc: None
+    ) -> None:
+        """The row key is a UTC day, matching the heatmap, percentile window, and true-cost backfill — not the box's local day."""
+        with time_machine.travel("2026-03-04T23:30:00+00:00", tick=False):
+            await record_cost(USER, _spend(0.02), charged=True)
+
+        assert increment.await_args.args[1] == "2026-03-04"  # not the local 03-05
 
     async def test_a_mongo_failure_never_reaches_the_caller(self, increment: AsyncMock) -> None:
         # record_cost runs after a model call has already completed and been
@@ -172,14 +186,21 @@ class TestRecordCost:
         # has already paid for.
         increment.side_effect = PyMongoError("rollup write failed")
 
-        await record_cost(USER, 0.02, charged=True, input_tokens=300)
+        with patch.object(usage_activity.log, "warning") as warned:
+            await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
+        # Swallowed, but never silent: the dropped rollup is the only per-day
+        # cost history there is, so the warning has to name whose spend went
+        # missing and what actually failed — otherwise the loss is invisible.
+        assert warned.call_args.kwargs["user"] == {"id": USER}
+        assert warned.call_args.kwargs["error"] == "rollup write failed"
+        assert warned.call_args.kwargs["error_type"] == "PyMongoError"
 
 
 @pytest.fixture
 def rollups() -> Iterator[AsyncMock]:
-    """The activity read seam: the window's rollup rows and the percentile inputs."""
+    """Stub the activity read seam: the window's rollup rows and the percentile inputs."""
     with (
         patch.object(usage_daily_repository, "rollups_since", AsyncMock(return_value=[])) as mock,
         patch.object(usage_daily_repository, "counts_since", AsyncMock(return_value={})),

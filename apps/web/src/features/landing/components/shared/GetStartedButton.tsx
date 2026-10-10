@@ -19,10 +19,7 @@ export default function GetStartedButton({
   href?: string;
 }) {
   return (
-    <div
-      className="relative z-2 flex flex-col items-center gap-4 group"
-      style={{ willChange: "auto" }}
-    >
+    <div className="relative z-2 flex flex-col items-center gap-4 group">
       <Link href={href}>
         <RaisedButton
           className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}
@@ -40,7 +37,7 @@ export default function GetStartedButton({
 
       {small_text && (
         <div className="text-xs font-light text-black">
-          No credit card required. Free forever plan included.
+          Secure payment · Cancel anytime.
         </div>
       )}
     </div>

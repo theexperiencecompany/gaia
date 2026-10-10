@@ -3,19 +3,28 @@
  *
  * CanvasViewer hardcoded `/api/v1/todos/<id>/canvas`, but the axios baseURL
  * already ends in `/api/v1/`, so every open hit `/api/v1/api/v1/todos/...`
- * and 404'd. The URL now lives in the shared `TODO_ENDPOINTS` map (unprefixed,
- * like every other todo endpoint); these assertions fail if a version prefix
- * ever sneaks back into it or if the fetch drifts off the shared constant.
+ * and 404'd. The shared `TODO_ENDPOINTS` map stays unprefixed for the shared
+ * todo client, and the typed client trims the schema's `/api/v1` itself;
+ * these assertions fail if either path grows a version prefix again.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/api/service", () => ({
-  apiService: { get: vi.fn().mockResolvedValue({ content: "# canvas" }) },
+const request = vi.fn();
+
+vi.mock("@/lib/api/client", () => ({
+  apiauth: { request: (...args: unknown[]) => request(...args) },
+  apiOrigin: "http://localhost:8000",
+}));
+vi.mock("@/lib/toast", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+vi.mock("@/lib/analytics", () => ({
+  ANALYTICS_EVENTS: { API_REQUEST_FAILED: "api:request_failed" },
+  trackEvent: vi.fn(),
 }));
 
 import { TODO_ENDPOINTS } from "@shared/api/todosApi";
 import { getTodoCanvas } from "@/features/todo/api/todoApi";
-import { apiService } from "@/lib/api/service";
 
 describe("todo canvas endpoint", () => {
   it("builds an unprefixed path like every other todo endpoint", () => {
@@ -26,18 +35,27 @@ describe("todo canvas endpoint", () => {
 
 describe("getTodoCanvas", () => {
   beforeEach(() => {
-    vi.mocked(apiService.get).mockClear();
-  });
-
-  it("fetches via the shared endpoint map with silent toasts", async () => {
-    await getTodoCanvas("todo-1");
-    expect(apiService.get).toHaveBeenCalledWith("/todos/todo-1/canvas", {
-      silent: true,
+    request.mockReset();
+    request.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { content: "# canvas", activity: "- ran" },
     });
   });
 
-  it("returns the canvas content", async () => {
+  it("requests the canvas path exactly once under /api/v1", async () => {
+    await getTodoCanvas("todo-1");
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "GET",
+        url: "http://localhost:8000/api/v1/todos/todo-1/canvas",
+      }),
+    );
+  });
+
+  it("returns both notes files", async () => {
     const res = await getTodoCanvas("todo-1");
     expect(res.content).toBe("# canvas");
+    expect(res.activity).toBe("- ran");
   });
 });

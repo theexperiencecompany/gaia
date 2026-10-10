@@ -1,9 +1,9 @@
 """Model pricing: the in-code rate card and token cost arithmetic.
 
-Regression anchor: in production, ``gemini-3.1-flash-lite`` (the vision and
+Regression anchor: in production, gemini-3.1-flash-lite (the vision and
 memory model) was priced at DEFAULT_PRICING — ~10x its real input rate —
-because its row was missing from the prod ``ai_models`` Mongo collection and
-nothing enforced the seed. Pricing now ships in code (``MODEL_PRICING``), so a
+because its row was missing from the prod ai_models Mongo collection and
+nothing enforced the seed. Pricing now ships in code (MODEL_PRICING), so a
 runtime-referenced model without a rate fails this suite instead of silently
 distorting COGS in prod.
 """
@@ -19,10 +19,14 @@ from app.config.model_pricing import (
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
+    has_rate_card,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
+    COMMS_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    HIL_JUDGE_MODEL_NAME,
     MEMORY_MODEL_NAME,
     OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
@@ -40,12 +44,18 @@ def _fresh_wide_event() -> None:
     log.reset()
 
 
-# Every model id the runtime actually meters: the graph lane on both tiers, the
-# aux one-shot alias, and the memory/vision model. A new runtime model constant
-# belongs in MODEL_PRICING — the coverage test below is what turns a forgotten
-# rate into a red build instead of a prod log line.
+# Every model id the runtime actually meters. A new runtime model constant
+# must be added to MODEL_PRICING, or the coverage test below catches it.
 RUNTIME_MODEL_IDS = sorted(
-    {DEFAULT_MODEL_NAME, PAID_MODEL_NAME, AUX_MODEL_NAME, MEMORY_MODEL_NAME, VISION_MODEL_NAME}
+    {
+        DEFAULT_MODEL_NAME,
+        PAID_MODEL_NAME,
+        AUX_MODEL_NAME,
+        MEMORY_MODEL_NAME,
+        VISION_MODEL_NAME,
+        HIL_JUDGE_MODEL_NAME,
+        COMMS_MODEL_NAME,
+    }
 )
 
 
@@ -68,13 +78,16 @@ class TestEveryRuntimeModelIsPriced:
 
     @pytest.mark.parametrize("model_id", RUNTIME_MODEL_IDS)
     def test_a_referenced_model_never_falls_back_to_default_pricing(self, model_id: str) -> None:
-        """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime
-        model resolving to it means its COGS numbers are fiction."""
+        """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime model resolving to it means its COGS numbers are fiction."""
         assert get_model_pricing(model_id) is not DEFAULT_PRICING
 
+    def test_the_browser_lane_models_never_fall_back_to_default_pricing(self) -> None:
+        """The browser lane's decision model and its text helper are settings, metered from Browser-Use's history, so they are read when the test runs rather than frozen at import."""
+        for model_id in (settings.BROWSER_USE_JEV_MODEL, settings.BROWSER_USE_JEV_TEXT_MODEL):
+            assert get_model_pricing(model_id) is not DEFAULT_PRICING, model_id
+
     def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
-        """The exact production regression: gemini-3.1-flash-lite priced at
-        $0.001/1k input instead of $0.0001, with no database row to depend on."""
+        """The exact production regression: gemini-3.1-flash-lite priced at $0.001/1k input instead of $0.0001."""
         pricing = get_model_pricing("gemini-3.1-flash-lite")
 
         assert pricing.input_cost_per_1k == 0.0001
@@ -84,18 +97,23 @@ class TestEveryRuntimeModelIsPriced:
     def test_the_default_model_carries_its_real_rate(self) -> None:
         pricing = get_model_pricing(DEFAULT_MODEL_NAME)
 
-        assert pricing.input_cost_per_1k == 0.00014
-        assert pricing.output_cost_per_1k == 0.00028
-        assert pricing.cached_input_cost_per_1k == 0.000028
+        assert pricing.input_cost_per_1k == 0.00004
+        assert pricing.output_cost_per_1k == 0.00008
+        assert pricing.cached_input_cost_per_1k == 0.000016
+
+    def test_the_judge_model_carries_its_real_rate(self) -> None:
+        """The approval gate judges here; an unpriced judge id would meter at DEFAULT_PRICING (~3x input, ~1x output — close enough to look right while being wrong, the worst kind of drift)."""
+        pricing = get_model_pricing(HIL_JUDGE_MODEL_NAME)
+
+        assert pricing.input_cost_per_1k == 0.0003
+        assert pricing.output_cost_per_1k == 0.0025
+        assert pricing.cached_input_cost_per_1k == 0.00003
 
     def test_an_unknown_model_still_gets_the_loud_default(self) -> None:
         assert get_model_pricing("some-model-nobody-registered") == DEFAULT_PRICING
 
     def test_the_fallback_logs_the_mispricing(self) -> None:
-        """DEFAULT_PRICING is not the model's real rate, so serving it must
-        never pass quietly — the error line is what surfaced the prod bug.
-        Asserted exactly: the message is what an operator greps for, and the
-        model_name field is what tells them WHICH model is mispriced."""
+        """DEFAULT_PRICING is not the model's real rate, so serving it must log the message an operator greps for plus the model_name field."""
         with patch("app.config.model_pricing.log") as mock_log:
             get_model_pricing("some-model-nobody-registered")
 
@@ -104,35 +122,75 @@ class TestEveryRuntimeModelIsPriced:
         assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
         assert kwargs == {"model_name": "some-model-nobody-registered"}
 
+    @pytest.mark.regression
+    def test_the_dev_custom_model_is_estimated_without_an_error_per_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing("gpt-6-luna")
+
+        assert pricing == DEFAULT_PRICING
+        assert has_rate_card("gpt-6-luna") is False
+        mock_log.error.assert_not_called()
+
+    def test_production_still_logs_an_unpriced_model_named_like_the_dev_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("gpt-6-luna")
+
+        mock_log.error.assert_called_once()
+
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)
 
         assert not log.get().get("errors", [])
 
+    @pytest.mark.parametrize("variant", ["nitro", "floor"])
+    def test_an_openrouter_routing_variant_is_priced_as_its_base_model(self, variant: str) -> None:
+        """Routing variants such as :nitro only pick the provider; the default price misprices every turn."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(f"{DEFAULT_MODEL_NAME}:{variant}")
+
+        assert pricing == MODEL_PRICING[DEFAULT_MODEL_NAME]
+        mock_log.error.assert_not_called()
+
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
-        """OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT is the model-onboarding gate's one
-        place of declaration; every id in it must also carry a rate, and the
-        default model stays declared text-only (its tool media routes through
-        the caption fallback — flipping this to True without the live gate run
-        would 400 real turns mid-stream)."""
+        """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""
         assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}
         assert set(OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT) <= set(MODEL_PRICING)
 
     def test_no_table_entry_accidentally_equals_the_fallback(self) -> None:
-        """An entry equal to DEFAULT_PRICING is indistinguishable from a missing
-        one — someone pasted the fallback instead of the real rate."""
+        """An entry equal to DEFAULT_PRICING is indistinguishable from a missing one — someone pasted the fallback instead of the real rate."""
         for model_id, pricing in MODEL_PRICING.items():
             assert pricing != DEFAULT_PRICING, model_id
 
 
+class TestHasRateCard:
+    """The flag the analytics event reports as cost_estimated."""
+
+    def test_a_priced_model_is_not_estimated(self) -> None:
+        assert has_rate_card(DEFAULT_MODEL_NAME) is True
+
+    def test_a_model_missing_from_the_table_is_estimated(self) -> None:
+        assert has_rate_card("some-model-nobody-registered") is False
+
+
 class TestAuxModelPricing:
-    """The aux lane runs on the SAME model id as the graph, isolated by session
-    suffixes rather than by a second model id. Measured, both halves: the old
-    separate id's provider pool could not cache or hold session affinity for
-    tool-carrying requests (fixed sessions read [1536,0]/[0,0]/[0,0]) while the
-    0731 pool chains perfectly ([0,1792,1792]/[1792,1792,1792]) — and every
-    structured one-shot carries a tool. Pricing follows: aux spend meters at
-    the default rate, which is what the calls are actually billed at."""
+    """The aux lane runs on the same model id as the graph, isolated by session suffixes rather than a second model id.
+
+    Measured: the old separate id's provider pool could not hold session
+    affinity for tool-carrying requests (fixed sessions read
+    [1536,0]/[0,0]/[0,0]) while the 0731 pool chains perfectly
+    ([0,1792,1792]/[1792,1792,1792]); pricing follows at the default rate.
+    """
 
     def test_aux_resolves_to_the_default_model_id(self) -> None:
         assert AUX_MODEL_NAME == DEFAULT_MODEL_NAME
@@ -141,9 +199,7 @@ class TestAuxModelPricing:
         assert get_model_pricing(AUX_MODEL_NAME) == get_model_pricing(DEFAULT_MODEL_NAME)
 
     def test_the_retired_aux_id_still_meters_at_its_served_rate(self) -> None:
-        """Historical llm_call events and mid-deploy stragglers on the old
-        "0423" id must price at the rate they were actually served at, never
-        fall through to DEFAULT_PRICING."""
+        """Historical llm_call events on the old "0423" id must price at the rate they were actually served at, never fall through to DEFAULT_PRICING."""
         retired = get_model_pricing("deepseek/deepseek-v4-flash")
 
         assert retired.input_cost_per_1k == 0.00006426
@@ -151,9 +207,7 @@ class TestAuxModelPricing:
         assert retired != DEFAULT_PRICING
 
     def test_aux_cached_tokens_meter_at_the_cached_rate_end_to_end(self) -> None:
-        """The point of moving the lane: cached input at ~1/10th. A metering
-        bug that billed cached tokens at the full rate would silently erase the
-        saving this campaign exists to bank."""
+        """Cached input prices at ~1/10th; a metering bug billing it at the full rate would silently erase that saving."""
         result = calculate_token_cost(
             AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
         )
@@ -163,8 +217,8 @@ class TestAuxModelPricing:
         assert result["cached_input_cost"] == pytest.approx(
             80_000 / 1000 * rate.cached_input_cost_per_1k
         )
-        # The 0731 rate card prices cached input at exactly a fifth of uncached.
-        assert rate.cached_input_cost_per_1k == pytest.approx(rate.input_cost_per_1k / 5)
+        # The live 0731 rate card prices cached input at two-fifths of uncached.
+        assert rate.cached_input_cost_per_1k == pytest.approx(rate.input_cost_per_1k * 2 / 5)
 
 
 def _with_rate(pricing: ModelPricing) -> AbstractContextManager[MagicMock]:
@@ -228,8 +282,7 @@ class TestCalculateTokenCost:
         assert result["total_cost"] == pytest.approx(0.0046)
 
     def test_cached_tokens_never_exceed_input_tokens(self) -> None:
-        """A provider reporting more cached than prompt tokens must not produce a
-        negative uncached cost."""
+        """A provider reporting more cached than prompt tokens must not produce a negative uncached cost."""
         with _with_rate(
             ModelPricing(
                 input_cost_per_1k=0.01, output_cost_per_1k=0.0, cached_input_cost_per_1k=0.001

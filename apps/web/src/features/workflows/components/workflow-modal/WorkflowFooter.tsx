@@ -3,38 +3,50 @@ import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon, Share01Icon } from "@icons";
 
-interface WorkflowFooterProps {
-  existingWorkflow: boolean;
+/** What the current edit session offers for auxiliary actions. */
+interface WorkflowFooterWorkflow {
+  /** An existing workflow is being edited (enables Run and Publish). */
+  isExisting: boolean;
+  /** Steps exist, so the workflow can be run right now. */
   hasSteps: boolean;
+  /** Already published to the marketplace (hides Publish). */
+  isPublic: boolean;
+}
+
+/** State of the primary save/create button. */
+interface WorkflowFooterSave {
+  isDisabled: boolean;
+  isCreating: boolean;
+  buttonText: string;
+}
+
+interface WorkflowFooterProps {
+  workflow: WorkflowFooterWorkflow;
+  save: WorkflowFooterSave;
+  modifierKeyName: "command" | "ctrl" | "shift" | "option" | "alt";
   onRunWorkflow: () => void;
   onCancel: () => void;
   onSave: () => void;
-  isSaveDisabled: boolean;
-  isCreating: boolean;
-  modifierKeyName: "command" | "ctrl" | "shift" | "option" | "alt";
-  buttonText: string;
-  isPublic?: boolean;
   onPublish?: () => void;
 }
 
 export default function WorkflowFooter({
-  existingWorkflow,
-  hasSteps,
+  workflow,
+  save,
+  modifierKeyName,
   onRunWorkflow,
   onCancel,
   onSave,
-  isSaveDisabled,
-  isCreating,
-  modifierKeyName,
-  buttonText,
-  isPublic,
   onPublish,
 }: WorkflowFooterProps) {
+  const { isExisting, hasSteps, isPublic } = workflow;
+  const { isDisabled, isCreating, buttonText } = save;
+
   return (
     <div className="flex items-center justify-between gap-3">
       {/* Left: run (edit only) */}
       <div className="flex items-center gap-2">
-        {existingWorkflow && (
+        {isExisting && (
           <Tooltip
             content={
               !hasSteps
@@ -56,7 +68,7 @@ export default function WorkflowFooter({
           </Tooltip>
         )}
 
-        {existingWorkflow && !isPublic && onPublish && (
+        {isExisting && !isPublic && onPublish && (
           <Tooltip content="Share to the marketplace" placement="top">
             <Button
               variant="flat"
@@ -84,13 +96,13 @@ export default function WorkflowFooter({
         <Tooltip
           content={<Kbd keys={[modifierKeyName, "enter"]} />}
           placement="top"
-          isDisabled={isCreating || isSaveDisabled}
+          isDisabled={isCreating || isDisabled}
         >
           <Button
             color="primary"
             onPress={onSave}
             isLoading={isCreating}
-            isDisabled={isSaveDisabled}
+            isDisabled={isDisabled}
             className="active:scale-[0.97] transition-transform duration-150"
           >
             {buttonText}

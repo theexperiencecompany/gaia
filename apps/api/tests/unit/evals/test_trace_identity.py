@@ -3,8 +3,8 @@
 Both properties failed in production and neither was caught, because both were
 checked by reading the writer rather than the result:
 
-* every case trace carried its run under the key ``run``, so an audit looking
-  for ``run_id`` concluded nothing was attributable and that the corrupt runs
+* every case trace carried its run under the key run, so an audit looking
+  for run_id concluded nothing was attributable and that the corrupt runs
   could not be excluded from a total;
 * seeding deduplicated by querying Opik for what already existed, which loses to
   the SDK's write buffering and left 61 duplicate traces.
@@ -12,6 +12,7 @@ checked by reading the writer rather than the result:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -22,6 +23,8 @@ from scripts.evals.core.opiksink import span_id_for, trace_id_for
 from scripts.evals.core.types import CaseTrace, ProviderPrice
 
 PRICES = {"nous": ProviderPrice(price_in_per_1m=1.0, price_out_per_1m=2.0)}
+RUN_ID = "capability-20260808-093921-98a7ac"
+APP_VERSION = "api-v0.17.0-299-gc32f2f973"
 
 RECORD = {
     "case_id": "cap-todo-create",
@@ -42,27 +45,18 @@ RECORD = {
 def _trace(**overrides: object) -> CaseTrace:
     record = {**RECORD, **overrides}
     return CaseTrace.from_record(
-        "capability-20260808-093921-98a7ac",
-        record,
-        PRICES,
-        suite="capability",
-        app_version="api-v0.17.0-299-gc32f2f973",
+        RUN_ID, record, PRICES, suite="capability", app_version=APP_VERSION
     )
 
 
 @pytest.mark.parametrize("key", REQUIRED_METADATA)
 def test_metadata_carries_every_key_the_check_requires(key: str) -> None:
-    """The writer and the verifier must not be able to drift apart.
-
-    Parametrising over ``REQUIRED_METADATA`` means adding a key to the check
-    without emitting it fails here, rather than silently failing every future
-    ingest.
-    """
+    """Parametrising over REQUIRED_METADATA means adding a key to the check without emitting it fails here, not on every future ingest."""
     assert _trace().metadata.get(key), f"trace metadata is missing {key!r}"
 
 
 def test_run_id_is_not_published_under_the_old_name() -> None:
-    """`run` was the name that made the data look absent. It must not come back."""
+    """Run was the name that made the data look absent. It must not come back."""
     metadata = _trace().metadata
     assert metadata["run_id"] == "capability-20260808-093921-98a7ac"
     assert "run" not in metadata
@@ -88,9 +82,7 @@ def test_a_trace_and_its_span_do_not_share_an_id() -> None:
 
 
 def test_different_cases_runs_and_projects_get_different_ids() -> None:
-    """The mutation check: if the id ignored any part of the identity, a re-seed
-    would collapse distinct executions onto one trace instead of duplicating
-    them — silent data loss, which is worse than the duplicates it replaced."""
+    """If the id ignored any part of the identity, a re-seed would collapse distinct executions onto one trace — silent data loss."""
     base = trace_id_for("gaia-capability", _trace())
     other_case = trace_id_for("gaia-capability", _trace(case_id="cap-todo-delete"))
     other_project = trace_id_for("gaia-quality", _trace())
@@ -124,17 +116,18 @@ def test_a_later_run_of_the_same_case_is_a_distinct_trace() -> None:
 
 
 def test_ids_are_stable_across_processes() -> None:
-    """Derived from a content hash, not from anything process-local.
-
-    Comparing two calls inside one process would pass even if the id were
-    memoised from a random seed drawn at import. Seeding runs in a fresh process
-    every time, so the id has to survive one — this computes it in a subprocess
-    and compares. If it did not hold, every re-seed would duplicate everything.
-    """
+    """Derived from a content hash, not from anything process-local — computed in a subprocess since seeding runs in a fresh one."""
+    # Built from the same literals rather than importing this module, which
+    # would pull pytest, ingest_check and litellm into a one-hash process.
     source = (
+        "import json;"
         "from scripts.evals.core.opiksink import trace_id_for;"
-        "from tests.unit.evals.test_trace_identity import _trace;"
-        "print(trace_id_for('gaia-capability', _trace()))"
+        "from scripts.evals.core.types import CaseTrace, ProviderPrice;"
+        f"record = json.loads({json.dumps(json.dumps(RECORD))});"
+        "prices = {'nous': ProviderPrice(price_in_per_1m=1.0, price_out_per_1m=2.0)};"
+        f"trace = CaseTrace.from_record({RUN_ID!r}, record, prices, suite='capability', "
+        f"app_version={APP_VERSION!r});"
+        "print(trace_id_for('gaia-capability', trace))"
     )
     result = subprocess.run(
         [sys.executable, "-c", source],
@@ -144,3 +137,17 @@ def test_ids_are_stable_across_processes() -> None:
         check=True,
     )
     assert result.stdout.strip() == trace_id_for("gaia-capability", _trace())
+
+
+def test_uuid7_derivation_matches_the_sdk() -> None:
+    """_uuid4_to_uuid7 is a copy of the SDK's; a drift would re-key every trace."""
+    from datetime import UTC, datetime
+    import uuid
+
+    from opik import id_helpers
+    from scripts.evals.core.opiksink import _uuid4_to_uuid7
+
+    when = datetime(2026, 8, 8, 9, 39, 21, tzinfo=UTC)
+    for _ in range(20):
+        seed = uuid.uuid4()
+        assert _uuid4_to_uuid7(when, seed) == id_helpers.uuid4_to_uuid7(when, str(seed))

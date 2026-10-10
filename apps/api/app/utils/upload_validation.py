@@ -2,7 +2,7 @@
 Upload validation — size / filename / MIME / magic-byte checks.
 
 Prevents oversize uploads from exhausting memory, blocks double-extension
-polyglots (e.g. `shell.php.png`), and rejects files whose client-claimed
+polyglots (e.g. shell.php.png), and rejects files whose client-claimed
 Content-Type does not match the actual bytes.
 """
 
@@ -122,9 +122,9 @@ def validate_filename(filename: str | None) -> None:
 def validate_content_type(
     content_type: str | None,
 ) -> tuple[str, str, tuple[bytes, ...]]:
-    """
-    Ensure the client-supplied content-type is in the allowlist. Returns a tuple of
-    (normalized_content_type, cloudinary_resource_type, magic_signatures).
+    """Ensure the client-supplied content-type is in the allowlist.
+
+    Returns (normalized_content_type, cloudinary_resource_type, magic_signatures).
     """
     if not content_type:
         raise HTTPException(
@@ -151,10 +151,10 @@ def enforce_size_preflight(content_length: int | None) -> None:
 
 
 async def read_bounded(file: UploadFile) -> bytes:
-    """
-    Read the upload body into memory with a hard cap. Reads one byte past the
-    limit so we can definitively detect oversize bodies even when Content-Length
-    was absent or lied.
+    """Read the upload body into memory with a hard cap.
+
+    Reads one byte past the limit so oversize bodies are detected even when
+    Content-Length was absent or lied.
     """
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:

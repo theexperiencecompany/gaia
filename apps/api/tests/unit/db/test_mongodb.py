@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -157,11 +158,7 @@ class TestMongoDBInitializeIndexes:
     async def test_initialize_indexes_propagates_exception(
         self, mock_log: MagicMock, mock_motor: MagicMock
     ) -> None:
-        """Exceptions propagate so boot aborts instead of coming up 'healthy'.
-
-        init_mongodb_async logs and re-raises into the lifespan; swallowing here
-        would defeat the security-critical index fail-loud contract.
-        """
+        """Propagate exceptions so boot aborts instead of coming up healthy."""
         mock_motor.return_value = MagicMock()
         mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
         mock_log.reset_mock()
@@ -340,8 +337,7 @@ class TestCollectionsLazyLoading:
 
 
 class TestGetAsyncCollection:
-    """The single supported accessor — the named per-collection module
-    attributes were removed once every domain moved behind a repository."""
+    """The single supported accessor; named per-collection module attributes were removed once every domain moved behind a repository."""
 
     def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
@@ -392,11 +388,63 @@ _INDEX_CREATORS = [
     "create_bot_session_indexes",
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
+    "create_approval_ledger_indexes",
     "create_pending_platform_registration_indexes",
+    "create_browser_profiles_indexes",
+    "create_browser_tasks_indexes",
+    "create_llm_call_indexes",
     "create_local_credential_indexes",
     "create_instance_settings_indexes",
+    "create_playbook_indexes",
     "create_provider_credential_indexes",
+    "create_tool_output_shapes_indexes",
 ]
+
+
+class TestCreatePlaybookIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_one_playbook_per_workflow_is_a_unique_index(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """The repository's atomic upsert relies on the (workflow_id, user_id) unique index to reject the loser of a concurrent race."""
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await create_playbook_indexes()
+
+        mock_get_collection.assert_called_once_with("playbooks")
+        collection.create_index.assert_awaited_once_with(
+            [("workflow_id", 1), ("user_id", 1)], unique=True
+        )
+
+
+class TestCreatePaymentIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A checkout session is looked up by its unique provider session_id and listed per user newest-first."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_payment_indexes()
+
+        assert "checkout_sessions" in collections
+        checkout_calls = collections["checkout_sessions"].create_index.await_args_list
+        assert [call.args for call in checkout_calls] == [
+            ("session_id",),
+            ([("user_id", 1), ("created_at", -1)],),
+        ]
+        assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
 
 
 class TestCreateAllIndexes:
@@ -485,13 +533,7 @@ class TestCreateAllIndexes:
         creator: str,
         collection: str,
     ) -> None:
-        """A failed security-critical index build must abort startup.
-
-        These unique indexes ARE the enforcement (the single-admin registration
-        gate on auth_credentials.slot, the instance/provider credential upsert
-        keys) — warn-and-continue here would leave a "healthy" stack with the
-        constraints unenforced forever.
-        """
+        """Abort startup when a security-critical index build fails; the indexes are the enforcement."""
         patches_dict = {
             name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
             for name in _INDEX_CREATORS

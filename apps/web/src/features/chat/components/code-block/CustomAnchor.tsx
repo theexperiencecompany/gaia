@@ -1,18 +1,20 @@
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { GlobalIcon } from "@icons";
+import type { URLResponse } from "@shared/api/generated";
 import Image from "next/image";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
+import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
+import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
 
-// Link chip styling. The bot bubble is dark (bg-zinc-800), so the brand-blue
-// `text-primary` link reads fine there. The user bubble is `#00bbff` (the same
-// value as `--color-primary`), so blue-on-blue is invisible — there we switch
-// to the bubble's black-text treatment with a translucent-black chip.
+// Link chip styling: the bot bubble is dark (bg-zinc-800), where brand-blue
+// `text-primary` reads fine. The user bubble is `#00bbff` (same as
+// --color-primary), so we switch to a black-text/translucent-black chip there.
 const DARK_BUBBLE_LINK =
   "bg-primary/20 text-primary hover:text-white hover:underline";
 const LIGHT_BUBBLE_LINK = "bg-black/10 text-black underline hover:bg-black/20";
@@ -34,14 +36,11 @@ const isEmailHref = (href: string) => {
 const displayHref = (href: string) =>
   href.replace(/^(https?:\/\/|mailto:)/, "");
 
-interface UrlMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
+/** `undefined` keeps the link in this tab; `_blank` opens it beside the app. */
+type LinkTarget = "_blank" | undefined;
+
+/** The link preview as `POST /fetch-url-metadata` returns it. */
+type UrlMetadata = URLResponse;
 
 function EmailPreview({
   email,
@@ -151,6 +150,7 @@ interface WebsitePreviewProps {
   imageLoading: boolean;
   onImageLoad: () => void;
   onImageError: (url: string) => void;
+  target: LinkTarget;
 }
 
 function WebsitePreview({
@@ -161,6 +161,7 @@ function WebsitePreview({
   imageLoading,
   onImageLoad,
   onImageError,
+  target,
 }: WebsitePreviewProps) {
   return (
     <div className="flex w-full flex-col gap-2">
@@ -233,7 +234,7 @@ function WebsitePreview({
         className="truncate text-xs text-primary hover:underline"
         href={href}
         rel="noopener noreferrer"
-        target="_blank"
+        target={target}
       >
         {displayHref(href)}
       </a>
@@ -251,6 +252,7 @@ function buildTooltipContent(
   imageLoading: boolean,
   onImageLoad: () => void,
   onImageError: (url: string) => void,
+  target: LinkTarget,
 ): ReactNode {
   if (isEmailHref(href)) {
     if (isLoading) return <EmailPreviewSkeleton />;
@@ -279,6 +281,7 @@ function buildTooltipContent(
         imageLoading={imageLoading}
         onImageLoad={onImageLoad}
         onImageError={onImageError}
+        target={target}
       />
     );
   }
@@ -299,6 +302,7 @@ const CustomAnchor = memo(
   }) => {
     const elementRef = useRef<HTMLAnchorElement>(null);
     const [isInView, setIsInView] = useState(false);
+    const appOrigin = useWindowOrigin();
     const [imageLoading, setImageLoading] = useState(true);
 
     // Only fetch when element is in view
@@ -355,6 +359,9 @@ const CustomAnchor = memo(
 
     if (!href) return null;
 
+    // Links into this app stay in this tab; everything else opens beside it.
+    const target = isAppLink(href, appOrigin) ? undefined : "_blank";
+
     const tooltipContent = buildTooltipContent(
       href,
       isLoading,
@@ -365,6 +372,7 @@ const CustomAnchor = memo(
       imageLoading,
       () => setImageLoading(false),
       handleImageError,
+      target,
     );
 
     return (
@@ -381,7 +389,7 @@ const CustomAnchor = memo(
             lightBackground ? LIGHT_BUBBLE_LINK : DARK_BUBBLE_LINK,
           )}
           rel="noopener noreferrer"
-          target="_blank"
+          target={target}
           onMouseEnter={handleMouseEnter}
         >
           {!isStreaming &&

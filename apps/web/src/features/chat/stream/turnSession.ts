@@ -12,10 +12,10 @@ import {
   chatApi,
   DuplicateTurnError,
   RateLimitError,
+  SubscriptionRequiredError,
 } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { toast } from "@/lib/toast";
@@ -27,6 +27,7 @@ import { hasExecutorDelegation } from "./executorDelegation";
 import {
   buildTurnMessageRecord,
   buildUserMessageRecord,
+  type EmojiAckStamp,
   resolveTurnOutcome,
   type TurnMessageMeta,
 } from "./messageRecord";
@@ -38,25 +39,19 @@ import { isViewingConversation, markConversationUnread } from "./unread";
 // result message — clears the "awaiting executor result" UI so it can't stick.
 const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
 
-// Last-resort self-heal for a run paused on an approval whose resumed result
-// message never arrives (denied path with no notification, dropped bg websocket,
-// backend error). It waits on a HUMAN for up to the ~6h server approval window,
-// so this must fire well AFTER that window — long enough that the decision (or the
-// server-side expiry) and its resumed result should already have landed. Only
-// then, if the session is still stranded, tear it down. 8h leaves a safe margin.
+// Last-resort self-heal when an approval's resumed result never arrives (denied
+// with no notification, dropped bg websocket, backend error). Set well past the
+// server's ~6h approval window so a real decision has time to land; 8h margin.
 const APPROVAL_STRANDED_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 
-// Cadence for caching the in-flight turn to IndexedDB during streaming, so a
-// reload's first paint shows the partial turn instead of an empty bubble. A
-// cache of tape-derived state only: the event-log replay overwrites it on
-// resume, so staleness (≤ one interval) never affects correctness.
+// Cadence for caching the in-flight turn to IndexedDB, so a reload's first
+// paint shows the partial turn instead of an empty bubble. Tape-derived state
+// only — event-log replay overwrites it on resume, so staleness never matters.
 const STREAM_PERSIST_INTERVAL_MS = 500;
 
-// How long a live stream may go completely silent before the turn is declared
-// dead. The backend emits a keepalive whenever its event log is idle (see
-// StreamManager.subscribe_stream), so silence this long means the connection or
-// the background task is gone, not that the model is thinking. Comfortably
-// above the server's keepalive cadence so a slow tool call can never trip it.
+// How long a stream may go silent before the turn is declared dead. The backend
+// keepalives whenever its event log is idle (StreamManager.subscribe_stream), so
+// this is set comfortably above that cadence — a slow tool call can't trip it.
 const STREAM_STALL_TIMEOUT_MS = 90_000;
 
 export interface TurnSessionCallbacks {
@@ -89,6 +84,14 @@ export class TurnSession {
   private flushHandle: number | null = null;
   private lastPartialPersistAt = 0;
   private closeHandled = false;
+  /** The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack — see
+   *  handleEmojiAck. Stamped on the record so the fold badges the emoji onto
+   *  the user's message instead of rendering the turn as a bubble. */
+  private reactionAck: EmojiAckStamp | null = null;
+  /** Client cross-check clock. Server timing is the SLO; these deltas only
+   *  validate it from the user's side. */
+  private sendStartMs = 0;
+  private sawFirstFrame = false;
   /** Approval ids currently pending a user decision. The turn is "awaiting
    *  approval" while non-empty; a set (not a bool) so multiple gated tools
    *  resolve independently without prematurely clearing the state. */
@@ -103,14 +106,26 @@ export class TurnSession {
     () => this.handleStall(),
   );
 
-  constructor(key: string, args: SendArgs, callbacks: TurnSessionCallbacks) {
+  constructor(
+    key: string,
+    args: SendArgs,
+    callbacks: TurnSessionCallbacks,
+    options?: { steering?: boolean },
+  ) {
     this.key = key;
     this.args = args;
     this.callbacks = callbacks;
     this.conversationId = args.options.conversationId;
     this.isNewConversation = args.options.conversationId == null;
     this.inputText = args.inputText;
+    this.steering = options?.steering ?? false;
   }
+
+  /** A mid-turn steer: sent while this conversation already streams, folded
+   *  into the live run server-side. It renders its own bubbles but owns none
+   *  of the conversation's shared session slot (spinner, loading text, phase)
+   *  — ending it must never tear down state the main turn still needs. */
+  private readonly steering: boolean;
 
   get isAborted(): boolean {
     return this.aborted;
@@ -119,6 +134,12 @@ export class TurnSession {
   /** The conversation this turn writes into (null until init for new convos). */
   get boundConversationId(): string | null {
     return this.conversationId;
+  }
+
+  /** True for a mid-turn steer, which shares the conversation but owns none of
+   *  its session slot. */
+  get isSteering(): boolean {
+    return this.steering;
   }
 
   /** The store key the live session lives under. `bindNewConversation()` rekeys
@@ -132,18 +153,23 @@ export class TurnSession {
 
   async start(): Promise<void> {
     const store = useStreamStore.getState();
-    store.startSession(this.key, this.inputText);
+    if (!this.steering) {
+      store.startSession(this.key, this.inputText);
+    } else {
+      streamLog("lifecycle", "turn:start-steering", {
+        turnKey: this.key,
+        conversationId: this.conversationId,
+        detail: { prompt: this.inputText },
+      });
+    }
+    // Re-attach measures reattach-to-first-replayed-frame, not the send.
+    this.sendStartMs = performance.now();
     streamLog("lifecycle", "turn:start", {
       turnKey: this.key,
       conversationId: this.conversationId,
       // Carried so an on-disk recording is self-describing: the reader can see
       // which prompt produced the frames that follow.
       detail: { prompt: this.inputText },
-    });
-
-    trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
-      conversation_id: this.conversationId,
-      is_new_conversation: this.isNewConversation,
     });
 
     this.stallWatchdog.arm();
@@ -268,6 +294,16 @@ export class TurnSession {
     // Any frame — keepalives included — proves the connection is still alive.
     this.stallWatchdog.kick();
     if (!event.data) return undefined; // SSE comments dispatch empty events
+    // First raw frame (usually init), which precedes server first-*text* TTFT
+    // by the whole LLM latency — compare trends, never absolutes.
+    if (!this.sawFirstFrame) {
+      this.sawFirstFrame = true;
+      streamLog("sse", "first-frame", {
+        turnKey: this.key,
+        conversationId: this.conversationId,
+        detail: { ttftMs: Math.round(performance.now() - this.sendStartMs) },
+      });
+    }
 
     try {
       for (const parsed of parseChatStreamEvent(event.data)) {
@@ -327,6 +363,10 @@ export class TurnSession {
         this.handleMainResponseComplete();
         return undefined;
 
+      case "emoji_ack":
+        this.handleEmojiAck(event.emoji, event.reactsToMessageId);
+        return undefined;
+
       case "progress": {
         this.setSpinner(true);
         this.applyLoadingLabel(event);
@@ -347,6 +387,9 @@ export class TurnSession {
         return undefined;
 
       case "response":
+      // A discarded boundary retracts text that is already on screen, so it has
+      // to re-render exactly like an added delta does.
+      case "message_boundary":
       case "tool_data":
       case "tool_output":
       case "reasoning":
@@ -367,8 +410,13 @@ export class TurnSession {
 
   private accumulate(event: ChatStreamEvent): void {
     // Executor/tool activity after main_response_complete means the turn is
-    // still working — re-arm the loading indicator it may have cleared.
-    if (event.type !== "response" && event.type !== "follow_up_actions") {
+    // still working — re-arm the loading indicator. Text events aren't activity:
+    // `message_boundary` only closes the message whose deltas just arrived.
+    if (
+      event.type !== "response" &&
+      event.type !== "message_boundary" &&
+      event.type !== "follow_up_actions"
+    ) {
       this.setSpinner(true);
     }
 
@@ -518,14 +566,9 @@ export class TurnSession {
       : new Date();
     this.botCreatedAt = new Date(userCreatedAt.getTime() + 1);
 
-    // Single identity: the client's send id IS the server's user_message_id,
-    // so the optimistic record already carries the final key — confirm it in
-    // place. IndexedDB is the durability check (the Zustand store is per-tab
-    // and must not gate a shared-DB write): only when the record is missing
-    // there (a reload beat the fire-and-forget write) is it rebuilt from the
-    // replayed identity frame — and only if the frame gave it content to
-    // show; a file-only turn is unreconstructable from the log and arrives
-    // via sync instead.
+    // Single identity: the send id IS the user_message_id, so confirm the
+    // optimistic record in place; only rebuild from the replayed frame if
+    // IndexedDB lacks it and the frame has content — a file-only turn arrives via sync.
     try {
       const confirmed = await db.updateMessage(userMessageId, {
         status: "sent",
@@ -572,7 +615,7 @@ export class TurnSession {
   private handleMainResponseComplete(): void {
     this.sawMainResponseComplete = true;
     const store = useStreamStore.getState();
-    // The comms agent acked — unlock the composer so the user can queue.
+    // The comms agent acked — unlock the composer so the user can steer.
     store.updateSession(this.sessionKey, { composerLocked: false });
 
     // A delegated turn isn't done: the executor streams over this same SSE
@@ -580,12 +623,32 @@ export class TurnSession {
     // the first executor event re-arms it.
     if (hasExecutorDelegation(this.acc.toolData)) return;
 
-    this.setSpinner(false);
-    store.resetSessionLoadingText(this.sessionKey);
+    if (!this.steering) {
+      this.setSpinner(false);
+      store.resetSessionLoadingText(this.sessionKey);
+    }
     this.scheduleFlush();
   }
 
+  /**
+   * The server ruled this turn a comms `<EMOJI>…</EMOJI>` ack and streamed none
+   * of its text: the emoji is a reaction on the user's message. Stamp the
+   * record (bare emoji + kind + target) in the
+   * store and IndexedDB now, so `foldReactionAcks` hides the ack bubble and
+   * badges the emoji without a reload; the close write carries the same stamp.
+   */
+  private handleEmojiAck(emoji: string, reactsToMessageId: string): void {
+    this.reactionAck = { kind: "emoji_ack", emoji, reactsToMessageId };
+    const record = this.buildRecord("sending");
+    if (!record) return;
+    useChatStore.getState().updateMessageInPlace(record);
+    db.putMessage(record).catch((error) => {
+      console.error("Failed to persist reaction ack:", error);
+    });
+  }
+
   private setSpinner(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.spinnerActive === active) return;
@@ -596,6 +659,7 @@ export class TurnSession {
   }
 
   private setAwaitingApproval(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.awaitingApproval === active) return;
@@ -615,10 +679,9 @@ export class TurnSession {
       return;
     }
 
-    // The agent is idle waiting on the user. Swap the streaming spinner for the
-    // distinct "awaiting approval" indicator (any later event re-arms the
-    // spinner). Surface unread when the user isn't looking so they know a
-    // decision is waiting.
+    // The agent is idle waiting on the user: swap the streaming spinner for the
+    // distinct "awaiting approval" indicator (any later event re-arms it), and
+    // surface unread when the user isn't looking so they know a decision is waiting.
     this.pendingApprovalIds.add(approvalId);
     this.setSpinner(false);
     this.setAwaitingApproval(true);
@@ -630,6 +693,7 @@ export class TurnSession {
   /** Set the loading label if this event carries one. Shared with the executor
    *  stream so both paths label a run the same way. */
   private applyLoadingLabel(event: ChatStreamEvent): void {
+    if (this.steering) return;
     const label = loadingLabelForEvent(event);
     if (!label) return;
     useStreamStore
@@ -650,7 +714,13 @@ export class TurnSession {
       createdAt: this.botCreatedAt ?? new Date(),
       options: this.args.options,
     };
-    return buildTurnMessageRecord(meta, this.acc, status, error);
+    return buildTurnMessageRecord(
+      meta,
+      this.acc,
+      status,
+      error,
+      this.reactionAck,
+    );
   }
 
   /** Batch accumulator flushes to one store write per animation frame. */
@@ -701,6 +771,7 @@ export class TurnSession {
     streamLog("lifecycle", "turn:close", {
       turnKey: this.key,
       conversationId: this.conversationId,
+      detail: { elapsedMs: Math.round(performance.now() - this.sendStartMs) },
     });
 
     try {
@@ -735,11 +806,9 @@ export class TurnSession {
         }
       }
 
-      // A completed turn in a conversation the user isn't viewing surfaces as
-      // unread in the sidebar (cleared by ChatPage's mark-as-read on open).
-      // View detection uses location.pathname, not the chat store's active id —
-      // the pathname changes synchronously with navigation, while the store
-      // only updates in a ChatPage effect and can lag a close that races it.
+      // A completed turn in an unviewed conversation surfaces as unread (cleared
+      // by ChatPage's mark-as-read). Uses location.pathname, not the store's
+      // active id, which updates in a ChatPage effect and can lag a racing close.
       if (
         !isViewingConversation(this.conversationId) &&
         this.acc.responseText.length > 0
@@ -747,14 +816,13 @@ export class TurnSession {
         markConversationUnread(this.conversationId);
       }
 
-      // Only a turn that actually completed can be waiting on an executor tail.
-      // The normal delegation flow acks (main_response_complete) long before the
-      // executor streams, so a truncated turn here died before the hand-off was
-      // confirmed — park it as failed and retryable rather than spinning on a
-      // result that may never come.
+      // Only a completed turn can wait on an executor tail (normal delegation
+      // acks long before the executor streams). A steering turn never parks —
+      // its tail arrives as its own bg message, so parking would clobber the UI.
       if (
         outcome.status === "sent" &&
-        hasExecutorDelegation(this.acc.toolData)
+        hasExecutorDelegation(this.acc.toolData) &&
+        !this.steering
       ) {
         this.enterAwaitingExecutor();
         return;
@@ -785,15 +853,9 @@ export class TurnSession {
       awaitingApproval: wasAwaitingApproval,
       composerLocked: false,
     });
-    // The session's transport work is over — release it so new sends in this
-    // conversation start immediately. The awaiting UI state is ended by the
-    // result message (useBgMessageWebSocket), executor cancel, or this timeout.
-    //
-    // A run paused on an approval waits on a HUMAN, not a late executor: its window
-    // is hours, so it gets a much longer horizon than a normal executor tail — the
-    // short timeout must never drop the "Waiting for your approval" indicator mid
-    // -wait. But it still gets ONE: if the resumed result never arrives (dropped bg
-    // message, backend error), the session would otherwise stick forever.
+    // The session's transport work is over — release it so new sends start
+    // immediately; the awaiting UI ends via the result message, cancel, or this
+    // timeout — approval-paused runs get the longer APPROVAL_STRANDED_TIMEOUT_MS so the indicator survives the wait.
     const timeoutMs = wasAwaitingApproval
       ? APPROVAL_STRANDED_TIMEOUT_MS
       : EXECUTOR_RESULT_TIMEOUT_MS;
@@ -833,19 +895,22 @@ export class TurnSession {
       error.message || "An error occurred while processing your message";
 
     if (error.name !== "AbortError") {
-      // A usage-wall rejection already showed the rate-limit upsell toast at
-      // the stream layer — a second generic toast would bury it.
-      if (!(error instanceof RateLimitError)) {
+      // A usage-wall rejection already showed the rate-limit upsell toast,
+      // and a paid-only rejection already opened the paywall, at the stream
+      // layer — a second generic toast would bury either one.
+      if (
+        !(error instanceof RateLimitError) &&
+        !(error instanceof SubscriptionRequiredError)
+      ) {
         toast.error(reason);
       }
       // Give the user their prompt back to retry.
       useComposerStore.getState().setInputText(this.inputText);
     }
 
-    // Content already flushed with status "sending" must still land in a
-    // terminal state — mirror abort()'s finalization, with "failed" status.
-    // The reason rides ON the record: the toast is transient, so without it a
-    // reload shows an empty bubble and the failure disappears entirely.
+    // Content already flushed as "sending" must still land in a terminal state
+    // (mirrors abort()'s finalization, with "failed" status); the reason rides
+    // on the record since the toast is transient — otherwise a reload shows an empty bubble.
     if (this.conversationId && this.botMessageId) {
       const record = this.buildRecord("failed", reason);
       if (record) {
@@ -860,11 +925,9 @@ export class TurnSession {
     }
 
     this.markUserMessageFailed();
-    // A turn that never learned its conversation id persisted nothing, anywhere:
-    // the optimistic bubble is the only record of what the user sent, so clearing
-    // it erases the message from the thread and leaves just a fading toast. Mark
-    // it undelivered instead. Once ids exist the real rows are in IndexedDB and
-    // the optimistic copy is a duplicate that must go.
+    // A turn with no conversation id persisted nothing anywhere — the optimistic
+    // bubble is the only record, so mark it undelivered instead of clearing it.
+    // Once ids exist, the real rows are in IndexedDB and the optimistic copy must go.
     if (this.conversationId) {
       useChatStore.getState().clearOptimisticMessage();
     } else {
@@ -908,10 +971,12 @@ export class TurnSession {
   }
 
   private end(): void {
-    useStreamStore.getState().endSession(this.conversationId ?? this.key);
-    // Also clear under the original pending key if init never rekeyed it.
-    if (this.conversationId && this.conversationId !== this.key) {
-      useStreamStore.getState().endSession(this.key);
+    if (!this.steering) {
+      useStreamStore.getState().endSession(this.conversationId ?? this.key);
+      // Also clear under the original pending key if init never rekeyed it.
+      if (this.conversationId && this.conversationId !== this.key) {
+        useStreamStore.getState().endSession(this.key);
+      }
     }
     streamLog("lifecycle", "turn:end", {
       turnKey: this.key,
@@ -931,17 +996,19 @@ export class TurnSession {
         [])
       : [];
 
-    const history = stored
-      .filter(
-        (message) =>
-          message.role !== "system" &&
-          message.id !== optimisticId &&
-          message.content.trim().length > 0,
-      )
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.content,
-      }));
+    const history: { role: "user" | "assistant"; content: string }[] = [];
+    for (const message of stored) {
+      if (
+        message.role !== "system" &&
+        message.id !== optimisticId &&
+        message.content.trim().length > 0
+      ) {
+        history.push({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        });
+      }
+    }
 
     if (this.args.userMessage.response.trim().length > 0) {
       history.push({ role: "user", content: this.args.userMessage.response });

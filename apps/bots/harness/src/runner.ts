@@ -9,7 +9,7 @@
  * against.
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
 import type { Scenario, ScenarioAssertion } from "./scenario.types";
@@ -100,17 +100,59 @@ export async function linkDevUser(
   };
 }
 
+/**
+ * Keeps the adapter (and its outbound RabbitMQ consumer) alive `settleMs` after a
+ * turn's stream closes, so deliveries published afterward land in that turn's
+ * events. A handoff turn closes SSE on the preamble while the real answer
+ * publishes later; shutting down early strands it in the queue instead of losing it.
+ * SIGTERM ends the window early (see below).
+ */
+function settle(settleMs: number, cutShort: Promise<void>): Promise<void> {
+  if (settleMs <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, settleMs);
+    void cutShort.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Resolves on the first SIGTERM. A driver that can see the run finish (its job
+ * state, its final delivery) sends it to end the send early with the transcript
+ * still written, whether the turn is still streaming or already settling.
+ */
+function terminationRequested(): Promise<void> {
+  return new Promise((resolve) => {
+    process.once("SIGTERM", () => resolve());
+  });
+}
+
 /** Boots a HarnessAdapter emulating `platform`, targeting `apiUrl`. */
 async function bootAdapter(
   platform: PlatformName,
   apiUrl: string,
   transcript: TranscriptRecorder,
+  consumesOutbound = true,
 ): Promise<HarnessAdapter> {
   // Set first so the bot config loader (dotenv does not override existing env)
   // points the real GaiaClient at the same API the dev endpoints used.
   process.env.GAIA_API_URL = apiUrl;
-  const adapter = new HarnessAdapter(resolveEmulation(platform), transcript);
-  await adapter.boot([]);
+  // A dev shell's BOT_SERVER_PORT is the real bot's port; the harness serves on
+  // a free one so two senders (and the real bot) never collide.
+  delete process.env.BOT_SERVER_PORT;
+  const adapter = new HarnessAdapter(resolveEmulation(platform), transcript, {
+    consumesOutbound,
+  });
+  try {
+    await adapter.boot([]);
+  } catch (error: unknown) {
+    // Boot can fail after the outbound consumer is up; left running it keeps
+    // the process alive and silently takes another run's replies.
+    await adapter.shutdown("harness").catch(() => undefined);
+    throw error;
+  }
   return adapter;
 }
 
@@ -132,13 +174,38 @@ export async function sendOneShot(params: {
   email: string;
   message: string;
   channelId?: string;
+  /** See {@link settle} — 0 (the default) shuts down as soon as the stream ends. */
+  settleMs?: number;
+  /** False for a message into a conversation another sender already consumes for. */
+  consumesOutbound?: boolean;
+  /** Where each transcript event is written as it is recorded. */
+  outPath?: string;
 }): Promise<SendResult> {
-  const { apiUrl, emulate, email, message, channelId } = params;
+  const {
+    apiUrl,
+    emulate,
+    email,
+    message,
+    channelId,
+    settleMs = 0,
+    consumesOutbound = true,
+    outPath,
+  } = params;
   const user = await linkDevUser(apiUrl, email, emulate);
-  const transcript = new TranscriptRecorder(emulate);
-  const adapter = await bootAdapter(emulate, apiUrl, transcript);
+  const transcript = new TranscriptRecorder(emulate, outPath);
+  const adapter = await bootAdapter(
+    emulate,
+    apiUrl,
+    transcript,
+    consumesOutbound,
+  );
+  const cutShort = terminationRequested();
   try {
-    await adapter.simulateMessage(user.platformUserId, message, { channelId });
+    await Promise.race([
+      adapter.simulateMessage(user.platformUserId, message, { channelId }),
+      cutShort,
+    ]);
+    await settle(settleMs, cutShort);
   } finally {
     await adapter.shutdown("harness").catch(() => undefined);
   }
@@ -161,6 +228,8 @@ export interface ScenarioResult {
 export async function runScenario(
   scenario: Scenario,
   apiUrl: string,
+  settleMsOverride?: number,
+  outPath?: string,
 ): Promise<ScenarioResult> {
   if (!isEmulatablePlatform(scenario.emulate)) {
     throw new Error(
@@ -169,8 +238,9 @@ export async function runScenario(
   }
   const platform = scenario.emulate;
   const user = await linkDevUser(apiUrl, scenario.user, platform);
-  const transcript = new TranscriptRecorder(platform);
+  const transcript = new TranscriptRecorder(platform, outPath);
   const adapter = await bootAdapter(platform, apiUrl, transcript);
+  const cutShort = terminationRequested();
   const failures: string[] = [];
 
   try {
@@ -179,6 +249,12 @@ export async function runScenario(
       await adapter.simulateMessage(user.platformUserId, turn.send, {
         channelId: turn.channelId,
       });
+      // Settle BEFORE slicing: a late outbound delivery belongs to the turn
+      // that caused it, and its assertions must be able to see it.
+      await settle(
+        turn.settleMs ?? settleMsOverride ?? scenario.settleMs ?? 0,
+        cutShort,
+      );
       const turnEvents = transcript.getEvents().slice(before);
       for (const assertion of turn.expect ?? []) {
         for (const failure of evaluateAssertion(turnEvents, assertion)) {
@@ -219,7 +295,10 @@ function evaluateAssertion(
   // `maxBubbleLength` fail on long inputs.
   const delivered = events.filter(
     (e) =>
-      e.type === "send" || e.type === "edit" || e.type === "outbound-delivery",
+      e.type === "send" ||
+      e.type === "edit" ||
+      e.type === "outbound-delivery" ||
+      e.type === "outbound-attachment",
   );
 
   if (

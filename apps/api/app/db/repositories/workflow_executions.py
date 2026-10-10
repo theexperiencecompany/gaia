@@ -1,7 +1,7 @@
 """Repository for the workflow_executions collection.
 
-Identity is the business key ``execution_id`` (Mongo's ``_id`` is an incidental
-ObjectId). A global repository: completion is keyed by ``execution_id`` alone
+Identity is the business key execution_id (Mongo's _id is an incidental
+ObjectId). A global repository: completion is keyed by execution_id alone
 with no user in context, while history listing filters by workflow + user.
 """
 
@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from app.db.repositories.base import MongoRepository
 from app.models.workflow_execution_models import (
+    RecordedCall,
     WorkflowExecutionDocument,
     WorkflowExecutionStatus,
     WorkflowExecutionUpdate,
@@ -33,9 +34,9 @@ class WorkflowExecutionsRepository(
         summary: str | None = None,
         error_message: str | None = None,
         conversation_id: str | None = None,
+        trace: list[RecordedCall] | None = None,
     ) -> WorkflowExecutionDocument | None:
-        """Mark an execution finished, computing its duration from ``started_at``.
-        Returns the updated document, or ``None`` if the execution was not found."""
+        """Mark an execution finished, computing its duration from started_at; None if not found."""
         execution = await self.get(execution_id)
         if execution is None:
             return None
@@ -52,13 +53,36 @@ class WorkflowExecutionsRepository(
             fields["error_message"] = error_message
         if conversation_id:
             fields["conversation_id"] = conversation_id
+        if trace:
+            fields["trace"] = trace
 
         return await self.update(execution_id, WorkflowExecutionUpdate.model_validate(fields))
+
+    async def find_recent_with_trace(
+        self, workflow_id: str, user_id: str, *, limit: int
+    ) -> list[WorkflowExecutionDocument]:
+        """Return the workflow's most recent finished runs that recorded a trace, newest first.
+
+        Runs with no trace are skipped, since an empty one would hide the last
+        run that had something to say. A FAILED run still counts: it ran steps
+        with side effects, and hiding it would repeat them on the next fire.
+        """
+        rows = await self._find(
+            {
+                "workflow_id": workflow_id,
+                "user_id": user_id,
+                "status": {"$in": ["success", "failed"]},
+                "trace.0": {"$exists": True},
+            },
+            sort=[("started_at", -1)],
+            limit=limit,
+        )
+        return rows
 
     async def list_for_workflow(
         self, workflow_id: str, user_id: str, *, limit: int, offset: int
     ) -> tuple[list[WorkflowExecutionDocument], int]:
-        """A page of a workflow's executions (most recent first) plus the total."""
+        """Return a page of a workflow's executions (most recent first) plus the total."""
         filter_: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         total = await self._count(filter_)
         executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)

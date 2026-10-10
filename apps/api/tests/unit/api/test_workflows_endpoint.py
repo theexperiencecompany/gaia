@@ -1,35 +1,17 @@
-"""Unit tests for the workflows API endpoints.
-
-Tests cover:
-- POST   /api/v1/workflows
-- GET    /api/v1/workflows
-- POST   /api/v1/workflows/{id}/execute
-- GET    /api/v1/workflows/{id}/executions
-- GET    /api/v1/workflows/{id}/status
-- POST   /api/v1/workflows/{id}/activate
-- POST   /api/v1/workflows/{id}/deactivate
-- POST   /api/v1/workflows/{id}/regenerate-steps
-- POST   /api/v1/workflows/from-todo
-- POST   /api/v1/workflows/{id}/publish
-- POST   /api/v1/workflows/{id}/unpublish
-- GET    /api/v1/workflows/explore
-- GET    /api/v1/workflows/community
-- GET    /api/v1/workflows/public/{ref}
-- POST   /api/v1/workflows/generate-prompt
-- GET    /api/v1/workflows/{id}
-- PUT    /api/v1/workflows/{id}
-- POST   /api/v1/workflows/{id}/reset-to-default
-- DELETE /api/v1/workflows/{id}
-"""
+"""Unit tests for the workflows API endpoints (CRUD, execute/status, activate/publish, explore/community, regenerate-steps, generate-prompt)."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 from pymongo.errors import DuplicateKeyError
+import pytest
 
+from app.constants.log_tags import LogTag
+from app.models.payment_models import PlanType
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    PromptTriggerHint,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
     Workflow,
@@ -39,9 +21,21 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
 )
 from app.services.analytics_service import AnalyticsEvents
-from shared.py.wide_events import WorkflowContext
+from app.services.workflow.generation_service import (
+    WorkflowPromptRequest,
+    WorkflowStepGenerationError,
+)
+from shared.py.wide_events import WorkflowContext, log
+from tests.conftest import FAKE_USER
 
 BASE_URL = "/api/v1/workflows"
+_LOG = "app.api.v1.endpoints.workflows.log"
+
+
+def _wide_event_users(mock_log: MagicMock) -> list[object]:
+    """Every user namespace the handler stamped on the wide event."""
+    return [c.kwargs["user"] for c in mock_log.set.call_args_list if "user" in c.kwargs]
+
 
 # Patch targets
 _WF_SERVICE = "app.api.v1.endpoints.workflows.WorkflowService"
@@ -50,6 +44,35 @@ _WF_REPO = "app.api.v1.endpoints.workflows.workflow_repository"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
+
+# The `client` fixture's user is FREE by default, so create/execute/activate/
+# from-todo 402 before the handler runs; classes exercising handler behavior
+# opt into PRO through the same seam payment_service.get_cached_plan_type reads.
+_GET_SUBSCRIPTION_STATUS = (
+    "app.services.payments.payment_service.payment_service.get_user_subscription_status"
+)
+
+
+def _subscription_mock(plan_type: PlanType = PlanType.PRO) -> MagicMock:
+    sub = MagicMock()
+    sub.plan_type = plan_type
+    return sub
+
+
+@pytest.fixture(autouse=True)
+def _no_real_redis_plan_cache():
+    """Every test here shares FAKE_USER's id; without this a plan tier cached by one test leaks into the next via the local-Redis singleton."""
+    with (
+        patch(
+            "app.services.payments.payment_service.redis_cache.get",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.payments.payment_service.redis_cache.set",
+            new=AsyncMock(),
+        ),
+    ):
+        yield
 
 
 def _make_workflow(**overrides) -> Workflow:
@@ -83,8 +106,7 @@ def _make_workflow(**overrides) -> Workflow:
 
 
 def _make_workflow_doc(**overrides) -> WorkflowDocument:
-    """Build a WorkflowDocument stand-in for repository mock returns (the typed
-    seam the endpoints read from)."""
+    """Build a WorkflowDocument stand-in for repository mock returns."""
     wf = _make_workflow(**overrides)
     return WorkflowDocument(**wf.model_dump())
 
@@ -99,6 +121,75 @@ def _create_workflow_payload(**overrides) -> dict:
     return base
 
 
+# create/execute/activate/from-todo must 402 for a FREE-plan user before the
+# service layer ever runs, and let a PRO-plan user through untouched.
+
+
+class TestWorkflowPaidOnlyGate:
+    """402 contract on the workflow endpoints that create/run work."""
+
+    async def test_create_workflow_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(f"{_WF_SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            response = await gated_client.post(BASE_URL, json=_create_workflow_payload())
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_create.assert_not_called()
+
+    async def test_execute_workflow_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(f"{_WF_SERVICE}.execute_workflow", new_callable=AsyncMock) as mock_execute:
+            response = await gated_client.post(f"{BASE_URL}/wf_abc123/execute", json={})
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_execute.assert_not_called()
+
+    async def test_activate_workflow_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(f"{_WF_SERVICE}.activate_workflow", new_callable=AsyncMock) as mock_activate:
+            response = await gated_client.post(f"{BASE_URL}/wf_abc123/activate")
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_activate.assert_not_called()
+
+    async def test_create_from_todo_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(f"{_WF_SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            response = await gated_client.post(
+                f"{BASE_URL}/from-todo",
+                json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_create.assert_not_called()
+
+    async def test_regenerate_steps_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(
+            f"{_WF_SERVICE}.regenerate_workflow_steps", new_callable=AsyncMock
+        ) as mock_regen:
+            response = await gated_client.post(
+                f"{BASE_URL}/wf_abc123/regenerate-steps",
+                json={"instruction": "Make it better"},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_regen.assert_not_called()
+
+    async def test_generate_prompt_free_user_gets_402(self, gated_client: AsyncClient):
+        with patch(
+            f"{_WF_GEN_SERVICE}.generate_workflow_prompt", new_callable=AsyncMock
+        ) as mock_gen:
+            response = await gated_client.post(
+                f"{BASE_URL}/generate-prompt",
+                json={"title": "My Workflow"},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["code"] == "subscription_required"
+        mock_gen.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # POST /workflows
 # ---------------------------------------------------------------------------
@@ -107,6 +198,15 @@ def _create_workflow_payload(**overrides) -> dict:
 class TestCreateWorkflow:
     """Tests for the create workflow endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
+
     async def test_create_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow()
         with (
@@ -114,7 +214,7 @@ class TestCreateWorkflow:
                 "app.api.v1.endpoints.workflows.get_all_integrations_status",
                 new_callable=AsyncMock,
                 return_value={},
-            ),
+            ) as mock_status,
             patch(
                 f"{_WF_SERVICE}.create_workflow",
                 new_callable=AsyncMock,
@@ -146,6 +246,9 @@ class TestCreateWorkflow:
             ),
             outcome="success",
         )
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
+        # integration_ids defaults from the CALLER's connected integrations.
+        mock_status.assert_awaited_once_with(FAKE_USER.user_id)
 
     async def test_create_workflow_without_steps_captures_zero(self, client: AsyncClient):
         """A workflow with no steps reports steps_count 0, not 1."""
@@ -271,14 +374,19 @@ class TestListWorkflows:
     """Tests for the list workflows endpoint."""
 
     async def test_list_workflows_returns_200(self, client: AsyncClient):
-        with patch(
-            f"{_WF_SERVICE}.list_workflows",
-            new_callable=AsyncMock,
-            return_value=([_make_workflow()], 1),
+        with (
+            patch(
+                f"{_WF_SERVICE}.list_workflows",
+                new_callable=AsyncMock,
+                return_value=([_make_workflow()], 1),
+            ) as mock_list,
+            patch(_LOG) as mock_log,
         ):
             response = await client.get(BASE_URL)
 
         assert response.status_code == 200
+        mock_list.assert_awaited_once_with(FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_list_workflows_empty(self, client: AsyncClient):
         with patch(
@@ -309,6 +417,15 @@ class TestListWorkflows:
 class TestExecuteWorkflow:
     """Tests for the execute workflow endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
+
     async def test_execute_workflow_returns_200(self, client: AsyncClient):
         mock_result = WorkflowExecutionResponse(
             execution_id="exec_123",
@@ -337,6 +454,7 @@ class TestExecuteWorkflow:
             for c in mock_log.set.call_args_list
             if "workflow" in c.kwargs
         )
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_execute_workflow_with_context(self, client: AsyncClient):
         mock_result = WorkflowExecutionResponse(
@@ -347,13 +465,17 @@ class TestExecuteWorkflow:
             f"{_WF_SERVICE}.execute_workflow",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_execute:
             response = await client.post(
                 f"{BASE_URL}/wf_abc123/execute",
                 json={"context": {"key": "value"}},
             )
 
         assert response.status_code == 200
+        workflow_id, execution_request, user_id = mock_execute.await_args.args
+        assert workflow_id == "wf_abc123"
+        assert execution_request.context == {"key": "value"}
+        assert user_id == FAKE_USER.user_id
 
     async def test_execute_workflow_value_error_returns_400(self, client: AsyncClient):
         with patch(
@@ -401,11 +523,14 @@ class TestGetWorkflowExecutions:
 
     async def test_get_executions_with_pagination(self, client: AsyncClient):
         mock_result = WorkflowExecutionsResponse(executions=[], total=0, has_more=False)
-        with patch(
-            _GET_EXECUTIONS,
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ) as mock_get:
+        with (
+            patch(
+                _GET_EXECUTIONS,
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ) as mock_get,
+            patch(_LOG) as mock_log,
+        ):
             await client.get(
                 f"{BASE_URL}/wf_abc123/executions",
                 params={"limit": 5, "offset": 10},
@@ -417,6 +542,7 @@ class TestGetWorkflowExecutions:
             limit=5,
             offset=10,
         )
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_get_executions_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -448,14 +574,19 @@ class TestGetWorkflowStatus:
             error_message=None,
             logs=[],
         )
-        with patch(
-            f"{_WF_SERVICE}.get_workflow_status",
-            new_callable=AsyncMock,
-            return_value=mock_status,
+        with (
+            patch(
+                f"{_WF_SERVICE}.get_workflow_status",
+                new_callable=AsyncMock,
+                return_value=mock_status,
+            ) as mock_get_status,
+            patch(_LOG) as mock_log,
         ):
             response = await client.get(f"{BASE_URL}/wf_abc123/status")
 
         assert response.status_code == 200
+        mock_get_status.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_get_status_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -486,6 +617,15 @@ class TestGetWorkflowStatus:
 class TestActivateWorkflow:
     """Tests for the activate workflow endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
+
     async def test_activate_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(activated=True)
         with (
@@ -495,12 +635,14 @@ class TestActivateWorkflow:
                 return_value=mock_wf,
             ),
             patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/activate")
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_ACTIVATED)
         assert response.json()["message"] == "Workflow activated successfully"
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_activate_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -533,15 +675,19 @@ class TestDeactivateWorkflow:
 
     async def test_deactivate_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(activated=False)
-        with patch(
-            f"{_WF_SERVICE}.deactivate_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                f"{_WF_SERVICE}.deactivate_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/deactivate")
 
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow deactivated successfully"
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_deactivate_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -572,12 +718,24 @@ class TestDeactivateWorkflow:
 class TestRegenerateSteps:
     """Tests for the regenerate workflow steps endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
+
     async def test_regenerate_steps_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow()
-        with patch(
-            f"{_WF_SERVICE}.regenerate_workflow_steps",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                f"{_WF_SERVICE}.regenerate_workflow_steps",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(
                 f"{BASE_URL}/wf_abc123/regenerate-steps",
@@ -585,12 +743,11 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 200
+        assert response.json()["message"] == "Workflow regeneration started"
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
-    async def test_regenerate_steps_not_found_returns_500(self, client: AsyncClient):
-        """When the service returns None the endpoint raises HTTPException(404)
-        inside a bare ``except Exception`` block, so the caller actually
-        receives a 500.  (The endpoint is missing ``except HTTPException: raise``.)
-        """
+    async def test_regenerate_steps_not_found_returns_404(self, client: AsyncClient):
+        """A missing workflow is a 404, not a 500: the endpoint re-raises its own HTTPException instead of letting the bare except wrap it."""
         with patch(
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,
@@ -601,7 +758,66 @@ class TestRegenerateSteps:
                 json={"instruction": "Change tools"},
             )
 
-        assert response.status_code == 500
+        assert response.status_code == 404
+        assert response.json()["message"] == "Workflow not found"
+
+    async def test_regenerate_steps_generation_failure_returns_actionable_detail(
+        self, client: AsyncClient
+    ):
+        """A model-lane failure must reach the modal as a readable reason, not the opaque "Failed to regenerate workflow steps"."""
+        with patch(
+            f"{_WF_SERVICE}.regenerate_workflow_steps",
+            new_callable=AsyncMock,
+            side_effect=WorkflowStepGenerationError(
+                "PaymentRequiredResponseError: This request requires more credits"
+            ),
+        ):
+            response = await client.post(
+                f"{BASE_URL}/wf_abc123/regenerate-steps",
+                json={"instruction": "Regen steps"},
+            )
+
+        assert response.status_code == 502
+        assert response.json()["message"] == (
+            "Step generation failed: PaymentRequiredResponseError: "
+            "This request requires more credits"
+        )
+
+    async def test_regenerate_steps_generation_failure_logs_workflow_user_and_reason(
+        self, client: AsyncClient, fake_user: dict
+    ):
+        """The 502 is only actionable in support if the log names which workflow, user, and provider reason produced it."""
+        recorded: list[tuple[str, dict]] = []
+        with (
+            patch(
+                f"{_WF_SERVICE}.regenerate_workflow_steps",
+                new_callable=AsyncMock,
+                side_effect=WorkflowStepGenerationError(
+                    "PaymentRequiredResponseError: This request requires more credits"
+                ),
+            ),
+            patch.object(
+                log,
+                "error",
+                lambda message, **kwargs: recorded.append((message, kwargs)),
+            ),
+        ):
+            response = await client.post(
+                f"{BASE_URL}/wf_abc123/regenerate-steps",
+                json={"instruction": "Regen steps"},
+            )
+
+        assert response.status_code == 502
+        # The generic http_exception record from the error middleware follows;
+        # the handler's own record is the first and must be complete.
+        assert recorded[0] == (
+            f"{LogTag.WORKFLOW} Step generation failed",
+            {
+                "workflow_id": "wf_abc123",
+                "user_id": fake_user.user_id,
+                "reason": "PaymentRequiredResponseError: This request requires more credits",
+            },
+        )
 
     async def test_regenerate_steps_missing_instruction_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -632,12 +848,24 @@ class TestRegenerateSteps:
 class TestCreateWorkflowFromTodo:
     """Tests for the create workflow from todo endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
+
     async def test_from_todo_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(title="Todo: Buy groceries")
-        with patch(
-            f"{_WF_SERVICE}.create_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(
                 f"{BASE_URL}/from-todo",
@@ -649,7 +877,8 @@ class TestCreateWorkflowFromTodo:
             )
 
         assert response.status_code == 200
-        assert "Workflow created from todo" in response.json()["message"]
+        assert response.json()["message"] == "Workflow created from todo successfully"
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_from_todo_missing_todo_id_returns_400(self, client: AsyncClient):
         response = await client.post(
@@ -690,7 +919,9 @@ class TestPublishWorkflow:
     async def test_publish_returns_200(self, client: AsyncClient):
         doc = _make_workflow_doc(title="My Public Workflow", slug=None)
         with (
-            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(
+                f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc
+            ) as mock_get_for_user,
             patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc),
             patch(
                 _GEN_SLUG,
@@ -698,10 +929,14 @@ class TestPublishWorkflow:
                 return_value="my-public-workflow-abc123",
             ),
             patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/publish")
 
         assert response.status_code == 200
+        # Ownership check: the lookup is scoped to the path id AND the caller.
+        mock_get_for_user.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
         mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_PUBLISHED)
         data = response.json()
         assert data["message"] == "Workflow published successfully"
@@ -766,13 +1001,18 @@ class TestUnpublishWorkflow:
     async def test_unpublish_returns_200(self, client: AsyncClient):
         doc = _make_workflow_doc(is_public=True)
         with (
-            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(
+                f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc
+            ) as mock_get_for_user,
             patch(f"{_WF_REPO}.unpublish", new_callable=AsyncMock, return_value=doc),
+            patch(_LOG) as mock_log,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/unpublish")
 
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow unpublished successfully"
+        mock_get_for_user.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_unpublish_not_found_returns_404(self, client: AsyncClient):
         with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
@@ -857,14 +1097,27 @@ class TestGetPublicWorkflow:
             ).model_dump(),
             creator_info=[WorkflowCreatorInfo(name="Test User")],
         )
-        with patch(
-            f"{_WF_REPO}.get_public_with_creator",
-            new_callable=AsyncMock,
-            return_value=row,
+        with (
+            patch(
+                f"{_WF_REPO}.get_public_with_creator",
+                new_callable=AsyncMock,
+                return_value=row,
+            ),
+            patch(_LOG) as mock_log,
         ):
             response = await client.get(f"{BASE_URL}/public/wf_abc123")
 
         assert response.status_code == 200
+        mock_log.set.assert_any_call(
+            public_workflow={
+                "id": "wf_abc123",
+                "slug": "public-workflow",
+                "creator_id": None,
+                "creator_name": "Test User",
+                "step_count": 1,
+            }
+        )
+        assert response.json()["message"] == "Workflow retrieved successfully"
         data = response.json()["workflow"]
         assert data["id"] == "wf_abc123"
         assert data["creator"]["name"] == "Test User"
@@ -889,6 +1142,15 @@ class TestGetPublicWorkflow:
 
 class TestGeneratePrompt:
     """Tests for the generate workflow prompt endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
 
     async def test_generate_prompt_returns_200(self, client: AsyncClient):
         mock_result = {
@@ -931,6 +1193,50 @@ class TestGeneratePrompt:
         data = response.json()
         assert data["suggested_trigger"]["type"] == "schedule"
 
+    async def test_generate_prompt_forwards_every_request_field(
+        self, client: AsyncClient, fake_user: dict
+    ):
+        """A dropped field silently degrades the generated instructions (wrong trigger, unmentioned integrations) instead of failing loudly."""
+        with (
+            patch(
+                f"{_WF_GEN_SERVICE}.generate_workflow_prompt",
+                new_callable=AsyncMock,
+                return_value={"prompt": "Generated", "suggested_trigger": None},
+            ) as mock_generate,
+            patch(_LOG) as mock_log,
+        ):
+            response = await client.post(
+                f"{BASE_URL}/generate-prompt",
+                json={
+                    "title": "Daily Report",
+                    "description": "Summarise yesterday's sales",
+                    "trigger_config": {
+                        "type": "schedule",
+                        "cron_expression": "0 9 * * *",
+                        "trigger_name": "daily_digest",
+                    },
+                    "existing_prompt": "Send me a report.",
+                    "integration_ids": ["gmail", "slack"],
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_generate.await_args.args == (
+            WorkflowPromptRequest(
+                title="Daily Report",
+                description="Summarise yesterday's sales",
+                trigger_config=PromptTriggerHint(
+                    type="schedule",
+                    cron_expression="0 9 * * *",
+                    trigger_name="daily_digest",
+                ),
+                existing_prompt="Send me a report.",
+                integration_ids=["gmail", "slack"],
+            ),
+        )
+        assert mock_generate.await_args.kwargs == {"user_id": fake_user.user_id}
+        assert _wide_event_users(mock_log) == [{"id": fake_user.user_id}]
+
     async def test_generate_prompt_service_error_returns_500(self, client: AsyncClient):
         with patch(
             f"{_WF_GEN_SERVICE}.generate_workflow_prompt",
@@ -955,15 +1261,20 @@ class TestGetWorkflow:
 
     async def test_get_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow()
-        with patch(
-            f"{_WF_SERVICE}.get_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ) as mock_get,
+            patch(_LOG) as mock_log,
         ):
             response = await client.get(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow retrieved successfully"
+        mock_get.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_get_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -996,10 +1307,13 @@ class TestUpdateWorkflow:
 
     async def test_update_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(title="Updated Title")
-        with patch(
-            f"{_WF_SERVICE}.update_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                f"{_WF_SERVICE}.update_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
+            patch(_LOG) as mock_log,
         ):
             response = await client.put(
                 f"{BASE_URL}/wf_abc123",
@@ -1008,6 +1322,7 @@ class TestUpdateWorkflow:
 
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow updated successfully"
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_update_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -1092,15 +1407,20 @@ class TestDeleteWorkflow:
     """Tests for the delete workflow endpoint."""
 
     async def test_delete_workflow_returns_200(self, client: AsyncClient):
-        with patch(
-            f"{_WF_SERVICE}.delete_workflow",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                f"{_WF_SERVICE}.delete_workflow",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_delete,
+            patch(_LOG) as mock_log,
         ):
             response = await client.delete(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow deleted successfully"
+        mock_delete.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+        assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
     async def test_delete_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(

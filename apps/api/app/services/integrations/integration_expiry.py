@@ -1,25 +1,29 @@
 """The one transition that marks a user's integration connection dead.
 
 Two callers, same state change, different escalation: the Composio
-connection-lifecycle webhook runs it proactively with ``notify=True`` (the user
+connection-lifecycle webhook runs it proactively with notify=True (the user
 is not looking at GAIA, so the notification and the live page update are the
 whole point), and the tool-execution reconciliation path runs it with
-``notify=False`` (the user is mid-conversation and is handed a connect card in
+notify=False (the user is mid-conversation and is handed a connect card in
 the same turn — a notification seconds later is noise).
 
 Pausing the workflows that needed the dead integration is the *caller's* job:
-it hands the paused titles in as ``paused_workflows`` and this module only
+it hands the paused titles in as paused_workflows and this module only
 folds them into the announcement. The transition is reachable from the Composio
 tool wrapper, so importing the workflow layer here would close an import cycle
-(``workflow.service`` -> ``trigger_service``/``generation_service`` ->
-``composio_service`` -> back to this module).
+(workflow.service -> trigger_service/generation_service ->
+composio_service -> back to this module).
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
+from app.constants.integrations import (
+    INTEGRATION_STATUS_EXPIRED,
+    INTEGRATION_STATUS_UPDATE_EVENT,
+)
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
@@ -46,26 +50,39 @@ from shared.py.wide_events import log
 # proactive expiry is distinguishable from one reconciled off a failed tool call.
 ExpiryTrigger = Literal["webhook", "tool_execution"]
 
-INTEGRATION_STATUS_UPDATE_EVENT = "integration_status_update"
+
+@dataclass(frozen=True)
+class ExpiryOptions:
+    """Why the connection is being expired, and what the expiry should trigger."""
+
+    # Required, not defaulted: a default `trigger` silently picks the detection
+    # path and a default `notify` silently decides if the user is told — both
+    # are the caller's call, never inherited by omission.
+    trigger: ExpiryTrigger
+    notify: bool
+    reason: str | None = None
+    connected_account_id: str | None = None
+    paused_workflows: Sequence[str] = ()
 
 
 async def expire_user_integration(
     user_id: str,
     integration_id: str,
-    *,
-    reason: str | None,
-    trigger: ExpiryTrigger,
-    notify: bool,
-    connected_account_id: str | None = None,
-    paused_workflows: Sequence[str] = (),
+    options: ExpiryOptions,
 ) -> bool:
     """Mark a user's integration connection dead and stop the rest of GAIA treating it as usable.
 
     Returns True when the transition was applied, False when it was a no-op —
-    no ``user_integrations`` record (never fabricates one) or already ``expired``
+    no user_integrations record (never fabricates one) or already expired
     (idempotent, so a flapping account cannot notify twice without a real
     reconnect in between).
     """
+    reason = options.reason
+    trigger = options.trigger
+    notify = options.notify
+    connected_account_id = options.connected_account_id
+    paused_workflows = options.paused_workflows
+
     integration = get_integration_by_id(integration_id)
     toolkit = (
         integration.composio_config.toolkit if integration and integration.composio_config else None
@@ -129,11 +146,9 @@ async def expire_user_integration(
     return True
 
 
-# Composio never enumerates `status_reason`: the pinned SDK types it as a bare
-# `Optional[str]` on both the webhook payload (`composio.core.models.webhook_events`)
-# and the REST response. `refresh_token_revoked` is the only value we have observed,
-# so this matches meaningful tokens rather than a guessed enum \u2014 grow it as new
-# values show up in the `integration_expiry.reason` wide-event field.
+# Composio types `status_reason` as a bare `Optional[str]` (SDK's webhook
+# payload and REST response); `refresh_token_revoked` is the only value
+# observed, so this matches known tokens rather than a guessed enum.
 _EXPIRY_CAUSE_BY_TOKEN: tuple[tuple[str, str], ...] = (
     ("revoked", "Your {integration} account revoked GAIA's access."),
     ("expired", "The sign-in for your {integration} account expired."),

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.notification.notification_models import (
+    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -20,12 +22,19 @@ class AIProactiveNotificationSource:
         body: str,
         actions: list[NotificationAction],
     ) -> NotificationRequest:
-        """Create notification for AI-generated reminders"""
+        """Create a notification for AI-generated reminders.
+
+        Pinned to the in-app channel only: bot-platform delivery is handled
+        by deliver_result_to_platforms, which also records delivery into the
+        conversation's thread. Auto-injecting external channels here would
+        double-send and leave the platform copy unrecorded.
+        """
         return NotificationRequest(
             user_id=user_id,
             source=NotificationSourceEnum.AI_REMINDER,
             type=NotificationType.INFO,
             priority=1,
+            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
             content=NotificationContent(
                 title=title,
                 body=body,

@@ -1,11 +1,11 @@
 """Unit tests for the subscription-plan seed script.
 
 Two behaviors decide whether a production run is safe: the script must not
-rewrite a plan whose content already matches (so `--dry-run` predicts the real
+rewrite a plan whose content already matches (so --dry-run predicts the real
 run), and a failure to clear the plan cache must surface rather than print a
 success the API contradicts.
 
-No `regression` markers here — every symbol under test is introduced by this
+No regression markers here — every symbol under test is introduced by this
 change, so these tests cannot run against the base revision at all, and an
 import error is not proof of anything. The mutation check that backs them is
 in the PR: reverting either behavior turns these red.
@@ -18,13 +18,14 @@ import pytest
 from scripts.payment_setup import (
     build_plan_catalogue,
     catalogue_fields,
+    deactivate_free_plan,
     invalidate_plan_cache,
     reconcile_plan,
 )
 
 
 def _stored_document(plan, **overrides):
-    """The catalogue plan as Mongo would hand it back, with an older timestamp."""
+    """Build the catalogue plan as Mongo would hand it back, with an older timestamp."""
     stored = {
         "_id": "plan-id",
         **catalogue_fields(plan),
@@ -96,6 +97,47 @@ async def test_dry_run_writes_nothing_for_a_missing_plan() -> None:
 
     assert outcome == "created"
     collection.insert_one.assert_not_awaited()
+    collection.update_one.assert_not_awaited()
+
+
+def test_catalogue_has_no_free_plan() -> None:
+    """GAIA is paid-only — the seed script must not build a $0 Free row."""
+    catalogue = build_plan_catalogue("monthly-id", "yearly-id")
+    assert all(plan.amount > 0 or plan.name != "Free" for plan in catalogue)
+    assert not any(plan.name == "Free" for plan in catalogue)
+
+
+async def test_deactivate_free_plan_marks_an_existing_active_free_row_inactive() -> None:
+    """A leftover Free row is turned off, not deleted, so the historical record survives."""
+    collection = AsyncMock()
+    collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": True}
+
+    changed = await deactivate_free_plan(collection, dry_run=False)
+
+    assert changed is True
+    written = collection.update_one.await_args.args[1]["$set"]
+    assert written["is_active"] is False
+    assert collection.update_one.await_args.args[0] == {"_id": "free-id"}
+
+
+async def test_deactivate_free_plan_dry_run_writes_nothing() -> None:
+    collection = AsyncMock()
+    collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": True}
+
+    changed = await deactivate_free_plan(collection, dry_run=True)
+
+    assert changed is True
+    collection.update_one.assert_not_awaited()
+
+
+async def test_deactivate_free_plan_is_a_noop_when_no_active_free_row_exists() -> None:
+    """Idempotent: a second run, or a catalogue that never had Free, does nothing rather than erroring."""
+    collection = AsyncMock()
+    collection.find_one.return_value = None
+
+    changed = await deactivate_free_plan(collection, dry_run=False)
+
+    assert changed is False
     collection.update_one.assert_not_awaited()
 
 

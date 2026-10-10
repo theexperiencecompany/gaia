@@ -23,10 +23,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 
-# ---------------------------------------------------------------------------
 # Direct imports from the modules under test.
-# Deleting any of these source files will cause ImportError here.
-# ---------------------------------------------------------------------------
 from app.services.workflow.execution_service import (
     complete_execution,
     create_execution,
@@ -109,7 +106,7 @@ def mock_executions_repo():
 def mock_redis_pool(route_enqueue_via_pool):
     """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
 
-    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    route_enqueue_via_pool (shared conftest) routes the wide-event enqueue
     wrapper through pool.enqueue_job, so the tests' existing pool mocks and
     assertions stay authoritative.
     """
@@ -207,6 +204,7 @@ class TestCompleteExecution:
             summary="Did 3 things",
             error_message=None,
             conversation_id=None,
+            trace=None,
         )
 
     async def test_forwards_error_message(self, mock_executions_repo):

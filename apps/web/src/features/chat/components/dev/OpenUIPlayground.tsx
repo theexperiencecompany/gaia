@@ -66,6 +66,7 @@ export function OpenUIPlayground(): JSX.Element {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             spellCheck={false}
+            aria-label="OpenUI code editor"
             className="h-full min-h-0 w-full resize-none overflow-auto rounded-2xl bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-300 outline-none ring-1 ring-zinc-800 focus:ring-zinc-700"
           />
           {/* Output framed like a real bot message: chat background, GAIA

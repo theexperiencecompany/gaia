@@ -1,14 +1,11 @@
 """Production-isolation regression suite for the self-host additions.
 
-Proves two invariants:
-
-1. PRODUCTION behavior is byte-for-byte what it was before the self-host
-   profile existed: same dev-override hard blocks, same WorkOS-credential
-   requirements under ``AUTH_MODE=workos``, same Infisical-mandatory boot.
-2. Every self-host-only knob is gated out of production: local auth
-   (``AUTH_MODE=local``) refuses to boot against ENV=production, the
-   middleware never exposes self-host public surfaces outside local mode,
-   and ENV=selfhost never contacts Infisical.
+Proves two invariants. First, production behavior is unchanged by the
+self-host profile: same dev-override hard blocks, same WorkOS credential
+requirements under AUTH_MODE workos, same Infisical-mandatory boot. Second,
+every self-host-only knob is gated out of production: AUTH_MODE local refuses
+ENV production, self-host public surfaces stay out of other modes, and ENV
+selfhost never contacts Infisical.
 """
 
 from typing import Any
@@ -47,10 +44,10 @@ def _isolate_boot_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _required_dummies(settings_cls: type) -> dict[str, Any]:
-    """Stub every required field of ``settings_cls`` with a dummy value.
+    """Stub every required field of the settings class with a dummy value.
 
-    Direct-construction semantics: init kwargs win over ambient env, so the
-    built object depends only on what this suite passes in.
+    Init kwargs win over ambient env, so the built object depends only on
+    what this suite passes in.
     """
     dummies: dict[str, Any] = {}
     for name, field_info in settings_cls.model_fields.items():
@@ -71,9 +68,7 @@ def _required_dummies(settings_cls: type) -> dict[str, Any]:
 
 
 def test_local_auth_blocks_production_boot(monkeypatch):
-    """Local username/password auth is a self-host feature: a production
-    deployment with AUTH_MODE=local would stand up an open-registration
-    password endpoint against the hosted user base — refuse loudly."""
+    """Refuse to boot with AUTH_MODE local; open registration must never face the hosted base."""
     from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
@@ -95,8 +90,7 @@ def test_local_auth_error_names_the_misconfiguration(monkeypatch):
 
 
 def test_selfhost_env_is_the_escaped_hatch(monkeypatch):
-    """The same configuration boots under its intended environment — proves
-    the gate blocks the mode, not the feature."""
+    """Boot the same configuration under its intended environment; the gate blocks the mode."""
     from app.config.settings import SelfHostSettings, get_settings
 
     for var in _DEV_OVERRIDE_VARS:
@@ -135,8 +129,7 @@ def test_dev_auth_bypass_still_blocks_production_boot(monkeypatch):
 
 
 def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
-    """A fully-provisioned production environment constructs via from_env()
-    exactly as before; AUTH_MODE defaults to the hosted WorkOS mode."""
+    """Construct a fully provisioned production env via from_env; AUTH_MODE defaults to workos."""
     from app.config.settings import ProductionSettings
 
     monkeypatch.setenv("ENV", "production")
@@ -158,9 +151,7 @@ def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
 
 @pytest.mark.parametrize("field", ["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD"])
 def test_empty_workos_credential_rejected_under_workos_mode(field):
-    """WorkOS credentials are required while the hosted auth mode is selected —
-    an explicitly empty value fails validation even though the field is typed
-    optional (the optionality exists for AUTH_MODE=local)."""
+    """Require WorkOS credentials in hosted mode; empty fails though the field is optional for local."""
     from app.config.settings import ProductionSettings
 
     kwargs = _required_dummies(ProductionSettings)
@@ -171,8 +162,7 @@ def test_empty_workos_credential_rejected_under_workos_mode(field):
 
 
 def test_local_mode_releases_workos_credentials():
-    """Under AUTH_MODE=local no WorkOS credential is needed at any level —
-    that is the entire point of the mode split."""
+    """Release every WorkOS credential requirement under AUTH_MODE local."""
     from app.config.settings import ProductionSettings
 
     kwargs = _required_dummies(ProductionSettings)
@@ -189,8 +179,7 @@ def test_local_mode_releases_workos_credentials():
 
 
 def test_development_boots_without_workos_credentials(monkeypatch):
-    """Dev machines without any WorkOS config still boot (dummy-ok), exactly
-    as before the AUTH_MODE split introduced the credential validator."""
+    """Keep development boots dummy-ok with no WorkOS config."""
     from app.config.settings import DevelopmentSettings, get_settings
 
     monkeypatch.setenv("ENV", "development")
@@ -241,8 +230,7 @@ def test_selfhost_required_set_is_infra_only():
 
 
 def test_selfhost_minimal_infra_only_construct():
-    """Only infra material → constructs. Every SaaS/provider integration stays
-    optional so features disable gracefully instead of blocking boot."""
+    """Construct from infra material alone; SaaS integrations stay optional and disable gracefully."""
     from app.config.settings import SelfHostSettings
 
     kwargs: dict[str, Any] = dict.fromkeys(_SELFHOST_INFRA_FIELDS, "x")
@@ -272,9 +260,7 @@ def test_selfhost_minimal_construct_with_local_auth():
 
 
 def test_selfhost_missing_mongo_db_raises(monkeypatch):
-    """MONGO_DB is the one infra connection that has no default anywhere —
-    the profile refuses to construct without it (conftest provisions it via
-    env for the wider suite, so remove it to exercise the contract)."""
+    """Refuse to construct without MONGO_DB; it is the one infra value with no default."""
     from app.config.settings import SelfHostSettings
 
     monkeypatch.delenv("MONGO_DB", raising=False)
@@ -287,8 +273,7 @@ def test_selfhost_missing_mongo_db_raises(monkeypatch):
 
 
 def test_selfhost_has_ollama_base_url_default():
-    """Ollama is the zero-config LLM lane for self-hosters: the endpoint
-    default must exist so an unconfigured install still resolves a base URL."""
+    """Default the Ollama base URL so an unconfigured install still resolves one."""
     from app.config.settings import SelfHostSettings
 
     assert SelfHostSettings.model_fields["OLLAMA_BASE_URL"].default == (
@@ -309,9 +294,7 @@ _LOCAL_ONLY_PUBLIC_PATHS = (
 
 
 def test_workos_mode_does_not_exclude_selfhost_public_surfaces(monkeypatch):
-    """Hosted deployments expose neither a password-registration surface nor
-    the setup-wizard probe publicly: none of the local-mode paths may appear
-    in the middleware's exclude list under AUTH_MODE=workos."""
+    """Exclude no local-mode path under AUTH_MODE workos; hosted exposes no password surface."""
     from unittest.mock import MagicMock
 
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
@@ -325,9 +308,7 @@ def test_workos_mode_does_not_exclude_selfhost_public_surfaces(monkeypatch):
 
 
 def test_local_mode_excludes_selfhost_public_surfaces(monkeypatch):
-    """Signup/login must be reachable before any session exists, and the setup
-    status probe is read pre-auth — all three join the exclude list only in
-    local mode."""
+    """Add all three local-mode paths to the exclude list only in local mode."""
     from unittest.mock import MagicMock
 
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
@@ -343,8 +324,7 @@ def test_local_mode_excludes_selfhost_public_surfaces(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Case 8 — Infisical fence: selfhost never dials the vault; production still
-# refuses to boot without the machine identity.
+# Case 8 — Infisical fence: selfhost skips the vault, production needs identity
 # ---------------------------------------------------------------------------
 
 
@@ -356,17 +336,7 @@ _INFISICAL_IDENTITY_VARS = (
 
 
 def _real_infisical_inject() -> tuple[Any, Any]:
-    """The real ``(inject_infisical_secrets, InfisicalConfigError)`` beneath
-    the suite-wide fence.
-
-    The root conftest replaces every session binding of this function with a
-    MagicMock. This recovers the genuine function WITHOUT mutating any fenced
-    module: it loads a fresh copy of the source through sys.modules and puts
-    the fenced module object straight back, so only plain objects escape —
-    every asserted binding stays mocked throughout. The error class comes
-    from the SAME fresh copy: the freshly-executed ``raise`` references its
-    own module globals, and ``pytest.raises`` matches on class identity.
-    """
+    """Recover the real Infisical pair beneath the suite-wide fence without mutating fenced modules."""
     import importlib
     import sys
 
@@ -382,9 +352,7 @@ def _real_infisical_inject() -> tuple[Any, Any]:
 
 
 def test_selfhost_never_calls_infisical(monkeypatch):
-    """Self-host resolves all configuration locally by design: even with
-    machine-identity vars present (a .env leftover), ENV=selfhost must skip
-    the vault entirely."""
+    """Skip the vault entirely under ENV selfhost, even with identity vars present."""
     from unittest.mock import MagicMock
 
     from app.config import settings as settings_module
@@ -403,9 +371,7 @@ def test_selfhost_never_calls_infisical(monkeypatch):
 
 
 def test_production_without_identity_vars_still_raises(monkeypatch):
-    """Pre-existing production behavior preserved: no Infisical machine
-    identity → InfisicalConfigError propagates out of the loader (no swallow,
-    no fallback)."""
+    """Propagate InfisicalConfigError when no identity is set; no swallow, no fallback."""
     from app.config import settings as settings_module
 
     real_inject, real_error = _real_infisical_inject()
@@ -438,17 +404,17 @@ def _unset_workos_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _production_boot_env(settings_cls: type) -> dict[str, str]:
-    """Every required field of ``settings_cls`` rendered as an env value so a
-    full get_settings() boot succeeds regardless of ambient .env contents."""
+    """Render every required field of the settings class as an env value.
+
+    A full get_settings boot then succeeds regardless of ambient dot-env
+    contents.
+    """
     return {name: str(value) for name, value in _required_dummies(settings_cls).items()}
 
 
 @pytest.mark.parametrize("missing_var", _WORKOS_CREDENTIAL_VARS)
 def test_production_boot_without_workos_credential_refuses(monkeypatch, missing_var):
-    """A hosted deployment (ENV=production, AUTH_MODE=workos default) missing
-    any WorkOS credential must refuse to boot loudly at startup — not crash
-    later at WorkOS client construction with an opaque error. The error names
-    every missing variable and states the hosted requirement."""
+    """Refuse hosted boot when a WorkOS credential is missing; the error names every missing var."""
     from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
@@ -471,8 +437,7 @@ def test_production_boot_without_workos_credential_refuses(monkeypatch, missing_
 
 
 def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
-    """The happy path: all three credentials present → hosted boot completes
-    through get_settings() with WorkOS mode selected by default."""
+    """Complete the hosted boot through get_settings with all three credentials present."""
     from app.config.settings import ProductionSettings, get_settings
 
     _isolate_boot_env(monkeypatch)
@@ -491,8 +456,7 @@ def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
 
 
 def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
-    """Dev keeps dummy-ok semantics: AUTH_MODE=workos explicitly set with zero
-    credentials still boots — the guard is production-only."""
+    """Keep dev dummy-ok: the credential guard is production-only."""
     from app.config.settings import DevelopmentSettings, get_settings
 
     monkeypatch.setenv("ENV", "development")
@@ -509,10 +473,7 @@ def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
 
 
 def test_selfhost_unset_auth_mode_defaults_to_local(monkeypatch):
-    """ENV=selfhost with AUTH_MODE unset boots local email+password auth —
-    never the pydantic 'workos' default, which would construct a WorkOS
-    client with no credentials and leave the local-auth routes unmounted.
-    Local auth needs none of the three WorkOS vars."""
+    """Boot local auth when ENV selfhost leaves AUTH_MODE unset; never the workos default."""
     from app.config.settings import SelfHostSettings, get_settings
 
     for var in _DEV_OVERRIDE_VARS:
@@ -531,8 +492,7 @@ def test_selfhost_unset_auth_mode_defaults_to_local(monkeypatch):
 
 
 def test_production_local_auth_still_blocked_before_workos_guard(monkeypatch):
-    """AUTH_MODE=local in production keeps its own hard block; the WorkOS
-    credential guard must not mask it with a credentials error."""
+    """Keep the local-auth hard block ahead of the WorkOS credential guard in production."""
     from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)

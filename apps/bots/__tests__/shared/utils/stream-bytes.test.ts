@@ -1,4 +1,4 @@
-import { readStreamBytesCapped } from "@gaia/shared";
+import { readStreamBytesCapped } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 function finiteStream(chunks: Uint8Array[]): {

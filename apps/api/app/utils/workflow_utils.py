@@ -1,13 +1,14 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from typing import Any, TypedDict, cast
+from collections.abc import Mapping
+from typing import TypedDict
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -24,7 +25,7 @@ class WorkflowConfigError(Exception):
 
 
 class WorkflowCreatedTriggerConfig(TypedDict):
-    """The ``trigger_config`` block of the ``workflow_created`` stream frame."""
+    """The trigger_config block of the workflow_created stream frame."""
 
     type: TriggerType
     cron_expression: str | None
@@ -34,9 +35,10 @@ class WorkflowCreatedTriggerConfig(TypedDict):
 
 
 class WorkflowCreatedPayload(TypedDict):
-    """The ``workflow_created`` frame streamed when a workflow is created
-    without a confirmation card — the frontend renders it as a created-workflow
-    tool card."""
+    """The workflow_created frame streamed when a workflow is created without a confirmation card.
+
+    The frontend renders it as a created-workflow tool card.
+    """
 
     id: str | None
     title: str
@@ -82,26 +84,24 @@ async def handle_workflow_error(
         )
 
 
-def ensure_trigger_config_object(trigger_config: TriggerConfig | dict[str, Any]) -> TriggerConfig:
-    """Convert dict to TriggerConfig object if needed."""
-    if isinstance(trigger_config, dict):
-        return TriggerConfig(**trigger_config)
-    return trigger_config
+def ensure_trigger_config_object(
+    trigger_config: TriggerConfig | Mapping[str, object],
+) -> TriggerConfig:
+    """Convert a mapping to a TriggerConfig object if needed (an instance is returned as is)."""
+    return TriggerConfig.model_validate(trigger_config)
 
 
-# The two envelopes below stay `dict[str, Any]` rather than becoming a pair of
-# TypedDicts: every workflow tool returns them straight out of a `-> dict`
-# handler in agents/tools/workflow_shared_tools.py, and mypy does not accept a
-# TypedDict where a plain `dict` is declared — naming the shape means retyping
-# that module's tools in the same pass (Type Safety item 14).
-def error_response(error_code: str, message: str) -> dict[str, Any]:
+# The two envelopes below stay plain dicts: every workflow tool returns them
+# straight out of a `-> dict[str, Any]` handler, and mypy rejects a model where
+# a plain `dict` is declared (Type Safety item 14).
+def error_response(error_code: str, message: str) -> dict[str, object]:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict[str, Any]:
+def success_response(data: object, message: str | None = None) -> dict[str, object]:
     """Return a standardized success response."""
-    response: dict[str, Any] = {"success": True, "data": data}
+    response: dict[str, object] = {"success": True, "data": data}
     if message:
         response["message"] = message
     return response
@@ -110,9 +110,11 @@ def success_response(data: object, message: str | None = None) -> dict[str, Any]
 async def _partition_integration_ids(
     integration_ids: list[str] | None,
 ) -> tuple[list[str], list[str]]:
-    """Split ids into (valid, unknown) by resolving each against real integrations
-    (built-in, the user's custom, or the public marketplace). Resolve errors fail open
-    (kept as valid) so a transient DB blip never drops a real integration."""
+    """Split ids into (valid, unknown) by resolving each against real integrations.
+
+    Resolve errors fail open (kept as valid) so a transient DB blip never
+    drops a real integration.
+    """
     from app.services.integrations.integration_resolver import IntegrationResolver
 
     if not integration_ids:
@@ -141,8 +143,10 @@ async def unknown_integration_ids(integration_ids: list[str] | None) -> list[str
 
 
 async def filter_existing_integration_ids(integration_ids: list[str] | None) -> list[str]:
-    """Keep only integration ids that resolve to a real integration. Final backstop so a
-    hallucinated id (a service that does not exist in GAIA, e.g. 'stripe') never persists."""
+    """Keep only integration ids that resolve to a real integration.
+
+    Final backstop so a hallucinated id (a nonexistent service) never persists.
+    """
     valid, unknown = await _partition_integration_ids(integration_ids)
     for iid in unknown:
         log.warning(f"{LogTag.WORKFLOW} Dropping unknown integration_id from workflow", iid=iid)
@@ -151,16 +155,35 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
-    user_id: str | None = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
     if not user_id:
         raise WorkflowConfigError("User authentication required")
     return user_id
 
 
+def get_workflow_id(config: RunnableConfig) -> str:
+    """Extract workflow_id from config. Raises error if missing."""
+    workflow_id = read_agent_configurable(config).workflow_id
+    if not workflow_id:
+        raise WorkflowConfigError(
+            "No workflow in this run's config: this tool only works inside a workflow run."
+        )
+    return workflow_id
+
+
+def get_stream_id(config: RunnableConfig) -> str:
+    """Return the run this tool call belongs to. Raises when the config carries none."""
+    stream_id = read_agent_configurable(config).stream_id
+    if not stream_id:
+        raise WorkflowConfigError(
+            "No stream id in this run's config: cannot tell which run this is."
+        )
+    return stream_id
+
+
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
-    thread_id: str | None = agent_configurable(config).get("thread_id")
-    return thread_id
+    return read_agent_configurable(config).thread_id
 
 
 def can_create_directly(draft: FinalizedOutput) -> bool:
@@ -182,7 +205,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -207,12 +230,13 @@ async def create_workflow_directly(
             timezone=user_timezone,
         )
 
-        workflow_description = draft.prompt or draft.description
-
+        # The two fields are not interchangeable: description is the one-line card
+        # copy, prompt is what the executor reads as the run's goal. Collapsing
+        # them put the whole numbered instruction blob on the card.
         request = CreateWorkflowRequest(
             title=draft.title,
-            description=workflow_description,
-            prompt=workflow_description or draft.title,
+            description=draft.description or draft.title,
+            prompt=draft.prompt or draft.description or draft.title,
             trigger_config=trigger_config,
             steps=None,
             generate_immediately=True,
@@ -310,13 +334,101 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
+async def _edited_fields(
+    draft: FinalizedOutput, workflow: Workflow
+) -> dict[str, str | list[str] | TriggerConfig]:
+    """Return the fields an edit draft actually changes.
+
+    The assistant re-emits the FULL workflow on every edit, so only persist
+    fields that actually changed. This keeps a rename/schedule-only edit from
+    rewriting the prompt and triggering an unnecessary step regeneration.
+    """
+    update_fields: dict[str, str | list[str] | TriggerConfig] = {}
+    if draft.title and draft.title != workflow.title:
+        update_fields["title"] = draft.title
+    if draft.description and draft.description != (workflow.description or ""):
+        update_fields["description"] = draft.description
+    new_prompt = draft.prompt or draft.description
+    if new_prompt and new_prompt != workflow.effective_prompt:
+        update_fields["prompt"] = new_prompt
+    # An empty list means "the draft omitted the field", not "clear them" — a
+    # draft that forgot to re-emit integration_ids must not silently strip
+    # the workflow's dependencies. Integrations are removed in the editor.
+    if draft.integration_ids:
+        filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
+        if filtered_integration_ids != (workflow.integration_ids or []):
+            update_fields["integration_ids"] = filtered_integration_ids
+    return update_fields
+
+
+def _edited_trigger(
+    draft: FinalizedOutput, workflow: Workflow, user_timezone: str
+) -> tuple[TriggerConfig | None, bool]:
+    """Return the trigger config an edit applies, and whether the change needs the editor.
+
+    Integration triggers carry config_fields we can't set from here, so a
+    change to one is reported as needing the editor instead of applied.
+    """
+    new_type = draft.backend_trigger_type
+    current = workflow.trigger_config
+    trigger_changed = (
+        new_type != current.type
+        or (draft.trigger_slug or None) != (current.trigger_name or None)
+        or (draft.cron_expression or None) != (current.cron_expression or None)
+    )
+    if not trigger_changed:
+        return None, False
+    if new_type == TriggerType.INTEGRATION:
+        return None, True
+    return (
+        TriggerConfig(
+            type=new_type,
+            enabled=workflow.activated,
+            cron_expression=draft.cron_expression,
+            trigger_name=draft.trigger_slug,
+            # Keep the zone the schedule was authored in. "Move it to 8am"
+            # means 8am where the workflow already runs, not 8am wherever the
+            # user happens to be asking from.
+            timezone=current.timezone or user_timezone,
+        ),
+        False,
+    )
+
+
+async def _regenerated_after_prompt_edit(
+    workflow: Workflow, user_id: str, updated: Workflow
+) -> Workflow:
+    """Return the workflow with its steps regenerated for the new prompt.
+
+    The update is already committed, so a regeneration failure is logged
+    and updated stands.
+    """
+    from app.services.workflow.service import WorkflowService
+
+    try:
+        regenerated = await WorkflowService.regenerate_workflow_steps(
+            workflow.id or "", user_id, regeneration_reason="prompt edited via assistant"
+        )
+        if regenerated:
+            updated = regenerated
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} Step regeneration after edit failed for",
+            id=workflow.id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+    return updated
+
+
 async def apply_workflow_edit(
     draft: FinalizedOutput,
     workflow: Workflow,
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.
@@ -326,52 +438,10 @@ async def apply_workflow_edit(
     """
     from app.services.workflow.service import WorkflowService
 
-    new_type = draft.backend_trigger_type
-    current = workflow.trigger_config
-    trigger_changed = (
-        new_type != current.type
-        or (draft.trigger_slug or None) != (current.trigger_name or None)
-        or (draft.cron_expression or None) != (current.cron_expression or None)
-    )
-
-    # The assistant re-emits the FULL workflow on every edit, so only persist
-    # fields that actually changed. This keeps a rename/schedule-only edit from
-    # rewriting the prompt and triggering an unnecessary step regeneration below.
-    update_fields: dict[str, str | list[str] | TriggerConfig] = {}
-    if draft.title and draft.title != workflow.title:
-        update_fields["title"] = draft.title
-    if draft.description and draft.description != (workflow.description or ""):
-        update_fields["description"] = draft.description
-    new_prompt = draft.prompt or draft.description
-    if new_prompt and new_prompt != workflow.effective_prompt:
-        update_fields["prompt"] = new_prompt
-    # Drop hallucinated ids here too, so edits can't persist a fake integration the
-    # create path (filter_existing_integration_ids in service.create_workflow) rejects.
-    # An empty list is treated as "the draft omitted the field" rather than "clear
-    # them": every other field here is guarded the same way, and a draft that
-    # forgot to re-emit integration_ids must not silently strip the workflow's
-    # dependencies. Integrations are removed in the workflow editor.
-    if draft.integration_ids:
-        filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
-        if filtered_integration_ids != (workflow.integration_ids or []):
-            update_fields["integration_ids"] = filtered_integration_ids
-
-    needs_editor = False
-    if trigger_changed:
-        if new_type == TriggerType.INTEGRATION:
-            # Integration triggers carry config_fields we can't set from here.
-            needs_editor = True
-        else:
-            update_fields["trigger_config"] = TriggerConfig(
-                type=new_type,
-                enabled=workflow.activated,
-                cron_expression=draft.cron_expression,
-                trigger_name=draft.trigger_slug,
-                # Keep the zone the schedule was authored in. "Move it to 8am"
-                # means 8am where the workflow already runs, not 8am wherever the
-                # user happens to be asking from.
-                timezone=current.timezone or user_timezone,
-            )
+    update_fields = await _edited_fields(draft, workflow)
+    trigger_config, needs_editor = _edited_trigger(draft, workflow, user_timezone)
+    if trigger_config is not None:
+        update_fields["trigger_config"] = trigger_config
 
     if not update_fields:
         if needs_editor:
@@ -386,39 +456,22 @@ async def apply_workflow_edit(
             "No changes to apply.",
         )
 
-    # The splat is what gives the request its ``exclude_unset`` semantics — only
-    # the keys set above are persisted. Widened back to Any for the call because
-    # mypy checks a ``**`` splat field-by-field and cannot match a union value
-    # type against each optional field; the narrow type above is what actually
-    # guards the writes.
+    # Validating the mapping (rather than splatting it) is what gives the
+    # request its ``exclude_unset`` semantics — only the keys set above are
+    # persisted — without widening the narrow value type back to Any.
     updated = await WorkflowService.update_workflow(
         workflow.id or "",
-        UpdateWorkflowRequest(**cast(dict[str, Any], update_fields)),
+        UpdateWorkflowRequest.model_validate(update_fields),
         user_id,
         user_timezone=user_timezone,
     )
     if not updated:
         return error_response("not_found", f"Workflow {workflow.id} not found")
 
-    # A prompt change makes the existing steps stale (steps are derived from the
-    # prompt). Regenerate them so the UI plan matches the new behavior. This is a
-    # secondary enhancement — the field update already committed, so a regen
-    # failure is logged loudly but does not fail the edit.
+    # A prompt change makes the existing steps stale; the field update
+    # already committed, so a regen failure is logged but doesn't fail the edit.
     if "prompt" in update_fields:
-        try:
-            regenerated = await WorkflowService.regenerate_workflow_steps(
-                workflow.id or "", user_id, regeneration_reason="prompt edited via assistant"
-            )
-            if regenerated:
-                updated = regenerated
-        except Exception as e:
-            log.warning(
-                f"{LogTag.WORKFLOW} Step regeneration after edit failed for",
-                id=workflow.id,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
+        updated = await _regenerated_after_prompt_edit(workflow, user_id, updated)
 
     # mode="json" — the frame is json.dumps'd by the stream writer; a native
     # datetime would raise inside the edit tool and loop the agent on retries.
@@ -427,7 +480,7 @@ async def apply_workflow_edit(
     message = f"Workflow '{updated.title}' updated."
     if needs_editor:
         message += (
-            " The integration trigger itself was left unchanged — its config is set "
+            " The integration trigger itself was left unchanged. Its config is set "
             "in the workflow editor in the app."
         )
     return success_response({"status": "updated", "workflow_id": updated.id}, message)

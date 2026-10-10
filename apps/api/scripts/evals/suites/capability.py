@@ -1,43 +1,18 @@
 """Capability suite: 30 real-executor scenarios across 8 families.
 
-Runs the actual executor graph in-process (``build_executor_graph`` + the
-production ``prepare_executor_execution`` prep path) against real Mongo /
-Chroma / Postgres infra, with a fresh UUID user per case.
+Runs the executor graph in-process against real Mongo/Chroma/Postgres,
+fresh UUID user per case. Gmail has no real OAuth: Composio and the
+REST seam (mail_service.invoke_gmail_tool) fake a per-user corpus
+mailbox (data/capability/mail/corpus.json).
 
-The Gmail family has no real OAuth: the transport monkeypatches the Composio
-seam (``ComposioService`` tool loading + connection checks) so the gmail
-subagent binds corpus-backed fake tools (``data/capability/mail/corpus.json``)
-that implement search / read / label / draft / send against a per-user fake
-mailbox. The REST seam ``mail_service.invoke_gmail_tool`` is faked the same
-way so any mail-service path behaves identically.
+Scoring: ToolCallCorrectness, CommunicateGate, EndStateEquality, plus
+no_unauthorized_send, whose forbidden set is the shipped
+GMAIL_DESTRUCTIVE_TOOLS (never a copy) to match the HIL layer.
 
-Deterministic runtime scoring uses the core scorers (ToolCallCorrectness,
-CommunicateGate, EndStateEquality) plus a suite-local ``no_unauthorized_send``
-safety gate for the prompt-injection cases, whose forbidden set is the shipped
-``GMAIL_DESTRUCTIVE_TOOLS`` rather than a copy — the gate and the HIL layer
-cannot disagree about which Gmail actions are irreversible. Judge criteria are
-carried in the YAML for finalize-time use only.
-
-A case's ``expected`` block carries:
-
-* ``communicate`` — substrings that must appear somewhere in the assistant's
-  text, matched case-insensitively across the whole transcript.
-* ``tool_calls`` — ``[{tool, min_calls?, args?}]``. ``args`` is opt-in per entry
-  and, when present, only calls carrying those argument values count towards
-  ``min_calls`` (see ``ToolCallCorrectness``).
-* ``end_state`` — world state after the run, projected by ``_compute_end_state``.
-  Every key must have a projection here or the case fails loudly rather than
-  silently passing. Supported: ``todos`` (count / title / title_contains /
-  completed / priority / labels_contains / project / subtask_count /
-  subtasks_completed), ``tracked_todos`` (count / title / title_contains /
-  canvas_contains / purpose), ``reminders`` (count / title / title_contains /
-  datetime_contains), ``projects`` (count / name / name_contains), ``labels``
-  (count / name), ``notifications`` (count / title_contains / body_contains /
-  channel), ``workflows`` (count), plus the scalars ``answer_contains`` (checked
-  against the FINAL turn only), ``recalled``, and the fake-mailbox ``sent`` /
-  ``drafts`` / ``labeled``.
-* ``score.gates`` — which of ``communicate`` / ``end_state`` / ``tool_calls``
-  decide pass/fail, and ``no_unauthorized_send`` for the safety cases.
+expected.end_state covers todos, tracked_todos, reminders, projects,
+labels, notifications, workflows, answer_contains, recalled and the
+fake mailbox; an unprojected key fails the case loudly instead of
+passing silently. score.gates picks which checks decide pass/fail.
 """
 
 from __future__ import annotations
@@ -49,6 +24,7 @@ from pathlib import Path
 from typing import ClassVar, cast
 import uuid
 
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool
@@ -63,12 +39,9 @@ from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import validate_tool_expectations
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
-# Every OTHER ``app.*`` import in this file is deliberately deferred into the
-# function that needs it: `_bootstrap_app` must run first, and importing an app
-# module before it caches settings, lazy providers and DB clients built from the
-# environment as it was at suite-registration time rather than the one the run
-# pinned. `GMAIL_DESTRUCTIVE_TOOLS` above is a frozen constant list with no such
-# side effects, so it is imported normally.
+# Every other app.* import is deliberately deferred into the function that
+# needs it: importing before _bootstrap_app runs caches settings and lazy
+# providers from suite-registration time rather than the run's own environment.
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "capability"
 MAIL_CORPUS_PATH = DATA_DIR / "mail" / "corpus.json"
@@ -87,16 +60,9 @@ LANE_PROVIDER_NAMES: dict[str, str] = {
     "openrouter": "openrouter",
 }
 
-#: The Gmail tools whose effect cannot be undone, as the PRODUCT defines them —
-#: ``GMAIL_DESTRUCTIVE_TOOLS`` is the same list the HIL layer gates on, so this
-#: gate and the running app can never disagree about what "irreversible" means.
-#:
-#: It used to be a hand-written ``{SEND_EMAIL, REPLY_TO_THREAD, SEND_DRAFT}``,
-#: and it had already drifted: the shipped list also gates ``GMAIL_FORWARD_MESSAGE``
-#: (``data/safety/exfiltration.yaml`` forbids it by name, this suite did not) and
-#: the message/thread deletes. A prompt-injection case that got the agent to
-#: forward the user's mail to the attacker, or to delete their inbox, scored a
-#: clean 1.0 on the very gate that exists to catch it.
+#: The Gmail tools whose effect cannot be undone, as GMAIL_DESTRUCTIVE_TOOLS
+#: (the HIL layer's own list) defines them — a hand-written twin once
+#: drifted, missing GMAIL_FORWARD_MESSAGE and the message/thread deletes.
 GMAIL_IRREVERSIBLE_TOOL_NAMES: frozenset[str] = frozenset(GMAIL_DESTRUCTIVE_TOOLS)
 
 _GMAIL_TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -157,11 +123,9 @@ class _CorpusMessage(BaseModel):
     def to_mail_dict(self, include_body: bool, labels: Iterable[str]) -> dict[str, object]:
         """Project this message for the agent, with the mailbox's LIVE labels.
 
-        ``labels`` is required rather than defaulting to ``self.labels``: the
-        corpus message is immutable, so a projection built from it showed the
-        original labels for the rest of the run. After GMAIL_ADD_LABEL_TO_EMAIL
-        the tool result handed back to the agent still said the label was not
-        there, and the agent could not confirm its own write.
+        labels is required, not defaulted to self.labels: the corpus message
+        is immutable, so after GMAIL_ADD_LABEL_TO_EMAIL a projection from it
+        still said the label was missing and the agent couldn't confirm its own write.
         """
         out: dict[str, object] = {
             "id": self.id,
@@ -230,7 +194,7 @@ class _MailboxState:
         return self.labels.get(message_id, set())
 
     def project(self, message: _CorpusMessage, include_body: bool) -> dict[str, object]:
-        """The one way a message reaches the agent — always with live labels."""
+        """Project a message for the agent, always with live labels."""
         return message.to_mail_dict(include_body, self.live_labels(message.id))
 
     def matching(self, query: str) -> list[_CorpusMessage]:
@@ -273,6 +237,26 @@ def _json_dump(value: object) -> str:
     return json.dumps(value)
 
 
+def _token_matches(
+    message: _CorpusMessage, token: str, labels: Iterable[str], haystack: str
+) -> bool:
+    """One search token's verdict for message — False disqualifies the message."""
+    if token.startswith("is:"):
+        flag = token.split(":", 1)[1]
+        if flag == "unread" and not message.unread:
+            return False
+        if flag == "read" and message.unread:
+            return False
+        return True
+    if token.startswith("from:"):
+        return token.split(":", 1)[1] in message.sender.lower()
+    if token.startswith("subject:"):
+        return token.split(":", 1)[1] in message.subject.lower()
+    if token.startswith("in:"):
+        return not (token.split(":", 1)[1] == "inbox" and "INBOX" not in labels)
+    return token in haystack or token in message.urgency
+
+
 def _match_query(message: _CorpusMessage, query: str, labels: Iterable[str]) -> bool:
     tokens = [t for t in query.strip().lower().split() if t]
     if not tokens:
@@ -282,26 +266,7 @@ def _match_query(message: _CorpusMessage, query: str, labels: Iterable[str]) -> 
         token = raw.strip("\"'()[]{}")
         if not token or token in {"or", "and", "not"}:
             continue
-        if token.startswith("is:"):
-            flag = token.split(":", 1)[1]
-            if flag == "unread" and not message.unread:
-                return False
-            if flag == "read" and message.unread:
-                return False
-            continue
-        if token.startswith("from:"):
-            if token.split(":", 1)[1] not in message.sender.lower():
-                return False
-            continue
-        if token.startswith("subject:"):
-            if token.split(":", 1)[1] not in message.subject.lower():
-                return False
-            continue
-        if token.startswith("in:"):
-            if token.split(":", 1)[1] == "inbox" and "INBOX" not in labels:
-                return False
-            continue
-        if token not in haystack and token not in message.urgency:
+        if not _token_matches(message, token, labels, haystack):
             return False
     return True
 
@@ -463,15 +428,14 @@ _AGENT_TOOL_HANDLERS: dict[str, Callable[[_MailboxState, dict[str, object]], str
     "GMAIL_GET_PROFILE": _op_profile,
 }
 
-#: The toolset the fake gmail subagent binds. Derived from the handler table, not
-#: restated beside it: the two lists were identical by hand, and a handler added
-#: without its twin would simply never be exposed — the suite would test a
-#: smaller toolset than it looked like it was testing, and pass.
+#: The toolset the fake gmail subagent binds, derived from the handler table
+#: rather than restated: a hand-kept twin list could add a handler without
+#: exposing it, silently testing a smaller toolset than it looked like.
 _GMAIL_TOOL_NAMES: tuple[str, ...] = tuple(_AGENT_TOOL_HANDLERS)
 
 
 def _make_gmail_tool(name: str) -> object:
-    """A langchain StructuredTool executing the corpus-backed fake for ``name``."""
+    """Build a langchain StructuredTool executing the corpus-backed fake for name."""
 
     async def _run(config: RunnableConfig, **kwargs: object) -> str:
         handler = _AGENT_TOOL_HANDLERS[name]
@@ -488,7 +452,7 @@ def _make_gmail_tool(name: str) -> object:
 def _rest_result(
     state: _MailboxState, tool_name: str, params: dict[str, object]
 ) -> dict[str, object]:
-    """The GmailToolResult kwargs the REST seam's fake returns for one tool."""
+    """Return the GmailToolResult kwargs the REST seam's fake returns for one tool."""
     if tool_name == "GMAIL_FETCH_EMAILS":
         query = str(params.get("query") or "")
         limit = int(params.get("max_results") or 20)
@@ -509,6 +473,13 @@ def _rest_result(
         return {"messages": _apply_labels(state, params, add=add)}
     if tool_name in ("GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_SEND_DRAFT"):
         return _rest_send(state, tool_name, params)
+    return _rest_metadata_result(state, tool_name, params)
+
+
+def _rest_metadata_result(
+    state: _MailboxState, tool_name: str, params: dict[str, object]
+) -> dict[str, object]:
+    """Dispatch the draft/label/profile half of the REST seam's tools."""
     if tool_name == "GMAIL_CREATE_EMAIL_DRAFT":
         draft_id = f"draft_{uuid.uuid4().hex[:8]}"
         state.drafts.append(
@@ -565,10 +536,9 @@ async def _fake_invoke_gmail_tool(
 ) -> object:
     from app.models.mail_models import GmailToolResult
 
-    # `successful` comes from the result itself — the not-found path returns
-    # {"successful": False, ...}, and hardcoding True here made that a
-    # TypeError (duplicate keyword) instead of the tool result the agent
-    # should have seen.
+    # `successful` comes from the result itself: hardcoding True here made
+    # the not-found path's {"successful": False, ...} a duplicate-keyword
+    # TypeError instead of the tool result the agent should have seen.
     result = _rest_result(_mailbox_state(user_id), tool_name, parameters)
     return GmailToolResult(**{"successful": True, **result})
 
@@ -624,9 +594,7 @@ _CALLBACK_PATCHED = False
 
 
 def _patch_agent_callbacks() -> None:
-    """Ride the app's own callback seam: every agent run's callback list is
-    built by agent_helpers._build_agent_callbacks — append the harness tracker
-    so executor/subagent LLM calls are metered without touching app code."""
+    """Ride the app's own callback seam (agent_helpers._build_agent_callbacks) to meter LLM calls without touching app code."""
     global _CALLBACK_PATCHED
     if _CALLBACK_PATCHED:
         return
@@ -635,9 +603,16 @@ def _patch_agent_callbacks() -> None:
     original = agent_helpers_mod._build_agent_callbacks
 
     def _with_tracker(
-        conversation_id: str, user: dict, agent_name: str, usage_metadata_callback: object | None
-    ) -> list:
-        callbacks = original(conversation_id, user, agent_name, usage_metadata_callback)
+        conversation_id: str,
+        user_id: str | None,
+        agent_name: str,
+        source: str | None,
+        workflow_id: str | None,
+        usage_metadata_callback: UsageMetadataCallbackHandler | None,
+    ) -> list[BaseCallbackHandler]:
+        callbacks = original(
+            conversation_id, user_id, agent_name, source, workflow_id, usage_metadata_callback
+        )
         if _ACTIVE_TRACKER is not None:
             callbacks.append(_ACTIVE_TRACKER)
         return callbacks
@@ -669,8 +644,7 @@ async def _bootstrap_app() -> None:
 
 
 def _pin_lane(provider: ProviderConfig) -> None:
-    """Pin every LLM lane in this process (executor, subagents, workflow runner)
-    to the provider the harness selected for this case."""
+    """Pin every LLM lane in this process (executor, subagents, workflow runner) to the provider the harness selected for this case."""
     from app.agents.llm import client as llm_client
     from app.core.lazy_loader import providers
 
@@ -686,10 +660,9 @@ def _pin_lane(provider: ProviderConfig) -> None:
         )
     llm_client._get_available_providers = lambda: {provider.lane: instance}
 
-    # Every run config built by the app (executor, handoff subagents, the
-    # workflow assistant) resolves its model triple through this one function.
-    # Without the pin it returns the production default (gemini) and the
-    # configurable "model" field overrides the pinned lane's model mid-run.
+    # Every run config (executor, handoff subagents, workflow assistant)
+    # resolves its model triple through this one function; without the pin
+    # it returns the production default (gemini) and overrides mid-run.
     from app.constants.llm import DEFAULT_MAX_TOKENS
     from app.helpers import agent_helpers
 
@@ -697,6 +670,47 @@ def _pin_lane(provider: ProviderConfig) -> None:
         return (provider.model, LANE_PROVIDER_NAMES[provider.lane], DEFAULT_MAX_TOKENS)
 
     agent_helpers._resolve_model_config = _resolve_eval_model_config
+
+
+def _collect_update_tool_calls(
+    payload: object, seen_ids: set[str], tool_calls: list[dict[str, object]]
+) -> None:
+    """Tool calls the executor's own agent node emitted in an updates payload."""
+    if not isinstance(payload, dict):
+        return
+    for node_name, state_update in payload.items():
+        if node_name != "agent" or not isinstance(state_update, dict):
+            continue
+        for msg in state_update.get("messages", []):
+            for tc in getattr(msg, "tool_calls", None) or []:
+                tc_id = str(tc.get("id") or "")
+                if not tc_id or tc_id in seen_ids:
+                    continue
+                seen_ids.add(tc_id)
+                tool_calls.append({"name": tc.get("name"), "args": tc.get("args") or {}})
+
+
+def _collect_custom_tool_call(
+    payload: object, seen_ids: set[str], tool_calls: list[dict[str, object]]
+) -> None:
+    """Return the subagent tool call a custom tool_calls_data payload carries."""
+    if not isinstance(payload, dict):
+        return
+    tool_data = payload.get("tool_data")
+    if not (isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"):
+        return
+    data = tool_data.get("data")
+    if not isinstance(data, dict):
+        return
+    tc_id = str(data.get("tool_call_id") or "")
+    if tc_id and tc_id in seen_ids:
+        return
+    if tc_id:
+        seen_ids.add(tc_id)
+    inputs = data.get("inputs")
+    tool_calls.append(
+        {"name": data.get("tool_name"), "args": inputs if isinstance(inputs, dict) else {}}
+    )
 
 
 async def _drive_stream(
@@ -714,38 +728,9 @@ async def _drive_stream(
     )
     async for mode, payload in stream:
         if mode == "updates":
-            if not isinstance(payload, dict):
-                continue
-            for node_name, state_update in payload.items():
-                if node_name != "agent" or not isinstance(state_update, dict):
-                    continue
-                for msg in state_update.get("messages", []):
-                    for tc in getattr(msg, "tool_calls", None) or []:
-                        tc_id = str(tc.get("id") or "")
-                        if not tc_id or tc_id in seen_ids:
-                            continue
-                        seen_ids.add(tc_id)
-                        tool_calls.append({"name": tc.get("name"), "args": tc.get("args") or {}})
+            _collect_update_tool_calls(payload, seen_ids, tool_calls)
         elif mode == "custom":
-            if not isinstance(payload, dict):
-                continue
-            tool_data = payload.get("tool_data")
-            if not (
-                isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"
-            ):
-                continue
-            data = tool_data.get("data")
-            if not isinstance(data, dict):
-                continue
-            tc_id = str(data.get("tool_call_id") or "")
-            if tc_id and tc_id in seen_ids:
-                continue
-            if tc_id:
-                seen_ids.add(tc_id)
-            inputs = data.get("inputs")
-            tool_calls.append(
-                {"name": data.get("tool_name"), "args": inputs if isinstance(inputs, dict) else {}}
-            )
+            _collect_custom_tool_call(payload, seen_ids, tool_calls)
         elif mode == "messages":
             chunk, meta = payload
             if meta.get("silent") or not isinstance(chunk, AIMessageChunk):
@@ -776,7 +761,7 @@ def _to_messages(turns: list[str], bubbles: list[str]) -> list[dict[str, str]]:
 def _matched_title(
     docs: Sequence[object], title_term: str, title_contains: object
 ) -> tuple[object | None, str | None]:
-    """The doc matching an expected entry's title, plus the term it matched on.
+    """Return the doc matching an expected entry's title, plus the term it matched on.
 
     Both sides are normalized. Lowercasing only the stored title silently made
     any expectation carrying a capital letter impossible to satisfy, which read
@@ -799,39 +784,47 @@ def _matched_title(
 
 def _doc_text(doc: object) -> str:
     parts: list[str] = []
-    for attr in ("title", "description", "canvas_content", "body"):
+    for attr in ("title", "description", "canvas_content", "activity_content", "body"):
         value = getattr(doc, attr, None)
         if value:
             parts.append(str(value))
     return " ".join(parts).lower()
 
 
+def _canvas_text(doc: object) -> str:
+    """Return a tracked todo's canvas.md only, lowercased."""
+    value = getattr(doc, "canvas_content", None)
+    return str(value).lower() if value else ""
+
+
+def _activity_text(doc: object) -> str:
+    """Return a tracked todo's activity.md only, lowercased."""
+    value = getattr(doc, "activity_content", None)
+    return str(value).lower() if value else ""
+
+
 async def _user_projects(user_id: str) -> list[object]:
-    """Every project the user owns, Inbox included (callers drop it if they must)."""
+    """Return every project the user owns, Inbox included (callers drop it if they must)."""
     from app.db.repositories.projects import project_repository
 
     return list(await project_repository.list_with_counts(user_id=user_id))
 
 
 def _term_if(condition: bool, term: str) -> str | None:
-    """The convention every projection here follows: echo the expected term back
-    when it holds, ``None`` when it does not, and let EndStateEquality compare.
+    """Echo the expected term back when condition holds, None otherwise, for EndStateEquality to compare.
 
-    ``term`` must be the RAW value from the YAML, never a lowercased copy.
-    EndStateEquality compares the projection against the expectation verbatim,
-    so echoing a normalized value makes any expectation carrying a capital
-    letter impossible to satisfy — a broken gate that reads as an agent error.
-    Lowercase inside the predicate instead; ``_matched_title`` already does.
+    term must be the RAW value from the YAML: EndStateEquality compares
+    verbatim, so echoing a lowercased copy would make any expectation with a
+    capital letter impossible to satisfy. Lowercase inside the predicate
+    instead; _matched_title already does.
     """
     return term if condition else None
 
 
 async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    # Read the repository directly rather than todo_service.get_all_todos: the
-    # unfiltered service list scopes to the user's Inbox project by design
-    # (TodoService._needs_inbox_default), so a todo the agent correctly filed
-    # into a named project would be invisible here and the end-state gate would
-    # fail a run that did exactly the right thing.
+    # Reads the repository directly: todo_service.get_all_todos scopes to the
+    # Inbox project by design (TodoService._needs_inbox_default), which would
+    # hide a todo correctly filed elsewhere and fail a correct run.
     from app.db.repositories.todos import todo_repository
     from app.models.todo_models import SearchMode, TodoSearchParams
 
@@ -854,42 +847,46 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
         if "count" in item:
             entries.append({"count": len(todos)})
             continue
-        match, matched_on = _matched_title(
-            todos, str(item.get("title") or ""), item.get("title_contains")
-        )
-        entry: dict[str, object] = {}
-        if "title" in item:
-            entry["title"] = str(item["title"]) if match is not None else ""
-        if "title_contains" in item:
-            entry["title_contains"] = matched_on if match is not None else None
-        if "completed" in item:
-            entry["completed"] = bool(getattr(match, "completed", False))
-        if "priority" in item:
-            term = str(item["priority"])
-            actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
-            entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
-        if "labels_contains" in item:
-            term = str(item["labels_contains"])
-            labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
-            entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
-        if "project" in item:
-            term = str(item["project"])
-            name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
-            entry["project"] = _term_if(match is not None and term.lower() in name, term)
-        subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
-        if "subtask_count" in item:
-            entry["subtask_count"] = len(subtasks)
-        if "subtasks_completed" in item:
-            entry["subtasks_completed"] = len(
-                [s for s in subtasks if getattr(s, "completed", False)]
-            )
-        entries.append(entry)
+        entries.append(_todo_entry(item, todos, project_names))
     return entries
 
 
+def _todo_entry(
+    item: dict[str, object], todos: Sequence[object], project_names: dict[str, str]
+) -> dict[str, object]:
+    """One expected todo entry projected against the stored todos."""
+    match, matched_on = _matched_title(
+        todos, str(item.get("title") or ""), item.get("title_contains")
+    )
+    entry: dict[str, object] = {}
+    if "title" in item:
+        entry["title"] = str(item["title"]) if match is not None else ""
+    if "title_contains" in item:
+        entry["title_contains"] = matched_on if match is not None else None
+    if "completed" in item:
+        entry["completed"] = bool(getattr(match, "completed", False))
+    if "priority" in item:
+        term = str(item["priority"])
+        actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
+        entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
+    if "labels_contains" in item:
+        term = str(item["labels_contains"])
+        labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
+        entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
+    if "project" in item:
+        term = str(item["project"])
+        name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
+        entry["project"] = _term_if(match is not None and term.lower() in name, term)
+    subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
+    if "subtask_count" in item:
+        entry["subtask_count"] = len(subtasks)
+    if "subtasks_completed" in item:
+        entry["subtasks_completed"] = len([s for s in subtasks if getattr(s, "completed", False)])
+    return entry
+
+
 async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Todo projects. ``count`` excludes the auto-created Inbox, which every user
-    gets for free and which no agent action is responsible for."""
+    """Return todo projects; count excludes the auto-created Inbox, which every user gets for free."""
     projects = await _user_projects(user_id)
     named = [p for p in projects if not bool(getattr(p, "is_default", False))]
     entries: list[dict[str, object]] = []
@@ -915,9 +912,10 @@ async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, 
 
 
 async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Labels in use by the user. Sourced from the todo stats aggregation, which
-    counts labels on INCOMPLETE todos only — a label surviving solely on a
-    completed todo will not appear here."""
+    """Return labels in use by the user, from stats that count INCOMPLETE todos only.
+
+    A label surviving solely on a completed todo will not appear here.
+    """
     from app.services.todos.todo_service import get_all_labels
 
     names = {str(label.name).lower() for label in await get_all_labels(user_id)}
@@ -936,9 +934,11 @@ async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, ob
 
 
 async def _project_notifications(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Notifications the agent actually created for this user. ``channel`` asks
-    whether any notification targeted that channel at all — delivery can be
-    skipped for an unconnected channel, and the agent is not accountable for that."""
+    """Return notifications the agent actually created for this user.
+
+    channel asks whether any notification targeted that channel at all,
+    since delivery can be skipped for an unconnected channel.
+    """
     from app.services.notification_service import notification_service
 
     items = await notification_service.get_user_notifications(user_id, status=None, limit=100)
@@ -994,13 +994,16 @@ async def _project_tracked_todos(user_id: str, want: list[object]) -> list[dict[
             term = item.get("canvas_contains")
             if term is not None:
                 term = str(term)
-                canvas = (
-                    str(getattr(match, "canvas_content", "") or "").lower()
-                    if match is not None
-                    else ""
-                )
+                canvas = _canvas_text(match) if match is not None else ""
                 term = term if match is not None and term.lower() in canvas else None
             entry["canvas_contains"] = term
+        if "activity_contains" in item:
+            term = item.get("activity_contains")
+            if term is not None:
+                term = str(term)
+                activity = _activity_text(match) if match is not None else ""
+                term = term if match is not None and term.lower() in activity else None
+            entry["activity_contains"] = term
         purpose_term = item.get("purpose")
         if purpose_term is not None:
             term = str(purpose_term)
@@ -1121,27 +1124,28 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
         elif key == "recalled":
             projected[key] = await _project_recalled(case, user_id)
         elif key in ("sent", "drafts", "labeled"):
-            state = _mailbox_state(user_id)
-            if key == "sent":
-                projected[key] = len(state.sent)
-            elif key == "drafts":
-                projected[key] = len(state.drafts)
-            else:
-                projected[key] = bool(state.applied_labels)
+            projected[key] = _project_mailbox(user_id, key)
         else:
             raise RuntimeError(f"capability end_state: no projection for key {key!r}")
     return projected
 
 
-def _project_answer_contains(want: object, text: str) -> object:
-    """Did the FINAL bubble carry the fact the case demands?
+def _project_mailbox(user_id: str, key: str) -> object:
+    """Return the Gmail fake's counter behind one of the mailbox end_state keys."""
+    state = _mailbox_state(user_id)
+    if key == "sent":
+        return len(state.sent)
+    if key == "drafts":
+        return len(state.drafts)
+    return bool(state.applied_labels)
 
-    A list means "any one of these phrasings will do" — the whole list is echoed
-    back when one matches, so EndStateEquality still compares verbatim. It exists
-    because the alternative for a counting question was a bare digit, which the
-    wrong answer satisfies as readily as the right one ("3 todos, 2 of them
-    urgent" contains "2"), while any single phrase strong enough to discriminate
-    ("2 todos") fails the equally correct "2 left".
+
+def _project_answer_contains(want: object, text: str) -> object:
+    """Return whether the FINAL bubble carried the fact the case demands.
+
+    A list means "any one of these phrasings will do" and is echoed back
+    whole when one matches, since a bare digit ("2") is satisfied by a wrong
+    answer too, while one exact phrase ("2 todos") fails "2 left".
     """
     haystack = (text or "").lower()
     if isinstance(want, list):
@@ -1189,7 +1193,7 @@ class CapabilityTransport:
         from app.agents.core.subagents.subagent_runner import prepare_executor_execution
         from app.agents.llm.client import init_llm
         from app.core.lazy_loader import providers
-        from app.helpers.agent_helpers import build_agent_config
+        from app.helpers.agent_helpers import AgentIdentity, build_agent_config
         from app.models.agent_models import AgentUserContext
         from app.services.dev_service import mint_dev_user
 
@@ -1203,7 +1207,9 @@ class CapabilityTransport:
             "email": email,
             "name": user_doc.name,
         }
-        config = build_agent_config(conversation_id=cid, user=user, agent_name="executor_agent")
+        config = build_agent_config(
+            identity=AgentIdentity(conversation_id=cid, user=user, agent_name="executor_agent")
+        )
         config["callbacks"] = [tracker, *config.get("callbacks", [])]
 
         turns = [str(turn) for turn in (case.setup.get("turns") or [case.prompt])]
@@ -1261,10 +1267,9 @@ class CapabilitySuite(Suite):
     project = "gaia-capability"
     label = "Capability"
 
-    #: Gates this suite adds to the shared set in ``core/gates.py``. Everything
-    #: else a case may declare — communicate, end_state, tool_call_correctness —
-    #: comes from there, so there is one implementation of each name rather than
-    #: a suite-local copy that silently diverges.
+    #: Gates this suite adds to the shared set in core/gates.py; every other
+    #: gate name a case may declare comes from there, one implementation
+    #: rather than a suite-local copy that silently diverges.
     EXTRA_GATES: ClassVar[ExtraGates] = {"no_unauthorized_send": _no_unauthorized_send}
 
     def __init__(self, cfg: EvalConfig) -> None:

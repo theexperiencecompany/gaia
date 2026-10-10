@@ -15,10 +15,13 @@ import {
 import { Text } from "@/components/ui/text";
 import { cronToHumanReadable } from "@/features/workflows/utils/cronUtils";
 
-// ---------------------------------------------------------------------------
-// Trigger display — mirrors web getTriggerDisplay() in WorkflowDraftCard /
-// WorkflowCreatedCard. Same color tokens, same icon mapping.
-// ---------------------------------------------------------------------------
+// Trigger display mirrors web's getTriggerDisplay() in WorkflowDraftCard /
+// WorkflowCreatedCard — same color tokens, same icon mapping.
+
+// Amber tint used as the draft affordance — no amber token exists in
+// @/lib/design-tokens (colors.warning is yellow-500), so the web amber/10
+// value is kept as an explicit constant.
+const AMBER_TINT = "rgba(251,191,36,0.10)";
 
 interface TriggerDisplay {
   label: string;
@@ -93,16 +96,9 @@ function TriggerChip({ display }: { display: TriggerDisplay }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// WorkflowDraftCard — port of apps/web/src/features/workflows/components/
-// WorkflowDraftCard.tsx
-//
-// Web uses a dashed warning border + absolutely-positioned "Draft" chip.
-// Mobile keeps the same layout: warning-tinted shell, prominent FlowIcon
-// avatar, trigger chip on the right of the header, description, and a
-// "Review & Create" primary button. Tap navigates to the workflows screen
-// (mobile parity for the web modal flow).
-// ---------------------------------------------------------------------------
+// WorkflowDraftCard: port of web's WorkflowDraftCard.tsx. Web uses a dashed
+// warning border + absolute "Draft" chip; mobile mirrors it with a warning-tinted
+// shell, FlowIcon avatar, trigger chip, description, and a "Review & Create" button that navigates to the workflows screen.
 
 export function WorkflowDraftCard({ data }: { data: WorkflowDraftData }) {
   const router = useRouter();
@@ -122,8 +118,12 @@ export function WorkflowDraftCard({ data }: { data: WorkflowDraftData }) {
       android_ripple={{ color: "rgba(255,255,255,0.05)" }}
       className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4"
     >
-      {/* Dashed warning ring — matches web's border-dashed border-warning/40 */}
-      <View className="absolute inset-0 rounded-2xl border border-dashed border-amber-500/40" />
+      {/* Amber tonal fill — draft affordance (replaces web's dashed border) */}
+      <View
+        className="absolute inset-0 rounded-2xl"
+        style={{ backgroundColor: AMBER_TINT }}
+        pointerEvents="none"
+      />
 
       {/* "Draft" badge — top-right pill */}
       <View className="absolute -top-2 right-3 self-start rounded-full bg-amber-500/20 px-2 py-0.5">
@@ -183,15 +183,9 @@ export function WorkflowDraftCard({ data }: { data: WorkflowDraftData }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// WorkflowCreatedCard — port of apps/web/src/features/workflows/components/
-// WorkflowCreatedCard.tsx
-//
-// Web uses a soft outline + success-tinted icon avatar + "Created" chip.
-// Mobile mirrors that: success-green icon, "Created" chip on the right,
-// description, trigger chip on its own row, and a "View & Edit" button.
-// Tap navigates to /workflows/[id].
-// ---------------------------------------------------------------------------
+// WorkflowCreatedCard: port of web's WorkflowCreatedCard.tsx. Web uses a soft
+// outline + success-tinted icon + "Created" chip; mobile mirrors it with a
+// success-green icon, trigger chip, description, and a "View & Edit" button to /workflows/[id].
 
 export function WorkflowCreatedCard({ data }: { data: WorkflowCreatedData }) {
   const router = useRouter();

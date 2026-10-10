@@ -1,12 +1,13 @@
 """Nurture email engine: one declarative sequence, one send per user per run.
 
 Driven hourly by the ARQ cron so each user is evaluated at 9am in their own
-timezone. Per-user state lives on the user document under ``nurture``:
-``completed_steps`` guarantees a step sends at most once ever, ``history``
+timezone. Per-user state lives on the user document under nurture:
+completed_steps guarantees a step sends at most once ever, history
 enforces the frequency caps.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict, cast
 from urllib.parse import urlencode
 
 from app.config.settings import settings
@@ -30,6 +31,7 @@ from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
     resolve as resolve_resend_config,
 )
 from app.utils.notification.channel_preferences import normalize_channel_preferences
@@ -38,7 +40,30 @@ from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.wide_events import log
 
 
-def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
+class NurtureStepRecord(TypedDict, total=False):
+    """One outcome appended to the nurture history of a user.
+
+    Total False because capped fields are read defensively, not because the
+    writer may omit them.
+    """
+
+    step: str
+    at: datetime
+    status: str
+
+
+class NurtureState(TypedDict, total=False):
+    """The nurture subdocument of a user: which steps ran, and when.
+
+    Total False so a missing or partial subdocument reads as no steps yet
+    rather than failing the run.
+    """
+
+    completed_steps: list[str]
+    history: list[NurtureStepRecord]
+
+
+def _within_frequency_caps(history: list[NurtureStepRecord], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history
@@ -110,7 +135,7 @@ async def _select_step(
     user: UserDocument, days_since_signup: int, completed: set[str], now: datetime
 ) -> NurtureStep | None:
     """First pending step whose skip predicate doesn't fire; predicate hits are recorded as skipped."""
-    onboarded = bool((user.onboarding or {}).get("completed"))
+    onboarded = bool(user.onboarding and user.onboarding.completed)
     for step in NURTURE_STEPS:
         if not _step_pending(step, days_since_signup, completed, onboarded):
             continue
@@ -137,7 +162,10 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     if not created_at:
         return False
 
-    state = user.nurture or {}
+    # The only writer is ``record_nurture_step`` ($addToSet + $push of exactly
+    # these keys); ``UserDocument.nurture`` stays a raw mapping because it is
+    # carried on the auth context too. Name the shape here, where it is read.
+    state: NurtureState = cast(NurtureState, user.nurture or {})
     if not _within_frequency_caps(state.get("history") or [], now):
         return False
 
@@ -162,7 +190,7 @@ async def run_nurture_sequence() -> str:
     """Send due nurture emails to users whose local time is the send hour."""
     # The delivery key resolves store-first (Settings → Resend) with an env
     # fallback, mirroring the provider's own send-time resolution.
-    config = await resolve_resend_config("resend")
+    config: ProviderConfig | None = await resolve_resend_config("resend")
     resend_configured = bool(config["api_key"] if config else settings.RESEND_API_KEY)
     if not resend_configured or not settings.EMAIL_UNSUBSCRIBE_SECRET:
         log.info(f"{LogTag.MAIL} Nurture run skipped: email delivery not configured")

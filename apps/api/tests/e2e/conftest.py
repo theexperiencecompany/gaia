@@ -1,24 +1,13 @@
 """E2E test fixtures for GAIA agent graph scenarios.
 
-Uses REAL GAIA production nodes and graph builder infrastructure:
-- filter_messages_node: from app.agents.core.nodes.filter_messages
-- manage_system_prompts_node: from app.agents.core.nodes.manage_system_prompts
-- create_agent: from app.override.langgraph_bigtool.create_agent
-- State: from app.override.langgraph_bigtool.utils (the real agent state schema)
-
-Mocks only:
-- LLM: BindableToolsFakeModel (no real LLM calls; supports bind_tools())
-
-When USE_REAL_SERVICES=1 (Dagger CI):
-- Checkpointer: AsyncPostgresSaver against real Postgres
-- Store: AsyncPostgresStore against real Postgres
-
-When USE_REAL_SERVICES=0 (opt-out, local run without Docker):
-- Checkpointer: MemorySaver (in-process fallback)
-- Store: InMemoryStore (in-process fallback)
+Uses real GAIA nodes (filter_messages_node, manage_system_prompts_node) and the
+real create_agent/State from app.override.langgraph_bigtool — only the LLM
+(BindableToolsFakeModel) is mocked. USE_REAL_SERVICES=1 (Dagger CI) backs the
+checkpointer/store with AsyncPostgresSaver/AsyncPostgresStore against real
+Postgres; USE_REAL_SERVICES=0 falls back to MemorySaver/InMemoryStore.
 
 If filter_messages_node or manage_system_prompts_node are deleted or
-mis-imported, these fixtures (and every test using them) will fail.
+mis-imported, every fixture here — and every test using them — fails.
 """
 
 from __future__ import annotations
@@ -37,9 +26,14 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from app.override.langgraph_bigtool.hooks import HookType
-from tests.helpers import BindableToolsFakeModel, skip_items_without_real_services
+from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
@@ -65,14 +59,19 @@ _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """HIL e2e files need real Mongo/Redis; skip them at collection otherwise.
+    """Skip the e2e files that need real Mongo/Redis at collection otherwise.
 
     These are the only e2e files that request the real-infra fixtures from
-    tests/integration/real/db_fixtures (verified by grep). Everything else in
-    this directory runs hermetic with MemorySaver + fake LLM.
+    tests/integration/real/db_fixtures (verified by grep): the HIL journeys and
+    the trigger-dispatch fan-out. Everything else in this directory runs hermetic
+    with MemorySaver + fake LLM.
     """
 
-    real_infra_files = {"test_hil_barrier_e2e.py", "test_hil_spawn_e2e.py"}
+    real_infra_files = {
+        "test_hil_barrier_e2e.py",
+        "test_hil_spawn_e2e.py",
+        "test_todo_trigger_dispatch_e2e.py",
+    }
     dir_root = Path(__file__).resolve().parent
     skip_items_without_real_services(
         [
@@ -80,7 +79,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             for item in items
             if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
         ],
-        reason="HIL e2e requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
+        reason="requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
     )
 
 
@@ -91,20 +90,10 @@ def build_gaia_test_graph(
     checkpointer: MemorySaver | None = None,
     store: InMemoryStore | None = None,
 ):
-    """Build a real GAIA agent graph for E2E testing.
+    """Build a real GAIA agent graph: real create_agent and pre-model hooks, fake LLM/checkpointer/store.
 
-    Uses the real ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
-    and wires in the real GAIA pre-model hooks:
-    - filter_messages_node
-    - manage_system_prompts_node
-
-    The LLM, checkpointer, and store are replaced with in-memory test doubles
-    so no external services are required.
-
-    If ``app.agents.core.nodes.filter_messages.filter_messages_node`` or
-    ``app.agents.core.nodes.manage_system_prompts.manage_system_prompts_node``
-    are removed, this function will raise an ImportError and ALL e2e tests
-    will fail — which is the desired sentinel behaviour.
+    Deleting filter_messages_node or manage_system_prompts_node raises ImportError
+    here — the intended sentinel for every e2e test.
     """
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
@@ -113,12 +102,13 @@ def build_gaia_test_graph(
 
     builder = create_agent(
         llm=fake_llm,
-        agent_name="test_agent",
         tool_registry=tool_registry,
-        disable_retrieve_tools=True,
-        initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
-        middleware=None,
-        pre_model_hooks=pre_model_hooks,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
+        ),
+        hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
+        agent_config=AgentConfig(agent_name="test_agent"),
     )
 
     resolved_store = store or InMemoryStore()
@@ -147,7 +137,8 @@ async def memory_saver():
         )
         await pool.open(wait=True, timeout=30)
         checkpointer = AsyncPostgresSaver(conn=pool)
-        await checkpointer.setup()
+        async with pg_advisory_lock(_POSTGRES_URL):
+            await checkpointer.setup()
         yield checkpointer
         await pool.close()
     else:
@@ -165,7 +156,8 @@ async def in_memory_store():
         from langgraph.store.postgres import AsyncPostgresStore
 
         async with AsyncPostgresStore.from_conn_string(_POSTGRES_URL) as store:
-            await store.setup()
+            async with pg_advisory_lock(_POSTGRES_URL):
+                await store.setup()
             yield store
     else:
         yield InMemoryStore()
@@ -173,17 +165,12 @@ async def in_memory_store():
 
 @pytest.fixture
 def real_tool_registry():
-    """Register the real global ToolRegistry provider.
+    """Register the real global ToolRegistry provider (in-process only, no ChromaDB/network).
 
-    ``format_tool_call_entry`` resolves every streamed tool call's category
-    through ``get_tool_registry()``; without the provider registered that lookup
-    raises, so any test asserting on a ``tool_data`` frame needs this. Setup is
-    in-process only (``_initialize_categories`` imports the tool modules and
-    indexes them by name) — no ChromaDB, no network.
-
-    The provider registry is a process-wide singleton with no reset between
-    tests, so registration happens once and the built instance is then reused
-    exactly as it is in a running app.
+    format_tool_call_entry needs get_tool_registry() registered to resolve a
+    streamed tool call's category. The provider registry is a process-wide
+    singleton with no reset between tests, so registration happens once and is
+    reused exactly as in a running app.
     """
     from app.agents.tools.core.registry import init_tool_registry
 
@@ -194,7 +181,7 @@ def real_tool_registry():
 
 @pytest.fixture
 def thread_config() -> dict[str, Any]:
-    """Unique thread config per test, includes user_id required by GAIA nodes."""
+    """Build a unique thread config per test, including the user_id GAIA nodes require."""
     return {
         "configurable": {
             "thread_id": str(uuid4()),
@@ -207,7 +194,7 @@ def make_gaia_state(**overrides) -> dict[str, Any]:
     """Build a minimal GAIA State dict for direct node testing.
 
     Uses the real State fields from app.override.langgraph_bigtool.utils
-    (which extends langgraph_bigtool State with the ``todos`` channel).
+    (which extends langgraph_bigtool State with the todos channel).
     """
     defaults: dict[str, Any] = {
         "messages": [],

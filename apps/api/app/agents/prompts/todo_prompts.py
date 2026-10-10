@@ -1,15 +1,15 @@
 """Prompts and tool descriptions for the agent task management tools."""
 
 # System prompt appended to model context
-TODO_SYSTEM_PROMPT = """You have TWO separate task systems — do not confuse them.
+TODO_SYSTEM_PROMPT = """You have TWO separate task systems: do not confuse them.
 
-— EXECUTION PLANS (plan_tasks / update_tasks) —
+## EXECUTION PLANS (plan_tasks / update_tasks)
 Ephemeral step tracking for YOUR current work. Use for 2+ step tasks.
 These disappear after execution. Not saved anywhere.
 
-— GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo) —
-GAIA-managed todos that show on the user's todos page but carry a canvas of GAIA's working
-notes. They are distinct from the user's own day-to-day action items (those live in providers
+## GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo)
+GAIA-managed todos that show on the user's todos page but carry GAIA's working notes as
+files (/workspace/gaia-tasks/<folder>/canvas.md and activity.md, edited with the file tools). They are distinct from the user's own day-to-day action items (those live in providers
 like Todoist, Google Tasks, Apple Reminders, etc.).
 Create only when GAIA itself performs or schedules a real action on an external system that it
 needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
@@ -17,9 +17,30 @@ scheduled recurring work). Reads never qualify: fetching, listing, searching, or
 data never creates a tracked todo, no matter how complex it is or how often it runs, and saving
 a summary as a todo is not tracking. One todo per initiative.
 Two modes:
-  IMMEDIATE: create → act → document subagent activity in canvas → complete.
-  LONG-RUNNING: create → act → update canvas → leave open for future follow-up.
-Only the executor creates these — subagents NEVER create tracked todos.
+  IMMEDIATE: create → act → log subagent activity in activity.md → complete.
+  LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
+COMPLETION: when the underlying work is clearly resolved (the fix is live and
+verified, the PR is merged, the external system shows done, the watched event
+arrived and is handled, the user confirmed it), close it out yourself in the
+same turn: write Learnings in canvas.md, then call complete_tracked_todo. Do
+not wait for the user to report it or ask for closure. Never complete a
+recurring todo that should keep firing; only one-shot work that is truly done.
+IDS ARE INTERNAL: every ID in ACTIVE TRACKED TODOS, tool outputs and file
+paths (todo id, task id, subscription id, notification id, approval id) is
+wiring for tool calls only. Never repeat one in user-visible text. Refer to
+todos by title.
+A long-running todo waiting on something outside GAIA (a reply, a meeting, an
+issue changing) should watch for it rather than only being re-checked on a
+schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
+Call list_trigger_fields first to see what a trigger actually delivers (call it with
+a wrong name to list every subscribable trigger); conditions must name real payload fields.
+Scope the watch to the specific thing you are waiting for, keyed on what identifies it
+(a sender domain, an order or invoice number, a subject token), not broad generic words,
+so it fires on the real event and little else. If it later proves noisy, tighten it.
+Per-resource triggers (github, slack, sheets, notion, linear, asana) also need a
+registration scope naming which resource to watch (which repo, channel, or sheet);
+list_trigger_fields shows it, pass it via the subscribe tool's scope argument.
+Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
 
 QUICK DECISION:
@@ -29,7 +50,7 @@ QUICK DECISION:
 # Tool description for plan_tasks
 PLAN_TASKS_DESCRIPTION = """Create an execution plan for your current multi-step work.
 
-These steps are EPHEMERAL — they track YOUR progress right now, not the user's long-term tasks.
+These steps are EPHEMERAL: they track YOUR progress right now, not the user's long-term tasks.
 The first task is automatically marked as in_progress.
 
 Use when: 2+ steps needed for the current request.
@@ -56,7 +77,62 @@ Examples:
   update_tasks(updates=[{"content": "Review output before sending"}])
 
 Use the task IDs shown in brackets in your task list, e.g., (abc123).
+Those IDs are wiring for tool calls only: never repeat one in user-visible text.
 Valid statuses: in_progress, completed, cancelled.
 
 NOTE: These update execution plan steps, not user-facing todos.
 To create/update persistent tasks, use create_tracked_todo / update_tracked_todo."""
+
+
+# Guidance shown to a tracked todo woken by a trigger it subscribed to. Judge
+# each fire: a watch that keeps waking the run on non-qualifying events is too
+# loose and should be tightened, not paid for on every false positive.
+TRIGGERED_RELEVANCE_GUIDANCE = (
+    "Before you act, decide whether this event is actually the thing this todo is "
+    "watching for. Treat a fire as a candidate to verify, not proof. If it is not "
+    "relevant, do not act on it: append a one-line non-match entry to activity.md (what "
+    "fired, why it did not qualify) and leave the todo unchanged. If activity.md shows "
+    "this same watch has now woken you on two or three things that did not qualify, the "
+    "watch is too loose: tighten it so it stops costing a run on noise. Unsubscribe the "
+    "current watch and re-subscribe with narrower conditions keyed on what actually "
+    "distinguishes the real thing (a specific sender domain, an order or invoice number, "
+    "a subject token), then note what you tightened and why."
+)
+
+
+# Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
+# reads the run's final report and messages the user only when it matters, so
+# the run must neither notify on its own nor decide delivery for the user.
+DELIVERED_RESULT_GUIDANCE = (
+    "REPORTING: end with a factual report of this run: what you checked or did, what "
+    "is new since the last run (or that nothing is), and anything the user must decide. "
+    "Say when the todo's notes show the user already knows about an open question, and "
+    "when they asked to hear every result. GAIA reads that report and messages the user "
+    "only if it matters, so write it for GAIA, not as a message to them. Do "
+    "NOT call send_notification to announce this run's outcome, because that sends it "
+    "a second time. Notify only for something separate and urgent that cannot wait. "
+    "Leave this todo's delivery settings alone: whether its runs reach the user is "
+    "the user's choice. "
+    "If this run proved the todo's goal is fully achieved (the fix is live and "
+    "verified, the watched event arrived and is handled), update canvas.md Learnings "
+    "and call complete_tracked_todo in the same run instead of leaving it open. "
+    "Do not wait for the user to report it."
+)
+
+# The counterpart for a silent todo: nothing is delivered, so a result the user
+# needs has to be sent deliberately or it is lost in the canvas.
+SILENT_RUN_GUIDANCE = (
+    "DELIVERY: this todo is silent, so your final message is NOT sent to the user. "
+    "Record the outcome in the todo's files. If something genuinely needs them, "
+    "send_notification is the only way to reach them. "
+    "If the goal is fully achieved (the fix is live and verified, the watched "
+    "event arrived and is handled), update canvas.md Learnings and call "
+    "complete_tracked_todo in the same run instead of leaving it open."
+)
+
+# The maintenance sweep asks for a verdict and sends the resulting message
+# itself; a run that also notifies makes the user's phone buzz twice for one todo.
+HEALTH_CHECK_VERDICT_ONLY = (
+    "Return the verdict only. Do not act on the todo and do not notify the user: "
+    "whoever asked for this check sends the message."
+)

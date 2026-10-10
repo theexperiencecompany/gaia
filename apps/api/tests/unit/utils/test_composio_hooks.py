@@ -5,22 +5,35 @@ Covers:
 - ComposioHookRegistry: register, execute, error handling
 - Decorator-based registration (register_before_hook, register_after_hook, register_schema_modifier)
 - Master hooks delegation
-- user_id_hooks: user_id/entity_id extraction from RunnableConfig metadata
+- registry identity: user_id/entity_id extraction from RunnableConfig metadata
 - gmail_hooks: schema modifiers, before hooks (validation, streaming), after hooks (response processing)
 - slack_hooks: search schema modifier
 - twitter_hooks: schema modifiers, before/after hooks for search/timeline/user lookup/followers/post
 - reddit_hooks: helper functions, before/after hooks for search/post/comments/content creation
 """
 
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 from composio.types import ToolExecuteParams
+from pydantic import ValidationError
+import pytest
 
+from app.models.integrations.reddit_hooks import (
+    RedditCommentThing,
+    RedditPost,
+    RedditPostThing,
+    RedditSearchData,
+)
+from app.utils.composio_hooks.gmail_hooks import gmail_compose_require_subject_schema_modifier
 from app.utils.composio_hooks.reddit_hooks import (
     process_reddit_comment,
     process_reddit_post,
     process_reddit_search_results,
+    reddit_comments_after_hook,
+    reddit_post_detail_after_hook,
+    reddit_search_after_hook,
 )
 from app.utils.composio_hooks.registry import (
     ComposioHookRegistry,
@@ -28,10 +41,19 @@ from app.utils.composio_hooks.registry import (
     register_before_hook,
     register_schema_modifier,
 )
+from app.utils.composio_hooks.twitter_hooks import (
+    twitter_followers_after_hook,
+    twitter_post_created_after_hook,
+    twitter_search_after_hook,
+    twitter_timeline_after_hook,
+    twitter_user_lookup_after_hook,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_ENVELOPE = {"data": {"raw": True}, "successful": True, "error": None}
 
 
 def _make_tool_schema(**overrides: Any) -> MagicMock:
@@ -63,7 +85,7 @@ def _make_response(
 
 
 def _noop_writer() -> MagicMock:
-    """Return a callable mock suitable for ``get_stream_writer``."""
+    """Return a callable mock suitable for get_stream_writer."""
     return MagicMock()
 
 
@@ -192,6 +214,11 @@ class TestComposioHookRegistry:
         result = registry.execute_before_hooks("T", "K", params)
         assert result is params
 
+    def test_a_new_registry_hooks_no_tools(self) -> None:
+        registry = ComposioHookRegistry()
+        assert registry.after_hook_tools == set()
+        assert registry.has_broad_after_hook is False
+
     def test_empty_registry_returns_response_unchanged(self) -> None:
         registry = ComposioHookRegistry()
         response = {"data": "hello"}
@@ -219,6 +246,8 @@ class TestDecoratorRegistration:
 
         self._orig_before = hook_registry._before_hooks.copy()
         self._orig_after = hook_registry._after_hooks.copy()
+        self._orig_after_tools = hook_registry.after_hook_tools.copy()
+        self._orig_broad = hook_registry.has_broad_after_hook
         self._orig_schema = hook_registry._schema_modifiers.copy()
 
     def teardown_method(self) -> None:
@@ -226,6 +255,8 @@ class TestDecoratorRegistration:
 
         hook_registry._before_hooks = self._orig_before
         hook_registry._after_hooks = self._orig_after
+        hook_registry.after_hook_tools = self._orig_after_tools
+        hook_registry.has_broad_after_hook = self._orig_broad
         hook_registry._schema_modifiers = self._orig_schema
 
     def test_before_hook_with_specific_tool_matches(self) -> None:
@@ -294,8 +325,26 @@ class TestDecoratorRegistration:
             return {"processed": True}
 
         # Matching
-        result = hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", "raw")
-        assert result == {"processed": True}
+        result = hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"processed": True}}
+
+    def test_after_hook_gets_the_call_and_a_failed_call_skips_it(self) -> None:
+        from app.utils.composio_hooks.registry import hook_registry
+
+        calls: list[tuple[str, str, Any]] = []
+
+        @register_after_hook(tools=["GMAIL_FETCH_EMAILS"])
+        def gmail_after(tool: str, toolkit: str, response: Any) -> Any:
+            calls.append((tool, toolkit, response))
+            return {"processed": True}
+
+        failed = {"data": {}, "successful": False, "error": "Rate limited"}
+        assert hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", failed) == failed
+        assert calls == []
+        hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)
+        assert calls == [("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)]
+        assert "GMAIL_FETCH_EMAILS" in hook_registry.after_hook_tools
+        assert hook_registry.has_broad_after_hook is False
 
     def test_after_hook_skips_non_matching(self) -> None:
         from app.utils.composio_hooks.registry import hook_registry
@@ -368,66 +417,186 @@ class TestMasterHooks:
             assert result is schema
 
 
-# ============================================================================
-# 4. User ID hooks
-# ============================================================================
+class TestCallIdentityResolution:
+    """master_before_execute_hook resolves the calling user from RunnableConfig metadata, once."""
 
+    def _with_config(self, top_id: str | None, meta_id: str | None) -> Any:
+        params = _make_params({"subject": "s"})
+        if top_id is not None:
+            params["user_id"] = top_id
+        if meta_id is not None:
+            params["arguments"]["__runnable_config__"] = {"metadata": {"user_id": meta_id}}
+        return params
 
-class TestUserIdHooks:
-    """Tests for user_id extraction from RunnableConfig metadata."""
-
-    def test_extracts_user_id_and_entity_id(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params(
-            {
-                "__runnable_config__": {
-                    "metadata": {"user_id": "user_123"},
-                },
-                "query": "test",
-            }
+    def test_conflict_resolves_to_metadata_identity(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
         )
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+
+        params = self._with_config("attacker", "u1")
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_match_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", "u1")
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ) as mock:
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+        assert mock.call_args.args[2] is params
+
+    def test_absent_metadata_leaves_params_untouched(self) -> None:
+        # Trigger-option flow binds the user at get_tool time (no metadata):
+        # nothing to enforce against, Composio-set identity stands.
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", None)
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_metadata_without_user_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = _make_params({"subject": "s"})
+        params["user_id"] = "u1"
+        params["arguments"]["__runnable_config__"] = {"metadata": {}}
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def _run(self, params: Any) -> Any:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            return master_before_execute_hook("T", "K", params)
+
+    def test_metadata_identity_sets_user_and_entity_id(self) -> None:
+        result = self._run(
+            _make_params(
+                {"__runnable_config__": {"metadata": {"user_id": "user_123"}}, "query": "test"}
+            )
+        )
         assert result["user_id"] == "user_123"
+        # Composio's connected-account auth still reads the legacy entity_id.
         assert result["entity_id"] == "user_123"
-        # __runnable_config__ should be popped from arguments
+
+    def test_runnable_config_never_reaches_the_hooks_or_the_tool(self) -> None:
+        # It is our transport for identity, not a tool argument.
+        result = self._run(
+            _make_params({"__runnable_config__": {"metadata": {"user_id": "u1"}}, "query": "q"})
+        )
         assert "__runnable_config__" not in result["arguments"]
 
-    def test_no_runnable_config_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
+    def test_identity_is_resolved_before_any_hook_runs(self) -> None:
+        # The attachment hooks abort without a user, so ordering is the contract:
+        # a hook must never observe the pre-metadata identity.
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
 
-        params = _make_params({"query": "test"})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+        seen: list[str | None] = []
+        params = _make_params({"__runnable_config__": {"metadata": {"user_id": "u1"}}})
+        params["user_id"] = ""
+        with patch.object(
+            hook_registry,
+            "execute_before_hooks",
+            side_effect=lambda t, k, p: (seen.append(p.get("user_id")), p)[1],
+        ):
+            master_before_execute_hook("T", "K", params)
+        assert seen == ["u1"]
+
+    def test_no_runnable_config_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"query": "test"}))
         assert "user_id" not in result
         assert "entity_id" not in result
 
-    def test_empty_metadata_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": {"metadata": {}}})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_blank_metadata_user_id_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": {"user_id": ""}}}))
         assert "user_id" not in result
 
-    def test_none_user_id_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": {"metadata": {"user_id": None}}})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_none_metadata_user_id_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": {"user_id": None}}}))
         assert "user_id" not in result
 
-    def test_empty_arguments_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params()
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_empty_arguments_leave_identity_unset(self) -> None:
+        result = self._run(_make_params())
         assert "user_id" not in result
 
-    def test_config_is_not_dict_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": "not_a_dict"})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_non_dict_runnable_config_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": "not_a_dict"}))
         assert "user_id" not in result
+
+    def test_non_dict_metadata_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": "nope"}}))
+        assert "user_id" not in result
+
+    def test_non_dict_arguments_leave_identity_unset(self) -> None:
+        params: Any = {"arguments": "not-a-dict"}
+        assert "user_id" not in self._run(params)
+
+    def _logged(self, params: Any) -> Any:
+        """Run master_before_execute_hook once and return the mocked wide-event log."""
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        with (
+            patch("app.utils.composio_hooks.registry.log") as log,
+            patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p),
+        ):
+            master_before_execute_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        return log
+
+    def _warnings(self, params: Any) -> list[Any]:
+        """Every warning the identity resolution emitted for this call."""
+        return self._logged(params).warning.call_args_list
+
+    def test_every_call_is_attributed_to_its_tool_on_the_wide_event(self) -> None:
+        # The only place a Composio call's tool/toolkit reach the event; without
+        # them a failing tool is unattributable in production.
+        log = self._logged(self._with_config("u1", "u1"))
+        assert log.set.call_args.kwargs == {
+            "composio_tool": "GMAIL_SEND_EMAIL",
+            "composio_toolkit": "gmail",
+        }
+
+    def test_an_overwritten_identity_is_reported_on_the_wide_event(self) -> None:
+        # The overwrite is a security-relevant event — a user_id reached the hook
+        # that was not the one our server injected — so it must leave a trace
+        # naming the tool it happened on, not be silently corrected.
+        calls = self._warnings(self._with_config("attacker", "u1"))
+        assert len(calls) == 1
+        message, kwargs = calls[0].args[0], calls[0].kwargs
+        assert "user_id" in message and "RunnableConfig" in message
+        assert kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+
+    def test_no_warning_when_the_identities_agree(self) -> None:
+        assert self._warnings(self._with_config("u1", "u1")) == []
+
+    def test_no_warning_when_nothing_was_bound_to_overwrite(self) -> None:
+        # The agent flow binds user_id="" and names the user per invocation;
+        # filling that in is the normal path, not a conflict.
+        assert self._warnings(self._with_config("", "u1")) == []
 
 
 # ============================================================================
@@ -447,6 +616,19 @@ class TestGmailSchemaModifiers:
         result = gmail_send_email_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
         assert "GMAIL_CREATE_EMAIL_DRAFT" in result.description
         assert "GMAIL_SEND_DRAFT" in result.description
+
+    def test_compose_schema_requires_a_subject_and_says_what_to_write(self) -> None:
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"subject": {"type": "string"}}, "required": []}
+        )
+        result = gmail_compose_require_subject_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
+        subject = result.input_parameters["properties"]["subject"]
+        assert result.input_parameters["required"] == ["subject"]
+        assert subject["minLength"] == 1
+        assert subject["description"] == (
+            "Email subject line. Required: write a clear, specific subject "
+            "that summarizes the email. Never leave it blank."
+        )
 
     def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
@@ -476,14 +658,16 @@ class TestGmailSchemaModifiers:
         result = gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         assert result is schema
 
-    def test_schema_modifier_handles_non_dict_properties(self) -> None:
+    def test_schema_modifier_rejects_non_dict_properties(self) -> None:
+        # Not a JSON-schema object: it fails to parse (the registry logs and keeps
+        # the schema untouched) rather than being silently walked around.
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_fetch_message_schema_modifier,
         )
 
         schema = _make_tool_schema(input_parameters={"properties": "not_a_dict"})
-        result = gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
-        assert result is schema
+        with pytest.raises(ValidationError):
+            gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
 
 
 # ============================================================================
@@ -555,7 +739,10 @@ class TestGmailBeforeHooks:
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_draft_data(self, mock_writer: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_before_hook,
+            gmail_create_draft_after_hook,
+        )
 
         writer = _noop_writer()
         mock_writer.return_value = writer
@@ -567,9 +754,15 @@ class TestGmailBeforeHooks:
             }
         )
         gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        # The draft card is streamed by the after-hook, once the draft exists.
+        gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", {"data": {"id": "d1"}})
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert "email_compose_data" in payload
+        assert payload["email_compose_data"][0]["subject"] == "Draft Test"
+        # No attachments to preserve, so the card stays an editable compose
+        # rather than a locked "send this draft verbatim" one.
+        assert "draft_id" not in payload["email_compose_data"][0]
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:
@@ -895,7 +1088,7 @@ class TestGmailAfterHooks:
                     "time": "now",
                     "snippet": "...",
                     "body": "text",
-                    "content": "text",
+                    "content": {"text": "text", "html": "<p>text</p>"},
                 }
             ],
             "messageCount": 1,
@@ -962,13 +1155,6 @@ class TestGmailAfterHooks:
         assert result["size"] == 1024
         assert "data" not in result
         assert "message" in result
-
-    def test_attachment_after_hook_unsuccessful(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
-
-        response = _make_response({"error": "Not found"}, successful=False)
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
-        assert result == {"error": "Not found"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
     def test_fetch_by_id_after_hook(self, mock_template: MagicMock) -> None:
@@ -1143,12 +1329,12 @@ class TestSlackHooks:
         result = slack_search_schema_modifier("SLACK_SEARCH_ALL", "SLACK", schema)
         assert result is schema
 
-    def test_slack_search_schema_modifier_non_dict_properties(self) -> None:
+    def test_slack_search_schema_modifier_rejects_non_dict_properties(self) -> None:
         from app.utils.composio_hooks.slack_hooks import slack_search_schema_modifier
 
         schema = _make_tool_schema(input_parameters={"properties": "bad"})
-        result = slack_search_schema_modifier("SLACK_SEARCH_ALL", "SLACK", schema)
-        assert result is schema
+        with pytest.raises(ValidationError):
+            slack_search_schema_modifier("SLACK_SEARCH_ALL", "SLACK", schema)
 
 
 # ============================================================================
@@ -1246,8 +1432,15 @@ class TestTwitterBeforeHooks:
         assert result is params
         writer.assert_called_once()
         payload = writer.call_args[0][0]
-        assert payload["twitter_post_preview"]["text"] == "Hello Twitter!"
-        assert payload["twitter_post_preview"]["quote_tweet_id"] == "qt123"
+        assert payload == {
+            "twitter_post_preview": {
+                "text": "Hello Twitter!",
+                "quote_tweet_id": "qt123",
+                "reply_to_tweet_id": "rt456",
+                "media_ids": ["media1"],
+                "poll_options": ["Yes", "No"],
+            }
+        }
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_create_post_before_hook_no_writer(self, mock_writer: MagicMock) -> None:
@@ -1315,13 +1508,91 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
-        assert result["result_count"] == 1
-        assert result["has_more"] is True
-        assert result["tweets"][0]["author_username"] == "testuser"
-        assert result["tweets"][0]["likes"] == 10
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "twitter_search_data" in payload
+        assert result == {
+            "tweets": [
+                {
+                    "id": "tw1",
+                    "text": "Hello world",
+                    "author_username": "testuser",
+                    "author_name": "Test User",
+                    "likes": 10,
+                    "retweets": 5,
+                }
+            ],
+            "result_count": 1,
+            "has_more": True,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_search_data": {
+                    "tweets": [
+                        {
+                            "id": "tw1",
+                            "text": "Hello world",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "author": {
+                                "id": "u1",
+                                "username": "testuser",
+                                "name": "Test User",
+                                "profile_image_url": "https://img.com/pic.jpg",
+                                "verified": True,
+                                "description": "Bio",
+                                # only the metric X sent, not the model's zero defaults
+                                "public_metrics": {"followers_count": 100},
+                            },
+                            "public_metrics": {"like_count": 10, "retweet_count": 5},
+                            "conversation_id": "conv1",
+                        }
+                    ],
+                    "result_count": 1,
+                    "next_token": "tok123",
+                }
+            }
+        )
+
+    @pytest.mark.parametrize(("meta", "expected_count"), [({"result_count": 7}, 7), ({}, 1)])
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_result_count_prefers_meta_else_page_size(
+        self, mock_writer: MagicMock, meta: dict[str, int], expected_count: int
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": [{"id": "tw1", "text": "hi"}], "meta": meta})
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["result_count"] == expected_count
+        assert writer.call_args[0][0]["twitter_search_data"]["result_count"] == expected_count
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_tweet_without_expansions_uses_placeholders(
+        self, mock_writer: MagicMock
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        text_at_limit = "x" * 200
+        response = _make_response(
+            {"data": [{"id": "tw1", "text": text_at_limit, "author_id": "missing"}]}
+        )
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["tweets"] == [
+            {
+                "id": "tw1",
+                "text": text_at_limit,
+                "author_username": "unknown",
+                "author_name": "Unknown",
+                "likes": 0,
+                "retweets": 0,
+            }
+        ]
+        assert writer.call_args[0][0]["twitter_search_data"]["tweets"] == [
+            {
+                "id": "tw1",
+                "text": text_at_limit,
+                "created_at": None,
+                "author": {"username": "unknown", "name": "Unknown"},
+                "public_metrics": {},
+                "conversation_id": None,
+            }
+        ]
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:
@@ -1382,9 +1653,56 @@ class TestTwitterAfterHooks:
         result = twitter_user_lookup_after_hook(
             "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
         )
-        assert result["users"][0]["username"] == "johndoe"
-        assert result["users"][0]["followers"] == 1000
-        writer.assert_called_once()
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "johndoe",
+                    "name": "John Doe",
+                    "followers": 1000,
+                    "following": 200,
+                    "verified": True,
+                }
+            ]
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_user_data": [
+                    {
+                        "id": "u1",
+                        "username": "johndoe",
+                        "name": "John Doe",
+                        "description": "Dev",
+                        "profile_image_url": "https://img.com/pic.jpg",
+                        "verified": True,
+                        "public_metrics": {"followers_count": 1000, "following_count": 200},
+                        "created_at": "2020-01-01",
+                        "location": "NYC",
+                        "url": "https://example.com",
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_user_lookup_after_hook_bare_user_object(self, mock_writer: MagicMock) -> None:
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"id": "u9", "username": "bare", "name": "Bare"})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {
+            "users": [
+                {
+                    "id": "u9",
+                    "username": "bare",
+                    "name": "Bare",
+                    "followers": 0,
+                    "following": 0,
+                    "verified": False,
+                }
+            ]
+        }
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_user_lookup_after_hook_multiple_users(self, mock_writer: MagicMock) -> None:
@@ -1451,9 +1769,31 @@ class TestTwitterAfterHooks:
         result = twitter_timeline_after_hook(
             "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
         )
-        assert result["tweets"][0]["author"] == "testuser"
-        assert result["count"] == 1
-        writer.assert_called_once()
+        assert result == {
+            "tweets": [{"id": "tw1", "text": "Timeline tweet", "author": "testuser", "likes": 5}],
+            "count": 1,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_timeline_data": {
+                    "tweets": [
+                        {
+                            "id": "tw1",
+                            "text": "Timeline tweet",
+                            "created_at": "2024-01-01",
+                            "author": {
+                                "id": "u1",
+                                "username": "testuser",
+                                "name": "Test",
+                                "profile_image_url": "https://img.com",
+                                "verified": False,
+                            },
+                            "public_metrics": {"like_count": 5},
+                        }
+                    ]
+                }
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_followers_after_hook(self, mock_writer: MagicMock) -> None:
@@ -1478,11 +1818,26 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
-        assert result["users"][0]["username"] == "follower1"
-        assert result["has_more"] is True
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "twitter_followers_data" in payload
+        assert result == {
+            "users": [{"id": "u1", "username": "follower1", "name": "Follower 1", "followers": 50}],
+            "count": 1,
+            "has_more": True,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_followers_data": [
+                    {
+                        "id": "u1",
+                        "username": "follower1",
+                        "name": "Follower 1",
+                        "profile_image_url": "https://img.com",
+                        "verified": False,
+                        "description": "Bio",
+                        "public_metrics": {"followers_count": 50},
+                    }
+                ]
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_following_after_hook_uses_following_key(self, mock_writer: MagicMock) -> None:
@@ -1526,12 +1881,11 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert result["success"] is True
-        assert result["id"] == "post123"
-        assert "twitter.com" in result["url"]
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["twitter_post_created"]["id"] == "post123"
+        url = "https://twitter.com/i/status/post123"
+        assert result == {"success": True, "id": "post123", "text": "My new tweet", "url": url}
+        writer.assert_called_once_with(
+            {"twitter_post_created": {"id": "post123", "text": "My new tweet", "url": url}}
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
@@ -1543,6 +1897,103 @@ class TestTwitterAfterHooks:
         response = _make_response({"error": "Duplicate"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
+
+    @pytest.mark.parametrize(
+        ("hook", "tool"),
+        [
+            (twitter_user_lookup_after_hook, "TWITTER_USER_LOOKUP_BY_USERNAME"),
+            (twitter_timeline_after_hook, "TWITTER_USER_HOME_TIMELINE_BY_USER_ID"),
+            (twitter_followers_after_hook, "TWITTER_FOLLOWERS_BY_USER_ID"),
+            (twitter_post_created_after_hook, "TWITTER_CREATION_OF_A_POST"),
+        ],
+    )
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_error_response_passes_through_without_hook_failure(
+        self,
+        mock_writer: MagicMock,
+        mock_log: MagicMock,
+        hook: Callable[[str, str, Any], object],
+        tool: str,
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        result = hook(tool, "TWITTER", _make_response({"error": "Rate limited"}))
+        assert result == {"error": "Rate limited"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("hook", "tool", "data", "expected"),
+        [
+            (
+                twitter_search_after_hook,
+                "TWITTER_RECENT_SEARCH",
+                {"data": [{"id": "tw1", "text": "hi"}]},
+                {
+                    "tweets": [
+                        {
+                            "id": "tw1",
+                            "text": "hi",
+                            "author_username": "unknown",
+                            "author_name": "Unknown",
+                            "likes": 0,
+                            "retweets": 0,
+                        }
+                    ],
+                    "result_count": 1,
+                    "has_more": False,
+                },
+            ),
+            (
+                twitter_user_lookup_after_hook,
+                "TWITTER_USER_LOOKUP_BY_USERNAME",
+                {"data": {"id": "u1", "username": "a", "name": "A"}},
+                {
+                    "users": [
+                        {
+                            "id": "u1",
+                            "username": "a",
+                            "name": "A",
+                            "followers": 0,
+                            "following": 0,
+                            "verified": False,
+                        }
+                    ]
+                },
+            ),
+            (
+                twitter_timeline_after_hook,
+                "TWITTER_USER_HOME_TIMELINE_BY_USER_ID",
+                {"data": [{"id": "tw1", "text": "hi"}]},
+                {
+                    "tweets": [{"id": "tw1", "text": "hi", "author": "unknown", "likes": 0}],
+                    "count": 1,
+                },
+            ),
+            (
+                twitter_followers_after_hook,
+                "TWITTER_FOLLOWERS_BY_USER_ID",
+                {"data": [{"id": "u1", "username": "a", "name": "A"}]},
+                {
+                    "users": [{"id": "u1", "username": "a", "name": "A", "followers": 0}],
+                    "count": 1,
+                    "has_more": False,
+                },
+            ),
+        ],
+    )
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_after_hook_returns_summary_without_stream_writer(
+        self,
+        mock_writer: MagicMock,
+        hook: Callable[[str, str, Any], object],
+        tool: str,
+        data: dict[str, Any],
+        expected: dict[str, Any],
+    ) -> None:
+        mock_writer.return_value = None
+        assert hook(tool, "TWITTER", _make_response(data)) == expected
 
 
 # ============================================================================
@@ -1576,14 +2027,11 @@ class TestRedditHelpers:
                 "stickied": False,
             }
         }
-        result = process_reddit_post(post)
-        assert result["id"] == "abc123"
-        assert result["title"] == "Test Post"
-        assert result["score"] == 42
-        assert result["is_self"] is True
+        result = process_reddit_post(RedditPostThing.model_validate(post).data)
+        assert result == post["data"]
 
     def test_process_reddit_post_empty_data(self) -> None:
-        result = process_reddit_post({})
+        result = process_reddit_post(RedditPost())
         assert result["id"] == ""
         assert result["title"] == ""
 
@@ -1605,10 +2053,8 @@ class TestRedditHelpers:
                 "edited": False,
             }
         }
-        result = process_reddit_comment(comment)
-        assert result["id"] == "cmt1"
-        assert result["body"] == "Great post!"
-        assert result["score"] == 15
+        result = process_reddit_comment(RedditCommentThing.model_validate(comment).data)
+        assert result == comment["data"]
 
     def test_process_reddit_search_results(self) -> None:
         response = {
@@ -1620,17 +2066,20 @@ class TestRedditHelpers:
                         {"kind": "t1", "data": {"id": "c1"}},  # comment, skipped
                     ],
                     "after": "cursor123",
-                    "before": None,
+                    "before": "cursor000",
                 }
             }
         }
-        result = process_reddit_search_results(response)
+        result = process_reddit_search_results(RedditSearchData.model_validate(response))
         assert result["result_count"] == 2
         assert result["after"] == "cursor123"
+        assert result["before"] == "cursor000"
         assert result["posts"][0]["id"] == "p1"
 
     def test_process_reddit_search_results_empty(self) -> None:
-        result = process_reddit_search_results({"search_results": {"data": {"children": []}}})
+        result = process_reddit_search_results(
+            RedditSearchData.model_validate({"search_results": {"data": {"children": []}}})
+        )
         assert result["result_count"] == 0
         assert result["posts"] == []
 
@@ -1775,9 +2224,66 @@ class TestRedditAfterHooks:
         result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         assert result["result_count"] == 1
         assert result["posts"][0]["id"] == "p1"
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["reddit_data"]["type"] == "search"
+        writer.assert_called_once_with(
+            {
+                "reddit_data": {
+                    "type": "search",
+                    "posts": [
+                        {
+                            "id": "p1",
+                            "title": "Python Tips",
+                            "author": "dev",
+                            "subreddit": "r/python",
+                            "score": 100,
+                            "num_comments": 20,
+                            "created_utc": 1704067200,
+                            "permalink": "/r/python/p1",
+                            "url": "https://reddit.com/r/python/p1",
+                            "selftext": "Short text",
+                        }
+                    ],
+                }
+            }
+        )
+
+    @pytest.mark.parametrize(
+        ("selftext", "shown"), [("a" * 200, "a" * 200), ("a" * 201, "a" * 200 + "...")]
+    )
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_truncates_selftext_past_limit(
+        self, mock_writer: MagicMock, selftext: str, shown: str
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "search_results": {
+                    "data": {"children": [{"kind": "t3", "data": {"selftext": selftext}}]}
+                }
+            }
+        )
+        reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+        assert writer.call_args[0][0]["reddit_data"]["posts"][0]["selftext"] == shown
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_returns_summary_without_stream_writer(
+        self, mock_writer: MagicMock
+    ) -> None:
+        mock_writer.return_value = None
+        response = _make_response(
+            {"search_results": {"data": {"children": [{"kind": "t3", "data": {"id": "p1"}}]}}}
+        )
+        result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+        assert result["result_count"] == 1
+        assert result["posts"][0]["id"] == "p1"
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_no_posts_streams_nothing(self, mock_writer: MagicMock) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"search_results": {"data": {"children": []}}})
+        reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+        writer.assert_not_called()
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:
@@ -1815,9 +2321,45 @@ class TestRedditAfterHooks:
         )
         result = reddit_post_detail_after_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response)
         assert result["id"] == "p1"
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["reddit_data"]["type"] == "post"
+        writer.assert_called_once_with(
+            {
+                "reddit_data": {
+                    "type": "post",
+                    "post": {
+                        "id": "p1",
+                        "title": "Detail Post",
+                        "author": "author1",
+                        "subreddit": "r/python",
+                        "score": 50,
+                        "upvote_ratio": 0.9,
+                        "num_comments": 5,
+                        "created_utc": 1704067200,
+                        "selftext": "Content here",
+                        "url": "https://reddit.com/r/python/p1",
+                        "permalink": "/r/python/p1",
+                        "is_self": True,
+                        "link_flair_text": None,
+                    },
+                }
+            }
+        )
+
+    @pytest.mark.parametrize(
+        ("hook", "tool"),
+        [
+            (reddit_post_detail_after_hook, "REDDIT_RETRIEVE_REDDIT_POST"),
+            (reddit_comments_after_hook, "REDDIT_RETRIEVE_POST_COMMENTS"),
+        ],
+    )
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_retrieve_error_response_passes_through(
+        self, mock_writer: MagicMock, hook: Callable[[str, str, Any], object], tool: str
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        result = hook(tool, "REDDIT", _make_response({"error": "Not found"}))
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_comments_after_hook_array_format(self, mock_writer: MagicMock) -> None:
@@ -1853,7 +2395,45 @@ class TestRedditAfterHooks:
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 1
         assert result["comments"][0]["body"] == "Nice post!"
-        writer.assert_called_once()
+        writer.assert_called_once_with(
+            {
+                "reddit_data": {
+                    "type": "comments",
+                    "comments": [
+                        {
+                            "id": "c1",
+                            "author": "commenter",
+                            "body": "Nice post!",
+                            "score": 10,
+                            "created_utc": 1704067200,
+                            "permalink": "/r/python/p1/c1",
+                            "is_submitter": False,
+                        }
+                    ],
+                }
+            }
+        )
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_comments_after_hook_array_without_comments_listing(
+        self, mock_writer: MagicMock
+    ) -> None:
+        mock_writer.return_value = _noop_writer()
+        response = _make_response([{"data": {"children": []}}])
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert result == {"comments": [], "comment_count": 0}
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_comments_after_hook_skips_t1_without_body(self, mock_writer: MagicMock) -> None:
+        mock_writer.return_value = _noop_writer()
+        children = [
+            {"kind": "t1", "data": {"id": "deleted", "body": ""}},
+            {"kind": "t1", "data": {"id": "c1", "body": "kept"}},
+        ]
+        response = _make_response({"comments": {"data": {"children": children}}})
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert [comment["id"] for comment in result["comments"]] == ["c1"]
+        assert result["comment_count"] == 1
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_comments_after_hook_dict_format(self, mock_writer: MagicMock) -> None:
@@ -1921,9 +2501,19 @@ class TestRedditAfterHooks:
         result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
         assert result["success"] is True
         assert result["id"] == "new_post"
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["reddit_data"]["type"] == "post_created"
+        writer.assert_called_once_with(
+            {
+                "reddit_data": {
+                    "type": "post_created",
+                    "data": {
+                        "id": "new_post",
+                        "url": "https://reddit.com/r/python/new_post",
+                        "message": "Post created successfully!",
+                        "permalink": "/r/python/new_post",
+                    },
+                }
+            }
+        )
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_content_created_after_hook_comment(self, mock_writer: MagicMock) -> None:
@@ -1941,9 +2531,18 @@ class TestRedditAfterHooks:
         )
         result = reddit_content_created_after_hook("REDDIT_POST_REDDIT_COMMENT", "REDDIT", response)
         assert result["success"] is True
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["reddit_data"]["type"] == "comment_created"
+        writer.assert_called_once_with(
+            {
+                "reddit_data": {
+                    "type": "comment_created",
+                    "data": {
+                        "id": "new_comment",
+                        "message": "Comment posted successfully!",
+                        "permalink": "/r/python/p1/new_comment",
+                    },
+                }
+            }
+        )
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_content_created_after_hook_error(self, mock_writer: MagicMock) -> None:
@@ -2255,6 +2854,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
 
         self._orig_before = hook_registry._before_hooks.copy()
         self._orig_after = hook_registry._after_hooks.copy()
+        self._orig_after_tools = hook_registry.after_hook_tools.copy()
+        self._orig_broad = hook_registry.has_broad_after_hook
         self._orig_schema = hook_registry._schema_modifiers.copy()
 
     def teardown_method(self) -> None:
@@ -2262,6 +2863,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
 
         hook_registry._before_hooks = self._orig_before
         hook_registry._after_hooks = self._orig_after
+        hook_registry.after_hook_tools = self._orig_after_tools
+        hook_registry.has_broad_after_hook = self._orig_broad
         hook_registry._schema_modifiers = self._orig_schema
 
     def test_after_hook_string_toolkit(self) -> None:
@@ -2272,8 +2875,9 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def slack_toolkit_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"slack_processed": True}
 
-        result = hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", "raw")
-        assert result == {"slack_processed": True}
+        result = hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"slack_processed": True}}
+        assert hook_registry.has_broad_after_hook is True
 
     def test_after_hook_string_tool(self) -> None:
         """register_after_hook with tools as a single string."""
@@ -2283,8 +2887,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def single_tool_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"single": True}
 
-        result = hook_registry.execute_after_hooks("MY_TOOL", "KIT", "raw")
-        assert result == {"single": True}
+        result = hook_registry.execute_after_hooks("MY_TOOL", "KIT", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"single": True}}
 
     def test_schema_modifier_string_toolkit(self) -> None:
         """register_schema_modifier with toolkits as a string."""
@@ -2333,8 +2937,9 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def universal_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"universal": True}
 
-        result = hook_registry.execute_after_hooks("ANY", "ANY", "raw")
-        assert result == {"universal": True}
+        result = hook_registry.execute_after_hooks("ANY", "ANY", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"universal": True}}
+        assert hook_registry.has_broad_after_hook is True
 
     def test_before_hook_string_toolkit(self) -> None:
         """register_before_hook with toolkits as a single string."""

@@ -28,22 +28,10 @@ export interface BackupResult {
 }
 
 /**
- * Extra volumes beyond the critical DBs.
- *
- * - `chroma_data` (compose key) → Docker volume `gaia-selfhost_chroma_data` — vector
- *   embeddings. Re-creatable from source documents but expensive (re-embed). Backed
- *   up best-effort via `alpine tar`.
- * - `gaia-sandbox-workspace` (pinned name) → ephemeral per-user workspace. Re-creatable;
- *   keep if you care about local sandbox files.
- *
- * Other volumes (redis_data, rabbitmq_data, juicefs_cache, models_cache) are
- * transient queues/caches and intentionally NOT backed up — they repopulate on
- * restart/re-download.
- *
- * The `docker run` one-liners below use the real Docker volume names. `chroma_data`
- * is what `docker volume ls` shows as `gaia-selfhost_chroma_data` under the
- * `gaia-selfhost` project; `gaia-sandbox-workspace` is pinned via `name:` in the
- * compose file so it is literal.
+ * Extra volumes beyond the critical DBs, backed up best-effort via `alpine tar`.
+ * `chroma_data` shows as `gaia-selfhost_chroma_data` under the `gaia-selfhost`
+ * project; `gaia-sandbox-workspace` is pinned via `name:` so it is literal.
+ * Other volumes (redis/rabbitmq/caches) are transient and intentionally skipped.
  */
 export const EXTRA_VOLUME_BACKUPS: ReadonlyArray<{
   volume: string;
@@ -254,10 +242,8 @@ export async function runBackup(
     );
   }
 
-  // Extra volumes: best-effort `alpine tar` dumps. Skip silently if the volume
-  // doesn't exist (fresh install or `gaia-sandbox-workspace` never created).
-  // These are re-creatable (Chroma re-embeds, sandbox is ephemeral) but we still
-  // snapshot them when present so a full restore is possible.
+  // Best-effort `alpine tar` dumps; skip missing volumes (fresh install).
+  // Both are re-creatable but snapshotted when present for full restore.
   const extraFiles: string[] = [];
   const warnings: string[] = [];
   for (const v of EXTRA_VOLUME_BACKUPS) {

@@ -1,7 +1,7 @@
-"""``seed(runs_dir=...)`` must read the journals it was pointed at.
+"""seed(runs_dir=...) must read the journals it was pointed at.
 
-``_group_runs_by_project`` honoured the parameter while ``_seed_project`` opened
-each journal at the module-level ``RUNS_DIR``. Any caller passing a different
+_group_runs_by_project honoured the parameter while _seed_project opened
+each journal at the module-level RUNS_DIR. Any caller passing a different
 directory — the ingest pilot, a test, a copy of the runs tree — grouped run ids
 from one place and read records from another, so the backfill silently wrote
 nothing (or, worse, whatever an unrelated run of the same id happened to hold).

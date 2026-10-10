@@ -1,7 +1,9 @@
-"""
-Reminder task handlers for static reminders only.
-"""
+"""Reminder task handlers for static reminders only."""
 
+from app.agents.core.background.result_delivery import deliver_message_to_conversation
+from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.decorators.entitlements import is_paid
+from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -9,16 +11,28 @@ from app.models.reminder_models import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
+from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.wide_events import log
 
+#: The surface name a paywalled reminder is attributed to in the funnel. Matches
+#: the snake_case surface naming the bot and onboarding gates pass (the HTTP
+#: middleware passes the request path instead, which is its surface).
+PAYWALL_FEATURE_REMINDER = "reminder"
+
+
+def _reminder_result_text(payload: StaticReminderPayload) -> str:
+    """Format the reminder body as GAIA would voice it into a chat: bold title, then body."""
+    segments = [
+        seg for seg in (f"**{payload.title}**" if payload.title else "", payload.body) if seg
+    ]
+    return "\n".join(segments)
+
 
 async def _execute_static_reminder(reminder: ReminderModel) -> None:
-    """
-    Execute a static reminder by sending a simple notification.
+    """Fire a static reminder: raise the in-app badge and deliver it to the user's platforms.
 
-    Args:
-        reminder: The static reminder to execute
+    Delivery is recorded into the conversation's langgraph thread so later turns can backtrack.
     """
     if not isinstance(reminder.payload, StaticReminderPayload):
         raise ValueError("Invalid payload type for static reminder")
@@ -36,26 +50,96 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
+    # Same delivery path a finished workflow uses, framed with the reminder id so a
+    # later turn can backtrack. Best-effort — the notification above is pinned to
+    # in-app, so this is the only platform send (no double delivery).
+    await _deliver_reminder_to_platforms(reminder)
+
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
+
+
+async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
+    """Deliver a fired reminder into its source chat and the user's other linked platforms, best-effort.
+
+    Side channel behind the in-app badge: swallows every failure — including
+    load_user_context's HTTPException on a transient error — so it never fails the
+    reminder or skips the recurring re-arm.
+    """
+    if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
+        return
+    try:
+        user = await load_user_context(reminder.user_id)
+        if user is None:
+            log.warning(
+                "Reminder platform delivery skipped: user not found",
+                reminder_id=reminder.id,
+                user_id=reminder.user_id,
+            )
+            return
+        text = _reminder_result_text(reminder.payload)
+        title = reminder.payload.title
+        origin = (
+            f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
+        )
+
+        delivered_source: ConversationSource | None = None
+        if reminder.source_conversation_id:
+            delivered_source = await deliver_message_to_conversation(
+                conversation_id=reminder.source_conversation_id,
+                user=user,
+                text=text,
+                origin=origin,
+            )
+
+        await deliver_result_to_platforms(
+            user=user,
+            user_id=reminder.user_id,
+            notification_text=text,
+            origin=origin,
+            exclude_source=delivered_source,
+        )
+    except Exception as e:  # side channel; the in-app badge already delivered
+        log.error(
+            "Reminder platform delivery failed",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
 ) -> None:
-    """
-    Execute a static reminder task.
-
-    This is the main entry point for reminder execution. Only handles
-    STATIC reminders that send simple notifications.
-
-    Args:
-        reminder: The reminder to execute
-    """
+    """Execute a static reminder task; the only agent type handled here is STATIC."""
     log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
     if not reminder.id:
-        log.error("Reminder has no ID, skipping execution", agent=reminder.agent)
+        log.error(
+            "Reminder has no ID, skipping execution",
+            agent=reminder.agent,
+            user_id=reminder.user_id,
+        )
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
+
+    # Paid-only gate; only SKIPS (never writes) so process_task_execution's own
+    # SCHEDULED/COMPLETED reschedule re-arms a recurring reminder once the
+    # subscription resumes — writing PAUSED here was always overwritten by that call.
+    if not await is_paid(reminder.user_id):
+        log.warning(
+            "Reminder skipped — subscription required",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+        )
+        # Same event every HTTP/bot paywall block fires; this gate skips instead
+        # of going through require_active_subscription, so without it the funnel
+        # could not see reminders lost to the wall.
+        capture_event(
+            reminder.user_id,
+            AnalyticsEvents.PAYWALL_BLOCKED,
+            {"feature": PAYWALL_FEATURE_REMINDER},
+        )
+        return
 
     try:
         if reminder.agent == AgentType.STATIC:
@@ -73,6 +157,7 @@ async def execute_reminder_by_agent(
         log.error(
             "Failed to execute reminder",
             reminder_id=reminder.id,
+            user_id=reminder.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

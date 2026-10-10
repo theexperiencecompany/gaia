@@ -1,13 +1,9 @@
 """Router-mount gating: the v1 API surface must not carry self-host routers.
 
-Under ``AUTH_MODE=workos`` (hosted + dev default) ``auth_local``'s signup and
-login endpoints must be absent from the assembled v1 router — a hosted
-deployment must expose neither a password-registration surface nor any
-password-auth flow, regardless of what the middleware would exclude.
-
-Note on scope: only the workos-absence direction is pinned here because the
-conditional mount itself is landing alongside this suite; asserting the
-local-mode presence before that code exists would pin nothing.
+Under AUTH_MODE workos (hosted and dev default) the auth_local signup and
+login endpoints must be absent from the assembled v1 router, and the setup
+router must be absent too: a hosted deployment exposes neither a
+password-registration surface nor an instance-posture probe.
 """
 
 import importlib
@@ -17,10 +13,9 @@ from typing import Any
 def _collect_paths(router: Any, prefix: str = "") -> list[str]:
     """Flatten a router tree into effective route paths.
 
-    Recent FastAPI wraps ``include_router`` calls in lazy ``_IncludedRouter``
-    nodes instead of copying routes onto the parent; walk those recursively,
-    re-applying each include prefix, so the result is exactly what the ASGI
-    matcher would see either way.
+    Recent FastAPI wraps include_router calls in lazy included-router nodes
+    instead of copying routes onto the parent; walk those recursively and
+    re-apply each include prefix.
     """
     paths: list[str] = []
     for item in router.routes:
@@ -34,11 +29,10 @@ def _collect_paths(router: Any, prefix: str = "") -> list[str]:
 
 
 def _mounted_paths() -> set[str]:
-    """Reload ``app.api.v1.routes`` and return every mounted route path.
+    """Reload the v1 routes module and return every mounted route path.
 
-    A full reload re-runs the module body (all ``include_router`` calls), so
-    conditional mounts are re-evaluated against the settings singleton as it
-    stands RIGHT NOW instead of whatever was ambient at first import.
+    A full reload re-runs the module body, so conditional mounts are
+    re-evaluated against the settings singleton as it stands right now.
     """
     import app.api.v1.routes as routes_module
 
@@ -72,11 +66,7 @@ def test_workos_mode_mounts_no_auth_local_routes(monkeypatch):
 
 
 def test_local_mode_mounts_auth_and_setup_routes(monkeypatch):
-    """The self-host mode must mount both routers — the positive direction.
-
-    Pins that the conditional in ``routes.py`` actually fires (not just that it
-    can be skipped), so a regression that silently stops mounting cannot ship.
-    """
+    """Self-host mode must mount both routers; a silent unmount must fail loudly."""
     from app.config.settings import settings
 
     original_mode = settings.AUTH_MODE

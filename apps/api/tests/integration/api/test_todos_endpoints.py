@@ -1,12 +1,4 @@
-"""Integration tests for the todos endpoints — route resolution.
-
-Regression coverage for the ordering bug where the literal ``/todos/bulk`` paths
-were declared AFTER the parameterized ``/todos/{todo_id}`` routes. FastAPI matches
-in declaration order, so ``PUT/DELETE /todos/bulk`` was captured by the
-``{todo_id}`` handler (todo_id="bulk") and 500'd instead of running the bulk op.
-These tests pin the dispatch: the bulk paths must reach the bulk handlers, and the
-single-item paths must still reach their handlers.
-"""
+"""Integration tests for the todos endpoints — route resolution."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -26,7 +18,7 @@ USER_ID = "integration-test-user-1"
 def _bypass_rate_limiter():
     """Bypass the tiered rate limiter's Redis/payment calls for these tests.
 
-    The todo endpoints are wrapped in ``@tiered_rate_limit``; patching the
+    The todo endpoints are wrapped in @tiered_rate_limit; patching the
     limiter's increment and the subscription lookup avoids any real Redis/DB.
     """
     with (

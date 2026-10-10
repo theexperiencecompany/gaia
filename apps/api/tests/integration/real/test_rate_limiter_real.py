@@ -101,12 +101,7 @@ class TestRateLimiterEnforcement:
     async def test_request_rejected_when_monthly_backstop_reached(
         self, real_redis, real_rate_limiter
     ):
-        """check_and_increment must raise RateLimitExceededException when a limit is met.
-
-        Chat is cost-walled — it has no free daily count — so its enforced count
-        is the monthly abuse backstop. Seed that to the exact limit and expect a
-        429.
-        """
+        """Chat is cost-walled with no free daily count, so its enforced count is the monthly abuse backstop."""
         user_id = "limit-enforce-user-1"
         feature = "chat_messages"
 

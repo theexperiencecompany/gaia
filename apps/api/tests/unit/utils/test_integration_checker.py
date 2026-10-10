@@ -26,23 +26,23 @@ def _graph_run(
     connect_url: str | None = _MAGIC_LINK,
     *,
     expired: bool = False,
+    execution_mode: str | None = None,
+    frontend: str = _FAKE_FRONTEND,
 ) -> Iterator[MagicMock]:
-    """Run the prompt as if inside a graph run of ``category``, yielding its stream writer.
+    """Run the prompt inside a graph run of category, yielding its stream writer.
 
-    ``category=None`` simulates no runnable context at all (get_config raises).
-    ``expired`` is the stored connection status the prompt reads to tell a dead
-    grant from one that was never set up.
-
-    The status lookup answers from the arguments it is handed rather than a fixed
-    value: a stub that ignores them cannot tell the real call from one that passed
-    the wrong user, dropped an argument, or swapped the two — and every such
-    mutation survived while it did.
+    category=None simulates no runnable context; expired is the stored status
+    distinguishing a dead grant from one never set up. The status stub checks
+    its actual arguments so a wrong user/integration id fails loudly.
     """
 
     async def _is_expired(user_id: str, integration_id: str) -> bool:
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
+    configurable = {"source_category": category}
+    if execution_mode is not None:
+        configurable["execution_mode"] = execution_mode
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -51,7 +51,7 @@ def _graph_run(
         if category is None
         else patch(
             "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": category}},
+            return_value={"configurable": configurable},
         )
     )
     with (
@@ -64,13 +64,12 @@ def _graph_run(
         patch("app.utils.integration_checker.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
-        mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+        mock_settings.FRONTEND_URL = frontend
         yield writer
 
 
 class TestRequestIntegrationConnection:
-    """The connect prompt is platform-aware: UI gets a card and URL-free copy,
-    non-UI embeds the connect URL inline so bot users can act on it."""
+    """The connect prompt is platform-aware: UI gets a card, non-UI embeds the connect URL inline."""
 
     async def test_ui_source_points_to_card_without_url(self) -> None:
         with _graph_run("ui"):
@@ -95,8 +94,7 @@ class TestRequestIntegrationConnection:
 
     @pytest.mark.parametrize("category", ["bot", "bg"])
     async def test_non_ui_prefers_login_free_connect_link(self, category: str) -> None:
-        """When a login-free link is minted, the bot reply uses THAT — not the
-        generic /integrations page (which requires a GAIA login)."""
+        """A minted login-free link is used over the generic /integrations page, which requires GAIA login."""
         with _graph_run(category):
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert _MAGIC_LINK in msg
@@ -118,9 +116,7 @@ class TestRequestIntegrationConnection:
 
 
 class TestExpiredConnectionPrompt:
-    """A grant that died and one that was never set up are different asks. The
-    stored status is the only thing that tells them apart, so the prompt reads it
-    rather than trusting a caller to pass it."""
+    """The prompt reads the stored status itself to tell a dead grant from one never set up."""
 
     async def test_expired_copy_tells_the_agent_not_to_offer_a_first_time_connect(self) -> None:
         with _graph_run("ui", expired=True):
@@ -151,8 +147,7 @@ class TestExpiredConnectionPrompt:
         return payload
 
     async def test_card_carries_the_expired_flag_both_ways(self) -> None:
-        """The streamed payload is the renderers' contract — `expired` is what lets
-        the card read as a re-login instead of a first-time connect."""
+        """The streamed payload's expired flag is what lets the card read as re-login vs first-time connect."""
         with _graph_run("ui", expired=True) as writer:
             await request_integration_connection("gmail", "Gmail", "user1")
         assert self._card(writer)["expired"] is True
@@ -172,4 +167,98 @@ class TestExpiredConnectionPrompt:
             await request_integration_connection("gmail", "Gmail", "user1")
         assert self._card(writer)["message"] == (
             "To use Gmail features, please connect your account first."
+        )
+
+    @pytest.mark.regression
+    async def test_forced_reauthorization_is_presented_as_reconnect_and_mints_a_fresh_link(
+        self,
+    ) -> None:
+        with _graph_run("ui") as writer:
+            ui_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+
+        assert "reconnect button" in ui_message
+        card = self._card(writer)
+        assert card["expired"] is True
+        assert "reauthorize" in str(card["message"]).lower()
+
+        with _graph_run("bot"):
+            bot_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+
+        assert _MAGIC_LINK in bot_message
+        assert "reconnect" in bot_message.lower()
+
+    @pytest.mark.regression
+    async def test_forced_reauthorization_copy_is_exact(self) -> None:
+        """The reconnect wording is user-facing copy; pin it verbatim."""
+        with _graph_run("ui") as writer:
+            ui_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+        card = self._card(writer)
+        assert card["message"] == (
+            "Your PostHog connection needs fresh authorization. Reauthorize to keep using it."
+        )
+        assert (
+            "The user's PostHog connection needs fresh authorization; "
+            "they need to reconnect to refresh access. A reconnect button has been shown"
+        ) in ui_message
+
+        with _graph_run("bg", execution_mode="background"):
+            bg_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+        assert "the PostHog connection needs a refresh" in bg_message
+
+
+class TestBackgroundRunPrompt:
+    """A background run has nobody to click a card or a link, so it must not wait to retry."""
+
+    @pytest.mark.regression
+    async def test_background_copy_says_carry_on_and_never_asks_to_retry(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "Gmail needs to be connected" in msg
+        assert "no user is present" in msg
+        assert "carry on with the rest of the task" in msg
+        assert "try again" not in msg
+        # The single-use link dies within the hour; the result is read later.
+        assert _MAGIC_LINK not in msg
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+
+    @pytest.mark.regression
+    async def test_background_copy_for_an_expired_grant_says_sign_in_again(self) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "EXPIRED" in msg
+        assert "carry on with the rest of the task" in msg
+
+    async def test_background_copy_names_the_gap_and_where_to_connect(self) -> None:
+        # A host ending in X shows only the trailing slash is stripped.
+        with _graph_run("bg", execution_mode="background", frontend="https://GAIA.BOX/"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg == (
+            "Gmail needs to be connected. This is a background run and no user is present to "
+            "connect it, so retrying Gmail this run cannot succeed. Record in your result that "
+            "Gmail is not connected (the user can connect it at "
+            "https://GAIA.BOX/integrations), then carry on with the rest of the task."
+        )
+
+    async def test_background_copy_for_an_expired_grant_names_the_expired_connection(
+        self,
+    ) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg.endswith(
+            "This is a background run and no user is present to reconnect it, so retrying "
+            "Gmail this run cannot succeed. Record in your result that the Gmail connection "
+            "expired (the user can reconnect it at https://app.example.com/integrations), then "
+            "carry on with the rest of the task."
         )

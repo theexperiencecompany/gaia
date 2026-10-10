@@ -1,5 +1,4 @@
-"""Management accessors for the memory system: tree, graph, journal,
-documents, CRUD over individual memories, and the full wipe.
+"""Management accessors for the memory system: tree, graph, journal, documents, CRUD, full wipe.
 
 These back the settings-UI endpoints (plan F6) and the explicit memory
 tools (F4). Reads map ORM rows straight to the public API schemas; writes
@@ -12,13 +11,16 @@ from app.constants.memory import (
     DOCUMENT_PREVIEW_CHARS,
     MemoryDocType,
     MemoryEntityType,
+    MemoryKind,
     MemoryRelationType,
+    MemoryShelfLife,
     MemorySourceType,
 )
 from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.context import invalidate_core_context, invalidate_user_memory_caches
-from app.memory.embeddings import embed_query
+from app.memory.embeddings import embed_batch
 from app.memory.mappers import document_to_model, episode_to_model, row_to_entry
+from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import (
     MemoryDocument,
@@ -36,10 +38,11 @@ from app.models.memory_models import (
     MemoryTreeResponse,
 )
 from app.services.memory_fs import schedule_memory_vfs_sync
+from app.utils.errors import AppError
 
 
 async def get_tree(user_id: str) -> MemoryTreeResponse:
-    """The user's memory folder tree with per-folder (and subtree) counts."""
+    """Return the user's memory folder tree with per-folder (and subtree) counts."""
     folders = await pg_store.get_folder_tree(user_id)
     roots: list[MemoryTreeNode] = []
     nodes_by_path: dict[str, MemoryTreeNode] = {}
@@ -63,7 +66,7 @@ async def get_tree(user_id: str) -> MemoryTreeResponse:
 
 
 async def get_graph(user_id: str) -> MemoryGraphResponse:
-    """The entity graph: nodes, labeled edges, and their provenance memories."""
+    """Return the entity graph: nodes, labeled edges, and their provenance memories."""
     entity_counts, edge_rows = await pg_store.get_graph(user_id)
 
     nodes = [
@@ -125,9 +128,11 @@ async def list_memories(
     category: str | None = None,
     include_subfolders: bool = False,
 ) -> MemoryListResponse:
-    """One page of memories, newest first. ``category`` is an EXACT folder
-    match by default so tree expansion shows only a folder's own memories;
-    pass ``include_subfolders=True`` for whole-subtree listings."""
+    """Return one page of memories, newest first.
+
+    category is an EXACT folder match by default; pass
+    include_subfolders=True for whole-subtree listings.
+    """
     rows, total = await pg_store.list_memories(
         user_id,
         page=page,
@@ -150,34 +155,84 @@ async def get_history(user_id: str, memory_id: str) -> MemorySearchResult:
     return MemorySearchResult(memories=memories, total_count=len(memories))
 
 
-async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry | None:
-    """Correct a memory by chaining an UPDATES version onto it.
+class MemoryNotFoundError(AppError):
+    """No live memory could be resolved from the id a caller supplied."""
 
-    The old row stays as history (``is_latest=False``); the new row inherits
-    folder, kind, importance and entity links. Returns None when the memory
-    does not exist or is not the live head of its chain.
+    def __init__(self, memory_id: str) -> None:
+        super().__init__(
+            message=f"Memory {memory_id} does not exist for this user.",
+            why="The id does not name any memory in this user's store.",
+            fix=(
+                "Call search_memory to get the current id of the fact you mean, "
+                "then retry the correction with that id. Do NOT tell the user "
+                "the memory was corrected. It was not."
+            ),
+            status_code=404,
+            meta={"memory_id": memory_id},
+        )
+
+
+async def _resolve_live_head(memory_id: str, user_id: str) -> MemoryRecord:
+    """Return the live head of the chain memory_id belongs to.
+
+    A superseded id still names a real chain, so it resolves to the chain's
+    live head rather than refusing. Raises MemoryNotFoundError (not a string
+    result — the model previously read an error string as success) when the
+    id names nothing or the chain has no live head.
     """
-    old = await pg_store.get_memory(memory_id, user_id)
-    if old is None or not old.is_latest or old.is_forgotten:
-        return None
+    try:
+        row = await pg_store.get_memory(memory_id, user_id)
+    except ValueError as e:
+        # Not even a UUID — a fabricated id, which is exactly the case that
+        # must not read back as an ordinary tool result.
+        raise MemoryNotFoundError(memory_id) from e
+    if row is None or row.is_forgotten:
+        raise MemoryNotFoundError(memory_id)
+    if row.is_latest:
+        return row
+
+    head = next(
+        (version for version in await pg_store.get_chain(memory_id, user_id) if version.is_latest),
+        None,
+    )
+    if head is None or head.is_forgotten:
+        raise MemoryNotFoundError(memory_id)
+    return head
+
+
+async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry:
+    """Correct a memory by chaining an UPDATES version onto its live head.
+
+    The old row stays as history (is_latest=False); the new row inherits
+    folder, kind, shelf life, expiry, importance and entity links. Raises
+    MemoryNotFoundError when no live memory can be resolved.
+    """
+    old = await _resolve_live_head(memory_id, user_id)
+    memory_id = str(old.id)
+
+    # embed_batch, not embed_query: mixing query-space vectors into the passage
+    # index degrades ANN recall. Computed BEFORE the Postgres supersession so
+    # an embedding failure aborts the whole correction, not just recall.
+    embedding = (await embed_batch([content]))[0]
 
     record = MemoryRecord(
         user_id=user_id,
         kind=old.kind,
+        shelf_life=old.shelf_life,
         content=content,
         category_path=old.category_path,
         importance=old.importance,
+        forget_after=old.forget_after,
         source_type=MemorySourceType.MANUAL.value,
     )
     row = await pg_store.supersede_memory(memory_id, user_id, record, MemoryRelationType.UPDATES)
     if row is None:
-        return None
+        raise MemoryNotFoundError(memory_id)
 
     entities_by_memory = await pg_store.get_entities_for_memories([old.id])
     entities = entities_by_memory.get(old.id, [])
     await pg_store.link_entities(row.id, [entity.id for entity in entities])
 
-    embedding = await embed_query(content)
     await chroma_store.set_memory_flags(memory_id, is_latest=False)
     await chroma_store.upsert_memories(
         [
@@ -195,17 +250,40 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
             }
         ]
     )
+    await _reconsolidate_documents(user_id, row)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
     return row_to_entry(row, entities)
 
 
+async def _reconsolidate_documents(user_id: str, row: MemoryRecord) -> None:
+    """Schedule a rewrite of the core documents that quote this fact.
+
+    Without this, user.md (injected into every prompt) keeps asserting a
+    corrected or forgotten fact until an unrelated ingestion happens to touch
+    the same doc type.
+    """
+    from app.memory.consolidation import (  # noqa: PLC0415 -- breaks the consolidation <-> management import cycle
+        infer_doc_types,
+        schedule_consolidation,
+    )
+
+    fact = ExtractedFact(
+        content=row.content,
+        kind=MemoryKind(row.kind),
+        shelf_life=MemoryShelfLife(row.shelf_life),
+        category_path=row.category_path,
+        importance=row.importance,
+    )
+    doc_types = infer_doc_types([fact])
+    if doc_types:
+        await schedule_consolidation(user_id, doc_types)
+
+
 async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
     """Soft-delete a memory: hidden from recall, kept for lineage history."""
-    # Snapshot liveness before forgetting so the free-cap counter is only
-    # decremented when a fact that actually counted toward the live set is
-    # removed. Mirrors pg_store's active-memory predicate (latest, not
-    # forgotten, not expired); a superseded or expired row never counted.
+    # Snapshot liveness before forgetting so the free-cap counter only
+    # decrements when a fact that actually counted toward the live set is removed.
     before = await pg_store.get_memory(memory_id, user_id)
     was_live = (
         before is not None
@@ -220,6 +298,13 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
     if was_live:
         await cap_counter.adjust_live_count(user_id, -1)
     await chroma_store.set_memory_flags(memory_id, is_forgotten=True)
+    if before is not None:
+        if before.source_id:
+            # Forgetting a fact forfeits verbatim recall of the conversation
+            # that produced it: leaving the raw chunks searchable would keep
+            # the forgotten sentence quotable via search_conversations forever.
+            await chroma_store.delete_conversation_chunks(user_id, before.source_id)
+        await _reconsolidate_documents(user_id, before)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
     return True
@@ -227,9 +312,9 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
 
 async def delete_all(user_id: str) -> int:
     """Hard-wipe a user's entire memory. Returns deleted memory count."""
-    # Local import avoids a consolidation <-> management import cycle.
-    # Deferred import: breaks circular dependency between consolidation and management
-    from app.memory.consolidation import cancel_consolidation  # noqa: PLC0415 -- breaks
+    from app.memory.consolidation import (  # noqa: PLC0415 -- breaks the consolidation <-> management import cycle
+        cancel_consolidation,
+    )
 
     await cancel_consolidation(user_id)
     deleted = await pg_store.delete_all_memories(user_id)

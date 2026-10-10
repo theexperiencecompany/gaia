@@ -1,19 +1,17 @@
-import { apiauth } from "@/lib/api/client";
+import {
+  type CredentialProvider,
+  type ProviderConfigBody,
+  type ProviderTestResult,
+  type StoredProviderConfig,
+  setupTransport,
+} from "@/lib/api/setupTransport";
 
-/** Providers exposed in Settings → AI Providers (mirrors CREDENTIAL_PROVIDERS). */
-export type CredentialProvider =
-  | "openrouter"
-  | "gemini"
-  | "ollama"
-  | "custom"
-  | "tavily"
-  | "composio"
-  | "e2b"
-  | "openai"
-  | "resend"
-  | "cloudinary"
-  | "google_oauth"
-  | "firecrawl";
+export type {
+  CredentialProvider,
+  ProviderConfigBody,
+  ProviderTestResult,
+  StoredProviderConfig,
+};
 
 /** Providers that can serve chat (mirrors _LLM_PROVIDER_KEYS in
  * app/api/v1/endpoints/setup.py). The tool/integration keys in
@@ -83,30 +81,6 @@ export interface SetupStatus {
   plans_seeded: boolean;
 }
 
-export interface ProviderConfigBody {
-  api_key?: string;
-  base_url?: string;
-  model?: string;
-  /** Gateway preset for the custom lane; null clears it. */
-  preset?: CustomPreset["key"] | null;
-}
-
-export interface ProviderTestResult {
-  ok: boolean;
-  detail: string;
-  models: string[];
-}
-
-/** One entry of the admin-only masked provider listing (GET /setup/providers). */
-export interface StoredProviderConfig {
-  configured: boolean;
-  /** Stored endpoint — null when unset or when only an env fallback is active. */
-  base_url?: string | null;
-  model?: string | null;
-  /** Last four characters of the stored key; keys are never readable in full. */
-  api_key_hint?: string | null;
-}
-
 export interface CatalogProviderMeta {
   label: string;
   description?: string;
@@ -124,45 +98,42 @@ export interface ProviderCatalog {
 }
 
 class ProvidersApiService {
-  async fetchSetupStatus(): Promise<SetupStatus> {
-    const response = await apiauth.get<SetupStatus>("/setup/status");
-    return response.data;
+  fetchSetupStatus(): Promise<SetupStatus> {
+    return setupTransport.get<SetupStatus>("status");
   }
 
-  async fetchCatalog(): Promise<ProviderCatalog> {
-    const response = await apiauth.get<ProviderCatalog>("/setup/catalog");
-    return response.data;
+  fetchCatalog(): Promise<ProviderCatalog> {
+    return setupTransport.get<ProviderCatalog>("catalog");
   }
 
   async listProviders(): Promise<
     Record<CredentialProvider, StoredProviderConfig>
   > {
-    const response = await apiauth.get<{
+    const listing = await setupTransport.get<{
       providers: Record<CredentialProvider, StoredProviderConfig>;
-    }>("/setup/providers");
-    return response.data.providers;
+    }>("providers");
+    return listing.providers;
   }
 
   async upsertProvider(
     provider: CredentialProvider,
     body: ProviderConfigBody,
   ): Promise<void> {
-    await apiauth.put(`/setup/providers/${provider}`, body);
+    await setupTransport.put(`providers/${provider}`, body);
   }
 
-  async deleteProvider(provider: CredentialProvider): Promise<void> {
-    await apiauth.delete(`/setup/providers/${provider}`);
+  deleteProvider(provider: CredentialProvider): Promise<void> {
+    return setupTransport.delete(`providers/${provider}`);
   }
 
-  async testProvider(
+  testProvider(
     provider: CredentialProvider,
     body?: ProviderConfigBody,
   ): Promise<ProviderTestResult> {
-    const response = await apiauth.post<ProviderTestResult>(
-      `/setup/providers/${provider}/test`,
+    return setupTransport.post<ProviderTestResult>(
+      `providers/${provider}/test`,
       body ?? {},
     );
-    return response.data;
   }
 }
 

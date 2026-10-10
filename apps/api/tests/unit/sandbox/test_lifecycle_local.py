@@ -1,11 +1,9 @@
-"""Layer 3 — the local-sandbox routing branch of `acquire_sandbox`.
+"""The local-sandbox routing branch of acquire_sandbox.
 
-Covers what the E2B-path siblings don't: when ENV=selfhost runs without an
-E2B key, `acquire_sandbox` must yield a `LocalDockerSandbox` and bypass every
-piece of E2B machinery (pool entries, Mongo records, mount script, canary,
-pause scheduling) — while any other configuration keeps the E2B path byte-for-
-byte unchanged. The local sandbox itself is mocked; its behavior is covered by
-`test_local_sandbox.py` (hermetic) and `test_local_sandbox_docker.py` (live).
+When ENV selfhost runs without an E2B key, acquire_sandbox yields a local
+Docker sandbox and bypasses all E2B machinery, while any other configuration
+keeps the E2B path unchanged. The sandbox itself is mocked here; hermetic and
+live coverage live in the sibling suites.
 """
 
 from __future__ import annotations
@@ -40,7 +38,7 @@ def _fake_local_sandbox(alive: bool = True) -> Any:
 
 @contextmanager
 def _selfhost_no_key() -> Iterator[None]:
-    """Settings flipped to 'self-host with NO resolvable E2B credential'."""
+    """Flip settings to self-host with NO resolvable E2B credential."""
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
         patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
@@ -54,8 +52,7 @@ def _selfhost_no_key() -> Iterator[None]:
 
 
 async def test_use_local_sandbox_requires_selfhost_and_no_resolvable_key() -> None:
-    """The backend switch reads the credential seam, not the env var: a key
-    stored in Settings (or env) keeps self-host on real E2B."""
+    """Read the credential seam, not the env var, to pick the backend."""
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
         patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="k")),

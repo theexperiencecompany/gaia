@@ -183,10 +183,7 @@ class TestChromaClientGetLangchainClient:
 
 
 class TestChromaClientGetLangchainClientLoaderBody:
-    """`test_new_collection_registered` mocks `providers.register` entirely,
-    so the `_loader` closure it captures is registered but never actually
-    called — these tests capture that closure and await it directly to
-    exercise its body (collection creation / skip)."""
+    """test_new_collection_registered mocks providers.register, so these tests capture the _loader closure and await it directly."""
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.Chroma")
@@ -225,9 +222,13 @@ class TestChromaClientGetLangchainClientLoaderBody:
         result = await loader_func()
 
         assert result is mock_chroma_instance
-        mock_constructor_client.create_collection.assert_called_once_with(
+        # get_or_create: a list-then-create pair raced between processes that
+        # share one Chroma (xdist workers on a CI lane) and the second create
+        # failed with "Collection [...] already exists".
+        mock_constructor_client.get_or_create_collection.assert_called_once_with(
             name="some_new_collection", metadata={"hnsw:space": "cosine"}
         )
+        mock_constructor_client.create_collection.assert_not_called()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.Chroma")
@@ -267,6 +268,81 @@ class TestChromaClientGetLangchainClientLoaderBody:
         await loader_func()
 
         mock_constructor_client.create_collection.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.Chroma")
+    @patch(f"{MODULE}.settings")
+    @patch(f"{MODULE}.providers")
+    async def test_loader_refuses_a_missing_collection_when_it_may_not_create(
+        self, mock_providers: MagicMock, mock_settings: MagicMock, mock_chroma: MagicMock
+    ) -> None:
+        # create_if_not_exists=False still has to look; the collection name
+        # must be in the error message, the whole diagnosis when it's missing.
+        loader_func = await self._loader_for(
+            mock_providers, mock_settings, "absent_collection", create_if_not_exists=False
+        )
+
+        mock_constructor_client = MagicMock()
+        mock_constructor_client.list_collections.return_value = []
+        mock_chroma.return_value = MagicMock()
+        mock_providers.aget = AsyncMock(
+            side_effect=lambda name: mock_constructor_client
+            if name == "chromadb_constructor"
+            else None
+        )
+
+        with pytest.raises(RuntimeError, match="absent_collection"):
+            await loader_func()
+
+        mock_constructor_client.get_or_create_collection.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.Chroma")
+    @patch(f"{MODULE}.settings")
+    @patch(f"{MODULE}.providers")
+    async def test_loader_opens_an_existing_collection_without_creating_it(
+        self, mock_providers: MagicMock, mock_settings: MagicMock, mock_chroma: MagicMock
+    ) -> None:
+        loader_func = await self._loader_for(
+            mock_providers, mock_settings, "present_collection", create_if_not_exists=False
+        )
+
+        existing_collection = MagicMock()
+        existing_collection.name = "present_collection"
+        mock_constructor_client = MagicMock()
+        mock_constructor_client.list_collections.return_value = [existing_collection]
+        mock_chroma_instance = MagicMock()
+        mock_chroma.return_value = mock_chroma_instance
+        mock_providers.aget = AsyncMock(
+            side_effect=lambda name: mock_constructor_client
+            if name == "chromadb_constructor"
+            else None
+        )
+
+        assert await loader_func() is mock_chroma_instance
+        mock_constructor_client.get_or_create_collection.assert_not_called()
+
+    @staticmethod
+    async def _loader_for(
+        mock_providers: MagicMock,
+        mock_settings: MagicMock,
+        collection_name: str,
+        *,
+        create_if_not_exists: bool,
+    ) -> Any:
+        """Return the registered _loader closure, captured with the flag it was built for."""
+        mock_providers.is_initialized.return_value = False
+        mock_settings.CHROMADB_HOST = "localhost"
+        mock_settings.CHROMADB_PORT = 8000
+        mock_providers.aget = AsyncMock(return_value=MagicMock())
+        mock_providers.register = MagicMock()
+
+        from app.db.chroma.chromadb import ChromaClient
+
+        await ChromaClient.get_langchain_client(
+            collection_name=collection_name, create_if_not_exists=create_if_not_exists
+        )
+        return mock_providers.register.call_args.kwargs["loader_func"]
 
 
 class TestChromaClientGetClientWithRequest:

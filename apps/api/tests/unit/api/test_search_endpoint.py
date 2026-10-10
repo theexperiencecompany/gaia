@@ -32,7 +32,7 @@ def _noop_analytics():
 
 
 class TestSearchMessages:
-    """GET /api/v1/search"""
+    """GET /api/v1/search."""
 
     @patch(
         "app.api.v1.endpoints.search.search_messages",
@@ -131,7 +131,7 @@ class TestSearchAnalytics:
 
 
 class TestSearchEmail:
-    """GET /api/v1/search/email"""
+    """GET /api/v1/search/email."""
 
     @patch(
         "app.api.v1.endpoints.search.perform_search",
@@ -215,7 +215,7 @@ class TestSearchEmail:
 
 
 class TestFetchUrlMetadata:
-    """POST /api/v1/fetch-url-metadata"""
+    """POST /api/v1/fetch-url-metadata."""
 
     @patch(
         "app.api.v1.endpoints.search.fetch_url_metadata",

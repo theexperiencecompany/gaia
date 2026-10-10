@@ -1,0 +1,107 @@
+name: Upload verdict
+description: >
+  Hand this lane's verdict to the quality gate, which consolidates every lane's
+  into one table and fails on any lane that did not report. Add it as the LAST
+  step of every job the gate needs, with `if: always()` — a lane that failed is
+  exactly the one whose verdict is worth reading.
+
+  A lane that has adopted the contract (scripts/ci/verdict.py) has already
+  written its own verdict, with findings at file:line; this action leaves that
+  alone (`--only-if-missing`) and just uploads it. A lane that has not gets a
+  bare one derived from the job status, so that adopting a lane is a strict
+  improvement to what the gate prints rather than a prerequisite for the gate
+  working at all. What the gate will NOT tolerate is silence: a job with no
+  upload step reaches it as NO VERDICT and fails it.
+inputs:
+  name:
+    description: >
+      Artifact suffix, uploaded as `verdict-<name>`. Must be unique across the
+      run, so a matrix job folds its matrix value in — the CALLER does that,
+      passing `name: test-python-<matrix value>`, because a composite has no
+      matrix context of its own.
+
+      Written without expression syntax on purpose: an expression inside a
+      `description` is template-parsed exactly like one in a step, and a usage
+      example here failed EVERY job that used this action with
+      "Unrecognized named-value: 'matrix'".
+    required: true
+  lane:
+    description: >
+      Lane id in the contract. Defaults to the artifact name. Also caller-filled
+      for the same reason — `mutation/shard-<n>`, `test-python/<slice>`.
+    required: false
+    default: ""
+  status:
+    description: >
+      The CALLING JOB's status — always pass the `job.status` context. (Written
+      without expression syntax: a description is template-parsed like any other
+      string, and `job` is not a context this action can read.) It decides the
+      verdict for a lane that wrote none of its own: success->pass,
+      failure->fail, cancelled->timed_out.
+
+      Required, and an input rather than something this action works out for
+      itself, because inside a composite `success()` / `failure()` /
+      `cancelled()` evaluate THIS ACTION's own prior steps, not the job. They
+      therefore always took the success branch, and a mutation shard that died
+      in its setup step uploaded `"status": "pass"` (run 34584038269, shard
+      5/6). A false pass is the one outcome this contract exists to prevent.
+    required: true
+  family:
+    description: >
+      The lane namespace this job OWNS. Defaults to the lane. A verdict in the
+      directory whose lane is neither this nor under it fails the step, naming
+      the file — because a job uploads a directory, so anything else in the job
+      that writes a verdict reaches the gate as a lane nobody can find. The
+      mutation shards pass `mutation`: mutation.sh writes one verdict per
+      module under that namespace, not under the shard's own lane.
+    required: false
+    default: ""
+  path:
+    description: >
+      Directory the lane's verdicts were written to. Defaults to the runner's
+      per-job temp dir, which GitHub wipes — NOT the checkout. A self-hosted
+      workspace persists between jobs, so verdicts left in the tree would be
+      uploaded by the next job to land on that runner: stale lanes from another
+      run reaching a gate. Scripts agree without being told, because
+      verdict.py resolves the same location from RUNNER_TEMP (or an explicit
+      GAIA_VERDICT_DIR).
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    # One step, one mapping, and the mapping lives in verdict.py where a unit
+    # test can reach it — see JOB_STATUS_VERDICT. --only-if-missing so a lane
+    # that wrote its OWN verdict (with findings at file:line) keeps it; this
+    # only fills the silence.
+    - name: Record a verdict for a lane that wrote none
+      if: always()
+      shell: bash
+      env:
+        VERDICT_DIR: ${{ inputs.path || format('{0}/verdicts', runner.temp) }}
+      run: >
+        python3 "$GITHUB_WORKSPACE/scripts/ci/verdict.py" emit --only-if-missing
+        --lane "${{ inputs.lane || inputs.name }}" --out "$VERDICT_DIR"
+        --job-status "${{ inputs.status }}"
+    # Before the upload, never after: a stray file has to be a red line that
+    # names itself, not a phantom lane in the gate's table.
+    - name: Reject verdicts this job does not own
+      if: always()
+      shell: bash
+      env:
+        VERDICT_DIR: ${{ inputs.path || format('{0}/verdicts', runner.temp) }}
+      run: >
+        python3 "$GITHUB_WORKSPACE/scripts/ci/verdict.py" check-ownership
+        --family "${{ inputs.family || inputs.lane || inputs.name }}" --out "$VERDICT_DIR"
+    - name: Upload the verdict
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: verdict-${{ inputs.name }}
+        path: ${{ inputs.path || format('{0}/verdicts', runner.temp) }}/**
+        # Not `error`: a lane that wrote nothing must reach the gate as NO
+        # VERDICT there, with the whole table for context — not as a red X on
+        # an upload step nobody scrolls to.
+        if-no-files-found: warn
+        include-hidden-files: true
+        retention-days: 7

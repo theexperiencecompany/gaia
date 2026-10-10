@@ -1,36 +1,15 @@
-"""The user-installed skill lifecycle, end to end: install → listed → disable → uninstall.
+"""Skill lifecycle end to end: install -> listed -> disable -> uninstall.
 
-A user skill is only real if four independent things agree: the body lands on
-JuiceFS at the path the prompt will advertise, MongoDB holds the metadata, the
-Redis caches in front of both get invalidated on every write, and the listing the
-agent is handed reflects all of it. Each of those lives in a different module and
-nothing else in the repo checks they line up.
-
-The invalidation is the load-bearing one, and it has already been wrong once —
-``registry._SKILLS_INVALIDATION_PATTERNS`` carries a comment saying the glob must
-track the ``v2:`` prefix in ``SKILLS_TEXT_CACHE_KEY``, because without it the glob
-matches nothing and a disabled skill keeps being advertised to the agent for the
-full 12h TTL. Nothing failed when that happened: the write "succeeded", the Redis
-DEL matched zero keys, and the agent kept firing a skill the user had turned off.
-So these tests run the real ``@CacheInvalidator``/``@Cacheable`` decorators
-against a cache that implements Redis' glob semantics, and read the result back
-through ``get_available_skills_text`` — the same function that builds the prompt.
-
-What is real: the installer, the registry (decorators included), the parser and
-validator, the discovery/formatting layer, and the filesystem — the mount root is
-a real ``tmp_path`` (the ``test_juicefs.py`` recipe), so ``write_skill_file`` and
-``delete_user_skill`` do real I/O.
-
-What is doubled: MongoDB (an in-memory repository mirroring ``SkillsRepository``'s
-query semantics — those semantics themselves are pinned against real Mongo in
-``tests/contracts/test_skills_repository.py``, so nothing here re-asserts them)
-and Redis (an in-memory store whose ``delete`` globs exactly like ``delete_cache``
-→ ``delete_cache_by_pattern``). GitHub is respx-mocked.
-
-Builtin skills are covered by ``test_builtin_skills.py`` and
-``test_skills_reach_the_agent.py``; the executor listing contains them here too,
-so every assertion is on membership of a specific user skill, never on the whole
-string.
+Four things must agree — JuiceFS body, Mongo metadata, invalidated Redis
+caches, and the agent's listing — each in a different module, unchecked
+elsewhere. Invalidation broke once: _SKILLS_INVALIDATION_PATTERNS's glob must
+track SKILLS_TEXT_CACHE_KEY's v2: prefix or it matches nothing — the write
+"succeeds", DEL matches zero keys, and a disabled skill fires for the full
+12h TTL with no error. Real: installer, registry, parser/validator, discovery,
+filesystem (real tmp_path mount). Doubled: Mongo (in-memory, mirrors
+SkillsRepository, pinned in test_skills_repository.py), Redis (in-memory,
+real delete_cache_by_pattern globbing), GitHub (respx). Assertions always
+target one user skill, never the whole listing string.
 """
 
 from __future__ import annotations
@@ -65,6 +44,7 @@ from app.config.settings import settings
 from app.constants.cache import SKILLS_TEXT_CACHE_KEY, USER_SKILLS_CACHE_KEY
 from app.db.repositories.skills import SYSTEM_USER_ID
 from app.services.storage import JuiceFSUnavailable
+from app.utils.errors import AppError
 
 pytestmark = pytest.mark.e2e
 
@@ -82,11 +62,11 @@ INSTRUCTIONS = "Read the quarterly numbers, then summarise the top three movers.
 
 
 class _FakeSkillsRepository:
-    """In-memory stand-in for ``SkillsRepository``.
+    """In-memory stand-in for SkillsRepository.
 
-    Mirrors the real query semantics that the lifecycle depends on: ``for_agent``
-    filters on enabled + target + (owner or system), ``set_enabled`` reports
-    ``False`` for a no-op flip (the real ``$ne`` guard), and every read hands back
+    Mirrors the real query semantics that the lifecycle depends on: for_agent
+    filters on enabled + target + (owner or system), set_enabled reports
+    False for a no-op flip (the real $ne guard), and every read hands back
     a copy so a test cannot mutate stored state through a returned model.
     """
 
@@ -158,10 +138,10 @@ class _FakeSkillsRepository:
 
 
 class _FakeCache:
-    """In-memory Redis with the same glob contract as ``app.db.redis``.
+    """In-memory Redis with the same glob contract as app.db.redis.
 
-    ``delete_cache`` only fans out to ``delete_cache_by_pattern`` when the key
-    ends with ``*``; anything else is an exact DEL. Reproducing that exactly is
+    delete_cache only fans out to delete_cache_by_pattern when the key
+    ends with *; anything else is an exact DEL. Reproducing that exactly is
     the point — an invalidation pattern that has drifted from the cache key (or
     lost its trailing star) must silently match nothing here, just as it does in
     production.
@@ -193,10 +173,10 @@ class _FakeCache:
 
 @pytest.fixture
 def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real directory that reports itself as the JuiceFS mount.
+    """Provide a real directory that reports itself as the JuiceFS mount.
 
-    ``Path.is_mount()`` is False for any tmpdir, so without the lie every storage
-    helper raises ``JuiceFSUnavailable`` and the install assertions would pass or
+    Path.is_mount() is False for any tmpdir, so without the lie every storage
+    helper raises JuiceFSUnavailable and the install assertions would pass or
     fail for reasons that have nothing to do with skills.
     """
     root = tmp_path / "jfs"
@@ -215,9 +195,9 @@ def mongo() -> Iterator[_FakeSkillsRepository]:
 
 @pytest.fixture
 def cache() -> Iterator[_FakeCache]:
-    """Wire the real ``Cacheable``/``CacheInvalidator`` decorators to a fake Redis.
+    """Wire the real Cacheable/CacheInvalidator decorators to a fake Redis.
 
-    Patched at ``app.decorators.caching`` because that is where both decorators
+    Patched at app.decorators.caching because that is where both decorators
     resolve the three functions — the registry and discovery modules never touch
     the cache directly.
     """
@@ -297,9 +277,7 @@ def _contents_entry(name: str, entry_type: str, path: str) -> dict[str, str]:
 
 class TestInstall:
     async def test_the_body_lands_on_disk_without_its_frontmatter(self, stack):
-        """JuiceFS stores body-only; the frontmatter is metadata and lives in
-        Mongo. Writing the raw SKILL.md instead would feed the agent a YAML
-        header it has to parse out of a file it was told is instructions."""
+        """JuiceFS stores the body only — the frontmatter is metadata and lives in Mongo."""
         mount, _, _ = stack
 
         await _install()
@@ -309,9 +287,7 @@ class TestInstall:
         assert "---" not in written
 
     async def test_the_record_points_at_the_file_that_was_written(self, stack):
-        """``vfs_path`` is what the prompt advertises and what ``read`` resolves.
-        A record pointing somewhere the writer did not write is a skill the agent
-        is told about and can never open."""
+        """vfs_path is what the prompt advertises and what read resolves."""
         mount, _, _ = stack
 
         skill = await _install()
@@ -320,8 +296,6 @@ class TestInstall:
         assert (mount / skill.vfs_path.lstrip("/") / "SKILL.md").is_file()
 
     async def test_an_installed_skill_is_listed_to_its_target_agent(self, stack):
-        """The whole point of installing. Name, description and an openable
-        location all have to reach the prompt or the skill is inert."""
         await _install()
 
         listing = await _listing()
@@ -331,44 +305,35 @@ class TestInstall:
         assert f"/skills/{USER}/quarterly-report/SKILL.md" in listing
 
     async def test_a_skill_is_not_listed_to_an_agent_it_does_not_target(self, stack):
-        """Targeting is the only scoping a skill has. Leaking one into every
-        agent's prompt is both wrong advice and wasted context on every turn."""
         await _install(target=GMAIL)
 
         assert "quarterly-report" in await _listing(GMAIL)
         assert "quarterly-report" not in await _listing(EXECUTOR)
 
     async def test_a_skill_is_not_listed_to_another_user(self, stack):
-        """``for_agent`` unions the owner with ``system``. Widening that is a
-        cross-tenant leak of whatever the other user wrote in their skill."""
+        """for_agent unions the owner with system — widening that would leak another user's skill."""
         await _install()
 
         assert "quarterly-report" not in await _listing(EXECUTOR, user_id=OTHER_USER)
 
     async def test_installing_the_same_name_on_the_same_target_twice_is_rejected(self, stack):
-        """(user, name, target) is the uniqueness invariant. A second install
-        that lands would give the agent two entries with one location, and the
-        second body would overwrite the first on disk."""
+        """(user, name, target) is the uniqueness invariant enforced here."""
         _, mongo, _ = stack
         await _install()
 
-        with pytest.raises(ValueError, match="already installed"):
+        with pytest.raises(AppError, match="already installed"):
             await _install()
 
         assert len(await list_skills(USER)) == 1
 
     async def test_the_same_name_on_a_different_target_is_allowed(self, stack):
-        """The invariant is per-target, not per-name — the same skill scoped to
-        the executor and to gmail is a legitimate setup."""
         await _install()
         await _install(target=GMAIL)
 
         assert len(await list_skills(USER)) == 2
 
     async def test_an_invalid_name_is_rejected_before_anything_is_written(self, stack):
-        """Validation runs before the first side effect. If it did not, a bad
-        name would leave an orphan directory on JuiceFS with no Mongo record
-        pointing at it — invisible, and never cleaned up."""
+        """Validation runs before any write — otherwise a bad name would leave an orphan directory on JuiceFS with no Mongo record pointing at it."""
         mount, mongo, _ = stack
 
         with pytest.raises(ValueError):
@@ -378,10 +343,7 @@ class TestInstall:
         assert mongo.docs == {}
 
     async def test_an_empty_description_is_rejected(self, stack):
-        """The description is the only thing the model selects on; a blank one
-        makes the skill listed but unselectable. Rejected twice over — by
-        ``SkillMetadata`` and again by the generated file's round-trip
-        validation — so this only goes red when both stop guarding it."""
+        """Rejected twice over — by SkillMetadata and again by the generated file's round-trip validation — so this only goes red when both stop guarding it."""
         mount, mongo, _ = stack
 
         with pytest.raises(ValueError):
@@ -398,10 +360,7 @@ class TestInstall:
 
 class TestInvalidationReachesTheAgent:
     async def test_disabling_a_skill_removes_it_from_the_agents_listing(self, stack):
-        """THE bug. The listing is cached for 12h, so an invalidation glob that
-        matches nothing leaves the agent firing a skill the user just turned off,
-        with no error anywhere. Warming the cache first is what makes this able
-        to fail — without the first read there is nothing stale to serve."""
+        """The listing is cached for 12h; warming it first is what makes this test able to catch a broken invalidation glob."""
         skill = await _install()
 
         assert "quarterly-report" in await _listing()
@@ -411,10 +370,7 @@ class TestInvalidationReachesTheAgent:
         assert "quarterly-report" not in await _listing()
 
     async def test_a_write_deletes_the_exact_keys_the_listing_is_cached_under(self, stack):
-        """Pins both invalidation patterns against the real key constants. The
-        behavioural test above catches a broken text glob; this one names which
-        of the two patterns drifted, and catches a per-agent glob that stopped
-        matching even while the text one still works."""
+        """Pins both invalidation patterns against the real key constants, catching a per-agent glob that drifted even while the text one still works."""
         _, _, cache = stack
         skill = await _install()
         text_key = SKILLS_TEXT_CACHE_KEY.format(user_id=USER, agent_name=EXECUTOR)
@@ -430,9 +386,7 @@ class TestInvalidationReachesTheAgent:
         assert agent_key not in cache.store
 
     async def test_invalidation_covers_every_agent_the_user_has_skills_for(self, stack):
-        """The globs are per-user, not per-agent, precisely because one write can
-        change what several agents are told. Narrowing them to the target agent
-        would leave every other agent's listing stale."""
+        """The invalidation globs are per-user, not per-agent, since one write can change what several agents are told."""
         await _install(name="alpha")
         gmail_skill = await _install(name="beta", target=GMAIL)
 
@@ -446,8 +400,7 @@ class TestInvalidationReachesTheAgent:
         assert executor_key not in cache.store
 
     async def test_one_users_write_does_not_flush_another_users_listing(self, stack):
-        """The other half of the glob: ``skills:text:v2:*`` would also make the
-        disable test pass, while stampeding every user's cache on every install."""
+        """A glob like skills:text:v2:* would also pass the disable test while stampeding every user's cache on every install."""
         _, _, cache = stack
         skill = await _install()
         await _listing(EXECUTOR, user_id=OTHER_USER)
@@ -459,8 +412,7 @@ class TestInvalidationReachesTheAgent:
         assert other_key in cache.store
 
     async def test_re_enabling_puts_the_skill_back_in_the_listing(self, stack):
-        """Enable invalidates through the same decorator. If only disable did,
-        turning a skill back on would appear to do nothing for 12h."""
+        """Enable invalidates through the same decorator as disable — otherwise a re-enabled skill would appear absent for 12h."""
         skill = await _install()
         await disable_skill(USER, skill.id)
         assert "quarterly-report" not in await _listing()
@@ -470,8 +422,7 @@ class TestInvalidationReachesTheAgent:
         assert "quarterly-report" in await _listing()
 
     async def test_a_disabled_skill_keeps_its_files_and_its_record(self, stack):
-        """Disable is not uninstall. Deleting the body here would make the toggle
-        one-way — re-enabling would restore a record pointing at nothing."""
+        """Disable is not uninstall — deleting the body here would make the toggle one-way."""
         mount, _, _ = stack
         skill = await _install()
 
@@ -490,8 +441,6 @@ class TestInvalidationReachesTheAgent:
 
 class TestUpdate:
     async def test_editing_the_instructions_rewrites_the_file_on_disk(self, stack):
-        """The body is the skill. An edit that only lands in Mongo leaves the
-        agent reading the old instructions from JuiceFS forever."""
         mount, _, _ = stack
         skill = await _install()
 
@@ -500,10 +449,7 @@ class TestUpdate:
         assert _skill_md(mount, "quarterly-report").read_text() == "Do the new thing instead."
 
     async def test_a_description_only_edit_leaves_the_file_untouched(self, stack):
-        """Description and target are metadata; rewriting the body for them is an
-        unnecessary write on every rename. Proven with a sentinel written
-        straight to disk — if the branch rewrote unconditionally the stored body
-        would clobber it."""
+        """Proven with a sentinel written straight to disk: an unconditional rewrite would clobber it."""
         mount, _, _ = stack
         skill = await _install()
         _skill_md(mount, "quarterly-report").write_text("SENTINEL")
@@ -515,8 +461,6 @@ class TestUpdate:
         assert updated.description == "A new description."
 
     async def test_the_edited_description_is_what_the_agent_is_shown(self, stack):
-        """Update invalidates through its own decorator. A stale listing here
-        means the model keeps selecting the skill on the old description."""
         skill = await _install()
         await _listing()
 
@@ -527,8 +471,7 @@ class TestUpdate:
         assert "Summarise the quarterly numbers." not in listing
 
     async def test_retargeting_moves_the_skill_between_agent_listings(self, stack):
-        """Both listings have to change on one write — that is exactly what the
-        per-user (not per-agent) invalidation glob buys."""
+        """Both listings must change on one write — exactly what the per-user invalidation glob buys."""
         skill = await _install()
         await _listing(EXECUTOR)
         await _listing(GMAIL)
@@ -539,10 +482,7 @@ class TestUpdate:
         assert "quarterly-report" in await _listing(GMAIL)
 
     async def test_retargeting_onto_an_occupied_name_is_rejected(self, stack):
-        """Retargeting is the one edit that can break the (user, name, target)
-        invariant, since ``update`` does not go through the install duplicate
-        check. Without the guard the collision lands and the agent gets two
-        entries with the same name."""
+        """Retargeting bypasses the install duplicate check, so this guard is the only thing stopping a collision."""
         keeper = await _install()
         await _install(target=GMAIL)
 
@@ -554,16 +494,7 @@ class TestUpdate:
         assert stored.target == EXECUTOR
 
     async def test_re_saving_a_skill_with_its_current_target_is_not_a_clash(self, stack):
-        """Every edit through the UI re-sends the current target, so a re-save
-        must not collide with the skill itself.
-
-        Two guards each prevent this independently — the target-changed gate
-        skips the lookup, and the exclude-self term discards the only row it
-        could find — so this test survives either one being removed on its own,
-        and only goes red when both are. Given the gate, the exclude-self term
-        is in fact unreachable: any row the lookup returns has the *new* target,
-        which the gate has already established is not the skill's own.
-        """
+        """Two independent guards (a target-changed gate, an exclude-self term) each prevent a re-save colliding with itself; this only goes red if both are removed."""
         skill = await _install()
 
         updated = await update_skill_inline(USER, skill.id, target=EXECUTOR)
@@ -572,9 +503,7 @@ class TestUpdate:
         assert updated.target == EXECUTOR
 
     async def test_an_invalid_edit_leaves_disk_and_registry_untouched(self, stack):
-        """Validation runs on the regenerated SKILL.md before any write. A
-        partial edit — file rewritten, Mongo not, or the reverse — is the state
-        nothing downstream can recover from."""
+        """Validation runs on the regenerated SKILL.md before any write, so a partial edit (file changed, Mongo not, or the reverse) can't happen."""
         mount, _, _ = stack
         skill = await _install()
 
@@ -587,15 +516,7 @@ class TestUpdate:
         assert stored.description == "Summarise the quarterly numbers."
 
     async def test_editing_another_users_skill_does_nothing(self, stack):
-        """Ownership is scoped at the lookup, and it is the *caller's* id that
-        goes into it — not the id stored on the skill.
-
-        The owner-succeeds half is what makes this falsifiable. Whether a given
-        id is refused is decided inside the repository, which is doubled here
-        (and pinned against real Mongo in ``tests/contracts/test_skills_repository``),
-        so the negative alone is satisfied by a lookup that returns None for
-        everybody — including one whose arguments have simply been swapped.
-        """
+        """The owner-succeeds half makes this falsifiable — the negative alone would also pass a lookup that returns None for everybody, args swapped or not."""
         mount, _, _ = stack
         skill = await _install()
 
@@ -627,8 +548,7 @@ class TestUninstall:
         assert await get_skill(USER, skill.id) is None
 
     async def test_an_uninstalled_skill_is_gone_from_the_agents_listing(self, stack):
-        """Same 12h staleness window as disable, on the path a user is far more
-        likely to take when a skill misbehaves."""
+        """Same 12h staleness window as disable, hit through the path a user takes when a skill misbehaves."""
         skill = await _install()
         assert "quarterly-report" in await _listing()
 
@@ -637,8 +557,7 @@ class TestUninstall:
         assert "quarterly-report" not in await _listing()
 
     async def test_uninstalling_one_skill_leaves_the_others_on_disk(self, stack):
-        """``delete_user_skill`` takes a skill name and rmtree's it. Widening
-        that by one path segment deletes the user's entire skill library."""
+        """delete_user_skill takes a name and rmtree's it — widening the path by one segment would delete the whole library."""
         mount, _, _ = stack
         doomed = await _install(name="alpha")
         keeper = await _install(name="beta")
@@ -650,9 +569,7 @@ class TestUninstall:
         assert await get_skill(USER, keeper.id) is not None
 
     async def test_another_users_skill_cannot_be_uninstalled_by_id(self, stack):
-        """The id is the only thing a caller supplies. Dropping the user scope
-        from the lookup turns a guessed id into a cross-tenant delete of both the
-        record and the files."""
+        """The id is all a caller supplies — dropping the user scope from the lookup would make a guessed id a cross-tenant delete."""
         mount, _, _ = stack
         skill = await _install()
 
@@ -670,10 +587,7 @@ class TestUninstall:
         assert _skill_md(mount, "quarterly-report").is_file()
 
     async def test_an_unavailable_mount_still_removes_the_registry_record(self, stack):
-        """Storage cleanup is best-effort on purpose: a native API run has no
-        JuiceFS mount, and letting ``JuiceFSUnavailable`` escape would leave the
-        skill permanently un-uninstallable — still listed, still firing, with the
-        delete button reporting an error every time."""
+        """Storage cleanup is best-effort by design — a native API run has no JuiceFS mount, so letting JuiceFSUnavailable escape would make the skill permanently un-uninstallable."""
         _, mongo, _ = stack
         skill = await _install()
 
@@ -687,8 +601,7 @@ class TestUninstall:
         assert await get_skill(USER, skill.id) is None
 
     async def test_a_reinstall_after_uninstall_succeeds(self, stack):
-        """The duplicate guard keys on the registry, so an uninstall that left
-        the record behind would make the name unusable forever."""
+        """The duplicate guard keys on the registry — an uninstall that left the record behind would make the name unusable forever."""
         mount, _, _ = stack
         skill = await _install()
         await uninstall_skill_full(USER, skill.id)
@@ -705,10 +618,7 @@ class TestUninstall:
 
 
 class TestGithubInstallLifecycle:
-    """``test_installer_github.py`` covers the fetch/parse/recursion with the
-    filesystem and Mongo mocked out. These two run the same path against the real
-    filesystem, the real registry and the real caches — the part that decides
-    whether a GitHub skill actually reaches the agent and actually goes away."""
+    """Run the install/uninstall path against the real filesystem, registry and caches — test_installer_github.py covers fetch/parse/recursion with those mocked out."""
 
     @staticmethod
     def _mock_repo() -> None:
@@ -752,8 +662,7 @@ class TestGithubInstallLifecycle:
         assert "resources/reference.md" in listing
 
     async def test_uninstalling_a_github_skill_removes_its_subdirectories_too(self, stack):
-        """A multi-file skill is a tree, not a file. Deleting only SKILL.md
-        leaves the resources orphaned on JuiceFS with nothing referencing them."""
+        """A multi-file skill is a tree — deleting only SKILL.md would leave its resources orphaned on JuiceFS."""
         mount, _, _ = stack
         with respx.mock:
             self._mock_repo()

@@ -4,7 +4,7 @@ import { RedirectLoader } from "@/components/shared/RedirectLoader";
 import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { SignupForm } from "@/features/auth/components/SignupForm";
-import { apiauth } from "@/lib/api/client";
+import { apiBaseUrl } from "@/lib/api/client";
 import { generatePageMetadata } from "@/lib/seo";
 
 // Mode-switching depends on live instance state (setup/status):
@@ -43,7 +43,7 @@ export default async function SignupPage() {
 
   return (
     <div className="h-screen">
-      <RedirectLoader url={`${apiauth.getUri()}oauth/login/workos`} replace />
+      <RedirectLoader url={`${apiBaseUrl}/oauth/login/workos`} replace />
     </div>
   );
 }

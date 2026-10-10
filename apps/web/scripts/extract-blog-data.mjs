@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /**
- * extract-blog-data.mjs — build-time codegen for blog posts.
- *
- * The blog used to read markdown straight off the filesystem at runtime
- * (`fs.readdirSync(process.cwd()/content/blog)`). That works on Node/Vercel but
- * FAILS on Cloudflare Workers (no fs at request time), so the blog sitemap shard
- * came back empty and `/blog/[slug]` pages broke on cf.
- *
- * This emits the same `public/data/{feature}/…` shape every other static feature
- * (comparisons, alternatives, …) uses, so `src/lib/blog.ts` can load posts via
- * `@/lib/feature-data` (fs at build, the Cloudflare ASSETS binding at runtime).
- *
- * Output: public/data/blog/_slugs.json + public/data/blog/{slug}.json
+ * extract-blog-data.mjs: build-time codegen for blog posts. The blog used to read markdown off the filesystem at runtime, which works on Node/Vercel but fails on Cloudflare Workers (no fs at request time) — the blog sitemap shard came back empty and /blog/[slug] pages broke on cf.
+ * Emits public/data/blog/_slugs.json + {slug}.json, the same public/data/{feature}/... shape other static features use, so src/lib/blog.ts loads posts via @/lib/feature-data (fs at build, the Cloudflare ASSETS binding at runtime).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

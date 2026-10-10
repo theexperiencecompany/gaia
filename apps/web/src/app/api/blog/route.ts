@@ -29,11 +29,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // CSRF: only accept same-origin submissions. A cross-site form POST carries
-  // the victim's cookie but a foreign (or absent) Origin, so reject it before
-  // attaching the server write credential. Compare the Origin header's host to
-  // the request Host — both are browser-provided and stay consistent behind a
-  // proxy/CDN (unlike a server-derived origin).
+  // CSRF: reject a cross-site form POST (foreign/absent Origin) before
+  // attaching the write credential. Compare Origin's host to Host — both
+  // are browser-provided and stay consistent behind a proxy/CDN.
   const origin = request.headers.get("origin");
   const host = request.headers.get("host");
   let originHost: string | null = null;
@@ -55,9 +53,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const formData = await request.formData();
 
-  // Build the target via the URL parser (keeps scheme/host/port/query intact),
-  // appending `/blogs` regardless of whether the base has a trailing slash.
-  const backendUrl = new URL(API_BASE_URL);
+  // Build target via URL parser (keeps scheme/host/port/query intact),
+  // appending `/blogs` regardless of a trailing slash — guarded since a
+  // malformed API_BASE_URL would otherwise throw and crash the handler.
+  let backendUrl: URL;
+  try {
+    backendUrl = new URL(API_BASE_URL);
+  } catch {
+    return NextResponse.json(
+      { error: "API base URL is not configured correctly." },
+      { status: 500 },
+    );
+  }
   backendUrl.pathname = `${backendUrl.pathname.replace(/\/+$/, "")}/blogs`;
 
   const backendResponse = await fetch(backendUrl, {
@@ -69,10 +76,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body: formData,
   });
 
-  const contentType = backendResponse.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await backendResponse.json()
-    : await backendResponse.text();
+  // This handler is a proxy, not an interpreter: the backend's response is
+  // relayed verbatim (status + payload) so the client sees the exact API
+  // contract — including error bodies, forwarded as-is below.
+  if (!backendResponse.ok) {
+    const errorPayload = await readBackendPayload(backendResponse);
+    return NextResponse.json(errorPayload, {
+      status: backendResponse.status,
+    });
+  }
 
+  const payload = await readBackendPayload(backendResponse);
   return NextResponse.json(payload, { status: backendResponse.status });
+}
+
+async function readBackendPayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return await response.json();
+  }
+  return await response.text();
 }

@@ -1,7 +1,7 @@
 """Docstrings for Linear custom tools."""
 
 CUSTOM_RESOLVE_CONTEXT = """
-LINEAR — RESOLVE CONTEXT
+LINEAR: RESOLVE CONTEXT
 
 Resolves fuzzy/partial names to Linear entity IDs efficiently.
 Use this tool FIRST when you need to convert user-provided names to IDs.
@@ -26,7 +26,7 @@ Returns:
 """
 
 CUSTOM_GET_MY_TASKS = """
-LINEAR — GET MY TASKS
+LINEAR: GET MY TASKS
 
 Gets the current user's assigned issues with smart filtering.
 
@@ -50,7 +50,7 @@ Returns:
 """
 
 CUSTOM_SEARCH_ISSUES = """
-LINEAR — SEARCH ISSUES
+LINEAR: SEARCH ISSUES
 
 Searches issues using natural language queries across titles, descriptions, and comments.
 
@@ -72,7 +72,7 @@ Returns:
 """
 
 CUSTOM_GET_ISSUE_FULL_CONTEXT = """
-LINEAR — GET ISSUE FULL CONTEXT
+LINEAR: GET ISSUE FULL CONTEXT
 
 Gets complete issue details including comments, relations, and history in one call.
 
@@ -97,7 +97,7 @@ Returns:
 """
 
 CUSTOM_CREATE_ISSUE = """
-LINEAR — CREATE ISSUE
+LINEAR: CREATE ISSUE
 
 Creates a new issue with full field support, optionally with sub-issues.
 Use RESOLVE_CONTEXT first to convert names to IDs.
@@ -143,7 +143,7 @@ Workflow:
 
 CUSTOM_CREATE_SUB_ISSUES = """
 
-LINEAR — CREATE SUB-ISSUES (Batch)
+LINEAR: CREATE SUB-ISSUES (Batch)
 
 Creates multiple sub-issues under a parent issue in one call.
 Sub-issues inherit the team from the parent automatically.
@@ -171,7 +171,7 @@ Returns:
 
 
 CUSTOM_CREATE_ISSUE_RELATION = """
-LINEAR — CREATE ISSUE RELATION
+LINEAR: CREATE ISSUE RELATION
 
 Creates a relationship between two issues.
 
@@ -193,7 +193,7 @@ Returns:
 """
 
 CUSTOM_GET_ISSUE_ACTIVITY = """
-LINEAR — GET ISSUE ACTIVITY
+LINEAR: GET ISSUE ACTIVITY
 
 Gets the change history for an issue including state changes, assignments, labels.
 
@@ -213,7 +213,7 @@ Returns:
 """
 
 CUSTOM_GET_ACTIVE_SPRINT = """
-LINEAR — GET ACTIVE SPRINT
+LINEAR: GET ACTIVE SPRINT
 
 Gets current/active cycle (sprint) context with progress and issues.
 Returns summary counts and limited issue samples per state.
@@ -241,7 +241,7 @@ Returns:
 
 
 CUSTOM_BULK_UPDATE_ISSUES = """
-LINEAR — BULK UPDATE ISSUES
+LINEAR: BULK UPDATE ISSUES
 
 Batch updates multiple issues at once. Efficient for moving issues between cycles or projects.
 
@@ -263,7 +263,7 @@ Returns:
 """
 
 CUSTOM_GET_NOTIFICATIONS = """
-LINEAR — GET NOTIFICATIONS
+LINEAR: GET NOTIFICATIONS
 
 Gets the current user's notifications/inbox.
 
@@ -281,7 +281,7 @@ Returns:
 """
 
 CUSTOM_GET_WORKSPACE_CONTEXT = """
-LINEAR — GET WORKSPACE CONTEXT
+LINEAR: GET WORKSPACE CONTEXT
 
 Gets full workspace context for session initialization.
 Use at the start of a conversation to understand the workspace.

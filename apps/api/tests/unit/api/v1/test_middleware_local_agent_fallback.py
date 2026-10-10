@@ -1,11 +1,9 @@
-"""Unit tests for the agent-JWT fallback inside AUTH_MODE="local" dispatch.
+"""Unit tests for the agent-JWT fallback inside AUTH_MODE local dispatch.
 
-The WorkOS dispatch branch has always accepted an ``AGENT_SECRET``-signed JWT
-on agent-only paths (how LiveKit voice authenticates its chat-stream turns);
-the local-session branch must behave identically or self-hosted voice breaks
-with 401s. These tests pin the contract through the real middleware dispatch
-against a minimal app, with ``verify_agent_token`` faked at the same seam the
-WorkOS-mode suite (``tests/unit/api/test_auth_middleware.py``) uses.
+The WorkOS branch accepts an AGENT_SECRET-signed JWT on agent-only paths (how
+LiveKit voice authenticates chat-stream turns); the local-session branch must
+behave identically or self-hosted voice breaks with 401s. verify_agent_token
+is faked at the same seam the WorkOS-mode suite uses.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -15,6 +13,7 @@ from fastapi import FastAPI, Request
 from jose import jwt
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.models.user_models import UserDocument
@@ -31,7 +30,7 @@ def _warm_instance_secret(monkeypatch) -> None:
 
 
 def _session_token(user_id: str) -> str:
-    """A valid gaia_session JWT, encoded the way issue_session_token does."""
+    """Return a valid gaia_session JWT, encoded as issue_session_token does."""
     return jwt.encode(
         {
             "sub": user_id,
@@ -44,9 +43,11 @@ def _session_token(user_id: str) -> str:
 
 
 def _build_local_app() -> FastAPI:
-    """Minimal app behind WorkOSAuthMiddleware in local mode, with one
-    agent-eligible route (/api/v1/chat-stream) and one ordinary protected
-    route. Both report what request.state carries after dispatch."""
+    """Build a minimal app behind WorkOSAuthMiddleware in local mode.
+
+    One agent-eligible route (/api/v1/chat-stream) and one ordinary protected
+    route, both reporting what request.state carries after dispatch.
+    """
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 
     def probe(request: Request) -> dict:
@@ -56,9 +57,10 @@ def _build_local_app() -> FastAPI:
             return {"authenticated": False, "user": None}
         return {
             "authenticated": True,
-            "email": user.get("email"),
-            "auth_provider": user.get("auth_provider"),
-            "impersonated": user.get("impersonated", False),
+            # request.state.user is the frozen AuthenticatedUser model.
+            "email": user.email,
+            "auth_provider": user.auth_provider,
+            "impersonated": user.impersonated,
         }
 
     app = FastAPI()
@@ -70,11 +72,7 @@ def _build_local_app() -> FastAPI:
 
 class TestLocalModeAgentTokenFallback:
     def test_valid_local_session_wins_over_agent_token(self, monkeypatch) -> None:
-        """A valid gaia_session cookie authenticates the request even when an
-        agent JWT is also presented — session credentials take precedence and
-        the agent-token path is never consulted. The agent token names a
-        different user, so an ordering flip would surface as the wrong
-        identity, not just a different code path."""
+        """Give session credentials precedence over a presented agent JWT; flip surfaces as wrong identity."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
         _warm_instance_secret(monkeypatch)
@@ -86,7 +84,7 @@ class TestLocalModeAgentTokenFallback:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={"user_id": other_id, "impersonated": True},
+                return_value=AgentTokenInfo(user_id=other_id, impersonated=True),
             ) as fake_verify,
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -111,10 +109,7 @@ class TestLocalModeAgentTokenFallback:
         fake_repo_get.assert_called_once_with(ADMIN_ID)
 
     def test_agent_jwt_authenticates_chat_stream_in_local_mode(self, monkeypatch) -> None:
-        """No cookie, only an agent JWT on an agent-only path: the local branch
-        must fall back to verify_agent_token and load that user exactly like
-        the WorkOS branch — full doc spread, impersonated=True. This is how
-        LiveKit voice turns authenticate on a self-hosted instance."""
+        """Fall back to verify_agent_token on an agent-only path with no cookie, like the WorkOS branch."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
         _warm_instance_secret(monkeypatch)
@@ -125,7 +120,7 @@ class TestLocalModeAgentTokenFallback:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={"user_id": ADMIN_ID, "impersonated": True},
+                return_value=AgentTokenInfo(user_id=ADMIN_ID, impersonated=True),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -148,15 +143,14 @@ class TestLocalModeAgentTokenFallback:
 
 class TestLocalModeAgentTokenScope:
     def test_agent_jwt_on_non_agent_path_stays_anonymous(self, monkeypatch) -> None:
-        """The fallback is scoped to agent-only paths: elsewhere a bare agent
-        JWT must not authenticate anyone, mirroring the WorkOS branch."""
+        """Scope the fallback to agent-only paths; elsewhere a bare agent JWT authenticates nobody."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
         _warm_instance_secret(monkeypatch)
 
         with patch(
             "app.api.v1.middleware.auth.verify_agent_token",
-            return_value={"user_id": ADMIN_ID, "impersonated": True},
+            return_value=AgentTokenInfo(user_id=ADMIN_ID, impersonated=True),
         ) as fake_verify:
             client = TestClient(_build_local_app())
             resp = client.get(

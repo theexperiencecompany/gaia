@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import socket
+from typing import cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -49,10 +50,10 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 async def _resolve_and_validate(hostname: str) -> None:
-    """
-    Resolve hostname via DNS and reject if any resolved address is not globally
-    routable. This is the core SSRF guard — blocks RFC1918, loopback, link-local,
-    multicast, IPv6 ULA, cloud metadata IPs, etc.
+    """Resolve hostname via DNS and reject if any resolved address is not globally routable.
+
+    The core SSRF guard — blocks RFC1918, loopback, link-local, multicast,
+    IPv6 ULA, cloud metadata IPs, etc.
     """
     loop = asyncio.get_running_loop()
     try:
@@ -74,11 +75,11 @@ async def _resolve_and_validate(hostname: str) -> None:
         ip_str = sockaddr[0]
         try:
             ip = ipaddress.ip_address(ip_str)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="URL host resolves to an unsupported address.",
-            )
+            ) from e
         if _is_blocked_ip(ip):
             log.warning(
                 f"{LogTag.TOOL} ssrf_blocked",
@@ -92,9 +93,9 @@ async def _resolve_and_validate(hostname: str) -> None:
 
 
 async def _validate_url_for_fetch(url: str) -> None:
-    """
-    SSRF guard. Raises HTTPException(400) on anything that could reach an
-    internal service. Safe to call multiple times (e.g. per redirect hop).
+    """SSRF guard; raises HTTPException(400) on anything that could reach an internal service.
+
+    Safe to call multiple times (e.g. per redirect hop).
     """
     try:
         parsed = urlparse(url)
@@ -157,9 +158,10 @@ async def fetch_url_metadata(url: str) -> URLResponse:
     await _validate_url_for_fetch(url)
 
     cache_key = f"url_metadata:{url}"
-    cached = await get_cache(cache_key)
+    # Only the metadata.model_dump() written below lives under this key.
+    cached = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached:
-        return URLResponse(**cached)
+        return URLResponse.model_validate(cached)
 
     stored = await search_url_repository.get_by_url(url)
     if stored is not None:
@@ -195,8 +197,10 @@ def _absolute_url(base_url: str, relative_url: str | None) -> str | None:
 
 
 async def _fetch_following_redirects(url: str) -> httpx.Response | None:
-    """Fetch ``url``, following redirects by hand so every hop re-passes the SSRF
-    guard. Returns None once the redirect budget is exhausted."""
+    """Fetch url, following redirects by hand so every hop re-passes the SSRF guard.
+
+    Returns None once the redirect budget is exhausted.
+    """
     current_url = url
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, follow_redirects=False) as client:
         for _ in range(_MAX_REDIRECTS + 1):

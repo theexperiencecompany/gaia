@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
+import { getIconPaths } from "@/config/iconPaths.generated";
+import { getOgIconPath, getToolIconConfig } from "@/config/toolIconConfig";
+import { wallpapers } from "@/config/wallpapers";
 import {
-  CategoryBadge,
   colors,
   createErrorResponse,
   createFallbackResponse,
@@ -8,16 +10,13 @@ import {
   fonts,
   getApiBaseUrl,
   getBaseUrl,
-  getIconPaths,
   getOgCompatibleAvatarUrl,
-  getOgIconPath,
-  getToolIconConfig,
   loadFonts,
   OG_HEIGHT,
   OG_WIDTH,
   truncateText,
-  wallpapers,
-} from "../shared";
+} from "../lib";
+import { CategoryBadge } from "../shared";
 
 export const runtime = "edge";
 

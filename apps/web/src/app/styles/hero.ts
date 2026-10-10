@@ -1,4 +1,4 @@
-import { heroui } from "../../../../../node_modules/@heroui/theme/dist/index.mjs";
+import { heroui } from "@heroui/theme";
 
 export default heroui({
   themes: {

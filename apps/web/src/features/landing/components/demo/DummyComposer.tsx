@@ -9,9 +9,9 @@ import {
   PlusSignIcon,
   ToolsIcon,
 } from "@icons";
+import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
-import { twMerge } from "tailwind-merge";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -66,6 +66,9 @@ const DummyComposer: React.FC<{
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
+      // Don't commit while an IME composition is in flight — Enter confirms
+      // the CJK candidate there, it doesn't send the message.
+      if (e.nativeEvent.isComposing) return;
       e.preventDefault();
       handleSend();
     }

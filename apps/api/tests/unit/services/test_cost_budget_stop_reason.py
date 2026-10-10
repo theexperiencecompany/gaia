@@ -1,10 +1,10 @@
 """The budget wall's verdict: which stop text binds, and what spend it was read at.
 
-``get_budget_stop_reason`` runs before EVERY model call, so it is both the wall
-and the only cheap read of the user's daily spend. It returns a ``BudgetCheck``
+get_budget_stop_reason runs before EVERY model call, so it is both the wall
+and the only cheap read of the user's daily spend. It returns a BudgetCheck
 triple — stop text, the spend actually read, and the resolved plan — precisely so
 the middleware can decide on the softer wrap-up nudge without a second Redis
-round trip. A ``None`` spend where a real read happened silently disables that
+round trip. A None spend where a real read happened silently disables that
 nudge; a stop text on the wrong plan shows a free-plan upsell to a paying user.
 
 Redis is real (fakeredis) and the windows are seeded through the production
@@ -21,12 +21,15 @@ import pytest
 from app.config.rate_limits import get_daily_cost_budget_usd, get_per_request_token_ceiling
 from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
+from app.services import cost_budget
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
     DAILY_BUDGET_STOP_PRO,
     REQUEST_CEILING_STOP_FREE,
     REQUEST_CEILING_STOP_PRO,
+    BudgetCheck,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
@@ -49,21 +52,20 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 @pytest.fixture(autouse=True)
 def no_rollup() -> AsyncIterator[None]:
-    """Seeding spend goes through the real Redis writer; its Mongo sibling is
-    covered in ``test_usage_activity_rollup.py`` and needs no database here."""
+    """Seeding spend uses the real Redis writer; the Mongo sibling is covered in test_usage_activity_rollup.py."""
     with patch("app.services.cost_budget.record_cost", AsyncMock()):
         yield
 
 
 async def _spend(amount: float) -> None:
     await record_model_call_usage(
-        USER, amount, None, input_tokens=0, output_tokens=0, charge_to_budget=True
+        USER, UsageDailyIncrement(cost=amount), None, charge_to_budget=True
     )
 
 
 async def _burn_tokens(count: int) -> None:
     await record_model_call_usage(
-        USER, 0.0, REQUEST, input_tokens=count, output_tokens=0, charge_to_budget=True
+        USER, UsageDailyIncrement(cost=0.0, input_tokens=count), REQUEST, charge_to_budget=True
     )
 
 
@@ -77,6 +79,16 @@ class TestDailyWall:
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
+
+    async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        await _spend(get_daily_cost_budget_usd(PlanType.FREE))
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check == BudgetCheck(None, None, None)
 
     async def test_lets_a_run_through_one_cent_short_of_the_budget(self) -> None:
         await _spend(get_daily_cost_budget_usd(PlanType.FREE) - 0.01)
@@ -156,20 +168,14 @@ class TestRequestCeiling:
 
     @pytest.mark.regression
     async def test_a_cache_heavy_turn_does_not_bind_the_ceiling_on_raw_tokens(self) -> None:
-        """The production bug this pins: an ordinary retrieve→bind→act turn made
-        ~10 model calls re-sending a ~30k prompt that is mostly cached prefix —
-        316k RAW tokens, 259k of them cache reads, and the ceiling stopped the
-        turn right after `create_upgrade_link` returned, so the minted checkout
-        link never reached the user. The wall bounds fresh work, not cache
-        economics: raw over 300k with billable well under must not bind."""
+        """Regression: 316k raw/259k cached tokens must not bind the ceiling — it bounds fresh work, not cache-heavy raw totals."""
         for _ in range(10):
             await record_model_call_usage(
                 USER,
-                0.003,
+                UsageDailyIncrement(
+                    cost=0.003, input_tokens=32_000, output_tokens=800, cached_tokens=27_000
+                ),
                 REQUEST,
-                input_tokens=32_000,
-                output_tokens=800,
-                cached_tokens=27_000,
                 charge_to_budget=True,
             )
 
@@ -222,9 +228,7 @@ class TestThreadingGaps:
     async def test_a_plan_lookup_failure_names_the_user_it_stopped_enforcing_for(
         self,
     ) -> None:
-        """Failing open means an over-budget user keeps spending. The warning is
-        the only trace that happened, so it has to say who and why — a bare
-        "budget check failed" cannot be turned into a refund or a bug report."""
+        """Fail-open must name the user in the warning — the only trace of who kept spending after the check failed."""
         log.reset()
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))
 
@@ -294,10 +298,9 @@ class TestWrapupThreshold:
     def test_stays_quiet_at_zero_spend(self, plan: PlanType) -> None:
         assert is_budget_wrapup_threshold(0.0, plan) is False
 
-    # NB: the zero-budget guard's own test lives in
-    # tests/unit/middleware/test_accounting.py — that is the file the mutation
-    # gate runs cost_budget.py against, so a test here would never see the
-    # mutant. See the comment there.
+    # NB: the zero-budget guard's test lives in
+    # tests/unit/middleware/test_accounting.py — the mutation gate runs
+    # cost_budget.py against that file, not this one.
 
     @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
     def test_is_still_true_once_the_hard_wall_binds(self, plan: PlanType) -> None:
@@ -312,12 +315,7 @@ class TestWrapupThreshold:
 
 @pytest.mark.unit
 class TestResolvedPlanSurvivesABoundWall:
-    """``plan_type`` is returned so the caller can test the wrap-up threshold
-    without a second lookup — and the caller reads it on exactly the runs that
-    stopped. The daily-wall tests above assert it; the ceiling path and the
-    no-root_request_id path return it too and nothing checked either, so the
-    field could be dropped on a bound wall and only those two paths would lie.
-    """
+    """plan_type lets the caller test the wrap-up threshold without a second lookup; the ceiling and no-request-id paths could silently drop it too."""
 
     async def test_the_ceiling_path_reports_the_plan_it_enforced(self) -> None:
         await _burn_tokens(get_per_request_token_ceiling(PlanType.FREE))
@@ -336,9 +334,7 @@ class TestResolvedPlanSurvivesABoundWall:
         assert check.plan_type == PlanType.PRO
 
     async def test_a_daily_wall_bound_without_a_request_id_still_reports_the_plan(self) -> None:
-        """No ``root_request_id`` skips the token read entirely — a separate
-        return statement from the both-reads path, with its own copy of the
-        three fields."""
+        """A missing root_request_id skips token reads entirely, via a separate return path with its own copy of the three fields."""
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, None)

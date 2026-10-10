@@ -1,10 +1,10 @@
 """HIL preferences service — the thin seam over the user repository.
 
 Preferences decide *which* tools are gated, so a misread here is a gate that
-silently stops asking. The write-shape guarantees (per-tool ``$setField`` writes,
+silently stops asking. The write-shape guarantees (per-tool $setField writes,
 dotted MCP names staying flat keys, partial updates leaving siblings alone) live
-on ``UserRepository`` now and are contract-tested against real Mongo in
-``tests/contracts/test_users_repository.py`` — what remains here is the service's
+on UserRepository now and are contract-tested against real Mongo in
+tests/contracts/test_users_repository.py — what remains here is the service's
 own behavior: default resolution and reading back after a write.
 """
 
@@ -44,7 +44,7 @@ def user_repo():
 def _neutralize_captures():
     """Silence analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
@@ -87,7 +87,7 @@ class TestWrites:
 
         mock_get.assert_awaited_once_with(USER_ID)
         user_repo.set_hil_preference_fields.assert_awaited_once_with(
-            USER_ID, mode="auto", tool_overrides=None
+            USER_ID, mode="auto", tool_overrides=None, never_auto_tools=None
         )
         assert prefs.mode == "auto", "the caller gets the post-write state, not the input"
 
@@ -97,8 +97,18 @@ class TestWrites:
         await update_hil_preferences(USER_ID, tool_overrides={})
 
         user_repo.set_hil_preference_fields.assert_awaited_once_with(
-            USER_ID, mode=None, tool_overrides={}
+            USER_ID, mode=None, tool_overrides={}, never_auto_tools=None
         )
+
+    async def test_never_auto_tools_pass_through_and_read_back(self, user_repo) -> None:
+        user_repo.get.return_value = _user_with({"mode": "auto", "never_auto_tools": ["wipe_db"]})
+
+        prefs = await update_hil_preferences(USER_ID, never_auto_tools=["wipe_db"])
+
+        user_repo.set_hil_preference_fields.assert_awaited_once_with(
+            USER_ID, mode=None, tool_overrides=None, never_auto_tools=["wipe_db"]
+        )
+        assert prefs.never_auto_tools == ["wipe_db"]
 
     async def test_a_tool_override_passes_through_and_reads_back(self, user_repo) -> None:
         user_repo.get.return_value = _user_with({"tool_overrides": {"GMAIL_SEND_EMAIL": True}})

@@ -1,6 +1,4 @@
-"""
-Optimized bulk operations for todos.
-"""
+"""Optimized bulk operations for todos."""
 
 from fastapi import HTTPException, status
 
@@ -10,6 +8,7 @@ from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoResponse, TodoUpdate
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from shared.py.wide_events import log
 
@@ -76,7 +75,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk complete todos: {e!s}",
-        )
+        ) from e
 
 
 async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
@@ -125,7 +124,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk move todos: {e!s}",
-        )
+        ) from e
 
 
 async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
@@ -138,6 +137,12 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
     )
     try:
         docs = await todo_repository.find_by_ids(user_id, todo_ids)
+
+        # Same reasoning as the single delete: unregister while the documents
+        # still name their Composio triggers.
+        for doc in docs:
+            if doc.trigger_subscriptions:
+                await teardown_subscriptions(doc.id, user_id, reason="bulk_deleted")
 
         # Canvas/log content lives on each todo doc and is removed by the delete
         # below — only the ChromaDB canvas embedding needs explicit cleanup.
@@ -172,4 +177,4 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete todos: {e!s}",
-        )
+        ) from e

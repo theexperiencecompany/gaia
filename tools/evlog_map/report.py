@@ -55,7 +55,7 @@ def _top_issue(entry: RouteEntry) -> str:
 
 
 def render_terminal(result: MapResult, *, show_all: bool) -> str:
-    """The human report: score, coverage, FIX FIRST / THEN / GOING FURTHER."""
+    """Return the human report: score, coverage, FIX FIRST / THEN / GOING FURTHER."""
     lines: list[str] = []
     counts = {"instrumented": 0, "partial": 0, "dark": 0, "exempt": 0}
     for entry in result.entries:
@@ -124,7 +124,7 @@ def render_terminal(result: MapResult, *, show_all: bool) -> str:
 
 
 def to_json(result: MapResult) -> dict[str, object]:
-    """The ``evlog.map.json`` contract — scores, entries, checks, sensitivity."""
+    """Return the ``evlog.map.json`` contract — scores, entries, checks, sensitivity."""
     return {
         "score": result.score,
         "grade": result.grade,

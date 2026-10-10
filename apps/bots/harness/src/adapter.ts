@@ -23,17 +23,25 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   richMessageToMarkdown,
   type SentMessage,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
 import type { TranscriptRecorder } from "./transcript";
 
-/** Default HTTP health-server port — high, to avoid the 3200-3203 real bots. */
-const HARNESS_SERVER_PORT = 3210;
+/**
+ * Port 0: the OS picks a free one. Nothing calls the harness's health server,
+ * and a fixed port made a second concurrent sender (a "stop" sent mid-run)
+ * die on EADDRINUSE while its outbound consumer kept taking the first run's
+ * replies. The runner clears `BOT_SERVER_PORT`, which would override it.
+ */
+const HARNESS_SERVER_PORT = 0;
 
 /** Options accepted by {@link HarnessAdapter.simulateMessage}. */
 export interface SimulateOptions {
@@ -61,8 +69,20 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
 
-  constructor(emulation: PlatformEmulation, transcript: TranscriptRecorder) {
+  protected override readonly consumesOutbound: boolean;
+
+  /**
+   * consumesOutbound is false for a message sent into a conversation another
+   * harness process is already consuming for: RabbitMQ would split that
+   * process's deliveries between the two.
+   */
+  constructor(
+    emulation: PlatformEmulation,
+    transcript: TranscriptRecorder,
+    { consumesOutbound = true }: { consumesOutbound?: boolean } = {},
+  ) {
     super();
+    this.consumesOutbound = consumesOutbound;
     this.platform = emulation.platform;
     this.emulation = emulation;
     this.transcript = transcript;
@@ -116,6 +136,45 @@ export class HarnessAdapter extends BaseBotAdapter {
     return Promise.resolve();
   }
 
+  /**
+   * Records a backend-originated file delivery, after the base class fetched
+   * the bytes through the real shared helper. The harness stands in for a
+   * platform that can send files, so a transcript has to show the caption and
+   * prove the download succeeded.
+   */
+  protected override sendOutboundFile(
+    destinationId: string,
+    { data, mime, filename, caption }: OutboundFile,
+  ): Promise<void> {
+    this.transcript.record({
+      type: "outbound-attachment",
+      destinationId,
+      filename,
+      text: caption ?? "",
+      bytes: data.length,
+      contentType: mime,
+    });
+    return Promise.resolve();
+  }
+
+  /**
+   * Records a native reaction. Every emulated platform has a reaction API, so
+   * live acks and outbound reactions both land as `reaction` events.
+   */
+  protected override reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+  ): Promise<ReactionOutcome> {
+    this.transcript.record({
+      type: "reaction",
+      destinationId,
+      targetMessageId: platformMessageId,
+      emoji,
+    });
+    return Promise.resolve(REACTION_OUTCOME.ATTACHED);
+  }
+
   // ---------------------------------------------------------------------------
   // Inbound simulation
   // ---------------------------------------------------------------------------
@@ -132,7 +191,14 @@ export class HarnessAdapter extends BaseBotAdapter {
     options: SimulateOptions = {},
   ): Promise<void> {
     const channelId = options.channelId ?? userId;
-    this.transcript.record({ type: "inbound", userId, channelId, text });
+    const messageId = `in${this.nextMessageId++}`;
+    this.transcript.record({
+      type: "inbound",
+      userId,
+      channelId,
+      messageId,
+      text,
+    });
 
     if (text.startsWith("/")) {
       const withoutSlash = text.slice(1);
@@ -154,11 +220,23 @@ export class HarnessAdapter extends BaseBotAdapter {
         );
         return;
       }
-      await this.streamTurn(userId, channelId, rest, options.attachments);
+      await this.streamTurn(
+        userId,
+        channelId,
+        messageId,
+        rest,
+        options.attachments,
+      );
       return;
     }
 
-    await this.streamTurn(userId, channelId, text, options.attachments);
+    await this.streamTurn(
+      userId,
+      channelId,
+      messageId,
+      text,
+      options.attachments,
+    );
   }
 
   /**
@@ -171,6 +249,7 @@ export class HarnessAdapter extends BaseBotAdapter {
   private async streamTurn(
     userId: string,
     channelId: string,
+    inboundMessageId: string,
     message: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
@@ -260,6 +339,7 @@ export class HarnessAdapter extends BaseBotAdapter {
         platform: this.platform,
         platformUserId: userId,
         channelId,
+        platformMessageId: inboundMessageId,
         ...(attachments.length > 0
           ? { fileIds: attachments.map((a) => a.fileId), fileData: attachments }
           : {}),
@@ -270,6 +350,8 @@ export class HarnessAdapter extends BaseBotAdapter {
       onGenericError,
       this.emulation.streaming,
       await this.analyticsFor(userId),
+      (emoji: string) =>
+        this.reactToMessage(channelId, inboundMessageId, emoji),
     );
 
     this.transcript.record({ type: "typing", state: "stop" });

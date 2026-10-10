@@ -1,0 +1,45 @@
+# Response fields that export as `unknown` in the generated TypeScript.
+# See tests/meta/test_untyped_response_fields.py -- this is a RATCHET, not an
+# exemption list: a field not listed here may never be `Any`, a bare
+# dict/list, or a dict[str, Any], and a field that gets typed has its line
+# deleted (the test fails on a stale line, so the list can only shrink).
+#
+# One line per `Model.field`, tab-separated, sorted. Every line carries a
+# "deferred-until=YYYY-MM-DD; <reason>" field: past that date the test fails
+# until the field is typed or the deferral is renewed with a fresh reason.
+ActionExecutionResponse.data	deferred-until=2026-12-15; whatever the matched ActionHandler returned (ActionResult.data), open by design (decided 2026-09-16)
+ApiCallConfig.payload	deferred-until=2026-12-15; request body of the API call a notification action fires, authored per notification (decided 2026-09-16)
+AuthenticatedUserResponse.hil_preferences	deferred-until=2026-12-15; mirrors the stored UserDocument blob; HILPreferences lives under app/models/hil_models.py, which pulls the agents package into this module (decided 2026-09-16)
+AuthenticatedUserResponse.integration_scan_states	deferred-until=2026-12-15; per-integration scan bookkeeping written key by key by the repository, no model yet (decided 2026-09-16)
+AuthenticatedUserResponse.notification_channel_prefs	deferred-until=2026-12-15; stored raw and coerced by normalize_channel_preferences; typing it would start rejecting historical rows (decided 2026-09-16)
+AuthenticatedUserResponse.platform_links	deferred-until=2026-12-15; PlatformLinkEntry documents that legacy rows hold a non-string platformUserId, so validating here would 500 on them (decided 2026-09-16)
+AuthenticatedUserResponse.platform_links_connected_at	deferred-until=2026-12-15; platform name to timestamp, written alongside platform_links and shaped by the same legacy rows (decided 2026-09-16)
+AuthenticatedUserResponse.provider_metadata	deferred-until=2026-12-15; WorkOS owns the shape and varies it per auth provider (decided 2026-09-16)
+BulkEmailImportanceSummariesResponse.emails	deferred-until=2026-12-15; MailDocument dumps carrying analyzer-supplied extra fields (decided 2026-09-16)
+ChannelConfig.config	deferred-until=2026-12-15; per-channel delivery options, different keys per channel (decided 2026-09-16)
+EmailImportanceSummariesResponse.emails	deferred-until=2026-12-15; MailDocument dumps carrying analyzer-supplied extra fields (decided 2026-09-16)
+EmailImportanceSummaryResponse.email	deferred-until=2026-12-15; MailDocument dump carrying analyzer-supplied extra fields (decided 2026-09-16)
+FileDocument.page_wise_summary	deferred-until=2026-12-15; PageWiseSummary is whatever the extractor produced for that file type (decided 2026-09-16)
+GmailDraftsResponse.drafts	deferred-until=2026-12-15; Google owns the draft payload schema (decided 2026-09-16)
+GmailLabelsResponse.labels	deferred-until=2026-12-15; Google owns the label payload schema (decided 2026-09-16)
+GmailMessageResponse.message	deferred-until=2026-12-15; transform_gmail_message spreads the raw Composio message, so the field set varies (decided 2026-09-16)
+GmailThreadResponse.thread	deferred-until=2026-12-15; the Composio thread envelope, forwarded with its own keys (decided 2026-09-16)
+MCPProxyPromptsListResponse.prompts	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
+MCPProxyResourceReadResponse.contents	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
+MCPProxyResourceTemplatesListResponse.resource_templates	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
+MCPProxyResourcesListResponse.resources	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
+MCPProxyToolCallResponse.content	deferred-until=2026-12-15; the MCP content-block union is open-ended by spec, extensions included (decided 2026-09-16)
+MessageModel.metadata	deferred-until=2026-12-15; per-message bag the agent layers write, no closed key set (decided 2026-09-16)
+ModalConfig.props	deferred-until=2026-12-15; props of the web component a notification action opens (decided 2026-09-16)
+NotificationContent.rich_content	deferred-until=2026-12-15; renderer payload chosen per notification source (decided 2026-09-16)
+NotificationRequest.metadata	deferred-until=2026-12-15; free-form bag the notification source attaches (decided 2026-09-16)
+NotificationView.metadata	deferred-until=2026-12-15; the stored NotificationRequest.metadata, read back (decided 2026-09-16)
+OnboardingResponse.user	deferred-until=2026-12-15; echoes the updated user document, same shape problem as AuthenticatedUserResponse (decided 2026-09-16)
+RecordedCall.args	deferred-until=2026-12-15; the arguments one tool actually ran with, one schema per tool (decided 2026-09-16)
+ReminderResponse.payload	deferred-until=2026-12-15; StaticReminderPayload or a legacy stored dict, which the union still admits (decided 2026-09-16)
+SandboxExecuteResponse.output	deferred-until=2026-12-22; the proxied tool's own payload, genuinely schemaless — each integration returns its own shape and the proxy passes it through unaltered (decided 2026-09-22)
+SupportRequestResponse.metadata	deferred-until=2026-12-15; free-form bag attached per support request (decided 2026-09-16)
+ToolContract.input_schema	deferred-until=2026-12-22; a tool's JSON Schema for its arguments, provider-owned and open by design (decided 2026-09-22)
+ToolContract.observed_output_schema	deferred-until=2026-12-22; JSON Schema merged from observed real responses, shape varies per tool (decided 2026-09-22)
+ToolContract.provider_output_schema	deferred-until=2026-12-22; the provider's declared output JSON Schema, provider-owned and open by design (decided 2026-09-22)
+TriggerSubscription.trigger_data	deferred-until=2026-12-15; the provider's own trigger configuration (decided 2026-09-16)

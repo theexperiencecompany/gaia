@@ -5,27 +5,45 @@
  * launch while the Next.js server and main window initialise in
  * the background.
  *
- * The splash is a compact, centered, normal-sized window — not
- * fullscreen. It uses `show: true` so it appears instantly — no
- * waiting for `dom-ready` or any other event. On macOS it renders
- * native liquid glass (macOS 26+) with an `under-window` vibrancy
- * fallback on older versions.
+ * The splash renders a **dark app-shell skeleton** (sidebar + main +
+ * composer, see splash.html) in a **small centered window** with the
+ * same `hiddenInset` chrome and dark `backgroundColor` as the main
+ * window. When the app is ready the main window opens at the same
+ * small bounds and then maximises — so the boot reads as a loader
+ * that scales up into the full app. It uses `show: true` so it
+ * appears instantly — no waiting for `dom-ready`.
  *
  * @module windows/splash
  */
 
 import { join } from "node:path";
-import { app, BrowserWindow } from "electron";
-import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
+import { app, BrowserWindow, screen } from "electron";
+import { resolveLoaderSize } from "./loader-geometry";
 
-/** Splash window width, in px — a normal window, not fullscreen. */
-const SPLASH_WIDTH = 560;
+/** Solid backdrop under the skeleton — matches the main window's
+ * `backgroundColor` so revealing the main window is a no-flash swap. */
+const SPLASH_BACKGROUND = "#000000";
 
-/** Splash window height, in px. */
-const SPLASH_HEIGHT = 400;
-
-/** Corner radius of the splash card — must match splash.html. */
-const SPLASH_CORNER_RADIUS = 28;
+/**
+ * Resolve the centered loader bounds for the primary display.
+ *
+ * @returns `{ x, y, width, height }` in screen coordinates — a loader-sized
+ *   window centered in the work area.
+ */
+export function getLoaderBounds(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const { workArea } = screen.getPrimaryDisplay();
+  const { width, height } = resolveLoaderSize(workArea);
+  const x = Math.round(workArea.x + Math.max(0, (workArea.width - width) / 2));
+  const y = Math.round(
+    workArea.y + Math.max(0, (workArea.height - height) / 2),
+  );
+  return { x, y, width, height };
+}
 
 /** Reference to the current splash window (if any). */
 let splashWindow: BrowserWindow | null = null;
@@ -33,44 +51,35 @@ let splashWindow: BrowserWindow | null = null;
 /**
  * Create and display the splash screen.
  *
- * This **must** be the very first visual operation in the
- * startup flow — no blocking code should run before it.
- *
- * The window is frameless, transparent, non-resizable, and
- * centered on the primary display at a fixed compact size.
+ * Must be the first visual operation in startup — nothing blocking before it.
+ * The main window opens at these same bounds and then maximises (windows/main.ts),
+ * so the two must keep using getLoaderBounds.
  */
 export function createSplashWindow(): void {
-  const useLiquidGlass = supportsLiquidGlass();
+  const { x, y, width, height } = getLoaderBounds();
 
   splashWindow = new BrowserWindow({
-    width: SPLASH_WIDTH,
-    height: SPLASH_HEIGHT,
-    center: true,
-    frame: false,
-    transparent: true,
+    x,
+    y,
+    width,
+    height,
+    backgroundColor: SPLASH_BACKGROUND,
+    // Match the main window's chrome (windows/main.ts) so the skeleton looks
+    // like the real app window (traffic lights) and the swap is seamless.
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 16, y: 16 },
     resizable: false,
-    movable: true,
-    minimizable: true,
+    minimizable: false,
     maximizable: false,
     alwaysOnTop: false,
     skipTaskbar: false,
     focusable: true,
     show: true,
-    hasShadow: true,
-    // Native liquid glass replaces vibrancy on macOS 26+ (see glass.ts).
-    ...(process.platform === "darwin" && !useLiquidGlass
-      ? { vibrancy: "under-window" as const }
-      : {}),
-    visualEffectState: "active",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
-
-  if (useLiquidGlass) {
-    applyLiquidGlass(splashWindow, { cornerRadius: SPLASH_CORNER_RADIUS });
-  }
 
   const splashPath = app.isPackaged
     ? join(process.resourcesPath, "splash.html")

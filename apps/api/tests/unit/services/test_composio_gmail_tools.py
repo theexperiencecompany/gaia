@@ -1,6 +1,6 @@
 """Unit tests for Gmail custom tools (post-Composio-proxy migration).
 
-Each tool routes provider API calls through `proxy_request_sync` instead of
+Each tool routes provider API calls through proxy_request_sync instead of
 raw httpx. Tests patch that helper and assert on the request shape.
 """
 
@@ -25,6 +25,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     _timeframe_clause,
     register_gmail_custom_tools,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -122,11 +123,11 @@ class TestMarkAsRead:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["toolkit"] == "GMAIL"
-        assert kwargs["method"] == "POST"
-        assert kwargs["endpoint"].endswith("/users/me/messages/batchModify")
-        assert kwargs["body"] == {
+        request = mock_proxy.call_args.args[0]
+        assert request.toolkit == "GMAIL"
+        assert request.method == "POST"
+        assert request.endpoint.endswith("/users/me/messages/batchModify")
+        assert request.body == {
             "ids": ["m1", "m2"],
             "removeLabelIds": ["UNREAD"],
         }
@@ -149,7 +150,7 @@ class TestMarkAsUnread:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert mock_proxy.call_args.kwargs["body"] == {
+        assert mock_proxy.call_args.args[0].body == {
             "ids": ["m1"],
             "addLabelIds": ["UNREAD"],
         }
@@ -163,7 +164,7 @@ class TestArchive:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert mock_proxy.call_args.kwargs["body"] == {
+        assert mock_proxy.call_args.args[0].body == {
             "ids": ["m1"],
             "removeLabelIds": ["INBOX"],
         }
@@ -178,7 +179,7 @@ class TestStar:
             auth_credentials=AUTH_CREDS,
         )
         assert result == {"action": "starred", "modified_count": 1, "failed_count": 0}
-        assert mock_proxy.call_args.kwargs["body"]["addLabelIds"] == ["STARRED"]
+        assert mock_proxy.call_args.args[0].body["addLabelIds"] == ["STARRED"]
 
     def test_unstar_removes_starred_label(self, mock_proxy):
         tools = _register_and_get_tools()
@@ -188,7 +189,7 @@ class TestStar:
             auth_credentials=AUTH_CREDS,
         )
         assert result == {"action": "unstarred", "modified_count": 1, "failed_count": 0}
-        assert mock_proxy.call_args.kwargs["body"]["removeLabelIds"] == ["STARRED"]
+        assert mock_proxy.call_args.args[0].body["removeLabelIds"] == ["STARRED"]
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +228,33 @@ class TestGetUnreadCount:
         assert result["totalCount"] == 50
         assert result["unreadCount"] == 12
         assert result["is_estimate"] is True
+
+    def test_query_mode_sends_two_one_result_list_calls_through_the_users_proxy(self, mock_proxy):
+        tools = _register_and_get_tools()
+        mock_proxy.side_effect = [{"resultSizeEstimate": 50}, {"resultSizeEstimate": 12}]
+        tools["GET_UNREAD_COUNT"](
+            request=GetUnreadCountInput(query="from:boss"),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+        assert [call.args[0] for call in mock_proxy.call_args_list] == [
+            ProxyRequest(
+                user_id="user_test_123",
+                toolkit="GMAIL",
+                endpoint="https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                method="GET",
+                body=None,
+                query={"maxResults": 1, "includeSpamTrash": "false", "q": "from:boss"},
+            ),
+            ProxyRequest(
+                user_id="user_test_123",
+                toolkit="GMAIL",
+                endpoint="https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                method="GET",
+                body=None,
+                query={"maxResults": 1, "includeSpamTrash": "false", "q": "from:boss is:unread"},
+            ),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +408,8 @@ class TestFetchMessages:
         list_iter = iter(list_responses)
         message_iter = iter([message_response] * 9)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -413,8 +441,8 @@ class TestFetchMessages:
         list_iter = iter(list_responses)
         message_iter = iter([message_response] * 5)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -447,14 +475,13 @@ class TestFetchMessages:
             },
         ]
         message_response = self._make_message_response()
-        # State machine: list page 1 OK → list page 2 RAISE. Two messages
-        # in between (m1, m2). Using a counter + raise so the mock
-        # actually propagates the exception (returning it as a value would
-        # not trigger the tool's error path).
+        # State machine: list page 1 OK -> list page 2 RAISE (m1, m2 in between).
+        # A counter + raise, since returning the exception as a value would not
+        # trigger the tool's error path.
         list_call_count = [0]
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 list_call_count[0] += 1
@@ -507,8 +534,8 @@ class TestFetchMessages:
         list_iter = iter([list_resp])
         message_iter = iter([msg_resp])
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -550,8 +577,8 @@ class TestFetchMessages:
         list_iter = iter([list_response])
         message_iter = iter([message_response] * 5)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -564,7 +591,7 @@ class TestFetchMessages:
                 "app.services.composio.custom_tools.gmail_tools.write_session_file_sync"
             ) as write_mock,
             patch(
-                "app.services.composio.custom_tools.gmail_tools.get_config",
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
                 return_value={"configurable": {"vfs_session_id": "test"}},
             ),
         ):
@@ -611,8 +638,8 @@ class TestFetchMessages:
         list_iter = iter([list_resp])
         message_iter = iter([msg_resp])
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -621,7 +648,7 @@ class TestFetchMessages:
         mock_proxy.side_effect = side_effect
 
         with patch(
-            "app.services.composio.custom_tools.gmail_tools.get_config",
+            "app.services.composio.custom_tools.gmail_tools.current_run_config",
             return_value={"configurable": {}},  # no vfs_session_id / thread_id
         ):
             result = tools["FETCH_MESSAGES"](
@@ -640,10 +667,7 @@ class TestFetchMessages:
 
 
 class TestPartialFetchResult:
-    """A fetch that dies mid-loop still returns the pages it got. What the model
-    is told about the failure decides whether the user gets an answer or a
-    promise of one that can never arrive — nothing runs after a turn ends.
-    """
+    """A fetch that dies mid-loop still returns the pages it got — what the model is told about the failure decides whether the user gets an answer or a promise that can never arrive."""
 
     def test_the_partial_shape_reports_what_was_and_was_not_retrieved(self) -> None:
         result = _format_partial_result([{"id": "m1"}, {"id": "m2"}], reason="429 rate limited")
@@ -661,12 +685,7 @@ class TestPartialFetchResult:
         assert result["messages"] == []
 
     def test_the_note_tells_the_model_the_only_honest_moves(self) -> None:
-        """Pinned verbatim, and deliberately so: this is the instruction that
-        stops a weak model answering "still fetching" on a turn that is already
-        over. Every clause does a job — do not retry, do not promise more, and
-        the two endings that are actually available. Rewording it should require
-        a reviewer to look at it, which is exactly what this assertion forces.
-        """
+        """Pinned verbatim: stops a weak model answering "still fetching" on a turn that is already over."""
         note = _format_partial_result([], reason="429")["note"]
 
         assert note == (

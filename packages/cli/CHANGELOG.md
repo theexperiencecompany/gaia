@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.5.0...cli-v0.6.0) (2026-09-13)
+
+
+### Features
+
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+* expose custom and device-hosted MCP servers to the agent from chat ([#1208](https://github.com/theexperiencecompany/gaia/issues/1208)) ([9e97335](https://github.com/theexperiencecompany/gaia/commit/9e973359c2da0ec143f23d35daefd65fbb6aa334))
+
+## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.4.0...cli-v0.5.0) (2026-08-25)
+
+
+### Features
+
+* **cli:** ship gaia bridge inside the published CLI and rework the device pairing page ([#1069](https://github.com/theexperiencecompany/gaia/issues/1069)) ([1038371](https://github.com/theexperiencecompany/gaia/commit/103837155f128aa8033e078a12981cc66ab5690b))
+* Extract PDF/DOCX/XLSX/PPTX/CSV locally via anydoc + pdf-inspector ([#890](https://github.com/theexperiencecompany/gaia/issues/890)) ([e6c71c4](https://github.com/theexperiencecompany/gaia/commit/e6c71c4285347c134a5db6857cb46926033e97c6))
+* **gmail:** inbox summary tool, body normalization, and agent docs ([#783](https://github.com/theexperiencecompany/gaia/issues/783)) ([0edf4a4](https://github.com/theexperiencecompany/gaia/commit/0edf4a4e9e705e337d52cb6502c184da4d3d1144))
+* **observability:** wide-event enforcement across all surfaces — evlog gates, Babel bots scanner, min-score rework, gate simplification ([#884](https://github.com/theexperiencecompany/gaia/issues/884)) ([5040dca](https://github.com/theexperiencecompany/gaia/commit/5040dca5373f11f28394d234469e4d1c3cd6fb45))
+
+
+### Bug Fixes
+
+* **security:** remediate 192 of 196 Dependabot alerts ([#860](https://github.com/theexperiencecompany/gaia/issues/860)) ([9984705](https://github.com/theexperiencecompany/gaia/commit/99847059fee66f46c6a7f94cd3569047f4eec470))
+
 ## [0.4.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.3.1...cli-v0.4.0) (2026-06-14)
 
 

@@ -1,6 +1,6 @@
 """Hot-path core context — the memory injected into every system prompt.
 
-``get_core_context`` is a single Redis hit on the steady state (plan F1,
+get_core_context is a single Redis hit on the steady state (plan F1,
 sub-5ms budget). On a miss it assembles the user's core documents plus
 today's and yesterday's journal lines from Postgres and re-caches. Every
 ingestion (and any core-document write) invalidates the key, so the TTL is
@@ -8,22 +8,24 @@ only a backstop.
 """
 
 import asyncio
-from datetime import UTC, date as date_type, datetime, timedelta
+from datetime import date as date_type, timedelta
 
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
+    CORE_CONTEXT_SECTION_MAX_CHARS,
+    CORE_CONTEXT_TRUNC_MARKER,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
+from app.memory.user_time import local_today
 from app.models.memory_db_models import MemoryEpisode
+from shared.py.wide_events import log
 
-# Public because get_core_context joins the sections into one string and
-# message_helpers has to find the boundaries again to split the volatile
-# agenda/journal out of the cacheable documents. One definition, so a copy
-# edit here cannot silently stop that split from matching.
+# Public: message_helpers re-splits the joined string on these headings to
+# separate the volatile agenda/journal from the cacheable documents.
 AGENDA_HEADING = "## Current agenda"
 RECENT_ACTIVITY_HEADING = "## Recent activity"
 
@@ -35,11 +37,9 @@ _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
 
 
 def _strip_leading_h1(content: str) -> str:
-    """Drop a leading '# Title' line from a document so the section heading added
-    by get_core_context is the only H1/H2 marker at the top of each block.
+    """Drop a leading '# Title' line, so get_core_context's own heading is the top H1/H2 marker.
 
-    Example: "# About the user\n## Identity\n- ..." becomes "## Identity\n- ...".
-    Lines that do not start with a single '#' followed by a space are left alone.
+    Lines not starting with a single '#' followed by a space are left alone.
     """
     first_newline = content.find("\n")
     first_line = content[:first_newline] if first_newline != -1 else content
@@ -47,6 +47,26 @@ def _strip_leading_h1(content: str) -> str:
     if first_line.startswith("# ") and not first_line.startswith("## "):
         return rest.lstrip("\n")
     return content
+
+
+def _bounded(body: str, doc_type: MemoryDocType) -> str:
+    """Clip one document to its own share of the always-injected block.
+
+    Bounded per-document rather than head/tail-cutting the joined block,
+    since a single cut over everything let an oversized section eat the one
+    after it. The write path caps these too; this is the read-side backstop.
+    """
+    limit = CORE_CONTEXT_SECTION_MAX_CHARS.get(doc_type)
+    if limit is None or len(body) <= limit:
+        return body
+    log.warning(
+        "memory_core_context_section_clipped",
+        error_type="core_context_section_over_budget",
+        doc_type=doc_type.value,
+        chars=len(body),
+        limit=limit,
+    )
+    return body[:limit] + CORE_CONTEXT_TRUNC_MARKER
 
 
 async def get_core_context(user_id: str) -> str:
@@ -60,7 +80,8 @@ async def get_core_context(user_id: str) -> str:
     if isinstance(cached, str):
         return cached
 
-    today = datetime.now(UTC).date()
+    # "Today"/"Yesterday" follow the user's wall clock, not UTC's.
+    today = await local_today(user_id)
     documents, episodes = await asyncio.gather(
         pg_store.get_documents(user_id),
         pg_store.get_episodes_range(user_id, today - timedelta(days=1), today),
@@ -71,7 +92,8 @@ async def get_core_context(user_id: str) -> str:
     for doc_type, heading in _DOC_SECTIONS:
         document = documents_by_type.get(doc_type.value)
         if document is not None and document.content.strip():
-            sections.append(f"{heading}\n{_strip_leading_h1(document.content.strip())}")
+            body = _bounded(_strip_leading_h1(document.content.strip()), doc_type)
+            sections.append(f"{heading}\n{body}")
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:
@@ -100,14 +122,9 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
     """Compact journal rendering, bounded so it never dumps a whole day.
 
-    A past day collapses to its one-line rollover summary. Today emits its
-    NEWEST entries only — the real recency value — with a static no-number
-    note when older ones are dropped. The old anchored-at-day-start window
-    kept only old entries while the newest churned in every turn, and its
-    "+N more entries today" counter changed N every turn; both sat inside the
-    volatile tail where every changed byte costs prompt-cache hit rate. The
-    static note keeps the emitted bytes identical between entry additions.
-    The full journal stays available via ``search_journal``.
+    A past day collapses to its rollover summary; today emits only its NEWEST
+    entries, with a static (not numbered) note when older ones are dropped, so
+    emitted bytes stay stable between additions for prompt-cache hit rate.
     """
     blocks: list[str] = []
     for episode in episodes:
@@ -117,11 +134,8 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
             continue
         if not episode.entries:
             continue
-        # Emit the NEWEST entries (last-2) — not an anchored-at-start window
-        # (which held only old entries and churned the newest in every turn)
-        # and no numbered counter (N changed every turn). The omitted-note is
-        # byte-identical across turns, so the emitted bytes only change when
-        # a new entry lands.
+        # Emit the NEWEST entries (last-2), not an anchored-at-start window, and
+        # no numbered counter — the omitted-note is byte-identical across turns.
         recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
         lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
         if len(episode.entries) > 2:

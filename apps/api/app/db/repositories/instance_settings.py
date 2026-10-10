@@ -1,9 +1,9 @@
-"""Repository for the ``instance_settings`` collection — instance-wide key/value state.
+"""Repository for the instance_settings collection: instance-wide key/value state.
 
-Single document per logical setting (``key="secrets"`` holds the generated
-instance secret, ``key="setup"`` the setup wizard's progress). Keyed by the
-business ``key`` field; writes are upserts. No cache: reads are rare (secret
-derivation, setup checks) and must always observe the latest persisted value.
+One document per logical setting (key secrets holds the generated instance
+secret, key setup the wizard progress). Keyed by the business key field and
+written as upserts. No cache: reads are rare and must observe the latest
+persisted value.
 """
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
@@ -21,11 +21,11 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
     cache_policy = None
 
     async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
-        """The single document stored under ``key``, or ``None``."""
+        """Return the single document stored under key, or None."""
         return await self._find_one({"key": key})
 
     async def upsert_value(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
-        """Insert or replace the value under ``key`` and return the stored doc."""
+        """Insert or replace the value under key and return the stored doc."""
         doc = await self._apply_raw_update(
             {"key": key},
             {"$set": {"value": value}},
@@ -41,11 +41,11 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
         return doc
 
     async def set_if_absent(self, key: str, value: dict[str, object]) -> bool:
-        """Atomically insert ``value`` only when ``key`` does not exist yet.
+        """Atomically insert value only when key does not exist yet.
 
-        Returns True when this call's value won the insert. Losers of a
-        concurrent insert leave the winner's value untouched — the caller must
-        re-read instead of assuming its own value was stored.
+        Returns True when this call won the insert. Losers leave the winner's
+        value untouched; the caller must re-read instead of assuming its own
+        value was stored.
         """
         result = await self._raw_collection().update_one(
             {"key": key},

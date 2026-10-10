@@ -1,37 +1,43 @@
-"""Core-document consolidation: debounced LLM rewrites of the user's docs.
+"""Core documents: the debounced LLM rewrites plus the rendered agenda.
 
-After every ingestion the affected doc types are merged into a per-user
-Redis pending set and a single in-process waiter sleeps out the debounce
-window before rewriting them (plan F2.5). Each rewrite is one structured
-LLM call fed by the previous version plus fresh inputs from Postgres, and
-lands through ``management.update_document`` (versioned, invalidates the
-hot core context, reschedules the workspace projection).
+Three of the four documents (user.md, memory.md, people.md) are
+written by an LLM. After every ingestion the affected doc types are merged into
+a per-user Redis pending set and a single in-process waiter sleeps out the
+debounce window before rewriting them (plan F2.5). Each rewrite is fed the
+document's WHOLE live fact corpus — not a recency window — because a rewrite
+that cannot see the fact it corrupted can never be corrected by it. The result
+is size-checked, then fact-checked against those same facts, before it lands
+through management.update_document.
+
+agenda.md is not written by an LLM at all: it is rendered from the agenda
+memory rows, so every item on it can be searched, corrected, superseded and
+expired like any other memory.
 """
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import time
+from typing import cast
 
 from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    AGENDA_INJECTED_ITEM_CAP,
     CONSOLIDATION_DEBOUNCE_SECONDS,
-    CONSOLIDATION_EPISODE_DAYS,
     CONSOLIDATION_FACTS_LIMIT,
     CONSOLIDATION_PENDING_KEY,
     CONSOLIDATION_PENDING_TTL,
     DOCUMENT_TARGET_MAX_CHARS,
     MemoryDocType,
     MemoryEntityType,
-    MemoryKind,
+    MemoryShelfLife,
 )
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.db.repositories.users import user_repository
 from app.memory import pg_store
-from app.memory.extraction import rewrite_core_document
+from app.memory.extraction import rewrite_core_document, verify_core_document
 from app.memory.management import update_document
 from app.memory.prompts import (
-    AGENDA_DOC_CONSOLIDATION_PROMPT,
-    INSIGHTS_DOC_CONSOLIDATION_PROMPT,
     MEMORY_DOC_CONSOLIDATION_PROMPT,
     PEOPLE_DOC_CONSOLIDATION_PROMPT,
     USER_DOC_CONSOLIDATION_PROMPT,
@@ -41,8 +47,8 @@ from app.models.memory_db_models import MemoryRecord
 from shared.py.wide_events import MemoryContext, UserContext, log, wide_task
 
 # Which core documents a fact feeds, keyed by its top-level category folder.
-# Folders not listed here default to user.md (general life context); facts of
-# kind 'experience' always feed insights.md regardless of folder.
+# Unlisted folders default to user.md. Agenda maps to nothing on purpose:
+# agenda.md is rendered from its rows, never consolidated.
 CATEGORY_DOC_MAP: dict[str, tuple[MemoryDocType, ...]] = {
     "relationships": (MemoryDocType.PEOPLE_MD, MemoryDocType.USER_MD),
     "family": (MemoryDocType.PEOPLE_MD, MemoryDocType.USER_MD),
@@ -58,53 +64,53 @@ CATEGORY_DOC_MAP: dict[str, tuple[MemoryDocType, ...]] = {
     "health": (MemoryDocType.USER_MD,),
     "education": (MemoryDocType.USER_MD,),
     "location": (MemoryDocType.USER_MD,),
-    "routines": (MemoryDocType.USER_MD, MemoryDocType.INSIGHTS_MD),
-    "projects": (MemoryDocType.USER_MD, MemoryDocType.AGENDA_MD),
-    "goals": (MemoryDocType.AGENDA_MD, MemoryDocType.USER_MD),
-    "commitments": (MemoryDocType.AGENDA_MD,),
-    "deadlines": (MemoryDocType.AGENDA_MD,),
+    "routines": (MemoryDocType.USER_MD,),
+    "projects": (MemoryDocType.USER_MD,),
+    "goals": (MemoryDocType.USER_MD,),
+    AGENDA_CATEGORY_PATH: (),
+    "commitments": (),
+    "deadlines": (),
 }
 _DEFAULT_FACT_DOCS: tuple[MemoryDocType, ...] = (MemoryDocType.USER_MD,)
 
 _DOC_PROMPTS: dict[MemoryDocType, str] = {
     MemoryDocType.USER_MD: USER_DOC_CONSOLIDATION_PROMPT,
     MemoryDocType.MEMORY_MD: MEMORY_DOC_CONSOLIDATION_PROMPT,
-    MemoryDocType.AGENDA_MD: AGENDA_DOC_CONSOLIDATION_PROMPT,
     MemoryDocType.PEOPLE_MD: PEOPLE_DOC_CONSOLIDATION_PROMPT,
-    MemoryDocType.INSIGHTS_MD: INSIGHTS_DOC_CONSOLIDATION_PROMPT,
 }
 
-# Pending-set payload keys (Redis JSON).
+# Pending-set payload key (Redis JSON).
 _PENDING_DOC_TYPES = "doc_types"
-_PENDING_AGENDA_UPDATES = "agenda_updates"
+# The pending-set record schedule_consolidation writes: {_PENDING_DOC_TYPES: [doc type values]}.
+_PendingRecord = dict[str, list[str]]
 
-# One live debounce waiter per user, in-process (same pattern as the
-# memory_node background-task set). A process restart during the sleep loses
-# the pending debounce — acceptable: the next ingestion reschedules it and
-# the documents converge.
+_AGENDA_DOC_HEADING = "# Current agenda"
+_AGENDA_EMPTY_BODY = "- (nothing open)"
+
+# One live debounce waiter per user, in-process. A process restart loses the
+# pending debounce; the next ingestion reschedules it and documents converge.
+# Across replicas the pending set is in Redis, claimed via atomic GETDEL.
 _waiters: dict[str, asyncio.Task] = {}
 
 
-def infer_doc_types(facts: list[ExtractedFact], agenda_updates: list[str]) -> set[MemoryDocType]:
-    """Which core documents this ingestion's changes touch."""
+def infer_doc_types(facts: list[ExtractedFact]) -> set[MemoryDocType]:
+    """Which LLM-written core documents this ingestion's facts touch.
+
+    Only durable facts qualify. A state value ("18 workflows active") must
+    never be consolidated into a document that is injected into every prompt,
+    and task/journal assertions are not facts at all by the time they
+    get here — they were routed to the agenda and the journal upstream.
+    """
     doc_types: set[MemoryDocType] = set()
     for fact in facts:
-        if fact.kind is MemoryKind.EXPERIENCE:
-            doc_types.add(MemoryDocType.INSIGHTS_MD)
+        if fact.shelf_life is not MemoryShelfLife.DURABLE:
             continue
         top_folder = fact.category_path.split("/", 1)[0]
         doc_types.update(CATEGORY_DOC_MAP.get(top_folder, _DEFAULT_FACT_DOCS))
-    if agenda_updates:
-        doc_types.add(MemoryDocType.AGENDA_MD)
     return doc_types
 
 
-async def schedule_consolidation(
-    user_id: str,
-    doc_types: set[MemoryDocType],
-    *,
-    agenda_updates: list[str] | None = None,
-) -> None:
+async def schedule_consolidation(user_id: str, doc_types: set[MemoryDocType]) -> None:
     """Debounce a consolidation: merge into the Redis pending set, ensure a waiter.
 
     If a waiter is already live for this user the merged pending set is
@@ -114,15 +120,11 @@ async def schedule_consolidation(
     if not doc_types:
         return
     key = CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
-    pending = await get_cache(key) or {}
-    merged: dict[str, list[str]] = {
+    pending = cast("_PendingRecord | None", await get_cache(key)) or {}
+    merged: _PendingRecord = {
         _PENDING_DOC_TYPES: sorted(
             {*pending.get(_PENDING_DOC_TYPES, []), *(doc.value for doc in doc_types)}
-        ),
-        _PENDING_AGENDA_UPDATES: [
-            *pending.get(_PENDING_AGENDA_UPDATES, []),
-            *(agenda_updates or []),
-        ],
+        )
     }
     await set_cache(key, merged, ttl=CONSOLIDATION_PENDING_TTL)
 
@@ -148,10 +150,15 @@ async def cancel_consolidation(user_id: str) -> None:
     await delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id))
 
 
+async def _debounce_wait() -> None:
+    """Sleep out the debounce window — a module-level seam the integration suite can release on demand."""
+    await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+
+
 async def _debounce_waiter(user_id: str) -> None:
     """Sleep out the debounce window, then consume the pending set and consolidate.
 
-    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
+    Runs in its own wide_task scope: this is a fire-and-forget background
     task with no request middleware, so the scope is what makes consolidation
     outcomes and failures emit a queryable wide event.
     """
@@ -161,64 +168,57 @@ async def _debounce_waiter(user_id: str) -> None:
         # stays quiet (it must not crash the event loop).
         with contextlib.suppress(Exception):
             async with wide_task("memory_consolidation", user=UserContext(id=user_id)):
-                await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
-                pending = await get_and_delete_cache(
-                    CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
+                await _debounce_wait()
+                pending = cast(
+                    "_PendingRecord | None",
+                    await get_and_delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id)),
                 )
                 if not pending:
                     return
                 doc_types = [MemoryDocType(value) for value in pending.get(_PENDING_DOC_TYPES, [])]
-                agenda_updates = pending.get(_PENDING_AGENDA_UPDATES) or None
                 if doc_types:
-                    await consolidate(user_id, doc_types, agenda_updates=agenda_updates)
+                    await consolidate(user_id, doc_types)
     finally:
         _waiters.pop(user_id, None)
 
 
 async def consolidate(
-    user_id: str,
-    doc_types: list[MemoryDocType] | None = None,
-    *,
-    agenda_updates: list[str] | None = None,
+    user_id: str, doc_types: list[MemoryDocType] | None = None
 ) -> list[MemoryDocType]:
-    """Rewrite the given core documents (default: all five) from fresh inputs.
+    """Rewrite the given core documents (default: every LLM-written one).
 
     Returns the doc types actually rewritten. Skips a document when there is
-    nothing to write it from (no inputs and no previous version) or when the
-    LLM fails (the previous version stays).
+    nothing to write it from (no inputs and no previous version), when the LLM
+    fails, or when the result will not fit the size cap — in every case the
+    previous version stays, because a stale document beats a truncated one.
     """
     started = time.perf_counter()
-    targets = doc_types or list(MemoryDocType)
+    targets = doc_types if doc_types is not None else list(_DOC_PROMPTS)
     outcomes: dict[str, str] = {}
     rewritten: list[MemoryDocType] = []
 
     user_name = await _get_user_name(user_id)
     for doc_type in targets:
+        if doc_type not in _DOC_PROMPTS:
+            # agenda.md is rendered from its rows, never consolidated.
+            continue
         previous = await pg_store.get_document(user_id, doc_type)
         previous_content = previous.content if previous else ""
-        inputs = await _gather_inputs(user_id, doc_type, agenda_updates or [])
+        facts = await _gather_facts(user_id, doc_type)
+        inputs = await _gather_inputs(user_id, doc_type, facts)
         if not inputs and not previous_content.strip():
             outcomes[doc_type.value] = "skipped"
             continue
 
-        content = await rewrite_core_document(
-            _system_prompt(doc_type, user_name),
-            _format_inputs(previous_content, inputs),
-            user_id=user_id,
+        content = await _rewrite_within_cap(
+            user_id, doc_type, previous_content, inputs, user_name=user_name
         )
-        if content is None or not content.strip():
+        if content is None:
             outcomes[doc_type.value] = "failed"
-            # Surface the per-doc failure so a user whose core document stops
-            # converging is countable/alertable, not silently skipped.
-            log.warning(
-                "memory_consolidation_doc_failed",
-                user_id=user_id,
-                doc_type=doc_type.value,
-                error_type="llm_returned_empty",
-            )
             continue
 
-        await update_document(user_id, doc_type, content.strip())
+        content = await _strike_unsupported(user_id, doc_type, content, facts)
+        await update_document(user_id, doc_type, content)
         outcomes[doc_type.value] = "rewritten"
         rewritten.append(doc_type)
 
@@ -235,8 +235,148 @@ async def consolidate(
     return rewritten
 
 
+async def render_agenda_document(user_id: str) -> None:
+    """Rewrite agenda.md from the user's live agenda rows — no LLM involved.
+
+    Rendering from rows (not the old LLM-maintained/Redis version) makes every
+    line a real memory: searchable, correctable, and expirable.
+    """
+    rows = await pg_store.get_agenda_memories(user_id, limit=AGENDA_INJECTED_ITEM_CAP)
+    lines = [f"- {row.content}" for row in rows] or [_AGENDA_EMPTY_BODY]
+    await update_document(
+        user_id, MemoryDocType.AGENDA_MD, "\n".join([_AGENDA_DOC_HEADING, *lines])
+    )
+
+
+async def _rewrite_within_cap(
+    user_id: str,
+    doc_type: MemoryDocType,
+    previous_content: str,
+    inputs: list[str],
+    *,
+    user_name: str,
+) -> str | None:
+    """One rewrite, retried once when it blows the size cap. None when unusable.
+
+    The cap was previously only interpolated into the prompt and never checked,
+    so a document that ignored it was written anyway (production agenda.md:
+    4,886 characters against a 2,500 cap, injected into every single turn).
+    """
+    system_prompt = _system_prompt(doc_type, user_name)
+    human = _format_inputs(previous_content, inputs)
+
+    for attempt in range(2):
+        content = await rewrite_core_document(system_prompt, human, user_id=user_id)
+        if content is None or not content.strip():
+            log.warning(
+                "memory_consolidation_doc_failed",
+                user_id=user_id,
+                doc_type=doc_type.value,
+                error_type="llm_returned_empty",
+            )
+            return None
+        content = content.strip()
+        if len(content) <= DOCUMENT_TARGET_MAX_CHARS:
+            return content
+        log.warning(
+            "memory_consolidation_doc_over_cap",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="document_over_cap",
+            chars=len(content),
+            cap=DOCUMENT_TARGET_MAX_CHARS,
+            attempt=attempt + 1,
+        )
+        human = (
+            f"{human}\n\n## Your previous attempt was too long\n"
+            f"It was {len(content)} characters against a hard cap of "
+            f"{DOCUMENT_TARGET_MAX_CHARS}. Rewrite it under the cap by dropping "
+            "the least important bullets. Do not truncate mid-sentence, and do "
+            "not drop a section heading."
+        )
+    return None
+
+
+# Whitespace the verifier may tidy without striking anything (blank lines,
+# trailing spaces). Proportional, since a flat allowance is too small for a
+# long document but too large for a short one (168-char doc replaced wholesale).
+_SHRINK_TOLERANCE = 0.05
+_MIN_SHRINK_TOLERANCE_CHARS = 16
+
+
+async def _strike_unsupported(
+    user_id: str, doc_type: MemoryDocType, content: str, facts: list[MemoryRecord]
+) -> str:
+    """Remove lines the source facts do not support, returning the kept document.
+
+    One extra structured call per rewrite — consolidation is the only place a
+    fact can silently mutate a document undetectably. On LLM failure the
+    unverified document stands: skipping the check beats having no document.
+    """
+    if not facts:
+        return content
+    verified = await verify_core_document(
+        content, [fact.content for fact in facts], user_id=user_id
+    )
+    if verified is None or not verified.content.strip():
+        log.warning(
+            "memory_consolidation_verification_failed",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="llm_returned_empty",
+        )
+        return content
+    # The verifier only removes whole lines, so what the document loses must be
+    # what it says it struck; if the arithmetic doesn't add up the model did
+    # something else entirely (once returned an unstruck placeholder verbatim).
+    original = content.strip()
+    kept = verified.content.strip()
+    # Only a line the document actually contained can explain its loss. Counting
+    # the reported strings unchecked would let a model claim any budget it liked
+    # by inventing them.
+    explained = sum(len(line) + 1 for line in verified.struck if line in original)
+    tolerance = max(_MIN_SHRINK_TOLERANCE_CHARS, int(len(original) * _SHRINK_TOLERANCE))
+    lost = len(original) - len(kept)
+    if lost > explained + tolerance:
+        log.warning(
+            "memory_consolidation_verification_failed",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="unexplained_document_shrink",
+            lost_chars=lost,
+            explained_chars=explained + tolerance,
+            struck_count=len(verified.struck),
+        )
+        return content
+    if verified.struck:
+        log.warning(
+            "memory_consolidation_struck_unsupported",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="unsupported_document_lines",
+            struck_count=len(verified.struck),
+        )
+    # The shrink guard above validates the loss; this enforces the strike list
+    # mechanically, since the model can also desync the other way (list a line
+    # as struck but return it unchanged). Headings are structure, not claims.
+    return _apply_strikes(kept, verified.struck)
+
+
+def _apply_strikes(content: str, struck: list[str]) -> str:
+    """Remove every struck line from the document, mechanically."""
+    struck_lines = {line.strip() for line in struck}
+    if not struck_lines:
+        return content.strip()
+    kept = [
+        line
+        for line in content.splitlines()
+        if line.lstrip().startswith("#") or line.strip() not in struck_lines
+    ]
+    return "\n".join(kept).strip()
+
+
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
-    """The consolidation system prompt for one doc, with shared fields filled."""
+    """Return the consolidation system prompt for one doc, with shared fields filled."""
     return _DOC_PROMPTS[doc_type].format(
         max_chars=DOCUMENT_TARGET_MAX_CHARS,
         current_date=f"{datetime.now(UTC):%A, %d %B %Y}",
@@ -245,7 +385,7 @@ def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
 
 
 async def _get_user_name(user_id: str) -> str:
-    """The user's display name, so prompts can tell the user apart from others."""
+    """Return the user's display name, so prompts can tell the user apart from others."""
     try:
         user = await user_repository.get(user_id)
     except Exception:
@@ -254,36 +394,32 @@ async def _get_user_name(user_id: str) -> str:
 
 
 def _prefixes_for(doc_type: MemoryDocType) -> list[str]:
-    """Category folders that feed this document, per ``CATEGORY_DOC_MAP``."""
+    """Category folders that feed this document, per CATEGORY_DOC_MAP."""
     return [prefix for prefix, docs in CATEGORY_DOC_MAP.items() if doc_type in docs]
 
 
+async def _gather_facts(user_id: str, doc_type: MemoryDocType) -> list[MemoryRecord]:
+    """Return every live DURABLE fact this document is written from.
+
+    Not a recency window: a rewrite fed only the 50 freshest facts can never be
+    contradicted by the fact it corrupted, so a bad name or date survives every
+    subsequent pass. CONSOLIDATION_FACTS_LIMIT is a safety valve, not a
+    window.
+    """
+    prefixes = None if doc_type is MemoryDocType.USER_MD else _prefixes_for(doc_type)
+    return await pg_store.get_facts_for_consolidation(
+        user_id,
+        category_prefixes=prefixes,
+        shelf_life=MemoryShelfLife.DURABLE.value,
+        limit=CONSOLIDATION_FACTS_LIMIT,
+    )
+
+
 async def _gather_inputs(
-    user_id: str, doc_type: MemoryDocType, agenda_updates: list[str]
+    user_id: str, doc_type: MemoryDocType, facts: list[MemoryRecord]
 ) -> list[str]:
     """Assemble the fresh-input sections for one document rewrite."""
-    sections: list[str] = []
-
-    if doc_type is MemoryDocType.USER_MD:
-        # user.md is the general life-context doc: feed it every fact-kind
-        # memory so unmapped folders still reach a document.
-        facts = await pg_store.get_facts_for_consolidation(
-            user_id, kind=MemoryKind.FACT.value, limit=CONSOLIDATION_FACTS_LIMIT
-        )
-        sections.extend(_facts_section(facts))
-    elif doc_type is MemoryDocType.INSIGHTS_MD:
-        facts = await pg_store.get_facts_for_consolidation(
-            user_id, kind=MemoryKind.EXPERIENCE.value, limit=CONSOLIDATION_FACTS_LIMIT
-        )
-        sections.extend(_facts_section(facts, heading="## Recent experiences"))
-        sections.extend(await _episode_summaries_section(user_id))
-    else:
-        facts = await pg_store.get_facts_for_consolidation(
-            user_id,
-            category_prefixes=_prefixes_for(doc_type),
-            limit=CONSOLIDATION_FACTS_LIMIT,
-        )
-        sections.extend(_facts_section(facts))
+    sections = _facts_section(facts)
 
     if doc_type is MemoryDocType.PEOPLE_MD:
         people = await pg_store.get_entities_by_type(user_id, MemoryEntityType.PERSON.value)
@@ -291,39 +427,22 @@ async def _gather_inputs(
             names = "\n".join(f"- {entity.name}" for entity in people)
             sections.append(f"## Known people (entity register)\n{names}")
 
-    if doc_type is MemoryDocType.AGENDA_MD and agenda_updates:
-        updates = "\n".join(f"- {update}" for update in agenda_updates)
-        sections.append(f"## Agenda updates from recent conversations\n{updates}")
-
     return sections
 
 
-def _facts_section(facts: list[MemoryRecord], *, heading: str = "## Latest facts") -> list[str]:
+def _facts_section(facts: list[MemoryRecord]) -> list[str]:
     """Render fact rows as one input section (empty list when there are none)."""
     if not facts:
         return []
     lines = "\n".join(f"- {fact.content} (stored {fact.created_at:%Y-%m-%d})" for fact in facts)
-    return [f"{heading}\n{lines}"]
-
-
-async def _episode_summaries_section(user_id: str) -> list[str]:
-    """Day summaries from the last ``CONSOLIDATION_EPISODE_DAYS`` days."""
-    today = datetime.now(UTC).date()
-    episodes = await pg_store.get_episodes_range(
-        user_id, today - timedelta(days=CONSOLIDATION_EPISODE_DAYS), today
-    )
-    summaries = [
-        f"- {episode.date.isoformat()}: {episode.summary}"
-        for episode in episodes
-        if episode.summary
-    ]
-    if not summaries:
-        return []
-    return ["## Recent day summaries\n" + "\n".join(summaries)]
+    return [f"## Every fact this document is written from\n{lines}"]
 
 
 def _format_inputs(previous_content: str, sections: list[str]) -> str:
-    """The human message for one rewrite: previous version + fresh inputs."""
+    """Build the human message for one rewrite: previous version + the fact corpus."""
     previous_block = previous_content.strip() or "(no previous version)"
-    inputs_block = "\n\n".join(sections) if sections else "(no new inputs)"
-    return f"## Previous version of the document\n{previous_block}\n\n{inputs_block}"
+    inputs_block = "\n\n".join(sections) if sections else "(no facts)"
+    return (
+        "## Previous version of the document (a draft outranked by the facts below)\n"
+        f"{previous_block}\n\n{inputs_block}"
+    )

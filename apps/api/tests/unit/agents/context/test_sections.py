@@ -1,17 +1,18 @@
 """The section table, and the sections whose bodies live beside it.
 
 A section with no logic of its own is registered straight against its read in
-``fetchers`` and is covered there. What is left here branches before rendering —
+fetchers and is covered there. What is left here branches before rendering —
 a tier-dependent header, a provider lookup, two sources of skills — and this is
 the tier at which that branching is cheap to pin: the table and the branch, with
 every store mocked one layer down.
 
-``test_context_sections.py`` covers the two sections with real service logic
+test_context_sections.py covers the two sections with real service logic
 behind them against un-mocked production code; this file covers the branching,
 the ordering, and the failure paths that never reach a service at all.
 """
 
-from typing import Any
+from dataclasses import replace
+from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,7 +23,7 @@ from app.agents.context.sections import SECTIONS, Section, sections_for
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
     CONNECTED_INTEGRATIONS_HEADER,
-    EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
+    EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.config.oauth_config import get_integration_by_id
@@ -38,34 +39,27 @@ def section(section_id: str) -> Section:
     return next(s for s in SECTIONS if s.id == section_id)
 
 
-def ctx(
-    tier: AgentTier = AgentTier.COMMS,
-    *,
-    user_id: str | None = "user1",
-    user_name: str | None = None,
-    user_timezone: str | None = None,
-    user_preferences: dict[str, Any] | None = None,
-    writing_style: dict[str, Any] | None = None,
-    subagent_id: str | None = None,
-    integration_id: str | None = None,
-) -> SectionContext:
-    return SectionContext(
-        tier=tier,
-        user_id=user_id,
-        user_name=user_name,
-        user_timezone=user_timezone,
-        user_preferences=user_preferences,
-        writing_style=writing_style,
-        subagent_id=subagent_id,
-        integration_id=integration_id,
-    )
+class _CtxOverrides(TypedDict, total=False):
+    """The SectionContext fields these tests vary, mirrored so ctx stays typed."""
+
+    user_id: str | None
+    user_name: str | None
+    user_timezone: str | None
+    user_preferences: dict[str, Any] | None
+    writing_style: dict[str, Any] | None
+    subagent_id: str | None
+    integration_id: str | None
+    source: str | None
+
+
+def ctx(tier: AgentTier = AgentTier.COMMS, **overrides: Unpack[_CtxOverrides]) -> SectionContext:
+    return replace(SectionContext(tier=tier, user_id="user1"), **overrides)
 
 
 @pytest.mark.unit
 class TestTheTableIsWellFormed:
     def test_every_section_id_is_unique(self) -> None:
-        """Results are read back by id, so a duplicate would silently drop one
-        section's text and render the other's twice."""
+        """Results are read back by id, so a duplicate would silently drop one section's text."""
         ids = [s.id for s in SECTIONS]
 
         assert len(ids) == len(set(ids))
@@ -93,24 +87,21 @@ class TestTheTableIsWellFormed:
         assert orders == sorted(orders)
 
     def test_comms_receives_exactly_these_sections_in_this_order(self) -> None:
-        """Spelled out rather than merely "sorted": the two run banners sort
-        LAST on purpose, so their directives land with recency immediately
-        before the conversation begins, and a reversed or unsorted result still
-        satisfies a weaker check on a short list."""
+        """Spelled out rather than merely "sorted": the two run banners sort LAST on purpose, for recency before the conversation begins."""
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.DYNAMIC_STABLE)] == [
+            # Which messaging app comms is replying in — first, so the identity
+            # details below read as detail under it. Comms-only: the worker tiers
+            # never speak to the user.
+            "platform_banner",
             "user_identity",
             "user_prefs",
+            "new_user_guidance",
             "integrations_manifest",
+            "connected_devices",
         ]
-        # core_memory sits in the volatile TAIL, not the cached prefix. The old
-        # placement assumed the memory documents only change between
-        # conversations ("rewritten by the consolidation pass, not per turn").
-        # Measured on the real graph, that is false — consolidation runs DURING a
-        # conversation, so the documents move inside the prefix and push the whole
-        # conversation out of the cache behind them. Moving them behind the
-        # conversation measured comms 46.0% -> 59.3% and the executor
-        # 64.8% -> 75.8%. The content still reaches the model in full; only its
-        # position changed.
+        # core_memory sits in the volatile TAIL: consolidation runs DURING a conversation,
+        # so leaving it in the prefix pushed the conversation out of cache. Moving it
+        # behind measured comms 46.0% -> 59.3%, executor 64.8% -> 75.8%.
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.MEMORY_RECALL)] == [
             "core_memory",
             "agenda_activity",
@@ -122,17 +113,18 @@ class TestTheTableIsWellFormed:
         ]
 
     def test_the_executor_receives_its_own_stable_set(self) -> None:
-        # ``skills`` sits in the STABLE set: the listing is a pure function of
-        # (user, agent) with no query and no clock, Redis-cached for 12h — in
-        # the volatile slot it was re-read on every worker call for nothing.
-        # The known trade: a mid-conversation skill install breaks the prefix
-        # once, same as integrations_manifest already accepts for connects.
+        # ``skills`` sits in the STABLE set: a pure function of (user, agent),
+        # Redis-cached 12h, so it was re-read for nothing in the volatile slot.
+        # A mid-conversation skill install breaks the prefix once, same trade as integrations_manifest.
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
+            "executor_platform",
             "user_identity",
             "user_prefs",
             "workspace_session",
             "integrations_manifest",
+            "connected_devices",
             "skills",
+            "open_pendings",
         ]
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
             "core_memory",
@@ -145,18 +137,12 @@ class TestTheTableIsWellFormed:
         ]
 
     def test_a_section_excludes_the_tiers_it_was_not_registered_against(self) -> None:
-        """``applies`` is what keeps comms — which holds no file or shell tools —
-        from being handed the skills listing."""
+        """Applies is what keeps comms, which holds no file or shell tools, from being handed the skills listing."""
         assert not section("skills").applies(AgentTier.COMMS)
         assert section("skills").applies(AgentTier.EXECUTOR)
 
     async def test_user_prefs_reaches_every_tier_because_configurable_carries_it(self) -> None:
-        """``user_prefs`` applies to every tier — proven against the actual data
-        path, not just the registry entry: ``from_configurable`` reads
-        ``user_preferences`` / ``writing_style`` off ``configurable`` (set once
-        by ``build_agent_config`` at a run's root, inherited by every child), so
-        a worker tier built the way production actually builds one renders the
-        section rather than silently getting an empty string forever."""
+        """Proven against the actual data path, not just the registry entry: from_configurable reads user_preferences/writing_style off configurable."""
         assert section("user_prefs").applies_to == ALL_TIERS
         worker_ctx = SectionContext.from_configurable(
             AgentTier.EXECUTOR,
@@ -165,12 +151,98 @@ class TestTheTableIsWellFormed:
         assert await section("user_prefs").fetch(worker_ctx) != ""
 
     def test_workspace_session_is_scoped_to_tiers_that_build_from_a_configurable(self) -> None:
-        """Comms never calls ``SectionContext.from_configurable`` — it constructs
-        the context directly in ``messages.py`` with no ``vfs_session_id`` — so
-        ``build_workspace_session_banner`` would always render "" for it.
-        Mirrors ``test_user_prefs_is_scoped_to_the_only_tier_that_populates_it``
-        from the other direction."""
+        """Comms constructs its context directly in messages.py with no vfs_session_id, so the banner would always render ""."""
         assert AgentTier.COMMS not in section("workspace_session").applies_to
+
+
+@pytest.mark.unit
+class TestPlatformBanner:
+    """The model cannot read configurable, so the channel has to be said out loud or comms writes web-app prose into a Telegram bubble."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected_name"),
+        [
+            ("telegram", "Telegram"),
+            ("whatsapp", "WhatsApp"),
+            ("discord", "Discord"),
+            ("slack", "Slack"),
+            ("imessage", "iMessage"),
+        ],
+    )
+    async def test_it_names_the_messaging_app(self, source: str, expected_name: str) -> None:
+        rendered = await section("platform_banner").fetch(ctx(source=source))
+
+        # Exact, not a substring match: mutmut mutates a string literal by
+        # padding it, so `"their Telegram chat" in rendered` stays true against
+        # a mutated banner and proves nothing about the rest of the sentence.
+        assert rendered == (
+            f"You are chatting with the user in their {expected_name} chat right now. "
+            f"Write like a normal {expected_name} message: plain text, short, no markdown "
+            "tables or rich cards."
+        )
+
+    @pytest.mark.parametrize("source", ["web", "mobile", "workflow_system"])
+    async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
+        """Telling the web app to write plain short text would be actively wrong — its whole point is the cards the bots cannot render."""
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    async def test_desktop_gets_no_messaging_banner(self) -> None:
+        """Desktop renders rich UI like the web app; its tools are the executor's to use, not comms's."""
+        assert await section("platform_banner").fetch(ctx(source="desktop")) == ""
+
+    @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
+    async def test_an_unknown_channel_is_silent_rather_than_guessed(
+        self, source: str | None
+    ) -> None:
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    def test_only_comms_receives_it(self) -> None:
+        """The worker tiers never address the user, so channel voice is not theirs to act on — and a section they do not need still costs a fetch."""
+        assert section("platform_banner").applies_to == frozenset({AgentTier.COMMS})
+
+    def test_it_is_stable_not_volatile(self) -> None:
+        """Keep the slot DYNAMIC_STABLE so MEMORY_RECALL doesn't push it outside the cacheable prefix."""
+        assert section("platform_banner").slot is PromptSlot.DYNAMIC_STABLE
+
+
+@pytest.mark.unit
+class TestExecutorPlatform:
+    """The executor picks its output formats by platform, so the platform is stated for every one the user chats from."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("web", "The user is on Web."),
+            ("mobile", "The user is on Mobile."),
+            ("telegram", "The user is on Telegram."),
+            ("whatsapp", "The user is on WhatsApp."),
+            ("imessage", "The user is on iMessage."),
+        ],
+    )
+    async def test_it_names_the_platform(self, source: str, expected: str) -> None:
+        rendered = await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source))
+        assert rendered == expected
+
+    async def test_desktop_also_names_its_tools(self) -> None:
+        rendered = await section("executor_platform").fetch(
+            ctx(AgentTier.EXECUTOR, source="desktop")
+        )
+
+        assert rendered == (
+            "The user is on Desktop. Desktop tools are available (discover them with "
+            "retrieve_tools): take_screenshot, read_clipboard/write_clipboard, open_app, "
+            "open_url, list_windows. Use take_screenshot whenever the user references "
+            "what they are currently looking at."
+        )
+
+    @pytest.mark.parametrize("source", [None, "", "workflow_system", "background", "nope"])
+    async def test_no_user_platform_states_nothing(self, source: str | None) -> None:
+        assert (
+            await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source)) == ""
+        )
+
+    def test_only_the_executor_receives_it(self) -> None:
+        assert section("executor_platform").applies_to == frozenset({AgentTier.EXECUTOR})
 
 
 @pytest.mark.unit
@@ -193,8 +265,7 @@ class TestUserIdentity:
         assert await section("user_identity").fetch(ctx()) == ""
 
     async def test_it_carries_no_clock(self) -> None:
-        """Only the static home zone belongs here. A minute-ticking byte in this
-        block would reset the cache boundary on every call."""
+        """A minute-ticking byte in this block would reset the cache boundary on every call."""
         rendered = await section("user_identity").fetch(
             ctx(user_name="Ada", user_timezone="Asia/Kolkata")
         )
@@ -223,9 +294,7 @@ class TestUserPreferences:
         assert rendered == "User Preferences:\n- Writes in lowercase"
 
     async def test_both_sources_reach_the_formatter(self) -> None:
-        """Preferences and writing style are separate onboarding answers. Drop
-        either on the way to the formatter and the agent silently stops honouring
-        half of what the user told it during onboarding."""
+        """Preferences and writing style are separate onboarding answers; dropping either silently loses half of what the user told it."""
         with patch(
             "app.agents.context.sections.format_user_preferences_for_agent", return_value="- x"
         ) as formatter:
@@ -236,8 +305,7 @@ class TestUserPreferences:
         formatter.assert_called_once_with({"tone": "formal"}, writing_style={"case": "lower"})
 
     async def test_a_writing_style_only_user_reaches_the_formatter_intact(self) -> None:
-        """With no preferences the formatter still needs an empty mapping, not
-        ``None`` — and the style must survive the substitution."""
+        """With no preferences the formatter still needs an empty mapping, not None."""
         with patch(
             "app.agents.context.sections.format_user_preferences_for_agent", return_value="- x"
         ) as formatter:
@@ -249,8 +317,7 @@ class TestUserPreferences:
         assert await section("user_prefs").fetch(ctx()) == ""
 
     async def test_preferences_that_format_to_nothing_yield_no_bare_header(self) -> None:
-        """A lone header tells the agent it has preferences and that they are
-        empty, which reads like a fetch failure."""
+        """A lone header would read like a fetch failure, not empty preferences."""
         with patch(
             "app.agents.context.sections.format_user_preferences_for_agent", return_value=""
         ):
@@ -259,21 +326,19 @@ class TestUserPreferences:
 
 @pytest.mark.unit
 class TestIntegrationsManifest:
-    """The executor performs the handoffs, so its header states the list is live
-    and names the parenthesised id as the ``subagent_id``. Comms only hands off,
-    so it gets the short form."""
+    """The executor acts on integrations itself, so its header names activate_integration; comms gets the short form."""
 
     @staticmethod
     def _connected() -> AsyncMock:
         return AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}])
 
-    async def test_the_executor_gets_the_handoff_instructions(self) -> None:
+    async def test_the_executor_gets_the_activation_instructions(self) -> None:
         with patch(
             "app.agents.context.fetchers.get_connected_integrations_named", self._connected()
         ):
             rendered = await section("integrations_manifest").fetch(ctx(AgentTier.EXECUTOR))
 
-        assert rendered.startswith(EXECUTOR_CONNECTED_INTEGRATIONS_HEADER)
+        assert rendered.startswith(EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER)
 
     async def test_comms_gets_the_capability_awareness_header(self) -> None:
         with patch(
@@ -296,11 +361,9 @@ class TestIntegrationsManifest:
 @pytest.mark.unit
 class TestProviderMetadata:
     async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
-        """Two fields, not one: with a single entry the ``\\n`` joining them is
-        unobservable, and a separator that stopped separating would run the
-        provider's identity fields together into one unreadable line."""
+        """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
         with patch(
-            "app.agents.context.sections.get_provider_metadata",
+            "app.agents.context.fetchers.get_provider_metadata",
             AsyncMock(return_value={"email": "ada@example.com", "login": "ada"}),
         ):
             rendered = await section("provider_metadata").fetch(
@@ -310,10 +373,9 @@ class TestProviderMetadata:
         assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
 
     async def test_it_asks_about_this_user_on_this_provider(self) -> None:
-        """The provider comes from the resolved integration, not the raw id —
-        asking the wrong provider returns another account's identity."""
+        """The provider comes from the resolved integration, not the raw id."""
         metadata = AsyncMock(return_value={})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
@@ -322,7 +384,7 @@ class TestProviderMetadata:
 
     async def test_an_unknown_user_is_never_looked_up(self) -> None:
         metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             rendered = await section("provider_metadata").fetch(
                 SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
@@ -331,10 +393,9 @@ class TestProviderMetadata:
         metadata.assert_not_awaited()
 
     async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
-        """A subagent id that resolves to no integration has no provider to ask
-        about; querying anyway would be a lookup on a guess."""
+        """A subagent id that resolves to no integration has no provider to ask about."""
         metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
             )
@@ -343,7 +404,7 @@ class TestProviderMetadata:
         metadata.assert_not_awaited()
 
     async def test_no_metadata_yields_no_block(self) -> None:
-        with patch("app.agents.context.sections.get_provider_metadata", AsyncMock(return_value={})):
+        with patch("app.agents.context.fetchers.get_provider_metadata", AsyncMock(return_value={})):
             assert (
                 await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -354,7 +415,7 @@ class TestProviderMetadata:
     async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.sections.get_provider_metadata",
+                "app.agents.context.fetchers.get_provider_metadata",
                 AsyncMock(side_effect=RuntimeError("composio down")),
             ):
                 rendered = await section("provider_metadata").fetch(
@@ -373,8 +434,7 @@ class TestProviderMetadata:
 @pytest.mark.unit
 class TestCustomInstructions:
     async def test_it_injects_the_users_instructions_in_full(self) -> None:
-        """Injected rather than pointed at, so the subagent honours "focus on
-        #eng" without spending a file read to discover it."""
+        """Injected rather than pointed at, so the subagent honours it without spending a file read to discover it."""
         with patch(
             "app.agents.context.sections.get_instructions",
             AsyncMock(return_value="  Always archive newsletters.  "),
@@ -384,13 +444,12 @@ class TestCustomInstructions:
             )
 
         assert rendered == (
-            "CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):\n"
+            "CUSTOM INSTRUCTIONS FOR GMAIL (set by the user, honor these):\n"
             "Always archive newsletters."
         )
 
     async def test_a_spawned_subagent_is_looked_up_by_its_own_id(self) -> None:
-        """With no integration, ``subagent_id`` is the key — otherwise a spawned
-        worker silently never receives instructions set for it."""
+        """With no integration, subagent_id is the key — otherwise a spawned worker never receives its instructions."""
         instructions = AsyncMock(return_value="Stay terse.")
         with patch("app.agents.context.sections.get_instructions", instructions):
             rendered = await section("custom_instructions").fetch(
@@ -447,8 +506,7 @@ class TestSkills:
         skills.assert_awaited_once_with(user_id="user1", agent_name="executor")
 
     async def test_a_named_subagent_is_looked_up_under_its_own_name(self) -> None:
-        """Falling back to the executor key here would hand every subagent the
-        executor's skills instead of its own."""
+        """Falling back to the executor key here would hand every subagent the executor's skills instead of its own."""
         skills = AsyncMock(return_value="")
         with (
             patch("app.agents.context.sections.get_available_skills_text", skills),
@@ -469,9 +527,7 @@ class TestSkills:
         skills.assert_not_awaited()
 
     async def test_a_subagents_integration_skills_are_appended(self) -> None:
-        """``subagent_id`` carries the agent_name ("docgen_agent") while the
-        skills map is keyed by the subagent id ("docgen"); mapped wrong this
-        silently finds nothing."""
+        """subagent_id carries the agent_name while the skills map is keyed by the subagent id — mapped wrong, this silently finds nothing."""
         with (
             patch(
                 "app.agents.context.sections.get_available_skills_text",
@@ -530,8 +586,7 @@ class TestSkills:
         assert warning["error_type"] == "RuntimeError"
 
     async def test_a_failed_skills_read_with_no_integration_ones_yields_empty_text(self) -> None:
-        """Exactly ``""``, not ``None``: a section's contract is text, and a
-        ``None`` here would reach the assembler as a non-string."""
+        """Exactly "", not None — a section's contract is text, and None would reach the assembler as a non-string."""
         with patch(
             "app.agents.context.sections.get_available_skills_text",
             AsyncMock(side_effect=RuntimeError("workspace down")),
@@ -540,3 +595,17 @@ class TestSkills:
 
         assert rendered == ""
         assert isinstance(rendered, str)
+
+
+@pytest.mark.unit
+class TestConversationIdReachesSections:
+    def test_from_configurable_carries_conversation_id(self) -> None:
+        """Ledger-backed sections (open pendings) read the conversation off the closed context shape — proven against the actual data path, not just the field existing."""
+        ctx = SectionContext.from_configurable(
+            AgentTier.EXECUTOR, {"conversation_id": "c1", "user_id": "u1"}
+        )
+        assert ctx.conversation_id == "c1"
+
+    def test_missing_conversation_id_is_none_not_crash(self) -> None:
+        ctx = SectionContext.from_configurable(AgentTier.EXECUTOR, {})
+        assert ctx.conversation_id is None

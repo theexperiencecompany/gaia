@@ -28,15 +28,15 @@
     "**/*.generated.*",
     "**/i18n/*.json",
     "**/chat/fixtures.ts",
-    "apps/web/public/**",
-    "apps/web/content/**",
-    "apps/voice-agent/**",
-    "infra/**",
-    "docs/**",
-    "scripts/**",
-    ".agents/**",
-    ".claude/**",
-    ".github/**",
-    "config/biome-rules/**"
+    "**/apps/web/public/**",
+    "**/apps/web/content/**",
+    "**/apps/voice-agent/**",
+    "**/infra/**",
+    "**/docs/**",
+    "**/scripts/**",
+    "**/.agents/**",
+    "**/.claude/**",
+    "**/.github/**",
+    "**/config/biome-rules/**"
   ]
 }

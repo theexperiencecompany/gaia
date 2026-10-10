@@ -88,10 +88,8 @@ async def test_live_sandbox_is_kept_when_command_errors() -> None:
 
 
 async def test_file_not_found_on_a_live_sandbox_does_not_evict() -> None:
-    # A read/edit of a MISSING FILE raises NotFoundException, but the sandbox is
-    # alive. Eviction keys off is_running() (not the exception TYPE) precisely so
-    # a file-404 doesn't get mistaken for a dead sandbox — catching
-    # NotFoundException by type (as the naive approach would) would evict a
+    # Eviction keys off is_running(), not the exception TYPE — a missing-file
+    # NotFoundException still means a live sandbox; keying off type would evict a
     # healthy sandbox on every read of a non-existent path.
     sbx = AsyncMock()
     sbx.is_running = AsyncMock(return_value=True)  # sandbox is fine; only the file is missing

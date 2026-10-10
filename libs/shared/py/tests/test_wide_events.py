@@ -292,11 +292,11 @@ class TestTraceId:
 
 
 def _emitted_event(mock_loguru: MagicMock) -> dict:
-    """The event the boundary actually emitted.
+    """Return the event the boundary actually emitted.
 
-    Read this instead of ``log.get()`` after a boundary exits. A boundary
+    Read this instead of log.get() after a boundary exits. A boundary
     restores the enclosing accumulator on exit, so once it has closed there is
-    deliberately nothing left to read — asserting on ``log.get()`` afterwards
+    deliberately nothing left to read — asserting on log.get() afterwards
     only passed while boundaries leaked their state outward, which was the bug.
     """
     return dict(mock_loguru.bind.call_args.kwargs)
@@ -394,6 +394,18 @@ class TestWideTask:
         assert len(event["errors"]) == 1
         assert event["errors"][0]["error"] == "bad value"
         assert event["errors"][0]["error_type"] == "ValueError"
+
+    @pytest.mark.asyncio
+    @patch("shared.py.wide_events._loguru")
+    async def test_a_failure_the_body_handled_is_not_reported_as_success(
+        self, mock_loguru: MagicMock
+    ):
+        async with wide_task("handled_task"):
+            log.fail("engine_crash", engine="obscura")
+        event = _emitted_event(mock_loguru)
+        assert event["outcome"] == "failed"
+        assert event["reason"] == "engine_crash"
+        assert event["engine"] == "obscura"
 
 
 # ---------------------------------------------------------------------------

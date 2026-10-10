@@ -1,25 +1,17 @@
 """Rolling daily + monthly USD cost budgets for tier enforcement.
 
-Day and month Redis keys accumulate real LLM USD cost per user. Writers and
-readers:
+Day and month Redis keys accumulate real LLM USD cost per user.
+LLMAccountingMiddleware.aafter_model increments both windows after every
+model call; ainvoke_structured prices auxiliary one-shot calls the same way
+but with charge_to_budget=False, so background work never eats the user's
+allowance. The chat endpoint checks the daily window before running the
+agent (429 wall); awrap_model_call checks it plus the per-request token
+ceiling as the backstop, and the monthly window drives the pro model
+degrade in resolve_lane.
 
-- ``LLMAccountingMiddleware.aafter_model`` increments both windows after every
-  model call (the single seam every execution path passes through — chat,
-  workflows, bots, voice, subagents).
-- ``ainvoke_structured`` prices its auxiliary one-shot calls (memory
-  extraction/reconcile/consolidation, follow-ups, onboarding, …) through the
-  same ``app.services.llm_metering.record_llm_call`` — but with
-  ``charge_to_budget=False``: that spend is booked durably for COGS
-  observability and never touches these windows, because background work must
-  not consume the user's allowance.
-- The chat endpoint checks the daily window BEFORE running the agent (429 wall).
-- ``LLMAccountingMiddleware.awrap_model_call`` checks the daily window and the
-  per-request token ceiling as the unbypassable backstop; the monthly window
-  drives the pro model degrade in ``resolve_lane``.
-
-Follows the RedisCache degradation philosophy: when Redis is unavailable these
-helpers warn and no-op (enforcement fails open; startup ``verify_connection``
-is what fails hard in production).
+Follows RedisCache's degradation philosophy: when Redis is unavailable these
+helpers warn and no-op (enforcement fails open; startup verify_connection
+fails hard in production).
 """
 
 import asyncio
@@ -45,6 +37,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
 from app.schemas.usage import BudgetWindow, UsageBudget
 from app.services.payments.payment_service import payment_service
@@ -64,10 +57,10 @@ _PERIOD_TTL_SECONDS = {
 # abuse guards, so their copy stays neutral.
 DAILY_BUDGET_STOP_FREE = (
     "You've reached today's usage limit on the free plan. "
-    "Your limit resets tomorrow — or upgrade to Pro for much higher limits."
+    "Your limit resets tomorrow, or upgrade to Pro for much higher limits."
 )
 DAILY_BUDGET_STOP_PRO = (
-    "You've reached today's usage limit. It resets tomorrow — "
+    "You've reached today's usage limit. It resets tomorrow, "
     "contact support if you keep hitting this."
 )
 REQUEST_CEILING_STOP_FREE = (
@@ -90,8 +83,10 @@ BUDGET_WRAPUP_NOTICE = (
 
 
 class BudgetCheck(NamedTuple):
-    """Stop text (if bound) plus the daily spend read used to decide it, so
-    callers can test the wrap-up threshold without a second Redis round trip."""
+    """Stop text (if bound) plus the daily spend read used to decide it.
+
+    Lets callers test the wrap-up threshold without a second Redis round trip.
+    """
 
     stop_reason: str | None
     spent_usd: float | None
@@ -116,42 +111,29 @@ def _is_charged_spend(user_id: str | None, cost_usd: float) -> bool:
 
 async def record_model_call_usage(
     user_id: str | None,
-    cost_usd: float,
+    spend: UsageDailyIncrement,
     root_request_id: str | None,
     *,
-    input_tokens: int,
-    output_tokens: int,
-    cached_tokens: int = 0,
-    reasoning_tokens: int = 0,
     charge_to_budget: bool,
 ) -> None:
     """Record one model call's spend and tokens in a single Redis round trip.
 
-    Called by both metering routes via ``record_llm_call``. Batches the day +
-    month USD cost increments and the request tree's aggregate token counter —
-    each with its TTL — into one non-transactional pipeline, and runs the
-    durable Mongo cost rollup concurrently. Fail-open: a Redis hiccup must
-    never fail the model call.
-
-    ``charge_to_budget`` decides whether the spend counts against the user's
-    allowance: the agent middleware charges (chat/workflow/bot work the user
-    asked for), auxiliary one-shot calls do not — their spend lands only in the
-    durable rollup (under ``aux_cost``) so COGS stays measurable per user
-    without a memory save or onboarding question eating chat allowance.
-
-    The durable rollup records the token breakdown whenever there is spend OR
-    token data — deliberately not gated on ``cost_usd`` alone, since a pricing
-    lookup failure books ``cost_usd=0`` for a call that still burned real
-    tokens (see ``llm_metering.record_llm_call``); the tokens must survive
-    that so the call can be re-priced after the fact.
+    charge_to_budget decides whether spend counts against the user's allowance: the agent
+    middleware charges, aux one-shot calls do not (booked only under aux_cost for COGS). The
+    durable rollup still records token counts at cost_usd=0, since a pricing-lookup failure
+    must not lose the data needed to re-price the call later.
     """
     # The request ceiling bounds runaway loops, not cache economics: a cached
     # prefix rides nearly every call in a turn, so counting it trips the wall
     # on ordinary multi-call turns. The durable rollup below still books raw.
-    billable_tokens = _billable_request_tokens(input_tokens, cached_tokens, output_tokens)
-    record_spend = _is_charged_spend(user_id, cost_usd)
+    billable_tokens = _billable_request_tokens(
+        spend.input_tokens, spend.cached_tokens, spend.output_tokens
+    )
+    record_spend = _is_charged_spend(user_id, spend.cost)
     record_tokens = root_request_id is not None and billable_tokens > 0
-    has_token_data = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
+    has_token_data = bool(
+        spend.input_tokens or spend.output_tokens or spend.cached_tokens or spend.reasoning_tokens
+    )
     # The id itself, not a flag: the durable write below takes a non-optional
     # user_id, and carrying the narrowed value is what lets it type-check
     # without re-testing a None the flag has already ruled out.
@@ -169,15 +151,7 @@ async def record_model_call_usage(
         labeled.append(
             (
                 "mongo_cost_rollup",
-                record_cost(
-                    rollup_user_id,
-                    cost_usd,
-                    charged=charge_to_budget,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cached_tokens=cached_tokens,
-                    reasoning_tokens=reasoning_tokens,
-                ),
+                record_cost(rollup_user_id, spend, charged=charge_to_budget),
             )
         )
 
@@ -189,7 +163,7 @@ async def record_model_call_usage(
         if charge_to_budget and record_spend and user_id is not None:
             for period, ttl in _PERIOD_TTL_SECONDS.items():
                 key = _budget_key(user_id, period)
-                pipe.incrbyfloat(key, cost_usd)
+                pipe.incrbyfloat(key, spend.cost)
                 pipe.expire(key, ttl)
         if record_tokens:
             # The flag already encodes "root_request_id present and something
@@ -201,10 +175,9 @@ async def record_model_call_usage(
         if pipe.command_stack:
             labeled.append(("redis_usage_pipeline", pipe.execute()))
 
-    # Fail-open per op: a Redis or Mongo write failure here must never fail the
-    # already-completed model call. ``return_exceptions`` keeps both writes
-    # running to completion and lets us log each failure by name instead of one
-    # aborting the other or bubbling out to the caller.
+    # Fail-open per op: a write failure here must never fail the already-completed
+    # model call. return_exceptions keeps both writes running to completion and
+    # lets us log each failure by name instead of one aborting the other.
     results = await asyncio.gather(*(aw for _, aw in labeled), return_exceptions=True)
     for (name, _), result in zip(labeled, results):
         if isinstance(result, Exception):
@@ -242,7 +215,7 @@ async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
 async def get_request_tokens(root_request_id: str) -> int:
     """Return the request tree's aggregate token count so far (0 if unset).
 
-    Fails open (0) on Redis errors — same contract as :func:`get_cost`.
+    Fails open (0) on Redis errors — same contract as :func:get_cost.
     """
     client = redis_cache.redis
     if client is None:
@@ -264,29 +237,17 @@ async def get_budget_stop_reason(
     plan_type: PlanType | None,
     root_request_id: str | None,
 ) -> BudgetCheck:
-    """Return the user-facing stop text when a budget wall binds, else None.
+    """Return the budget read: stop_reason is the user-facing stop text when a wall binds, else None.
 
-    Checked before every model call by ``LLMAccountingMiddleware`` — the one
-    seam every execution path (chat, workflows, bots, voice, subagents) passes
-    through. The wall is self-sufficient: when ``plan_type`` was never stamped
-    onto the configurable (a background/subagent path that skipped
-    ``resolve_lane``), it is derived here from the Redis-cached tier so no
-    entry point can be born unenforced. Two walls:
-
-    1. Daily cost budget — catches entry points that skip the endpoint gate.
-    2. Per-request aggregate token ceiling — stops runaway agentic loops.
-
-    Also returns the daily spend + resolved plan actually read (or None when no
-    read happened) so the caller can test the wrap-up threshold for free.
-
-    Fails open only when there is genuinely nothing to enforce against
-    (``user_id`` missing) or the plan lookup itself errors (infra hiccup) —
-    both warn loudly so the gap stays visible, never silently skipped.
+    Self-sufficient: derives plan_type from the Redis-cached tier when never
+    stamped onto the configurable. Checks a daily cost budget and a
+    per-request token ceiling, and returns the spend/plan read so callers can
+    test the wrap-up threshold for free. Fails open only when nothing can be enforced.
     """
-    if not settings.billing_enabled:
-        # Self-hosted instances record cost but never wall a run (billing is
-        # disabled there) — and no wrap-up notice either, since there is no
-        # allowance to run out of.
+    # Skip on self-host (records cost but never blocks — no allowance to run
+    # out of) or when DEV_UNLIMITED_RATE_LIMITS is set (eval and local dev stay
+    # unblocked). Dev otherwise enforces, mirroring production.
+    if settings.is_selfhost or settings.DEV_UNLIMITED_RATE_LIMITS:
         return BudgetCheck(None, None, None)
 
     if user_id is None:
@@ -348,21 +309,22 @@ async def get_budget_stop_reason(
 
 
 def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
-    """The daily wall's one comparison: has ``spent`` consumed the plan's budget?
+    """Check whether spent has consumed the plan's daily budget.
 
-    Shared by the endpoint 429 gate (``enforce_daily_cost_budget``) and the
-    middleware wall (:func:`get_budget_stop_reason`) so the operator and plan
-    resolution can never drift between the two enforcement points. Takes the
-    already-read spend because each caller fetches it differently (solo read vs
-    gathered with the token counter).
+    Shared by the endpoint 429 gate and the middleware wall so the two
+    enforcement points can never drift. Takes the already-read spend because
+    each caller fetches it differently (solo read vs gathered with the token
+    counter).
     """
     return spent >= get_daily_cost_budget_usd(plan_type)
 
 
 def is_budget_wrapup_threshold(spent: float, plan_type: PlanType) -> bool:
-    """True once spend crosses BUDGET_WRAPUP_REMAINING_FRACTION headroom, before
-    the hard wall above binds. Same shared-comparison rationale as
-    :func:`is_daily_budget_exhausted`."""
+    """Check whether spend has crossed BUDGET_WRAPUP_REMAINING_FRACTION headroom.
+
+    True before the hard wall above binds; same shared-comparison rationale
+    as is_daily_budget_exhausted.
+    """
     budget = get_daily_cost_budget_usd(plan_type)
     return budget > 0 and spent >= budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION)
 
@@ -376,12 +338,10 @@ def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> Bud
 async def get_budget_status(user_id: str, plan_type: PlanType) -> UsageBudget:
     """Read-only cost-budget view for the Usage UI.
 
-    Returns only the *percentage* of each window's allowance consumed (plus its
-    reset time) and the per-request token ceiling — deliberately never the raw
-    USD spend or the dollar budget, so the user sees how close they are to the
-    wall without us leaking per-request COGS to the client. Reads the same Redis
-    windows the accounting middleware enforces, so the number shown is the number
-    that gates them. Free has no monthly cost budget, so ``monthly`` is null there.
+    Returns only the percentage of each window's allowance consumed (plus
+    its reset time), never the raw USD spend or dollar budget, so the client
+    never sees per-request COGS. Free has no monthly cost budget, so monthly
+    is null there.
     """
     # Pro reads both windows concurrently (one round trip); Free reads only day.
     if plan_type == PlanType.PRO:

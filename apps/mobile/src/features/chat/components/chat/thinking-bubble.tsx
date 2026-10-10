@@ -12,35 +12,15 @@ import Animated, {
 } from "react-native-reanimated";
 import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
+import { Pulsing } from "../streaming/pulsing";
 
 interface ThinkingBubbleProps {
   thinkingContent: string;
   isStreaming?: boolean;
   userMessage?: string;
   durationSeconds?: number;
-}
-
-function PulsingBrain({ size }: { size: number }) {
-  const opacity = useSharedValue(0.6);
-
-  useEffect(() => {
-    opacity.value = withTiming(1, { duration: 350 });
-    const interval = setInterval(() => {
-      opacity.value = withTiming(opacity.value > 0.8 ? 0.6 : 1, {
-        duration: 350,
-      });
-    }, 350);
-    return () => clearInterval(interval);
-  }, [opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <AppIcon icon={Brain02Icon} size={size} color="#a1a1aa" />
-    </Animated.View>
-  );
 }
 
 function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
@@ -60,7 +40,8 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
             : getRandomThinkingMessage(),
         );
       },
-      2000 + Math.random() * 1000,
+      // cosmetic jitter on the thinking-message rotation; nothing security-relevant
+      2000 + Math.random() * 1000, // NOSONAR typescript:S2245
     );
     return () => clearInterval(interval);
   }, [userMessage]);
@@ -73,11 +54,17 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
         gap: spacing.sm,
       }}
     >
-      <PulsingBrain size={moderateScale(16, 0.5)} />
+      <Pulsing>
+        <AppIcon
+          icon={Brain02Icon}
+          size={moderateScale(16, 0.5)}
+          color={colors.zinc400}
+        />
+      </Pulsing>
       <Text
         style={{
           fontSize: fontSize.sm,
-          color: "#a1a1aa",
+          color: colors.zinc400,
           fontWeight: "500",
         }}
       >

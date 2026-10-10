@@ -324,9 +324,11 @@ async def update_calendar_preferences(
     """Update the user's selected calendar preferences in the database."""
     try:
         log.set(user={"id": user_id}, calendar={"operation": "update_preferences"})
-        return await calendar_service.update_user_calendar_preferences(
+        result = await calendar_service.update_user_calendar_preferences(
             user_id, preferences.selected_calendars
         )
+        capture_context_event(AnalyticsEvents.CALENDAR_PREFERENCES_UPDATED)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 

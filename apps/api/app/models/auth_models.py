@@ -15,10 +15,8 @@ from app.db.repositories.base import MongoDocument
 ADMIN_CREDENTIAL_SLOT = "admin"
 
 # bcrypt hashes at most the first 72 BYTES of a password, and bcrypt >= 5
-# raises ValueError past that instead of silently truncating. The limit is
-# enforced on the wire so an oversized password is a clean 422 before any row
-# is written. Chars are not bytes: multibyte characters blow past the cap far
-# below 72 characters.
+# raises ValueError past that instead of silently truncating. Enforced on the
+# wire so an oversized password is a clean 422 before any row is written.
 BCRYPT_MAX_PASSWORD_BYTES = 72
 
 
@@ -109,10 +107,9 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: NormalizedEmail
-    # Same byte cap as signup: bcrypt >= 5 raises ValueError verifying a
-    # longer password, which would surface as a 500 instead of the uniform
-    # 401. (No min_length here — login must not reject credentials created
-    # under older policy.)
+    # Same byte cap as signup: bcrypt >= 5 raises ValueError verifying a longer
+    # password, which would surface as a 500 instead of the uniform 401.
+    # (No min_length here: login must accept older-policy credentials.)
     password: BcryptLimitedPassword
 
 

@@ -6,15 +6,10 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useHeyGaia } from "../hooks/useHeyGaia";
 
 /**
- * Client-only body of the headless wake-word listener.
- *
- * Pulled out of the route and loaded via `next/dynamic` with `ssr: false`
- * so the onnxruntime-web runtime (a ~12 MiB WASM module) never enters the
- * server bundle. The wake-word pipeline runs exclusively in the Electron
- * desktop shell, so server-rendering it is pure dead weight — and bundling
- * the WASM into the Cloudflare Worker pushes it past the 10 MiB script
- * limit. Keeping it client-only confines onnxruntime-web to the browser
- * chunk where it belongs.
+ * Client-only body of the headless wake-word listener, loaded via
+ * `next/dynamic` with `ssr: false` so the ~12 MiB onnxruntime-web WASM never
+ * enters the server bundle — it runs only in the Electron desktop shell, and
+ * bundling the WASM into the Cloudflare Worker would exceed its 10 MiB script limit.
  */
 export function WakeListenerClient() {
   const { isElectron, notifyWakeWord } = useElectron();

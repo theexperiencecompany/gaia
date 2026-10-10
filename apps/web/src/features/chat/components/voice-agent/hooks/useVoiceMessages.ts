@@ -3,7 +3,7 @@
 import { useRoomContext, useTranscriptions } from "@livekit/components-react";
 import type { TextStreamReader } from "livekit-client";
 import { useCallback, useEffect, useRef } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
   LK_CHAT_TOPIC,
   VOICE_STREAM_TOPIC,
@@ -18,7 +18,7 @@ import { useVoiceModeActions } from "@/stores/voiceModeStore";
 interface VoiceBotTurn {
   localId: string;
   response: string;
-  tool_data: ToolDataEntry[];
+  tool_data: TypedToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
   createdAt: Date;
@@ -47,10 +47,9 @@ function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
   };
 }
 
-// Event keys that carry plumbing, not bubble content: tool_output is
-// backend-internal; conversation_id/description are handled by the dedicated
-// text-stream handlers in VoiceControlBarContainer; user_message is legacy
-// (user bubbles now come from live transcriptions).
+// Plumbing keys, not bubble content: conversation_id/description have
+// dedicated text-stream handlers in VoiceControlBarContainer; user_message is
+// legacy (user bubbles now come from live transcriptions).
 const NON_RENDERING_EVENT_KEYS = [
   "tool_output",
   "conversation_id",
@@ -62,16 +61,14 @@ function isNonRenderingEvent(event: Record<string, unknown>): boolean {
   return NON_RENDERING_EVENT_KEYS.some((key) => key in event);
 }
 
-// Append one tool_data entry to the turn and surface the same per-tool labelled
-// loading line text mode shows (same hints payload, store, and LoadingIndicator;
-// the spinner must be on for the line to render, so re-arm it if a bot token
-// already cleared it). Internal tool_output entries are skipped. Returns whether
-// the turn changed.
+// Appends a tool_data entry and surfaces the matching loading line (same
+// hints/store/LoadingIndicator as text mode); re-arms the spinner if a bot
+// token already cleared it. Skips internal tool_output entries.
 function appendToolDataEntry(
   turn: VoiceBotTurn,
-  entry: ToolDataEntry,
+  entry: TypedToolDataEntry,
 ): boolean {
-  if (entry.tool_name === ("tool_output" as ToolDataEntry["tool_name"])) {
+  if (entry.tool_name === ("tool_output" as TypedToolDataEntry["tool_name"])) {
     return false;
   }
   turn.tool_data = [...turn.tool_data, entry];
@@ -83,6 +80,19 @@ function appendToolDataEntry(
   return true;
 }
 
+/**
+ * Join transcription texts into bubble content in one pass: trim each
+ * utterance, drop the empty ones, paragraph break between utterances.
+ */
+function joinTranscriptionTexts(texts: Iterable<string>): string {
+  return Array.from(texts)
+    .flatMap((text) => {
+      const trimmed = text.trim();
+      return trimmed ? [trimmed] : [];
+    })
+    .join("\n\n");
+}
+
 function userGroupToIMessage(
   group: VoiceUserGroup,
   conversationId: string,
@@ -92,10 +102,7 @@ function userGroupToIMessage(
 ): IMessage {
   // Consecutive utterances within one turn (e.g. a pause then more speech) are
   // shown as paragraph breaks in the same bubble.
-  const content = Array.from(group.transcriptionTexts.values())
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  const content = joinTranscriptionTexts(group.transcriptionTexts.values());
   return {
     id: group.localId,
     conversationId,
@@ -109,17 +116,11 @@ function userGroupToIMessage(
 }
 
 /**
- * Subscribes to LiveKit transcriptions (user speech, in real time) and the
- * agent's bot stream, writing both into `chatStore`. Returns `sendUserTurn` for
- * injecting a typed/clicked message (e.g. a follow-up suggestion) as a new voice
- * turn.
+ * Subscribe to LiveKit transcriptions and the bot stream, writing both into `chatStore`.
  *
- * Ordering is kept correct by two devices: (1) a strictly-increasing timestamp
- * stamped once when each user group / bot turn is FIRST created, and (2) mutual
- * turn-closing — opening a bot turn closes the open user group, and a new user
- * utterance closes the active bot turn. This stops different turns' text, tools,
- * and follow-ups from stacking into one bubble, and keeps user/bot order stable
- * even with `preemptive_generation` on the agent.
+ * Ordering relies on a strictly-increasing creation timestamp per turn plus mutual
+ * turn-closing (opening a bot turn closes the user group and vice versa), which
+ * keeps turns from stacking even under `preemptive_generation`.
  */
 export function useVoiceMessages(
   conversationId: string | null,
@@ -151,7 +152,9 @@ export function useVoiceMessages(
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
   const conversationIdRef = useRef(conversationId);
-  conversationIdRef.current = conversationId;
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  });
 
   // Reset internal state on remount (new voice session).
   useEffect(() => {
@@ -216,11 +219,9 @@ export function useVoiceMessages(
     (event: Record<string, unknown>, cid: string) => {
       if (isNonRenderingEvent(event)) return;
 
-      // A delegated executor's final answer arrives as {response, message_id}:
-      // render it as its OWN bubble keyed by that message_id (not folded into
-      // the comms-ack turn). The backend's WebSocket conversation.new_message
-      // carries the same id, so it reconciles in place instead of duplicating —
-      // and the bubble shows off the data channel without waiting on that push.
+      // A delegated executor's final answer ({response, message_id}) renders as
+      // its own bubble keyed by message_id, not folded into the comms-ack turn.
+      // The WebSocket conversation.new_message carries the same id and reconciles in place.
       const answerId = event.message_id;
       if (
         typeof answerId === "string" &&
@@ -251,7 +252,10 @@ export function useVoiceMessages(
         turn.response += event.response;
         changed = true;
       } else if (event.tool_data && typeof event.tool_data === "object") {
-        changed = appendToolDataEntry(turn, event.tool_data as ToolDataEntry);
+        changed = appendToolDataEntry(
+          turn,
+          event.tool_data as TypedToolDataEntry,
+        );
       } else if (
         event.follow_up_actions &&
         Array.isArray(event.follow_up_actions)
@@ -294,12 +298,9 @@ export function useVoiceMessages(
         return;
       }
 
-      // The backend mints the conversation id for a new chat and sends it in the
-      // init frame, forwarded here on the bot topic. Adopt it from this in-band
-      // event — the bot stream provably delivers (the reply itself rides it) —
-      // rather than depending only on the separate `conversation-id` text
-      // stream, whose single send is dropped if its handler isn't registered
-      // yet, leaving the id (and so the bot bubble + URL) stuck for the session.
+      // Adopt the conversation id from this in-band event (the bot stream provably
+      // delivers) rather than only the separate `conversation-id` text stream,
+      // whose single send drops if its handler isn't registered yet — stranding the id.
       const convId = event.conversation_id;
       if (typeof convId === "string" && convId) {
         setDiscoveredConversationId(convId);
@@ -374,29 +375,22 @@ export function useVoiceMessages(
     if (cid) {
       addOrUpdateMessage(userGroupToIMessage(group, cid, true));
     } else {
-      // First turn of a new chat: no backend conversation id yet. Show the
-      // utterance via the same optimistic slot text mode uses (rendered by
-      // useConversation while activeConversationId is null), so the user's text
-      // appears the instant they finish speaking — before the thinking
-      // indicator. When the id arrives this effect re-runs and writes the real
-      // message under it; the handoff effect below clears the slot.
+      // No backend conversation id yet: show the utterance via the same optimistic
+      // slot text mode uses (useConversation, while activeConversationId is null).
+      // The effect below re-runs and clears the slot once the id arrives.
       useChatStore.getState().setOptimisticMessage({
         id: group.localId,
         conversationId: null,
         role: "user",
-        content: Array.from(group.transcriptionTexts.values())
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .join("\n\n"),
+        content: joinTranscriptionTexts(group.transcriptionTexts.values()),
         createdAt: group.createdAt,
       });
     }
   }, [transcriptions, room, addOrUpdateMessage, conversationId, nextCreatedAt]);
 
-  // Promote the optimistic first turn once the backend conversation id arrives:
-  // activate the conversation so its stored messages render, and drop the slot.
-  // Must fire on the id (not the title), or the bot reply stays hidden until the
-  // description arrives ~1-2s later.
+  // Promotes the optimistic first turn once the conversation id arrives: activates
+  // the conversation and drops the slot. Fires on the id, not the title — the
+  // description arrives ~1-2s later and would leave the reply hidden until then.
   useEffect(() => {
     if (!conversationId) return;
     const store = useChatStore.getState();
@@ -404,12 +398,9 @@ export function useVoiceMessages(
     store.clearOptimisticMessage();
   }, [conversationId]);
 
-  // Send a typed/clicked message (e.g. a follow-up suggestion) as a new voice
-  // turn. There is no STT transcription for an injected message, so this mirrors
-  // what the transcription path does for a spoken turn: render the user's text
-  // immediately, close the active bot turn so the reply opens a FRESH bubble
-  // (otherwise the next reply clubs onto the previous turn), re-arm the thinking
-  // indicator, then publish the text to the agent over LiveKit.
+  // Sends a typed/clicked message as a new voice turn: no STT exists for
+  // injected text, so mirror the spoken-turn path — render immediately, close
+  // the active bot turn (else replies club together), then publish over LiveKit.
   const sendUserTurn = useCallback(
     async (text: string): Promise<void> => {
       const trimmed = text.trim();
@@ -436,12 +427,9 @@ export function useVoiceMessages(
     [room, addOrUpdateMessage, nextCreatedAt, closeUserGroup],
   );
 
-  // Thinking-indicator lifecycle. Armed once per turn: show it when the user's
-  // turn ends and the agent starts processing (`thinking`), but only until this
-  // turn's first token — `botTokenSeenThisTurnRef` (set in openBotTurn, reset
-  // when a new user turn starts) suppresses the LATER "thinking" the backend
-  // enters while generating follow-ups, which is what kept the indicator on
-  // screen after the reply. `listening` clears it as a safety net.
+  // Shows the thinking indicator once per turn until the first bot token —
+  // botTokenSeenThisTurnRef suppresses the backend's LATER "thinking" during
+  // follow-up generation (which kept the indicator on); `listening` clears it too.
   useEffect(() => {
     if (agentState === "thinking" && !botTokenSeenThisTurnRef.current) {
       useStreamStore.getState().setAuxLoading(true);

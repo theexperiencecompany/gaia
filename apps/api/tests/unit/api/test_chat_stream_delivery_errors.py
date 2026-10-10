@@ -1,8 +1,8 @@
 """The SSE delivery generator must never close silently on a failure.
 
-``_stream_from_redis`` is the last hop between the background turn and the
+_stream_from_redis is the last hop between the background turn and the
 browser. It used to catch a forwarding failure, log it, and simply return — the
-client saw a well-formed stream end with no ``[DONE]`` and no error frame, which
+client saw a well-formed stream end with no [DONE] and no error frame, which
 the web client could not distinguish from a finished turn. The user got a
 half-written answer that looked complete, or an empty bubble and no explanation.
 
@@ -44,7 +44,7 @@ def _request(disconnected: bool = False) -> Any:
 
 
 def _error_payloads(frames: list[str]) -> list[str]:
-    """The ``error`` field of every frame that carries one."""
+    """Extract the error field of every frame that carries one."""
     errors: list[str] = []
     for frame in frames:
         body = frame.removeprefix("data: ").strip()

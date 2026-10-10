@@ -12,18 +12,18 @@ import {
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useIsInitialResponseStreaming } from "@/stores/streamStore";
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 interface SearchbarLeftDropdownProps {
-  selectedMode: Set<SearchMode>;
+  selectedMode: Set<ComposerMode>;
   openFilePicker: () => void;
-  handleSelectionChange: (mode: SearchMode) => void;
+  handleSelectionChange: (mode: ComposerMode) => void;
   onOpenSlashCommandDropdown?: () => void;
   isSlashCommandDropdownOpen?: boolean;
 }
 
 interface DropdownItemConfig {
-  id: SearchMode;
+  id: ComposerMode;
   label: string;
   icon: React.ReactNode;
   action?: () => void;
@@ -48,41 +48,6 @@ export default function ComposerLeft({
   );
 
   const dropdownItems: DropdownItemConfig[] = [
-    // {
-    //   id: "deep_research",
-    //   label: "Deep Research",
-    //   icon: (
-    //     <AiWebBrowsingIcon className="min-h-[20px] min-w-[20px] text-primary" />
-    //   ),
-    //   isMode: true,
-    //   description:
-    //     "Search the web and fetch content from those pages, extracting key information",
-    // },
-    // {
-    //   id: "web_search",
-    //   label: "Web search",
-    //   icon: (
-    //     <GlobalSearchIcon className="min-h-[20px] min-w-[20px] text-primary" />
-    //   ),
-    //   isMode: true,
-    //   description: "Search the web for the latest information",
-    // },
-    // {
-    //   id: "fetch_webpage",
-    //   label: "Fetch Webpage",
-    //   icon: <ArrowUpRight className="min-h-[20px] min-w-[20px] text-primary" />,
-    //   action: openPageFetchModal,
-    //   isMode: false,
-    //   description: "Retrieve and understand content from specific webpages",
-    // },
-    // {
-    //   id: "generate_image",
-    //   label: "Generate Image",
-    //   icon: <Image02Icon className="min-h-[20px] min-w-[20px] text-primary" />,
-    //   action: openGenerateImageModal,
-    //   isMode: false,
-    //   description: "Create AI-generated images from text",
-    // },
     {
       id: "upload_file",
       label: "Attach Files",
@@ -136,7 +101,8 @@ export default function ComposerLeft({
                     is_mode: item.isMode,
                   });
                   // setLoadingText(item.loadingText ?? "");
-                  if (item.isMode) handleSelectionChange(item.id as SearchMode);
+                  if (item.isMode)
+                    handleSelectionChange(item.id as ComposerMode);
                   else if (item.action) item.action();
                 }}
                 className={cn(

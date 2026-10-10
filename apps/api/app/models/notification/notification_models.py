@@ -6,6 +6,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
 
 
 class NotificationType(str, Enum):
@@ -43,6 +44,7 @@ class NotificationSourceEnum(str, Enum):
     SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
     USAGE_LIMIT = "usage_limit"
     INTEGRATION_EXPIRED = "integration_expired"
+    TODO_TRIGGER = "todo_trigger"
 
 
 class ActionType(str, Enum):
@@ -330,7 +332,7 @@ class BulkActions(str, Enum):
     ARCHIVE = "archive"
 
 
-class ChannelPreferences(BaseModel):
+class ChannelPreferences(ResponseModel):
     """User notification channel preferences."""
 
     telegram: bool = True
@@ -346,3 +348,19 @@ class ChannelPreferencesUpdate(BaseModel):
     discord: bool | None = None
     whatsapp: bool | None = None
     slack: bool | None = None
+
+
+class NotificationListFilters(BaseModel):
+    """Query filters for listing a user's notifications.
+
+    Bundled because this exact parameter set threads unchanged through the
+    repository, storage, orchestrator, and service layers — a shared shape,
+    not a per-layer convention.
+    """
+
+    status: NotificationStatus | None = None
+    channel_type: str | None = None
+    notification_type: NotificationType | None = None
+    source: NotificationSourceEnum | None = None
+    limit: int = 50
+    offset: int = 0

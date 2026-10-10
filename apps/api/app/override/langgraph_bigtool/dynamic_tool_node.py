@@ -9,9 +9,10 @@ This module provides a ToolNode subclass that:
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
-from langchain_core.messages import AnyMessage, ToolMessage
+from langchain_core.messages import AnyMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
@@ -29,54 +30,76 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
-from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
+from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.llm import (
+    TOOL_EXECUTION_TIMEOUT_SECONDS,
+    TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS,
+    TOOL_TIMEOUT_EXEMPT_TOOLS,
+)
 from app.override.langgraph_bigtool.utils import State
 from app.services.hil.gate import decide_tool_call
 
 
 def format_tool_error(exc: Exception) -> str:
-    """Uniform error text for a failed tool call, with the exception type.
+    """Uniform error text for a failed tool call, including the exception type.
 
-    Passed to ToolNode as ``handle_tool_errors`` so parent-routed tools
-    (InjectedState / middleware tools) convert failures into error
-    ToolMessages instead of crashing the whole run; also used by the
-    middleware dispatch path so both paths speak the same format. The type
-    name matters: it's how the model distinguishes a transient network error
-    from a permanently invalid request.
+    Shared by ToolNode's handle_tool_errors and the middleware dispatch path,
+    so parent-routed and middleware tool failures render identically. The
+    type name is how the model tells a transient error from a permanent one.
     """
     return f"Error: {type(exc).__name__}: {exc}"
 
 
-def _timeout_error_text(tool_name: str) -> str:
+def _timeout_error_text(tool_name: str, seconds: float | None) -> str:
+    """Build the timeout error text; seconds is None when an exempt tool timed out itself."""
+    after = f" after {seconds:g}s" if seconds is not None else ""
     return (
-        f"Error: TimeoutError: '{tool_name}' timed out after "
-        f"{TOOL_EXECUTION_TIMEOUT_SECONDS}s. The operation may or may not have "
-        "completed on the provider side — verify its effect before retrying."
+        f"Error: TimeoutError: '{tool_name}' timed out{after}. The operation may or "
+        "may not have completed on the provider side. Verify its effect before retrying."
     )
+
+
+def _node_timeout_seconds(tool_call: Mapping[str, Any]) -> float | None:
+    """Return the timeout this node puts on one call; None when it applies none.
+
+    Unwrapped first so a proxied call is judged as its real tool. A proxied call
+    gets the backstop window, not the plain bound: dispatch_tool already bounds the
+    tool at the same deadline, so an equal outer bound made its structured error
+    unreachable. The node backstops what dispatch does not cover (resolution).
+    """
+    name = tool_call["name"]
+    real_name, _ = unwrap_execute_call(name, tool_call.get("args") or {})
+    if real_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
+        return None
+    if name == EXECUTE_TOOL_NAME:
+        return TOOL_EXECUTION_TIMEOUT_SECONDS + TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS
+    return TOOL_EXECUTION_TIMEOUT_SECONDS
 
 
 async def timeout_guarded_tool_call(
     request: ToolCallRequest,
     execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
 ) -> ToolMessage | Command:
-    """Per-call execution wrapper (ToolNode ``awrap_tool_call``): bound hung tools.
+    """Per-call execution wrapper (ToolNode awrap_tool_call): bound hung tools.
 
     A hung integration call previously hung the entire run forever. Long-running
     orchestration tools manage their own lifecycles and are exempt.
     """
     tool_call = request.tool_call
-    tool_name = tool_call.get("name", "")
-    if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
-        return await execute(request)
+    # Reported on timeout as the real tool, not as the proxy.
+    tool_name, _ = unwrap_execute_call(tool_call["name"], tool_call.get("args", {}) or {})
+    bound = _node_timeout_seconds(tool_call)
     try:
-        async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
+        # asyncio.timeout(None) applies no deadline — an exempt tool runs unbounded.
+        async with asyncio.timeout(bound):
             return await execute(request)
     except TimeoutError:
         return ToolMessage(
-            content=_timeout_error_text(tool_name),
+            content=_timeout_error_text(tool_name, bound),
             tool_call_id=tool_call.get("id", ""),
-            name=tool_name,
+            name=tool_call["name"],
             status="error",
         )
 
@@ -85,16 +108,30 @@ async def hil_and_timeout_guarded_tool_call(
     request: ToolCallRequest,
     execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
 ) -> ToolMessage | Command:
-    """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
+    """Parent ToolNode awrap_tool_call for InjectedState/middleware tools.
 
     The gate is asked first and separately: it only ever reads a decision the
-    ``approvals`` node already settled, so a blocked call costs nothing and never
+    approvals node already settled, so a blocked call costs nothing and never
     enters the timeout window meant for the tool itself.
     """
     blocked = await decide_tool_call(request)
     if blocked is not None:
         return blocked
     return await timeout_guarded_tool_call(request, execute)
+
+
+@dataclass
+class ToolNodeOptions:
+    """Options forwarded verbatim to ToolNode.__init__ — see its docstring."""
+
+    name: str = "tools"
+    tags: list[str] | None = None
+    handle_tool_errors: (
+        bool | str | Callable[..., str] | type[Exception] | tuple[type[Exception], ...]
+    ) = _default_handle_tool_errors
+    messages_key: str = "messages"
+    wrap_tool_call: ToolCallWrapper | None = None
+    awrap_tool_call: AsyncToolCallWrapper | None = None
 
 
 class DynamicToolNode(ToolNode):
@@ -110,30 +147,18 @@ class DynamicToolNode(ToolNode):
     def __init__(
         self,
         tool_registry: Mapping[str, BaseTool],
+        options: ToolNodeOptions | None = None,
+        *,
         middleware_executor: "MiddlewareExecutor | None" = None,
         middleware_tools: list[BaseTool] | None = None,
-        *,
-        name: str = "tools",
-        tags: list[str] | None = None,
-        handle_tool_errors: bool
-        | str
-        | Callable[..., str]
-        | type[Exception]
-        | tuple[type[Exception], ...] = _default_handle_tool_errors,
-        messages_key: str = "messages",
-        wrap_tool_call: ToolCallWrapper | None = None,
-        awrap_tool_call: AsyncToolCallWrapper | None = None,
     ) -> None:
-        """Initialize DynamicToolNode.
+        """Register middleware_tools in tools_by_name alongside tool_registry.
 
-        Args:
-            tool_registry: Mapping of tool names to tool instances
-            middleware_executor: Optional middleware executor for wrap_tool_call hooks
-            middleware_tools: Optional list of tools from middleware (e.g., SubagentMiddleware)
-                that need parent ToolNode handling (InjectedToolCallId, Command returns)
-            name, tags, handle_tool_errors, messages_key, wrap_tool_call, awrap_tool_call:
-                Forwarded verbatim to ``ToolNode.__init__`` — see its docstring.
+        middleware_tools (e.g. SubagentMiddleware) need parent ToolNode handling
+        (InjectedToolCallId, Command returns) even though they aren't part of
+        tool_registry.
         """
+        opts = options or ToolNodeOptions()
         # Combine registry tools with middleware tools for initialization
         all_tools = list(tool_registry.values())
         if middleware_tools:
@@ -141,12 +166,12 @@ class DynamicToolNode(ToolNode):
 
         super().__init__(
             all_tools,
-            name=name,
-            tags=tags,
-            handle_tool_errors=handle_tool_errors,
-            messages_key=messages_key,
-            wrap_tool_call=wrap_tool_call,
-            awrap_tool_call=awrap_tool_call,
+            name=opts.name,
+            tags=opts.tags,
+            handle_tool_errors=opts.handle_tool_errors,
+            messages_key=opts.messages_key,
+            wrap_tool_call=opts.wrap_tool_call,
+            awrap_tool_call=opts.awrap_tool_call,
         )
         self._tool_registry = tool_registry
         self._middleware_executor = middleware_executor
@@ -158,14 +183,7 @@ class DynamicToolNode(ToolNode):
                 self.tools_by_name[tool.name] = tool
 
     def get_tool(self, name: str) -> BaseTool | None:
-        """Look up tool dynamically from registry.
-
-        Args:
-            name: Tool name to look up
-
-        Returns:
-            Tool instance or None if not found
-        """
+        """Look up name in the live tool_registry first, falling back to the tools_by_name snapshot."""
         # First try the registry (includes dynamically added tools)
         if name in self._tool_registry:
             return self._tool_registry[name]
@@ -191,7 +209,7 @@ class DynamicToolNode(ToolNode):
     ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
         """Override to inject dynamically added tools before execution.
 
-        Return type mirrors ``ToolNode._func``, which is itself typed ``Any``
+        Return type mirrors ToolNode._func, which is itself typed Any
         upstream (its shape varies: dict[str, list[BaseMessage]], a list of
         results, or a Command).
         """
@@ -206,8 +224,8 @@ class DynamicToolNode(ToolNode):
     ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
         """Override to inject dynamically added tools before execution and apply middleware.
 
-        Return type mirrors ``ToolNode._afunc``, which is itself typed ``Any``
-        upstream — see ``_func`` above.
+        Return type mirrors ToolNode._afunc, which is itself typed Any
+        upstream — see _func above.
         """
         self._sync_registry()
 
@@ -235,20 +253,11 @@ class DynamicToolNode(ToolNode):
         config: RunnableConfig,
         runtime: "Runtime",
     ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
-        """Execute tools with middleware wrap_tool_call hooks.
+        """Run tool calls through middleware wrap_tool_call hooks; called only when middleware defines one.
 
-        Return type is ``Any``: two branches delegate straight to
-        ``ToolNode._afunc`` (itself typed ``Any`` upstream); the rest return
-        ``dict[str, list[ToolMessage | Command]] | list[ToolMessage | Command]``.
-
-        This method is called when middleware with wrap_tool_call is present.
-        It wraps each tool invocation with the middleware hooks.
-
-        Tools that use InjectedState or come from middleware are delegated to
-        the parent ToolNode._afunc which handles InjectedState injection,
-        Command returns, InjectedToolCallId, and validation.
-        Only regular tool calls go through the middleware wrap_tool_call chain
-        (e.g. WorkspaceCompactionMiddleware).
+        InjectedState and middleware tools delegate to the parent ToolNode._afunc
+        (which alone handles InjectedState injection, Command returns, and
+        InjectedToolCallId); only plain tool calls go through the middleware chain.
         """
         tool_calls, _ = self._parse_input(tool_input)
         all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
@@ -327,76 +336,67 @@ class DynamicToolNode(ToolNode):
         config: RunnableConfig,
         state: State,
     ) -> ToolMessage | Command:
-        """Result is normally a ToolMessage; a middleware (e.g. workspace
-        compaction) may replace it with a Command graph update instead — see
-        MiddlewareExecutor.wrap_tool_invocation.
-        """
+        """Invoke one tool via middleware; a middleware may swap the usual ToolMessage for a Command."""
 
         async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command:
-            resolved_tool = self.get_tool(tc.get("name", ""))
+            name, call_id = tc["name"], tc["id"]
+            resolved_tool = self.get_tool(name)
             if resolved_tool is None:
                 return ToolMessage(
-                    content=f"Tool '{tc.get('name')}' not found",
-                    tool_call_id=tc.get("id", ""),
+                    content=f"Tool '{name}' not found",
+                    tool_call_id=call_id,
                 )
 
             tool_input = dict(tc)
             tool_input["type"] = "tool_call"
-            tool_name = tc.get("name", "")
+            # Unwrapped for the timeout text only — the tool actually invoked is
+            # still the proxy itself.
+            tool_name, _ = unwrap_execute_call(name, tc.get("args", {}) or {})
+            bound = _node_timeout_seconds(tc)
             try:
-                if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
+                # asyncio.timeout(None) applies no deadline — an exempt tool runs unbounded.
+                async with asyncio.timeout(bound):
                     result = await resolved_tool.ainvoke(tool_input, config=config)
-                else:
-                    async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
-                        result = await resolved_tool.ainvoke(tool_input, config=config)
             except GraphBubbleUp:
-                # Control flow, not a failure: a GraphInterrupt raised by a gated
-                # tool — or bubbled up by ``handoff`` when its subagent graph
-                # interrupts — must reach the runtime so the run checkpoints and
-                # pauses. Converting it to an error ToolMessage would silently
-                # drop the approval request. Mirrors upstream ToolNode.
+                # Control flow, not failure: a GraphInterrupt from a gated tool (or
+                # bubbled up by handoff's subagent graph) must reach the runtime to
+                # checkpoint and pause — converting it here would drop the approval request.
                 raise
             except TimeoutError:
                 return ToolMessage(
-                    content=_timeout_error_text(tool_name),
-                    tool_call_id=tc.get("id", ""),
-                    name=tool_name,
+                    content=_timeout_error_text(tool_name, bound),
+                    tool_call_id=call_id,
+                    name=name,
                     status="error",
                 )
             except Exception as exc:
                 return ToolMessage(
                     content=format_tool_error(exc),
-                    tool_call_id=tc.get("id", ""),
-                    name=tool_name,
+                    tool_call_id=call_id,
+                    name=name,
                     status="error",
                 )
 
-            # A state-mutating tool (plan_tasks, and any tool whose effect IS a
-            # graph update) returns a Command. Pass it through untouched: the
-            # caller separates Commands from ToolMessages so LangGraph applies
-            # the update. Falling through to the str() below would render the
-            # Command's repr into the model's context and drop the state change
-            # silently -- the tool looks like it worked and nothing it wrote
-            # survives. The parent-routing path already handles this; only tools
-            # without InjectedState reach here.
+            # A state-mutating tool (e.g. plan_tasks) returns a Command; pass it
+            # through untouched or the str() fallback below renders its repr and
+            # silently drops the graph update. Only non-InjectedState tools reach here.
             if isinstance(result, (ToolMessage, Command)):
                 return result
 
-            # A self-offloading tool (returns a dict) can't set additional_kwargs
-            # itself — lift its offload descriptor into the structured marker here,
-            # the one seam where dict results become ToolMessages. pop_* strips the
-            # descriptor so it never leaks into the model-facing content.
+            # A self-offloading tool returns a dict and can't set additional_kwargs
+            # itself; lift its offload descriptor into the marker here — the one
+            # seam where dict results become ToolMessages. pop_* keeps it out of content.
             info = pop_offload_descriptor(result)
             additional_kwargs = mark_offload({}, info) if info else {}
             return ToolMessage(
                 content=str(result) if not isinstance(result, str) else result,
-                tool_call_id=tc.get("id", ""),
-                name=tc.get("name", ""),
+                tool_call_id=call_id,
+                name=name,
                 additional_kwargs=additional_kwargs,
             )
 
         return await middleware_executor.wrap_tool_invocation(
-            tool_call=dict(cast(Mapping[str, Any], tool_call)),
+            tool_call=cast(ToolCall, dict(tool_call)),
             tool=tool,
             state=state,
             config=config,

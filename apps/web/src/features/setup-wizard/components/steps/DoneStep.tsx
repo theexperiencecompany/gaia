@@ -33,7 +33,7 @@ import {
   isAnyLlmConfigured,
   isProviderConfigured,
 } from "@/features/settings/hooks/useSetupStatus";
-import { apiService } from "@/lib/api/service";
+import { setupTransport } from "@/lib/api/setupTransport";
 import { useAppendToInput } from "@/stores/composerStore";
 import {
   LLM_PROVIDER_CARDS,
@@ -77,11 +77,9 @@ const STARTER_PROMPTS: Array<{
 
 export function DoneStep({ status }: DoneStepProps) {
   useEffect(() => {
-    apiService
-      .post("setup/complete", { step: "wizard" }, { silent: true })
-      .catch((err: unknown) => {
-        console.error("Failed to mark setup complete:", err);
-      });
+    setupTransport.completeStep("wizard").catch((err: unknown) => {
+      console.error("Failed to mark setup complete:", err);
+    });
   }, []);
 
   const router = useRouter();

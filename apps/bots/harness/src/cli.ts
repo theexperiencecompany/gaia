@@ -38,7 +38,10 @@ interface ParsedArgs {
   positionals: string[];
 }
 
-/** Parses `--key value` / `--key=value` flags and positional arguments. */
+/** Flags that take no value: the argument after one is never consumed as its value. */
+const BOOLEAN_FLAGS = new Set(["no-outbound"]);
+
+/** Parses `--key value` / `--key=value` / boolean `--key` flags and positional arguments. */
 function parseArgs(argv: string[]): ParsedArgs {
   const flags: Record<string, string> = {};
   const positionals: string[] = [];
@@ -48,6 +51,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       const eq = arg.indexOf("=");
       if (eq !== -1) {
         flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+      } else if (BOOLEAN_FLAGS.has(arg.slice(2))) {
+        flags[arg.slice(2)] = "true";
       } else {
         const next = argv[i + 1];
         if (next !== undefined && !next.startsWith("--")) {
@@ -69,34 +74,65 @@ function printUsage(): void {
   log(
     [
       "Usage:",
-      "  gaia-sim send --emulate <platform> --user <email> [--out <file>] [--api <url>] [--channel <id>] <message>",
-      "  gaia-sim run <scenario.yaml> [--out <file>] [--api <url>]",
+      "  gaia-sim send --emulate <platform> --user <email> [--out <file>] [--api <url>] [--channel <id>] [--settle <ms>] [--no-outbound] <message>",
+      "  gaia-sim run <scenario.yaml> [--out <file>] [--api <url>] [--settle <ms>]",
+      "",
+      "  --settle <ms>: keep the outbound consumer alive this long after each",
+      "                 reply stream closes, so a background-executor answer",
+      "                 published afterwards lands in the transcript. SIGTERM",
+      "                 while settling ends the window early, transcript intact.",
+      "  --no-outbound:   do not consume the platform's outbound queue. For a",
+      "                 message into a conversation another sender is already",
+      '                 consuming for (a "done" or "stop" mid-run): two',
+      "                 consumers split the deliveries between them.",
       "",
       "  platforms: discord | slack | telegram | whatsapp",
     ].join("\n"),
   );
 }
 
-/** Warns loudly when the outbound consumer will be disabled. */
-function warnIfNoBroker(): void {
+/**
+ * Warns loudly about each reason a backend-originated (proactive) message would
+ * be missing from the transcript: no broker to consume from, or no settle window
+ * to consume it in.
+ */
+function warnIfOutboundInvisible(settleMs: number): void {
   if (!process.env.RABBITMQ_URL) {
     log(
       "WARNING: RABBITMQ_URL is not set — the outbound consumer is disabled, so " +
         "backend-originated (proactive) messages will NOT appear as outbound-delivery events.",
     );
+    return;
+  }
+  if (settleMs <= 0) {
+    log(
+      "WARNING: --settle is 0 — the consumer is torn down the moment the reply " +
+        "stream closes. A turn that hands off to the background executor publishes " +
+        "its real answer SECONDS LATER, so it will be missing here and drained into " +
+        "a later run's transcript instead. Pass --settle 20000 for handoff turns.",
+    );
   }
 }
 
+/** Parses `--settle <ms>`; rejects anything that is not a non-negative number. */
+function parseSettleMs(raw: string | undefined): number {
+  if (raw === undefined) return 0;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `--settle must be a non-negative number of ms, got "${raw}"`,
+    );
+  }
+  return value;
+}
+
 /** Prints a transcript (JSONL to stdout) and optionally writes it to a file. */
-async function emitTranscript(
+function emitTranscript(
   transcript: TranscriptRecorder,
   outPath: string | undefined,
-): Promise<void> {
+): void {
   out(transcript.toJsonl());
-  if (outPath) {
-    await transcript.writeTo(outPath);
-    log(`Transcript written to ${outPath}`);
-  }
+  if (outPath) log(`Transcript written to ${outPath}`);
 }
 
 async function runSend(args: ParsedArgs): Promise<number> {
@@ -118,7 +154,9 @@ async function runSend(args: ParsedArgs): Promise<number> {
   }
 
   const apiUrl = resolveApiUrl(args.flags.api);
-  warnIfNoBroker();
+  const settleMs = parseSettleMs(args.flags.settle);
+  const consumesOutbound = args.flags["no-outbound"] !== "true";
+  if (consumesOutbound) warnIfOutboundInvisible(settleMs);
   log(`Emulating ${emulate} as ${email} against ${apiUrl}`);
 
   const result: SendResult = await sendOneShot({
@@ -127,10 +165,13 @@ async function runSend(args: ParsedArgs): Promise<number> {
     email,
     message,
     channelId: args.flags.channel,
+    settleMs,
+    consumesOutbound,
+    outPath: args.flags.out,
   });
 
   log(`Injected as platform user ${result.user.platformUserId}`);
-  await emitTranscript(result.transcript, args.flags.out);
+  emitTranscript(result.transcript, args.flags.out);
   return 0;
 }
 
@@ -147,11 +188,22 @@ async function runRun(args: ParsedArgs): Promise<number> {
   // its throw is caught and reported by main().
 
   const apiUrl = resolveApiUrl(args.flags.api);
-  warnIfNoBroker();
+  // A scenario's own settleMs is the floor for the warning: an explicit flag
+  // overrides it, but a scenario that already asks to settle is not misconfigured.
+  const settleOverride =
+    args.flags.settle === undefined
+      ? undefined
+      : parseSettleMs(args.flags.settle);
+  warnIfOutboundInvisible(settleOverride ?? scenario.settleMs ?? 0);
   log(`Running scenario "${scenario.name}" (emulate ${scenario.emulate})`);
 
-  const result: ScenarioResult = await runScenario(scenario, apiUrl);
-  await emitTranscript(result.transcript, args.flags.out);
+  const result: ScenarioResult = await runScenario(
+    scenario,
+    apiUrl,
+    settleOverride,
+    args.flags.out,
+  );
+  emitTranscript(result.transcript, args.flags.out);
 
   if (result.passed) {
     log(`PASS: ${result.name} (${scenario.turns.length} turn(s))`);

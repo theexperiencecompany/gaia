@@ -29,8 +29,9 @@ const WorkflowRow = memo(
     }, [onClick, workflow.id]);
 
     return (
-      <div
-        className="flex cursor-pointer items-center gap-3 rounded-2xl bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-700/50"
+      <button
+        type="button"
+        className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-zinc-800/50 p-3 text-left transition-colors hover:bg-zinc-700/50"
         onClick={handleClick}
       >
         {/* Stacked Icons matching workflow cards */}
@@ -49,7 +50,7 @@ const WorkflowRow = memo(
             </p>
           )}
         </div>
-      </div>
+      </button>
     );
   },
 );
@@ -107,7 +108,7 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
         description: "Get a plain-English summary of what each workflow does",
         onPress: () =>
           appendToInput(
-            "Give me a plain-English summary of each of my active workflows — what triggers them, what they do, and what problem they're solving for me.",
+            "Give me a plain-English summary of each of my active workflows: what triggers them, what they do, and what problem they're solving for me.",
           ),
       },
       {

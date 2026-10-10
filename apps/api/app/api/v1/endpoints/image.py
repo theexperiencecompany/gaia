@@ -11,6 +11,7 @@ from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.models.message_models import MessageRequest
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.image_service import (
     api_generate_image,
     generate_image_stream,
@@ -30,6 +31,7 @@ async def image(
     log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
     log.set(outcome="success")
+    capture_context_event(AnalyticsEvents.IMAGE_GENERATED)
     return response
 
 
@@ -49,10 +51,11 @@ async def image_to_text(
     )
     response = await image_to_text_endpoint(message, file)
     log.set(outcome="success")
+    capture_context_event(AnalyticsEvents.IMAGE_DESCRIBED)
     return response
 
 
-@router.post("/image/generate/stream")
+@router.post("/image/generate/stream", response_class=StreamingResponse)
 @tiered_rate_limit("generate_image")
 async def image_stream(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)

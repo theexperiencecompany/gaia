@@ -2,6 +2,19 @@
 
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type React from "react";
+import { useSyncExternalStore } from "react";
+
+import { formatWeekdayShort } from "@/features/calendar/utils/calendarUtils";
+
+// Today's date via `useSyncExternalStore`: server snapshot matches no day
+// (avoids SSR hydration mismatch), client re-reads right after mount. A
+// no-op subscribe suffices — snapshots are value-compared, strip re-renders on scroll anyway.
+const noopUnsubscribe = (): void => {
+  // Intentional no-op: today's date has no live source to subscribe to.
+};
+const subscribeToToday = (): (() => void) => noopUnsubscribe;
+const getServerToday = (): string => "";
+const getTodaySnapshot = (): string => new Date().toDateString();
 
 interface DateStripProps {
   dates: Date[];
@@ -19,6 +32,14 @@ export const DateStrip: React.FC<DateStripProps> = ({
   onDateSelect,
   columnVirtualizer,
 }) => {
+  // Resolved via useSyncExternalStore (see note above the helpers) so no
+  // `new Date()` runs during render and nothing flashes in after paint.
+  const today = useSyncExternalStore(
+    subscribeToToday,
+    getTodaySnapshot,
+    getServerToday,
+  );
+
   return (
     <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
@@ -41,11 +62,9 @@ export const DateStrip: React.FC<DateStripProps> = ({
 
             const isSelected =
               date.toDateString() === selectedDate.toDateString();
-            const isToday = date.toDateString() === new Date().toDateString();
+            const isToday = today !== "" && date.toDateString() === today;
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            const dayLabel = date
-              .toLocaleDateString("en-US", { weekday: "short" })
-              .toUpperCase();
+            const dayLabel = formatWeekdayShort(date).toUpperCase();
             const dayNumber = date.getDate();
 
             return (

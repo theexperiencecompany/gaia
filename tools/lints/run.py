@@ -2,7 +2,8 @@
 """Run the custom GAIA Python AST lints and fail loud with teaching messages.
 
 Usage:
-    python3 tools/lints/run.py apps/api/app [more/paths ...]
+    uv run --project apps/api python tools/lints/run.py apps/api/app apps/api/tests [more/paths ...]
+    uv run --project apps/api python tools/lints/run.py --repo-root /other/checkout /other/checkout/apps/api/app ...
 
 Each failure prints the rule, why it exists, the offending file:line, the exact
 remediation, and a doc pointer — so the fix is obvious without leaving the error.
@@ -11,6 +12,12 @@ cannot parse) is reported with the rule name and the file it died on, while
 every other rule still runs — one broken rule must not hide the others'
 findings. Exits non-zero if any rule reports violations OR crashes. Stdlib
 only; wired into the ``static-python`` CI job and the api pre-commit config.
+
+A rule that reads the scanned tree's own pyproject.toml (docstring-content, for
+its ruff per-file-ignores exemptions) auto-detects the repo root by walking up
+from the first scanned file. ``--repo-root`` overrides that for the rare case
+where auto-detection can't find it (e.g. a scanned file living outside any
+checkout with a pyproject.toml).
 """
 
 from __future__ import annotations
@@ -20,7 +27,22 @@ from pathlib import Path
 import sys
 import traceback
 
+# The rules parse app sources with the *running* interpreter's ``ast``, so an
+# older python is not a degraded run — it crashes rules on syntax it cannot
+# parse and stops matching CI. Fail loud here rather than diverge silently.
+REQUIRED_PYTHON = (3, 12)
+if sys.version_info < REQUIRED_PYTHON:
+    _required = f"{REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}"
+    _running = f"{sys.version_info.major}.{sys.version_info.minor}"
+    raise SystemExit(
+        f"tools/lints/run.py needs Python {_required}+ (the version CI runs), got {_running} "
+        f"at {sys.executable} — rerun with: uv run --project apps/api python tools/lints/run.py "
+        f"{' '.join(sys.argv[1:]) or 'apps/api/app'}"
+    )
+
 from _common import display, iter_python_files, report_rule
+import comment_slop
+import docstring_slop
 import no_service_classes
 import no_silent_fallback
 import repository_boundaries
@@ -35,6 +57,8 @@ RULES = (
     repository_boundaries,
     no_silent_fallback,
     tool_dump_boundary,
+    docstring_slop,
+    comment_slop,
 )
 
 
@@ -54,15 +78,38 @@ def _crash_location(exc: Exception) -> str:
     return f"{shown}:{lineno}" if isinstance(lineno, int) else shown
 
 
+def _parse_args(argv: list[str]) -> tuple[list[Path], Path | None]:
+    """Split ``--repo-root PATH`` (or ``--repo-root=PATH``) out of the positional paths."""
+    repo_root: Path | None = None
+    positional: list[str] = []
+    args = iter(argv)
+    for arg in args:
+        if arg == "--repo-root":
+            repo_root = Path(next(args)).resolve()
+        elif arg.startswith("--repo-root="):
+            repo_root = Path(arg.partition("=")[2]).resolve()
+        else:
+            positional.append(arg)
+    paths = [Path(a) for a in positional] or [Path("apps/api/app"), Path("apps/api/tests")]
+    return paths, repo_root
+
+
 def main(argv: list[str]) -> int:
-    paths = [Path(a) for a in argv] or [Path("apps/api/app")]
+    """Run every rule over the given paths; return non-zero on any violation or crash."""
+    paths, repo_root = _parse_args(argv)
     files = iter_python_files(paths)
+    # A rule that sets INCLUDES_TESTS governs the test tree too (the
+    # docstring/comment rules); every other rule keeps the non-test list.
+    files_with_tests = iter_python_files(paths, include_tests=True)
 
     total = 0
     crashed: list[str] = []
     for module in RULES:
+        if repo_root is not None and hasattr(module, "set_repo_root"):
+            module.set_repo_root(repo_root)
         try:
-            violations = module.check(files)
+            scope = files_with_tests if getattr(module, "INCLUDES_TESTS", False) else files
+            violations = module.check(scope)
         except Exception as exc:
             # Containment, not swallowing: the crash is printed in full below
             # (rule name, file, traceback) and still fails the run — the goal
@@ -88,15 +135,15 @@ def main(argv: list[str]) -> int:
             f"\n{summary}. See tools/lints/README.md for each rule's rationale and remediation.",
             file=sys.stderr,
         )
-        _write_summary(False, total, len(files))
+        _write_summary(False, total, len(crashed), len(files))
         return 1
 
     print(f"custom python lints: {len(RULES)} rules passed on {len(files)} files")
-    _write_summary(True, 0, len(files))
+    _write_summary(True, 0, 0, len(files))
     return 0
 
 
-def _write_summary(ok: bool, total: int, file_count: int) -> None:
+def _write_summary(ok: bool, total: int, crash_count: int, file_count: int) -> None:
     """Minimal human-facing lane summary for $GITHUB_STEP_SUMMARY."""
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -109,7 +156,14 @@ def _write_summary(ok: bool, total: int, file_count: int) -> None:
                     f"### Custom Python lints — ✅ passed ({len(RULES)} rules, {file_count} files)\n"
                 )
             else:
-                f.write(f"### Custom Python lints — ❌ {total} violation(s) ({len(RULES)} rules)\n")
+                # A crashed rule checked nothing, so naming only the violation
+                # count would render a crash-only run as "0 violation(s)" — the
+                # lane summary would read like a pass.
+                crashes = f", {crash_count} rule(s) crashed" if crash_count else ""
+                f.write(
+                    f"### Custom Python lints — ❌ {total} violation(s){crashes} "
+                    f"({len(RULES)} rules)\n"
+                )
                 f.write("See `tools/lints/README.md` for rationale and remediation.\n")
     except OSError:
         pass

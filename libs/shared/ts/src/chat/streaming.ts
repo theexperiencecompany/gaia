@@ -1,3 +1,4 @@
+import type { ToolDataEntry } from "../api/generated";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
@@ -7,13 +8,7 @@ import type { TodoProgressSnapshot } from "./types";
 
 export type { TodoProgressSnapshot };
 
-export interface StreamToolDataEntry {
-  tool_name: string;
-  data: unknown;
-  timestamp?: string | null;
-  tool_category?: string;
-  subagent_id?: string;
-}
+export type StreamToolDataEntry = ToolDataEntry;
 
 /**
  * tool_name marking a streamed tool-call-progress entry. These render via the
@@ -52,6 +47,10 @@ export type ChatStreamEvent =
   | { type: "error"; error: string }
   | { type: "model_fallback"; model?: string }
   | { type: "response"; chunk: string }
+  // End of one assistant message. `discarded` means it turned out to carry tool calls, so the
+  // streamed text was a handoff preamble and the real reply is the NEXT message — the wire sends
+  // text before the tool call, so the client has already rendered it and must take it back.
+  | { type: "message_boundary"; messageId: string; discarded: boolean }
   | {
       type: "conversation_initialized";
       conversation_id?: string;
@@ -84,6 +83,10 @@ export type ChatStreamEvent =
   // A frame that was not valid JSON. Never rendered — consumers must log it
   // loudly and surface a stream error instead of showing garbage text.
   | { type: "parse_error"; raw: string }
+  // The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` one-emoji ack, whose
+  // text the server never streams: the client shows a badge on the user's
+  // message (`reactsToMessageId`), never a bubble of its own.
+  | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -98,7 +101,8 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
 
   return {
     tool_name: value.tool_name,
-    data: value.data,
+    // The frame is JSON; every tool owns the shape of its own `data`.
+    data: value.data as StreamToolDataEntry["data"],
     timestamp:
       typeof value.timestamp === "string" || value.timestamp === null
         ? value.timestamp
@@ -133,6 +137,26 @@ const extractError = (payload: JsonObject): ChatStreamEvent[] =>
     ? [{ type: "error", error: payload.error }]
     : [];
 
+// `emoji_ack` arrives when comms' whole reply was an `<EMOJI>…</EMOJI>` tag: the
+// client badges the emoji onto the user's message instead of leaving a bubble.
+const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
+  const ack = payload.emoji_ack;
+  if (!isObject(ack)) return [];
+  if (
+    typeof ack.emoji !== "string" ||
+    typeof ack.reacts_to_message_id !== "string"
+  ) {
+    return [];
+  }
+  return [
+    {
+      type: "emoji_ack",
+      emoji: ack.emoji,
+      reactsToMessageId: ack.reacts_to_message_id,
+    },
+  ];
+};
+
 // The backend emits `{"model_fallback": {"model": "..."}}` at most once per
 // stream when the primary model failed and the backup answered. Modeled as a
 // first-class event so it isn't treated as turn content by the `unknown` path.
@@ -158,6 +182,19 @@ const extractResponse = (payload: JsonObject): ChatStreamEvent[] => {
     events.push({ type: "response", chunk: payload.response });
   }
   return events;
+};
+
+const extractMessageBoundary = (payload: JsonObject): ChatStreamEvent[] => {
+  const boundary = payload.message_boundary;
+  if (!isObject(boundary) || typeof boundary.discarded !== "boolean") return [];
+  return [
+    {
+      type: "message_boundary",
+      messageId:
+        typeof boundary.message_id === "string" ? boundary.message_id : "",
+      discarded: boundary.discarded,
+    },
+  ];
 };
 
 const extractFollowUpActions = (payload: JsonObject): ChatStreamEvent[] =>
@@ -404,7 +441,9 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   const events: ChatStreamEvent[] = [
     ...extractError(payload),
     ...extractModelFallback(payload),
+    ...extractEmojiAck(payload),
     ...extractResponse(payload),
+    ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),
     ...extractProgress(payload),
     ...extractToolData(payload),
@@ -468,10 +507,16 @@ export function upsertTodoProgressToolData<T extends StreamToolDataEntry>(
     [source]: snapshot,
   };
 
+  // Preserve the FIRST tick's timestamp on replacement: the entry identity
+  // (and any key anchored to its creation time) must stay stable while the
+  // snapshot content updates, or the card remounts every streamed frame.
   const nextEntry = {
     tool_name: "todo_progress",
     data: nextData,
-    timestamp: new Date().toISOString(),
+    timestamp:
+      existingIndex >= 0
+        ? (entries[existingIndex].timestamp ?? new Date().toISOString())
+        : new Date().toISOString(),
   } as T;
 
   if (existingIndex >= 0) {

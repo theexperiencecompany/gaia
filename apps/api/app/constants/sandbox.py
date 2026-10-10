@@ -6,10 +6,9 @@ input bounds, and health-probe windows. Import these instead of redefining
 local literals in the sandbox lifecycle and coding tools.
 """
 
-# Bash tool command execution (seconds). `timeout` is forwarded to E2B as the
-# server-side command-stream deadline. The cap is generous because coding is a
-# paid-tier feature where long-running jobs (builds, large installs, data work)
-# are expected.
+# Bash tool command execution (seconds), forwarded to E2B as the server-side
+# command-stream deadline. Generous because coding is paid-tier, with long jobs
+# (builds, large installs) expected.
 BASH_DEFAULT_TIMEOUT_SECONDS = 300
 BASH_MAX_TIMEOUT_SECONDS = 1800
 
@@ -27,10 +26,9 @@ WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS = 4
 HEALTH_PROBE_WAIT_TIMEOUT_SECONDS = 5
 
-# Sandbox server-side lifetime (seconds). Passed to `create()` and refreshed via
-# `set_timeout()` on reuse so an actively-used sandbox is never killed mid-session.
-# E2B kills a sandbox once this window elapses; 3600 is the Hobby-tier ceiling
-# (Pro allows up to 86_400) — raise if the account is on a Pro plan.
+# Sandbox server-side lifetime (seconds), refreshed via `set_timeout()` on reuse
+# so an active sandbox is never killed mid-session. 3600 is the E2B Hobby-tier
+# ceiling (Pro allows up to 86_400) — raise if the account is on Pro.
 SANDBOX_LIFETIME_SECONDS = 3600
 
 # Bound on a single connect control-plane call (seconds) so a hung E2B control
@@ -41,6 +39,19 @@ SANDBOX_CONNECT_TIMEOUT_SECONDS = 10
 # since the last refresh — avoids a set_timeout round-trip on every tool call in
 # a rapid turn. Half the lifetime leaves ample slack before the deadline.
 SANDBOX_TIMEOUT_REFRESH_SECONDS = SANDBOX_LIFETIME_SECONDS // 2
+
+# Serializes sandbox acquisition per user across replicas, or two pods
+# create/resume the same sandbox at once. Short lease renewed by a watchdog,
+# since cold create + JuiceFS mount has no useful upper bound to size it to.
+SANDBOX_LOCK_LEASE_SECONDS = 30
+SANDBOX_LOCK_RENEW_SECONDS = 10
+# A waiter blocks this long before giving up; longer than the mount script's
+# 120s so a queue behind a genuinely slow create waits rather than failing.
+SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
+# Hard cap on watchdog renewal; past this the lease expires so a hung-but-alive
+# holder can't block the user forever. Comfortably above the real critical
+# section (cold create + 120s mount).
+SANDBOX_LOCK_MAX_HOLD_SECONDS = 300
 
 # ── Local Docker-exec sandbox (ENV=selfhost without an E2B API key) ──
 # See app/services/sandbox/local_sandbox.py for the implementation.
@@ -53,11 +64,9 @@ LOCAL_SANDBOX_IMAGE = "python:3.12-slim"
 # Per-user containers are named ``<prefix><sanitized user_id>``.
 LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
 
-# Named Docker volume mounted at /workspace in EVERY local sandbox container,
-# including the static `gaia-sandbox` service in
-# infra/docker/docker-compose.selfhost.yml. The compose file pins this exact
-# literal name so containers created ad hoc by the API land on the same
-# durable workspace volume instead of a project-prefixed copy.
+# Named Docker volume mounted at /workspace in every local sandbox container.
+# The compose file pins this exact literal so ad hoc API containers land on the
+# same durable workspace volume instead of a project-prefixed copy.
 LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
 # Workspace mountpoint inside local sandbox containers. Must equal

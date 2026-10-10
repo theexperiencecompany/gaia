@@ -1,23 +1,23 @@
 import { z } from "zod";
+import type { ToolDataEntry } from "../api/generated";
 
 /**
- * Zod mirror of the chat SSE event vocabulary. The single source of truth for
- * the wire shapes lives on the backend at
- * `apps/api/app/models/stream_events.py`; this file documents the same frames
- * for the frontend and is used to validate each `data:` frame at the parse
+ * Zod mirror of the chat SSE event vocabulary; the source of truth is the backend at
+ * `apps/api/app/models/stream_events.py`. Used to validate each `data:` frame at the parse
  * boundary (see `parseChatStreamEvent`).
  *
- * Validation is advisory: on a mismatch the parser logs and falls through to
- * the existing duck-typed extraction, so runtime behavior for valid frames is
- * unchanged. Schemas therefore mirror what the parser *accepts* — permissive
- * where the parser is permissive (e.g. `tool_data` entries carry an open shape
- * so `mcp_app`, `todo_progress`, and per-tool variants all validate).
+ * Validation is advisory: on a mismatch the parser logs and falls through to the existing
+ * duck-typed extraction, so schemas mirror what the parser *accepts* — permissive where it is
+ * (e.g. `tool_data` entries carry an open shape so `mcp_app`/`todo_progress`/per-tool variants validate).
  */
 
 // ---------------------------------------------------------------------------
 // Structured payloads
 // ---------------------------------------------------------------------------
 
+// The one payload here that is a documented API model, so the satisfies-check
+// makes the generated type the arbiter. It stays looser than the model on
+// purpose: a parse boundary may accept more than the model promises, never less.
 const ToolDataEntrySchema = z
   .object({
     tool_name: z.string(),
@@ -27,7 +27,7 @@ const ToolDataEntrySchema = z
     subagent_id: z.string().optional(),
   })
   // Per-tool variants (tool_calls_data, mcp_app, …) carry extra keys.
-  .loose();
+  .loose() satisfies z.ZodType<ToolDataEntry>;
 
 const ToolOutputPayloadSchema = z.object({
   tool_call_id: z.string(),
@@ -69,6 +69,12 @@ const DesktopToolRequestPayloadSchema = z.object({
 
 const ResponseFrameSchema = z.object({ response: z.string() });
 const ErrorFrameSchema = z.object({ error: z.string() });
+const EmojiAckFrameSchema = z.object({
+  emoji_ack: z.object({
+    emoji: z.string(),
+    reacts_to_message_id: z.string(),
+  }),
+});
 const ModelFallbackFrameSchema = z.object({
   model_fallback: z.object({ model: z.string().optional() }).loose(),
 });
@@ -112,6 +118,60 @@ const ConversationDescriptionFrameSchema = z.object({
 });
 
 /**
+ * Live output of one `bash` tool run, emitted top-level (not under `tool_data`) by `safe_emit`
+ * in `apps/api/app/agents/tools/coding/bash_tool.py` and passed through unmodified by
+ * `process_data_chunk`, which only unwraps tool data. One `starting` frame
+ * carries the command, then `running` per stdout/stderr chunk, then one terminal `exited`/`error`
+ * — or a single `background_started` for a detached run. Kept loose: shape is per-status.
+ */
+const BashDataFrameSchema = z.object({
+  bash_data: z
+    .object({
+      id: z.string(),
+      status: z
+        .enum(["starting", "running", "exited", "error", "background_started"])
+        .optional(),
+      session_id: z.string().nullish(),
+      command: z.string().optional(),
+      cwd: z.string().optional(),
+      stream: z.enum(["stdout", "stderr"]).optional(),
+      chunk: z.string().optional(),
+      exit_code: z.number().nullish(),
+      pid: z.string().optional(),
+      log_path: z.string().optional(),
+    })
+    .loose(),
+});
+
+/**
+ * A workspace file the agent touched. Same top-level `safe_emit` path as
+ * `bash_data`, from the write/edit/read coding tools. Per-operation fields
+ * (`occurrences_replaced`, `lines_returned`, `mime_type`, …) differ, so the
+ * payload stays loose around the two keys every emitter sets.
+ */
+const FileDataFrameSchema = z.object({
+  file_data: z
+    .object({
+      operation: z.enum(["write", "edit", "read"]),
+      path: z.string(),
+      session_id: z.string().nullish(),
+    })
+    .loose(),
+});
+
+/**
+ * End of one assistant message. `discarded` is true when that message turned
+ * out to carry tool calls, which makes the text it streamed a handoff preamble
+ * the consumer must take back rather than keep alongside the real reply.
+ */
+const MessageBoundaryFrameSchema = z.object({
+  message_boundary: z.object({
+    message_id: z.string(),
+    discarded: z.boolean(),
+  }),
+});
+
+/**
  * Identity frame. Both the new-conversation (5 keys, `conversation_description`
  * may be null) and resumed-conversation (3 keys) variants carry the message +
  * stream ids, so those are required and the conversation-level fields optional.
@@ -128,6 +188,7 @@ const ConversationInitializedFrameSchema = z.object({
 export const ChatStreamFrameSchema = z.union([
   ResponseFrameSchema,
   ErrorFrameSchema,
+  EmojiAckFrameSchema,
   ModelFallbackFrameSchema,
   KeepaliveFrameSchema,
   MainResponseCompleteFrameSchema,
@@ -142,4 +203,7 @@ export const ChatStreamFrameSchema = z.union([
   DesktopToolRequestFrameSchema,
   ConversationInitializedFrameSchema,
   ConversationDescriptionFrameSchema,
+  MessageBoundaryFrameSchema,
+  BashDataFrameSchema,
+  FileDataFrameSchema,
 ]);

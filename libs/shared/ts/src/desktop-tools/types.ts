@@ -76,7 +76,22 @@ export interface DesktopPermissionStatus {
   accessibility: "granted" | "denied" | "unknown";
 }
 
-export type DesktopPermissionPane = "microphone" | "screen" | "accessibility";
+export type DesktopPermissionPane =
+  | "microphone"
+  | "screen"
+  | "accessibility"
+  | "full-disk";
+
+/** macOS folders gated by a per-folder TCC prompt (the
+ * NS<Folder>FolderUsageDescription strings). Reading one triggers the prompt. */
+export type ProtectedFolder = "downloads" | "documents" | "desktop";
+
+export interface FolderAccessResult {
+  folder: ProtectedFolder;
+  /** True if the app can read the folder now (the user allowed it or it was
+   * already granted); false if macOS denied it. */
+  granted: boolean;
+}
 
 /** Per-machine desktop preferences (never synced to the backend). */
 export interface DesktopSettings {
@@ -84,6 +99,12 @@ export interface DesktopSettings {
   popupShortcut: string;
   /** Selected app-icon id from the desktop icon registry. */
   appIcon: string;
+  /** Bring the device-bridge tunnel up automatically on launch when this Mac
+   * is paired, so it comes back online without a manual toggle. */
+  bridgeAutoStart: boolean;
+  /** Register the app as a macOS login item so it starts hidden (tray-only) at
+   * login and keeps the paired device online unattended. */
+  launchAtLogin: boolean;
 }
 
 export interface DesktopAppIconOption {

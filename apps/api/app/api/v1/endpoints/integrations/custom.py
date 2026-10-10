@@ -21,6 +21,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.custom_crud import (
+    CustomConnectionResult,
     create_and_connect_custom_integration,
     delete_custom_integration,
     update_custom_integration,
@@ -48,7 +49,8 @@ async def create_custom_mcp_integration(
             user={"id": user_id},
         )
         mcp_client = await get_mcp_client(user_id=user_id)
-        integration, conn_result = await create_and_connect_custom_integration(
+        connection: CustomConnectionResult
+        integration, connection = await create_and_connect_custom_integration(
             user_id,
             RequestModel(
                 name=request.name,
@@ -67,7 +69,7 @@ async def create_custom_mcp_integration(
         log.set(outcome="success")
         # OAuth-managed connects complete at the MCP OAuth callback; only a
         # direct (no-auth / bearer) connect finishes here.
-        if conn_result.get("status") == "connected":
+        if connection.get("status") == "connected":
             capture_context_event(
                 AnalyticsEvents.INTEGRATION_CONNECTED,
                 {
@@ -80,10 +82,10 @@ async def create_custom_mcp_integration(
             integration_id=integration.integration_id,
             name=integration.name,
             connection=CustomIntegrationConnectionResult(
-                status=conn_result["status"],
-                tools_count=conn_result.get("tools_count"),
-                oauth_url=conn_result.get("oauth_url"),
-                error=conn_result.get("error"),
+                status=connection["status"],
+                tools_count=connection.get("tools_count"),
+                oauth_url=connection.get("oauth_url"),
+                error=connection.get("error"),
             ),
         )
     except ValueError as e:
@@ -129,6 +131,7 @@ async def update_custom_mcp_integration(
             )
         log.set(integration_name=updated.name)
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.INTEGRATION_CUSTOM_UPDATED)
         return IntegrationSuccessResponse(
             message="Integration updated",
             integration_id=updated.integration_id,
@@ -164,6 +167,7 @@ async def delete_custom_mcp_integration(
                 status_code=404, detail="Integration not found or you are not the owner"
             )
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.INTEGRATION_CUSTOM_DELETED)
         return IntegrationSuccessResponse(
             message="Integration deleted",
             integration_id=integration_id,
@@ -193,12 +197,13 @@ async def publish_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        result = await publish_custom_integration(integration_id, user_id)
+        public_url = await publish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.INTEGRATION_CUSTOM_PUBLISHED)
         return PublishIntegrationResponse(
             message="Integration published successfully",
-            integration_id=result["integration_id"],
-            public_url=result["public_url"],
+            integration_id=integration_id,
+            public_url=public_url,
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
@@ -225,11 +230,12 @@ async def unpublish_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        result = await unpublish_custom_integration(integration_id, user_id)
+        await unpublish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.INTEGRATION_CUSTOM_UNPUBLISHED)
         return UnpublishIntegrationResponse(
             message="Integration unpublished successfully",
-            integration_id=result["integration_id"],
+            integration_id=integration_id,
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e

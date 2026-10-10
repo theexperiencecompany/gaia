@@ -10,12 +10,85 @@ from uuid import uuid4
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.workflow_execution_models import (
+    RecordedCall,
     WorkflowExecution,
     WorkflowExecutionDocument,
     WorkflowExecutionsResponse,
     WorkflowExecutionStatus,
 )
+from app.services.workflow.run_trace import render_last_run
 from shared.py.wide_events import log
+
+
+class WorkflowFireTimedOut(Exception):
+    """A fire the worker cut off at its job timeout; whatever it had started may still finish."""
+
+    def __init__(self, limit_seconds: int) -> None:
+        super().__init__(
+            f"This run was stopped after {limit_seconds // 60} minutes, the most one run may "
+            "take. Anything it had started may still finish on its own; the next scheduled "
+            "run is unaffected."
+        )
+        self.limit_seconds = limit_seconds
+
+
+class WorkflowFireOverlapped(Exception):
+    """A fire that found this workflow's conversation already busy.
+
+    A workflow owns one conversation across all runs, and a fire claims its
+    executor lock first, so two fires never run at once. The overlapped fire
+    is dropped, not handed over: the run holding the lock delivers the
+    workflow's one result, and this fire is neither a success to record nor
+    a failure to notify. holder is the in-flight run's lock value, kept for
+    the record and the log.
+    """
+
+    def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:
+        super().__init__(
+            f"Workflow fire overlapped an in-flight run of the same workflow (holder: {holder})"
+        )
+        self.user_id = user_id
+        self.conversation_id = conversation_id
+        self.holder = holder
+
+
+class WorkflowRunFailed(Exception):
+    """A fire that failed after it had already done something on record.
+
+    The calls in trace are side effects that happened; if the record of
+    this fire does not carry them, the next fire reads an empty history and
+    repeats them.
+    """
+
+    def __init__(self, message: str, *, conversation_id: str, trace: list[RecordedCall]) -> None:
+        super().__init__(message)
+        self.conversation_id = conversation_id
+        self.trace = trace
+
+
+class PlaybookFallbackFailed(WorkflowRunFailed):
+    """A fire that failed AFTER its playbook replay had already run some steps.
+
+    Wraps the real failure rather than replacing it, so the caller's
+    bookkeeping (rate-limit and budget classification, the user notification)
+    still sees the error that actually occurred.
+    """
+
+    def __init__(
+        self, cause: Exception, *, conversation_id: str, trace: list[RecordedCall]
+    ) -> None:
+        super().__init__(str(cause), conversation_id=conversation_id, trace=trace)
+        self.cause = cause
+
+
+class WorkflowExecutorFailed(WorkflowRunFailed):
+    """The executor a fire delegated to ended in an error.
+
+    Comms answers such a run with an apology, and the delivery path has already
+    told the user the workflow failed. The message is that apology; recording
+    it as the run's successful result would say the workflow ran when it did
+    not, so the fire is closed out as a failure like any other raise.
+    """
 
 
 async def create_execution(
@@ -24,17 +97,10 @@ async def create_execution(
     trigger_type: str = "manual",
     conversation_id: str | None = None,
 ) -> WorkflowExecution:
-    """
-    Create a new workflow execution record with status 'running'.
+    """Create a workflow execution record with status "running".
 
     Args:
-        workflow_id: ID of the workflow being executed
-        user_id: ID of the user who owns the workflow
-        trigger_type: What triggered the execution (manual, schedule, integration name)
-        conversation_id: Optional conversation ID where execution messages are stored
-
-    Returns:
-        The created WorkflowExecution record
+        trigger_type: manual, schedule, or an integration name.
     """
     execution = await workflow_executions_repository.create(
         WorkflowExecutionDocument(
@@ -71,19 +137,12 @@ async def complete_execution(
     summary: str | None = None,
     error_message: str | None = None,
     conversation_id: str | None = None,
+    trace: list[RecordedCall] | None = None,
 ) -> bool:
-    """
-    Update an execution record on completion.
+    """Update an execution record on completion.
 
     Args:
-        execution_id: The execution to update
-        status: Final status ('success' or 'failed')
-        summary: Brief summary of what was accomplished
-        error_message: Error message if failed
-        conversation_id: Conversation ID if not set at creation
-
-    Returns:
-        True if update succeeded, False otherwise
+        trace: read by the next run instead of replaying the conversation's checkpoints.
     """
     updated = await workflow_executions_repository.complete(
         execution_id,
@@ -91,6 +150,7 @@ async def complete_execution(
         summary=summary,
         error_message=error_message,
         conversation_id=conversation_id,
+        trace=trace,
     )
     if updated is None:
         log.warning(
@@ -102,10 +162,8 @@ async def complete_execution(
 
     duration_seconds = updated.duration_seconds
     duration_ms = int(duration_seconds * 1000) if duration_seconds is not None else None
-    # set_ns, not set(workflow=...): this is the LAST write of the namespace on a
-    # run, so a whole-dict set is what erased trigger_type from 34,247 of 34,413
-    # production workflow fires — leaving no way to tell scheduled fires from
-    # webhook ones.
+    # set_ns, not set(workflow=...): a whole-dict set here erased trigger_type from
+    # 34,247 of 34,413 production workflow fires (last namespace write of the run).
     log.set_ns(
         "workflow",
         id=updated.workflow_id,
@@ -123,24 +181,34 @@ async def complete_execution(
     return True
 
 
+async def get_last_run_brief(workflow_id: str, user_id: str) -> str:
+    """Return the previous run's recorded trace, rendered for the next run's executor brief.
+
+    Empty on a first run or before the trace existed. Never raises: a lookup
+    failure costs the run its history, not the run itself.
+    """
+    try:
+        recent = await workflow_executions_repository.find_recent_with_trace(
+            workflow_id, user_id, limit=1
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} get_last_run_brief: lookup failed; the run proceeds without it",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return ""
+    return render_last_run(recent[0]) if recent else ""
+
+
 async def get_workflow_executions(
     workflow_id: str,
     user_id: str,
     limit: int = 10,
     offset: int = 0,
 ) -> WorkflowExecutionsResponse:
-    """
-    Get execution history for a workflow.
-
-    Args:
-        workflow_id: ID of the workflow
-        user_id: ID of the user (for authorization)
-        limit: Maximum number of executions to return
-        offset: Number of executions to skip
-
-    Returns:
-        WorkflowExecutionsResponse with paginated executions
-    """
+    """Get paginated execution history for a workflow."""
     executions, total = await workflow_executions_repository.list_for_workflow(
         workflow_id, user_id, limit=limit, offset=offset
     )

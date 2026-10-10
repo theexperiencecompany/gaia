@@ -7,23 +7,23 @@ interface EmailSentCardProps {
   emailSentData: EmailSentData;
 }
 
+const formatTime = (timestamp?: string) => {
+  if (!timestamp) return "Just now";
+
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
+
+  if (diffInSeconds < 60) return "Just now";
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
-  const formatTime = (timestamp?: string) => {
-    if (!timestamp) return "Just now";
-
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-
-    if (diffInSeconds < 60) return "Just now";
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
   return (
     <div className="w-full min-w-fit max-w-xs rounded-2xl bg-green-900/20 p-4 text-white">
       {/* Header */}

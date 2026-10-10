@@ -1,23 +1,29 @@
 """Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
+import time
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, BaseMessage, ToolMessage
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
+from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
-from app.agents.llm.types import DevModelOption
+from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
+from app.agents.llm.reasoning import extract_reasoning_delta
+from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
+from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
@@ -25,6 +31,7 @@ from app.constants.cache import (
 from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
+    DevModelOption,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -33,17 +40,32 @@ from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.agent_models import (
     AgentConfigurable,
+    AgentConfigurableView,
     AgentRunnableConfig,
     AgentUserContext,
     ExecutionMode,
-    agent_configurable,
+    LlmCallMetadata,
+    StreamChunkMetadata,
+    read_agent_configurable,
 )
-from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
+from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.payment_models import PlanType
-from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
+from app.models.stream_events import (
+    MessageBoundaryPayload,
+    ModelFallbackFrame,
+    ReasoningPayload,
+    ToolOutputPayload,
+)
+from app.services.latency_metrics import observe_comms_graph, span
+from app.services.llm_usage_analytics import graph_call_properties
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
+    HandoffCallArgs,
+    IntegrationDisplayMetadata,
+    NodeMessagesUpdate,
+    ToolCallView,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -51,23 +73,202 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
-from app.utils.multimodal import extract_text_content, has_media_blocks
+from app.utils.message_breaks import append_message_bubble
+from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
+from app.utils.stream_publishers import TodoProgressSnapshot
 from shared.py.wide_events import log
 
 
-class HandoffMetadata(TypedDict, total=False):
-    """Display metadata for a handoff subagent's tool card. Empty when unresolvable."""
+class _AgentUser(BaseModel):
+    """The ``AgentUserContext`` fields ``build_agent_config`` reads, parsed once.
 
-    icon_url: str | None
-    integration_id: str
-    integration_name: str
+    ``name`` defaults to ``""`` when absent and stays ``None`` when passed so —
+    the two are distinguishable on the configurable, as they always were.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+    email: str | None = None
+    name: str | None = ""
+    timezone: str | None = None
 
 
-async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
+class _HistoryTurn(BaseModel):
+    """One ``MessageDict`` of the request history, as the HIL judge reads it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    role: str = ""
+    content: str | None = None
+
+
+class _RunConfigView(BaseModel):
+    """The GAIA-owned key of an ``AgentRunnableConfig`` the drivers read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    agent_name: str = ""
+
+
+class _MessageBoundaryEvent(BaseModel):
+    """A custom-stream ``message_boundary`` frame's retraction fields."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    message_id: str | None = None
+    discarded: bool = False
+
+
+class _SubagentToolOutput(BaseModel):
+    """A subagent's forwarded ``tool_output`` frame, read to release its deferred MCP App."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_call_id: str = ""
+    output: object = None
+
+
+class _CustomEvent(BaseModel):
+    """A custom-stream payload, read as far as the drivers need.
+
+    ``todo_progress`` and ``tool_output`` are validated when present;
+    ``tool_data`` stays open because a subagent's entry is any tool_data variant
+    (a list, when several rode one event) and only the MCP-App check reads it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    message_boundary: _MessageBoundaryEvent | None = None
+    todo_progress: TodoProgressSnapshot | None = None
+    tool_data: object = None
+    tool_output: _SubagentToolOutput | None = None
+
+
+class _McpUiHead(BaseModel):
+    """An ``mcp_ui`` hint, read only for whether it names a resource."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    resource_uri: str | None = None
+
+
+class _McpAppCallData(BaseModel):
+    """The call fields of a ``tool_calls_data`` entry's ``data`` an MCP App needs."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_call_id: str | None = None
+    tool_name: str = ""
+    inputs: dict[str, object] = Field(default_factory=dict)
+
+
+class _McpAppEntry(BaseModel):
+    """A tool_data entry, read for the MCP App it may announce.
+
+    Lenient on purpose: it is checked against every entry, including a
+    subagent's forwarded one, and an absent field falls back to the empty value
+    the ``mcp_app`` frame has always carried.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: str = ""
+    tool_category: str = ""
+    mcp_server_url: str | None = None
+    mcp_ui: dict[str, object] | None = None
+    timestamp: str | None = None
+    data: _McpAppCallData | None = None
+
+
+class _FallbackResponseMetadata(BaseModel):
+    """What ``ainvoke_llm`` stamps on ``response_metadata`` after a model fallback."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gaia_fell_back: bool = False
+    gaia_fallback_model: str = ""
+
+
+class _ToolMessageKwargs(BaseModel):
+    """The ``additional_kwargs`` the todo tools stamp on their ToolMessages."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    todo_tool: bool = False
+
+
+class _TriggerBinding(BaseModel):
+    """The agent-owned keys of a trigger payload that seed the initial state."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    active_todo_id: str | None = None
+    todo_id: str | None = None
+    execution_mode: ExecutionMode | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class _PendingMcpApp:
+    """An MCP-App tool call awaiting its result, so the mcp_app frame can carry both."""
+
+    tool_category: str
+    tool_name: str
+    server_url: str
+    mcp_ui: McpUiMetadata
+    timestamp: str | None
+    tool_arguments: dict[str, object]
+
+
+def announces_tool_call(chunk: AIMessage) -> bool:
+    """Return whether this chunk already carries a tool call — meaning any text is narration.
+
+    tool_calls (complete) or tool_call_chunks (still assembling) both count.
+    getattr guards the second since only the chunk subclass has that field.
+    """
+    return bool(chunk.tool_calls or getattr(chunk, "tool_call_chunks", None))
+
+
+def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
+    """Append text whose message never reached a boundary (a cancelled run)."""
+    for text in held.values():
+        if text:
+            complete_message = append_message_bubble(complete_message, text)
+    return complete_message
+
+
+def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
+    """Forget text whose message was retracted mid-node, before its boundary.
+
+    Retractions are normally announced at node end, except the style guard's,
+    which retracts a draft mid-node to replace it with a second model call —
+    the driver must honour that boundary too, or the draft stays persisted.
+    """
+    if not isinstance(payload, dict):
+        return
+    boundary = _CustomEvent.model_validate(payload).message_boundary
+    if boundary is not None and boundary.discarded:
+        for texts in held:
+            texts.pop(boundary.message_id or "", None)
+
+
+def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
+    """Return the model's own reply in a node update.
+
+    A node update also carries RemoveMessage tombstones for pruned history,
+    so "the message this node produced" is the last AI one, not the last one.
+    """
+    for message in reversed(messages):
+        if isinstance(message, AIMessage):
+            return message
+    return None
+
+
+async def get_handoff_metadata(subagent_id: str) -> IntegrationDisplayMetadata:
     """Look up icon_url, integration_id, integration_name for handoff subagents.
 
     Checks platform integrations (in-memory) and custom MCPs (MongoDB, Redis-cached).
-    Returns an empty dict if not found.
+    Returns an empty instance if not found.
     """
 
     clean_id, _ = parse_subagent_id(subagent_id)
@@ -77,19 +278,17 @@ async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
     subagent = get_subagent_by_id(clean_id)
     if subagent:
         log.set(integration_type="platform")
-        return {
-            "icon_url": None,  # Platform/builtin subagents use category-based icons
-            "integration_id": subagent.id,
-            "integration_name": subagent.name,
-        }
+        # No icon_url: platform/builtin subagents use category-based icons.
+        return IntegrationDisplayMetadata(
+            integration_id=subagent.id,
+            integration_name=subagent.name,
+        )
 
     # Check Redis cache for custom integrations
     cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:{clean_id}"
-    cached = await get_cache(cache_key)
+    cached = await get_cache(cache_key, IntegrationDisplayMetadata)
     if cached is not None:
-        # Written below by this same function, so the cached shape is ours by
-        # construction — cast, not isinstance (Type Safety item 12).
-        return cast(HandoffMetadata, cached) if cached else {}
+        return cached
 
     # Find the integration by ID or name.
     # No source filter - we need to find ANY integration (custom OR public).
@@ -100,13 +299,13 @@ async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
         if not custom:
             # Cache negative result
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
-            return {}
+            return IntegrationDisplayMetadata()
 
-        metadata: HandoffMetadata = {
-            "icon_url": custom.icon_url,
-            "integration_id": custom.integration_id,
-            "integration_name": custom.name,
-        }
+        metadata = IntegrationDisplayMetadata(
+            icon_url=custom.icon_url,
+            integration_id=custom.integration_id,
+            integration_name=custom.name,
+        )
 
         log.set(integration_type="custom")
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
@@ -114,27 +313,34 @@ async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
 
     except Exception as e:
         log.warning("Failed to lookup handoff metadata", error=str(e), error_type=type(e).__name__)
-        return {}
+        return IntegrationDisplayMetadata()
 
 
 def _build_agent_callbacks(
     conversation_id: str,
-    user: AgentUserContext,
+    user_id: str | None,
     agent_name: str,
+    source: str | None,
+    workflow_id: str | None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
     """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
     callbacks: list[BaseCallbackHandler] = []
 
-    posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
+    posthog_client = (
+        providers.get(POSTHOG_PROVIDER_KEY)
+        if providers.is_available(POSTHOG_PROVIDER_KEY)
+        else None
+    )
     if posthog_client is not None:
         callbacks.append(
             PostHogCallbackHandler(
                 client=posthog_client,
-                distinct_id=user.get("user_id"),
+                distinct_id=user_id,
                 properties={
                     "conversation_id": conversation_id,
                     "agent_name": agent_name,
+                    **graph_call_properties(agent_name, source, workflow_id),
                 },
                 privacy_mode=False,
             ),
@@ -147,86 +353,91 @@ def _build_agent_callbacks(
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
 
+    # True provider first-token latency for every tier on this run.
+    callbacks.append(LLMTtftCallback())
+
     return callbacks
 
 
+@dataclass(slots=True, frozen=True)
+class _TurnScope:
+    """The turn-scoped configurable keys, before and after parent inheritance."""
+
+    conversation_id: str
+    session_id: str | None
+    selected_tool: str | None
+    tool_category: str | None
+    subagent_id: str | None
+    vfs_session_id: str | None
+    active_todo_id: str | None
+    conversation_source: str | None
+    user_messages: list[str] | None
+    user_request: str | None
+    user_preferences: dict[str, object] | None
+    writing_style: dict[str, object] | None
+    execution_mode: ExecutionMode | None
+    stream_id: str | None = None
+
+
 def _inherit_from_parent_configurable(
-    base_configurable: AgentConfigurable | None,
-    current: AgentConfigurable,
-) -> AgentConfigurable:
-    """Merge `current` with optional inheritance from a parent agent's configurable.
+    parent: AgentConfigurableView | None,
+    current: _TurnScope,
+) -> _TurnScope:
+    """Merge current with optional inheritance from a parent agent's configurable.
 
-    - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
-      only fills in blanks.
-    - Pass-through (stream_id): always comes from parent.
-
-    The model is NOT merged here. A child inherits its parent's lane whole (see
-    ``build_agent_config``) — one rule for one value, replacing a per-key table in
-    which provider/model_name were parent-overrides, ``model_kwargs`` was
-    conditional and ``reasoning`` was deliberately not inherited at all.
+    Fallback fields (tool/subagent/vfs/todo/mode/source): child wins, parent
+    fills blanks. stream_id always comes from parent. The model is NOT merged
+    here — a child inherits its parent's lane whole (see build_agent_config).
     """
-    merged: AgentConfigurable = {**current, "stream_id": None}
+    if parent is None:
+        return current
 
-    if not base_configurable:
-        return merged
-
-    # Parent overrides: the TRUE conversation id is established once by comms and
-    # must survive child agents passing their own wrapped thread ids down as the
-    # ``conversation_id`` argument (``executor_<conv>`` → ``<integ>_executor_<conv>``).
-    merged["conversation_id"] = (
-        base_configurable.get("conversation_id") or merged["conversation_id"]
+    return replace(
+        current,
+        # Parent overrides: the TRUE conversation id is established once by comms and
+        # must survive child agents passing their own wrapped thread ids down as the
+        # ``conversation_id`` argument (``executor_<conv>`` → ``<integ>_executor_<conv>``).
+        conversation_id=parent.conversation_id or current.conversation_id,
+        # Sticky-routing key, conversation-scoped: every agent in the tree must
+        # hit the provider holding the conversation's warm cache.
+        session_id=(
+            parent.session_id if "session_id" in parent.model_fields_set else current.session_id
+        ),
+        # Parent overrides, same reason: the user's VERBATIM turns, established once
+        # by comms. A child's own "task" is an agent-authored paraphrase, and the HIL
+        # intent judge must check the tool call against what the user actually asked.
+        user_messages=parent.user_messages or current.user_messages,
+        user_request=parent.user_request or current.user_request,
+        # Same rule, same reason: established once wherever the root call site had the
+        # full user document in hand, and a child never has its own copy to prefer.
+        user_preferences=parent.user_preferences or current.user_preferences,
+        writing_style=parent.writing_style or current.writing_style,
+        # Child wins; the parent only fills a blank. Written out per key rather than
+        # driven by a table so each one is a checked attribute access.
+        selected_tool=current.selected_tool or parent.selected_tool,
+        tool_category=current.tool_category or parent.tool_category,
+        subagent_id=current.subagent_id or parent.subagent_id,
+        vfs_session_id=current.vfs_session_id or parent.vfs_session_id,
+        active_todo_id=current.active_todo_id or parent.active_todo_id,
+        conversation_source=current.conversation_source or parent.conversation_source,
+        execution_mode=current.execution_mode or parent.execution_mode,
+        stream_id=parent.stream_id,
     )
-    # Sticky-routing key, conversation-scoped: every agent in the tree must
-    # hit the provider holding the conversation's warm cache.
-    if "session_id" in base_configurable:
-        merged["session_id"] = base_configurable["session_id"]
-    # Parent overrides, same reason: the user's VERBATIM turns, established once by
-    # comms. Every child agent's own "task" is an agent-authored paraphrase (comms →
-    # call_executor → handoff), so a child must never overwrite these — the HIL intent
-    # judge checks the tool call against what the *user* actually asked, not against the
-    # agent's restatement of it.
-    merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
-    merged["user_request"] = base_configurable.get("user_request") or merged["user_request"]
-    # Same rule, same reason: established once wherever the root call site had the
-    # full user document in hand, and a child never has its own copy to prefer.
-    merged["user_preferences"] = (
-        base_configurable.get("user_preferences") or merged["user_preferences"]
-    )
-    merged["writing_style"] = base_configurable.get("writing_style") or merged["writing_style"]
-    # Child wins; the parent only fills a blank. Written out per key rather than
-    # driven by a table so each one is a checked TypedDict access.
-    merged["selected_tool"] = merged.get("selected_tool") or base_configurable.get("selected_tool")
-    merged["tool_category"] = merged.get("tool_category") or base_configurable.get("tool_category")
-    merged["subagent_id"] = merged.get("subagent_id") or base_configurable.get("subagent_id")
-    merged["vfs_session_id"] = merged.get("vfs_session_id") or base_configurable.get(
-        "vfs_session_id"
-    )
-    merged["active_todo_id"] = merged.get("active_todo_id") or base_configurable.get(
-        "active_todo_id"
-    )
-    merged["conversation_source"] = merged.get("conversation_source") or base_configurable.get(
-        "conversation_source"
-    )
-    inherited_mode = merged.get("execution_mode") or base_configurable.get("execution_mode")
-    if inherited_mode:
-        merged["execution_mode"] = inherited_mode
-
-    merged["stream_id"] = base_configurable.get("stream_id")
-    return merged
 
 
 def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
-    """The user's own recent turns, verbatim and oldest first, ending with ``current``.
+    """Return the user's own recent turns, verbatim and oldest first, ending with current.
 
     Intent routinely spans turns — "draft an email to Bob" … "looks good, send it" — so
-    the latest message alone cannot be grounded against. Only ``role == "user"`` turns
+    the latest message alone cannot be grounded against. Only role == "user" turns
     are kept: the HIL intent judge must never see assistant text, or the agent can talk
     it into approving (see services/hil/intent.py).
     """
     turns = [
         text
         for message in history
-        if message.get("role") == "user" and (text := (message.get("content") or "").strip())
+        if (turn := _HistoryTurn.model_validate(message)).role == "user"
+        and (text := (turn.content or "").strip())
     ]
     current = current.strip()
     # The client usually already appends this turn to `messages`; don't duplicate it, and
@@ -236,202 +447,398 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
-# These parameters form one cohesive LangGraph execution config surface (user
-# context, model, auth, tracing, execution params). Grouping them into a dataclass
-# would not reduce the surface, only move it. Keyword-only instead: every caller
-# already passed them by name, and a 19-argument positional signature is a
-# mis-ordering waiting to happen.
+def background_authorization(
+    turns: list[str],
+    *,
+    execution_mode: str,
+    workflow_title: str = "",
+    workflow_description: str = "",
+    todo_title: str = "",
+) -> list[str]:
+    """Append a background run's schedule text as standing authorization.
+
+    A scheduled workflow/todo is a standing directive, so its human-written
+    display fields (title, description ONLY) authorize like a live turn's words —
+    the judge grounds calls against them verbatim. Step lists and execution
+    prompts may be LLM-generated and never authorize; interactive runs pass through.
+    """
+    if execution_mode != "background":
+        return turns
+    extra: list[str] = []
+    title = workflow_title.strip()
+    description = workflow_description.strip()
+    if title or description:
+        extra.append(
+            "Scheduled workflow"
+            + (f": {title}" if title else "")
+            + (f". {description}" if description else "")
+        )
+    label = todo_title.strip()
+    if label and not any(label in turn for turn in turns):
+        extra.append(f"Tracked todo: {label}")
+    if not extra:
+        return turns
+    return turns + [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in extra]
+
+
+# Replaces 22 flat keyword-only parameters, bundled into five groups: AgentIdentity
+# (who/where), AgentLane (model lane), AgentThread (parent inheritance), AgentTurn
+# (what this turn is about), AgentTracing (spans/tokens) — each optional but identity.
+@dataclass(frozen=True)
+class AgentIdentity:
+    """Who is running, and in which conversation. Required for every run."""
+
+    conversation_id: str
+    """The TRUE conversation id — also the OpenRouter sticky-routing session key."""
+
+    user: AgentUserContext
+    """The acting user: id, email, name, and (top-level callers) the home timezone."""
+
+    agent_name: str
+    """Which agent this run is: comms_agent, executor_agent, a subagent id, ..."""
+
+
+@dataclass(frozen=True)
+class AgentLane:
+    """The model lane inputs.
+
+    Only consulted for a TOP-LEVEL run (no AgentThread.base_configurable), which
+    is the one that resolves a lane; a child inherits its parent's lane whole and
+    ignores both fields.
+    """
+
+    role: AgentRole = AgentRole.SUBAGENT
+    """Which tier is running, which is what picks the lane."""
+
+    dev_option: DevModelOption | None = None
+    """DEV-ONLY explicit model pick; beats inheritance (the switcher's whole purpose)."""
+
+
+@dataclass(frozen=True)
+class AgentThread:
+    """Where the run lives, and what it inherits from its parent."""
+
+    thread_id: str | None = None
+    """LangGraph thread for the wrapped graph; defaults to the conversation id."""
+
+    base_configurable: AgentConfigurable | None = None
+    """The parent run's configurable. Present means this is a child run: it inherits
+    the parent's lane, trace, plan, workflow and the parent-overrides keys (see
+    ``_inherit_from_parent_configurable``)."""
+
+    subagent_id: str | None = None
+    """The subagent this run embodies; also its memory namespace id."""
+
+    vfs_session_id: str | None = None
+    """Shared VFS session ID held constant across the executor and the handoff
+    subagents it spawns, so all resolve VFS paths against the executor workspace.
+    Inherited automatically via ``base_configurable``."""
+
+    recursion_limit: int = AGENT_RECURSION_LIMIT
+    """Max LangGraph steps before GraphRecursionError. Defaults to the comms/subagent
+    cap; the executor passes EXECUTOR_RECURSION_LIMIT for its longer tool loops."""
+
+
+@dataclass(frozen=True)
+class AgentTurn:
+    """What this turn is about: the user's words, the request, and the tool framing."""
+
+    selected_tool: str | None = None
+    """A tool the client pinned for this turn."""
+
+    tool_category: str | None = None
+    """The category comms already resolved, letting the executor skip discovery."""
+
+    active_todo_id: str | None = None
+    """The tracked todo this turn is working, when there is one."""
+
+    execution_mode: ExecutionMode | None = None
+    """interactive vs the background modes; inherited when omitted."""
+
+    source: str | None = None
+    """The channel (web/mobile/whatsapp/...); falls back to "background" when unset."""
+
+    workflow_id: str | None = None
+    """The workflow this fire belongs to, on a top-level run only. Child runs
+    inherit it from the parent's configurable."""
+
+    user_messages: list[str] | None = None
+    """The user's own recent turns, verbatim, oldest first (see
+    :func:`recent_user_messages`). Set once by comms and inherited (parent-overrides)
+    by the executor and every subagent, whose own tasks are agent-authored
+    paraphrases. The HIL intent judge checks gated tool calls against these, so they
+    must be the user's words — not a restatement."""
+
+    user_request: str | None = None
+    """The live turn's request exactly as typed, unclipped. Same inheritance rule as
+    ``user_messages``; ``call_executor`` folds it into the executor brief so the
+    worker tier is never left with only the comms agent's paraphrase."""
+
+    user_preferences: dict[str, Any] | None = None
+    """Onboarding data, same inheritance rule as ``user_messages`` — pass it at
+    whichever root call site already has the full user document in hand (comms,
+    background narration, the dev direct-invoke entrypoint); every child agent
+    inherits it unchanged."""
+
+    writing_style: dict[str, Any] | None = None
+    """Onboarding data; same inheritance rule as ``user_preferences``."""
+
+
+@dataclass(frozen=True)
+class AgentTracing:
+    """Where this run's spans and token counts go."""
+
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None
+    """Collector the caller reads token usage back off after the run."""
+
+    langfuse_trace_id: str | None = None
+    """Binds spans to a Langfuse trace; inherited from ``base_configurable`` when
+    omitted so the executor lands on the comms trace."""
+
+    langfuse_tags: list[str] | None = None
+    """Tags for that trace. Inherited when omitted; pass ``[]`` to clear them."""
+
+
+def _stamp_langfuse(
+    configurable: AgentConfigurable,
+    metadata: dict[str, object],
+    effective_trace_id: str | None,
+    effective_tags: list[str] | None,
+    user_id: str | None,
+    conversation_id: str,
+) -> None:
+    """Bind the run to its Langfuse trace, on the configurable and the metadata.
+
+    Stashed in configurable so child agents (spawned via asyncio.create_task)
+    re-emit the same trace_id from their own build_agent_config call.
+    """
+    if effective_trace_id:
+        configurable["langfuse_trace_id"] = effective_trace_id
+    if effective_tags:
+        configurable["langfuse_tags"] = effective_tags
+    if effective_trace_id:
+        metadata["langfuse_trace_id"] = effective_trace_id
+        metadata["langfuse_session_id"] = conversation_id
+        if user_id:
+            metadata["langfuse_user_id"] = user_id
+        if effective_tags:
+            metadata["langfuse_tags"] = effective_tags
+
+
 async def build_agent_config(
     *,
-    conversation_id: str,
-    user: AgentUserContext,
-    agent_name: str,
-    role: AgentRole = AgentRole.SUBAGENT,
-    dev_option: DevModelOption | None = None,
-    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    thread_id: str | None = None,
-    base_configurable: AgentConfigurable | None = None,
-    selected_tool: str | None = None,
-    tool_category: str | None = None,
-    subagent_id: str | None = None,
-    vfs_session_id: str | None = None,
-    active_todo_id: str | None = None,
-    execution_mode: ExecutionMode | None = None,
-    source: str | None = None,
-    user_messages: list[str] | None = None,
-    user_request: str | None = None,
-    user_preferences: dict[str, Any] | None = None,
-    writing_style: dict[str, Any] | None = None,
-    langfuse_trace_id: str | None = None,
-    langfuse_tags: list[str] | None = None,
-    recursion_limit: int = AGENT_RECURSION_LIMIT,
+    identity: AgentIdentity,
+    lane: AgentLane | None = None,
+    thread: AgentThread | None = None,
+    turn: AgentTurn | None = None,
+    tracing: AgentTracing | None = None,
 ) -> AgentRunnableConfig:
     """Build the LangGraph execution config (user context, model, auth, execution params).
 
-    Notable args:
-        vfs_session_id: Shared VFS session ID held constant across the executor and the
-            handoff subagents it spawns, so all resolve VFS paths against the executor
-            workspace. Inherited automatically via base_configurable.
-        user_messages: The user's own recent turns, verbatim, oldest first (see
-            :func:`recent_user_messages`). Set once by comms and inherited
-            (parent-overrides) by the executor and every subagent, whose own tasks are
-            agent-authored paraphrases. The HIL intent judge checks gated tool calls
-            against these, so they must be the user's words — not a restatement.
-        user_request: The live turn's request exactly as typed, unclipped. Same
-            inheritance rule as ``user_messages``; ``call_executor`` folds it into the
-            executor brief so the worker tier is never left with only the comms
-            agent's paraphrase.
-        user_preferences / writing_style: Onboarding data, same inheritance rule as
-            ``user_messages`` — pass it at whichever root call site already has the
-            full user document in hand (comms, background narration, the dev
-            direct-invoke entrypoint); every child agent inherits it unchanged.
-        langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
-            base_configurable when omitted so the executor lands on the comms trace.
-        recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
-            comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
-            longer tool loops.
-        role / dev_option: Only consulted for a TOP-LEVEL run (no base_configurable),
-            which is the one that resolves a lane; a child inherits its parent's lane
-            whole and ignores both.
+    An omitted group is its all-defaults instance; lane is consulted only for
+    a top-level run. Per-field notes live on the dataclasses above.
     """
-    callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
+    # An omitted group is its all-defaults instance. The groups whose fields the
+    # body reads all over (identity, thread, turn) are unpacked into locals under
+    # their old names; lane and tracing are each read in one place and stay whole.
+    lane, thread, turn, tracing = (
+        lane if lane is not None else AgentLane(),
+        thread if thread is not None else AgentThread(),
+        turn if turn is not None else AgentTurn(),
+        tracing if tracing is not None else AgentTracing(),
+    )
+    conversation_id, user, agent_name = identity.conversation_id, identity.user, identity.agent_name
+    thread_id, base_configurable, subagent_id, vfs_session_id, recursion_limit = (
+        thread.thread_id,
+        thread.base_configurable,
+        thread.subagent_id,
+        thread.vfs_session_id,
+        thread.recursion_limit,
+    )
+    (
+        selected_tool,
+        tool_category,
+        active_todo_id,
+        execution_mode,
+        source,
+        user_messages,
+        user_request,
+        user_preferences,
+        writing_style,
+    ) = (
+        turn.selected_tool,
+        turn.tool_category,
+        turn.active_todo_id,
+        turn.execution_mode,
+        turn.source,
+        turn.user_messages,
+        turn.user_request,
+        turn.user_preferences,
+        turn.writing_style,
+    )
 
-    # The one seam every execution path crosses. A run with a parent inherits its
-    # lane whole; a top-level run (chat, background narration, a direct dev
-    # invocation) resolves one here. Doing it here rather than at the callers is
-    # what makes it structurally impossible for a new entry point to be born on
-    # the wrong lane — the same self-sufficiency the budget wall already has.
-    # Precedence: an explicit dev choice (the switcher's whole purpose) beats
-    # inheritance, which beats resolving fresh.
-    inherited_lane = ModelLane.from_configurable((base_configurable or {}).get("lane"))
+    acting_user = _AgentUser.model_validate(user)
+    parent = (
+        AgentConfigurableView.model_validate(base_configurable)
+        if base_configurable is not None
+        else None
+    )
+
+    # Child runs omit both, and `workflow_id` is stamped onto the configurable
+    # only after this returns, so each falls back to the parent's.
+    run_source = source or (parent.conversation_source if parent else None)
+    run_workflow_id = turn.workflow_id or (parent.workflow_id if parent else None)
+    callbacks = _build_agent_callbacks(
+        conversation_id,
+        acting_user.user_id,
+        agent_name,
+        run_source,
+        run_workflow_id,
+        tracing.usage_metadata_callback,
+    )
+
+    # The one seam every execution path crosses: a child inherits its parent's lane
+    # whole (except comms' own lane), a top-level run resolves one here. An explicit
+    # dev choice beats inheritance beats fresh.
+    inherited_lane = ModelLane.from_configurable(parent.lane if parent else None)
     resolved_plan: PlanType | None = None
-    if dev_option is None and inherited_lane is not None:
-        lane = inherited_lane
+    if (
+        lane.dev_option is None
+        and inherited_lane is not None
+        and inherits_lane(inherited_lane, lane.role)
+    ):
+        model_lane = inherited_lane
     else:
-        lane, resolved_plan = await resolve_lane(user.get("user_id"), role, dev_option)
+        model_lane, resolved_plan = await resolve_lane(
+            acting_user.user_id, lane.role, lane.dev_option
+        )
 
-    current: AgentConfigurable = {
-        "conversation_id": conversation_id,
+    current = _TurnScope(
+        conversation_id=conversation_id,
         # OpenRouter sticky-routing key: pins every request of this
         # conversation to the provider holding its warm prompt cache
-        # (OpenRouter forces sticky routing from the first request when a
-        # session_id is present — see the routing note in constants/llm.py).
-        "session_id": conversation_id,
-        "selected_tool": selected_tool,
-        "tool_category": tool_category,
-        "subagent_id": subagent_id,
-        "vfs_session_id": vfs_session_id,
-        "active_todo_id": active_todo_id,
-        "conversation_source": source,
-        "user_messages": user_messages,
-        "user_request": user_request,
-        "user_preferences": user_preferences,
-        "writing_style": writing_style,
-    }
-    if execution_mode:
-        current["execution_mode"] = execution_mode
-    resolved = _inherit_from_parent_configurable(base_configurable, current)
+        # (see the routing note in constants/llm.py).
+        session_id=conversation_id,
+        selected_tool=selected_tool,
+        tool_category=tool_category,
+        subagent_id=subagent_id,
+        vfs_session_id=vfs_session_id,
+        active_todo_id=active_todo_id,
+        conversation_source=source,
+        user_messages=user_messages,
+        user_request=user_request,
+        user_preferences=user_preferences,
+        writing_style=writing_style,
+        execution_mode=execution_mode,
+    )
+    resolved = _inherit_from_parent_configurable(parent, current)
 
     # Explicit kwargs win over what was inherited from the parent's configurable.
     # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
-    inherited = base_configurable or {}
+    inherited = parent if parent is not None else AgentConfigurableView()
     effective_trace_id = (
-        langfuse_trace_id if langfuse_trace_id is not None else inherited.get("langfuse_trace_id")
+        tracing.langfuse_trace_id
+        if tracing.langfuse_trace_id is not None
+        else inherited.langfuse_trace_id
     )
-    effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
+    effective_tags = (
+        tracing.langfuse_tags if tracing.langfuse_tags is not None else inherited.langfuse_tags
+    )
 
     # Specific channel (web/mobile/whatsapp/...) and its generalized category
     # (UI/Bot/BG). The channel falls back to "background" when unset because the
     # only callers that omit a source are the silent background paths.
-    resolved_source = resolved.get("conversation_source")
+    resolved_source = resolved.conversation_source
     source_channel = resolved_source or ConversationSource.BACKGROUND.value
     source_category = SourceCategory.from_source(resolved_source).value
 
-    # The agent operates in the user's HOME timezone (IANA, DST-aware): schedule
-    # defaults (workflow/reminder/calendar) and the local-time prompt all read it
-    # via home_timezone_from_config. Top-level callers pass the resolved home zone
-    # on user["timezone"]; child agents (executor/handoff/subagent) reconstruct a
-    # bare user dict, so inherit the parent's zone from base_configurable. UTC is
-    # the loud last resort (logged downstream by home_timezone_from_config).
-    home_timezone = (user.get("timezone") or "").strip()
+    # The agent operates in the user's HOME timezone (IANA, DST-aware). Top-level
+    # callers pass it on user.timezone; child agents reconstruct a bare user,
+    # so they inherit the parent's zone from its configurable instead.
+    home_timezone = (acting_user.timezone or "").strip()
     if not home_timezone and base_configurable:
-        home_timezone = (base_configurable.get("user_timezone") or "").strip()
+        home_timezone = (inherited.user_timezone or "").strip()
     if not home_timezone:
         home_timezone = "UTC"
 
-    # One id for the WHOLE user turn: generated at the top-level call (no
-    # parent) and inherited by every child agent (executor, handoff subagents,
-    # spawn loops). The accounting middleware keys the request tree's aggregate
-    # token counter on it, so the per-request ceiling binds across the tree
-    # instead of resetting per graph. Included in the literal below so the typed
-    # AgentConfigurable enforces its presence — a run can never omit it.
-    root_request_id = inherited.get("root_request_id") or str(uuid4())
+    # One id for the WHOLE user turn: generated at the top-level call and
+    # inherited by every child agent, so the accounting middleware's aggregate
+    # token counter binds across the tree instead of resetting per graph.
+    root_request_id = inherited.root_request_id or str(uuid4())
 
     configurable: AgentConfigurable = {
         "thread_id": thread_id or conversation_id,
-        # The TRUE conversation id (parent-overrides inheritance; see
-        # _inherit_from_parent_configurable). NOT recoverable from ``thread_id`` —
-        # that is the wrapped graph thread. HIL approvals, notifications, and the
-        # executor queue read this key, never ``thread_id``.
-        "conversation_id": resolved["conversation_id"],
+        # The TRUE conversation id (see _inherit_from_parent_configurable), NOT
+        # recoverable from thread_id (the wrapped graph thread). HIL approvals,
+        # notifications, and the executor queue read this key, never thread_id.
+        "conversation_id": resolved.conversation_id,
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
-        "user_messages": resolved["user_messages"],
-        "user_request": resolved["user_request"],
-        "user_preferences": resolved["user_preferences"],
-        "writing_style": resolved["writing_style"],
-        "user_id": user.get("user_id"),
-        "email": user.get("email"),
-        "user_name": user.get("name", ""),
+        "user_messages": resolved.user_messages,
+        "user_request": resolved.user_request,
+        "user_preferences": resolved.user_preferences,
+        "writing_style": resolved.writing_style,
+        "user_id": acting_user.user_id,
+        "email": acting_user.email,
+        "user_name": acting_user.name,
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.
-        "lane": lane.to_configurable(),
-        "selected_tool": resolved["selected_tool"],
-        "tool_category": resolved["tool_category"],
-        "subagent_id": resolved["subagent_id"],
-        "vfs_session_id": resolved["vfs_session_id"],
-        "stream_id": resolved["stream_id"],
-        "active_todo_id": resolved["active_todo_id"],
-        "execution_mode": resolved.get("execution_mode") or "interactive",
+        "lane": model_lane.to_configurable(),
+        "selected_tool": resolved.selected_tool,
+        "tool_category": resolved.tool_category,
+        "subagent_id": resolved.subagent_id,
+        "vfs_session_id": resolved.vfs_session_id,
+        "stream_id": resolved.stream_id,
+        "active_todo_id": resolved.active_todo_id,
+        "execution_mode": resolved.execution_mode or "interactive",
         "conversation_source": resolved_source,
         "source_category": source_category,
         # Re-emitted in the literal below (a fresh dict — a key dropped here
         # never reaches the graph config).
-        "session_id": resolved.get("session_id"),
+        "session_id": resolved.session_id,
     }
 
     # LangChain's binding keys, always re-derived from the lane so the two can
     # never drift apart.
-    configurable.update(lane.binding_keys())
+    configurable.update(model_lane.binding_keys())
 
     # The budget wall reads plan_type to avoid a Redis lookup on the hot path.
     # Stamped from the same resolve_lane call that chose the model, and inherited
     # by children the way root_request_id is.
-    if plan := (inherited.get("plan_type") or (resolved_plan.value if resolved_plan else None)):
+    if plan := (inherited.plan_type or (resolved_plan.value if resolved_plan else None)):
         configurable["plan_type"] = plan
 
-    # Stash in configurable so child agents (spawned via asyncio.create_task)
-    # re-emit the same trace_id from their own build_agent_config call.
-    if effective_trace_id:
-        configurable["langfuse_trace_id"] = effective_trace_id
-    if effective_tags:
-        configurable["langfuse_tags"] = effective_tags
+    # A workflow fire stamps its workflow on the comms configurable; the executor
+    # and its handoff subagents inherit it whole, the way root_request_id is.
+    if workflow_id := inherited.workflow_id:
+        configurable["workflow_id"] = workflow_id
+        configurable["workflow_title"] = inherited.workflow_title
+        configurable["workflow_notify_on_completion"] = inherited.workflow_notify_on_completion
 
-    metadata: dict[str, Any] = {
-        "user_id": user.get("user_id"),
+    metadata: dict[str, object] = {
+        "user_id": acting_user.user_id,
         "source_category": source_category,
         "source_channel": source_channel,
+        # Lane identity for the TTFT callback, which reads it back as LlmCallMetadata.
+        # llm_label defaults to this run's agent tier so the graph's own streaming
+        # calls never land on "unknown"; ainvoke_llm overrides it per side call.
+        **LlmCallMetadata(
+            lane_provider=model_lane.provider.value,
+            lane_model=model_lane.model or "default",
+            llm_label=identity.agent_name,
+        ),
     }
-    if effective_trace_id:
-        metadata["langfuse_trace_id"] = effective_trace_id
-        metadata["langfuse_session_id"] = conversation_id
-        if user.get("user_id"):
-            metadata["langfuse_user_id"] = user["user_id"]
-        if effective_tags:
-            metadata["langfuse_tags"] = effective_tags
+    _stamp_langfuse(
+        configurable,
+        metadata,
+        effective_trace_id,
+        effective_tags,
+        acting_user.user_id,
+        conversation_id,
+    )
 
     config: AgentRunnableConfig = {
         # The one seam where the typed bag becomes LangGraph's untyped field:
@@ -453,11 +860,11 @@ def build_initial_state(
     history: list[AnyMessage],
     # The trigger payload merged with the agent's own keys (active_todo_id,
     # execution_mode, workflow_*). Genuinely open: schedulers spread arbitrary
-    # provider trigger data through it, so there is no fixed key set to model.
-    trigger_context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    # provider trigger data through it, so only the agent-owned keys are read.
+    trigger_context: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
-    state: dict[str, Any] = {
+    state: dict[str, object] = {
         "query": request.message,
         "intent": request.message,
         "messages": history,
@@ -475,37 +882,167 @@ def build_initial_state(
         # Bind active todo + execution mode so banners and tools default
         # to the firing todo. Scheduled runs always set these; comms-driven
         # turns may set them when delegating todo-bound work.
-        if active_todo_id := trigger_context.get("active_todo_id") or trigger_context.get(
-            "todo_id"
-        ):
+        binding = _TriggerBinding.model_validate(trigger_context)
+        if active_todo_id := binding.active_todo_id or binding.todo_id:
             state["active_todo_id"] = active_todo_id
-        if execution_mode := trigger_context.get("execution_mode"):
-            state["execution_mode"] = execution_mode
+        if binding.execution_mode:
+            state["execution_mode"] = binding.execution_mode
 
     return state
 
 
+def _held_chunk_text(
+    chunk: AIMessage,
+    is_comms: bool,
+    tool_call_message_ids: set[str],
+) -> tuple[str, str]:
+    """Return the chunk's message id plus the text to hold — "" when it is not a held reply."""
+    message_id = chunk.id or ""
+    if announces_tool_call(chunk):
+        tool_call_message_ids.add(message_id)
+    content = chunk.text
+    if content and is_comms and message_id not in tool_call_message_ids:
+        return message_id, content
+    return message_id, ""
+
+
+def _settle_message_boundary(
+    messages: Sequence[object],
+    is_comms: bool,
+    complete_message: str,
+    message_texts: dict[str, str],
+    tool_call_message_ids: set[str],
+) -> tuple[str, str | None, bool]:
+    """Decide the fate of the message a node just produced: kept, or a handoff preamble.
+
+    Returns the updated complete_message plus the boundary's message id
+    (None when the node produced none) and whether it was discarded.
+    """
+    boundary = last_ai_message(messages) if is_comms else None
+    if boundary is None:
+        return complete_message, None, False
+    boundary_id = boundary.id or ""
+    held = message_texts.pop(boundary_id, "")
+    discarded = boundary_id in tool_call_message_ids or announces_tool_call(boundary)
+    if held and not discarded:
+        complete_message = append_message_bubble(complete_message, held)
+    return complete_message, boundary_id, discarded
+
+
+async def _handoff_metadata_for(call: ToolCallView) -> IntegrationDisplayMetadata:
+    """Return the display metadata a handoff call's card carries; empty for any other tool.
+
+    Handoff metadata stays pre-resolved here (it's a special subagent-display
+    path). MCP tool metadata is resolved inside format_tool_call_entry when
+    user_id is passed.
+    """
+    if call.name != "handoff":
+        return IntegrationDisplayMetadata()
+    subagent_id = HandoffCallArgs.model_validate(call.args).subagent_id
+    if not subagent_id:
+        return IntegrationDisplayMetadata()
+    return await get_handoff_metadata(subagent_id)
+
+
+async def _collect_silent_tool_entries(
+    messages: Sequence[object],
+    emitted_tool_calls: set[str],
+    entries: list[ToolDataEntry],
+    user_id: str | None,
+) -> None:
+    """Append a tool_data entry for each not-yet-emitted tool call in a node update."""
+    for msg in messages:
+        if not isinstance(msg, AIMessage) or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            call = ToolCallView.model_validate(tc)
+            if not call.id or call.id in emitted_tool_calls:
+                continue
+
+            # Todo tools already stream todo_progress; suppress tool_data noise.
+            # Safe: doesn't affect agent state; only avoids redundant UI events.
+            if call.name in {"plan_tasks", "update_tasks"}:
+                continue
+
+            tool_metadata = await _handoff_metadata_for(call)
+            tool_entry = await format_tool_call_entry(
+                tc,
+                icon_url=tool_metadata.icon_url,
+                integration_id=tool_metadata.integration_id,
+                integration_name=tool_metadata.integration_name,
+                user_id=user_id,
+            )
+            if tool_entry:
+                entries.append(tool_entry)
+                emitted_tool_calls.add(call.id)
+
+
+@dataclass(slots=True)
+class _SilentAccumulators:
+    """The per-run state execute_graph_silent folds the stream into."""
+
+    complete_message: str = ""
+    entries: list[ToolDataEntry] = field(default_factory=list)
+    # Accumulate todo_progress by source
+    todo_progress: dict[str, dict[str, object]] = field(default_factory=dict)
+    # Same message-scoped hold as execute_graph_streaming: text that turns out to
+    # accompany a tool call is a handoff preamble, and the wire only reveals that
+    # after the text has already been accumulated.
+    message_texts: dict[str, str] = field(default_factory=dict)
+    tool_call_message_ids: set[str] = field(default_factory=set)
+    # Track tool calls to avoid duplicate emissions (same as streaming)
+    emitted_tool_calls: set[str] = field(default_factory=set)
+
+
+def _accumulate_silent_custom_event(payload: object, acc: _SilentAccumulators) -> None:
+    """Fold one custom stream event into the silent run's accumulated tool data."""
+    drop_retracted_text(payload, acc.message_texts)
+    if not isinstance(payload, dict):
+        return
+    # Accumulate todo_progress for persistence
+    snapshot = _CustomEvent.model_validate(payload).todo_progress
+    if snapshot is not None:
+        acc.todo_progress[snapshot.source] = snapshot.model_dump(exclude_unset=True)
+
+    acc.entries.extend(process_custom_event_for_tools(payload).tool_data)
+
+
 @traceable(run_type="llm", name="Call Agent Silent")
+def _hold_silent_chunk(
+    payload: tuple[BaseMessage, StreamChunkMetadata],
+    is_comms: bool,
+    tool_call_message_ids: set[str],
+    message_texts: dict[str, str],
+) -> None:
+    """One "messages"-mode event of a silent run: hold the chunk's text by message."""
+    metadata: StreamChunkMetadata
+    chunk, metadata = payload
+
+    if metadata.get("silent"):
+        return  # Skip silent chunks (e.g. follow-up actions generation)
+
+    if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+        message_id, held_text = _held_chunk_text(chunk, is_comms, tool_call_message_ids)
+        if held_text:
+            message_texts[message_id] = message_texts.get(message_id, "") + held_text
+
+
 async def execute_graph_silent(
     graph: CompiledAgentGraph,
-    initial_state: dict[str, Any],
+    initial_state: Mapping[str, object],
     config: AgentRunnableConfig,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, list[ToolDataEntry]]:
     """Execute LangGraph in silent mode, accumulating the full message and tool data.
 
     Used for background processing and workflow triggers that don't need streaming.
     Stores intermediate messages and tool outputs as they happen, like normal chat.
     Returns (complete_message, tool_data).
     """
-    complete_message = ""
-    tool_data: dict[str, Any] = {"tool_data": []}
-    todo_progress_accumulated: dict[str, Any] = {}  # Accumulate todo_progress by source
-
-    # Track tool calls to avoid duplicate emissions (same as streaming)
-    emitted_tool_calls: set[str] = set()
+    acc = _SilentAccumulators()
+    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
 
     # Get user_id for metadata lookup (not for storage - caller handles that)
-    user_id = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
 
     # A list `stream_mode` plus `subgraphs=True` makes astream yield
     # (namespace, mode, payload) triples, which langgraph's own overload return
@@ -529,93 +1066,47 @@ async def execute_graph_silent(
                 # produce updates containing historical messages with old tool_calls.
                 if node_name != "agent":
                     continue
-                if isinstance(state_update, dict) and "messages" in state_update:
-                    for msg in state_update["messages"]:
-                        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-                            continue
-                        for tc in msg.tool_calls:
-                            tc_id = tc.get("id")
-                            if not tc_id or tc_id in emitted_tool_calls:
-                                continue
+                if isinstance(state_update, dict):
+                    messages = NodeMessagesUpdate.model_validate(state_update).messages
+                    await _collect_silent_tool_entries(
+                        messages, acc.emitted_tool_calls, acc.entries, user_id
+                    )
 
-                            # Look up metadata based on tool type
-                            tool_name = tc.get("name")
-                            tool_metadata: HandoffMetadata = {}
-
-                            # Todo tools already stream todo_progress; suppress tool_data noise.
-                            # Safe: doesn't affect agent state; only avoids redundant UI events.
-                            if tool_name in {"plan_tasks", "update_tasks"}:
-                                continue
-
-                            # Handoff metadata stays pre-resolved here (it's a special
-                            # subagent-display path). MCP tool metadata is now resolved
-                            # inside format_tool_call_entry when user_id is passed.
-                            if tool_name == "handoff":
-                                args = tc.get("args", {})
-                                subagent_id = args.get("subagent_id", "")
-                                if subagent_id:
-                                    tool_metadata = await get_handoff_metadata(subagent_id)
-
-                            tool_entry = await format_tool_call_entry(
-                                tc,
-                                icon_url=tool_metadata.get("icon_url"),
-                                integration_id=tool_metadata.get("integration_id"),
-                                integration_name=tool_metadata.get("integration_name"),
-                                user_id=user_id,
-                            )
-                            if tool_entry:
-                                tool_data["tool_data"].append(tool_entry)
-                                emitted_tool_calls.add(tc_id)
+                    acc.complete_message, _boundary_id, _discarded = _settle_message_boundary(
+                        messages,
+                        is_comms,
+                        acc.complete_message,
+                        acc.message_texts,
+                        acc.tool_call_message_ids,
+                    )
             continue
 
         if stream_mode == "messages":
-            chunk, metadata = payload
-
-            if metadata.get("silent"):
-                continue  # Skip silent chunks (e.g. follow-up actions generation)
-
-            if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-                content = chunk.text
-                if content and config.get("agent_name") == "comms_agent":
-                    complete_message += content
+            _hold_silent_chunk(payload, is_comms, acc.tool_call_message_ids, acc.message_texts)
 
         elif stream_mode == "custom":
-            # Accumulate todo_progress for persistence (payload is a dict here)
-            if isinstance(payload, dict) and "todo_progress" in payload:
-                snapshot = payload["todo_progress"]
-                source = snapshot.get("source", "executor")
-                todo_progress_accumulated[source] = snapshot
+            _accumulate_silent_custom_event(payload, acc)
 
-            new_data = process_custom_event_for_tools(payload)
-            if new_data:
-                # Merge custom event tool_data into our array
-                if "tool_data" in new_data:
-                    for entry in new_data["tool_data"]:
-                        tool_data["tool_data"].append(entry)
-                # Always merge non-tool_data keys (follow_up_actions, etc.)
-                tool_data.update(
-                    {key: value for key, value in new_data.items() if key != "tool_data"}
-                )
+    acc.complete_message = _flush_held_messages(acc.complete_message, acc.message_texts)
 
     # Inject accumulated todo_progress as a single tool_data entry
-    if todo_progress_accumulated:
-        tool_data["tool_data"].append(
+    if acc.todo_progress:
+        acc.entries.append(
             {
                 "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
+                "data": acc.todo_progress,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
-    return complete_message, tool_data
+    return acc.complete_message, acc.entries
 
 
-def _json_safe_tool_result(content: Any) -> Any:  # noqa: ANN401 -- framework contract
-    """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
+def _json_safe_tool_result(content: MessageContent) -> object:
+    """Return the raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
-    Inline media is text-extracted out: media blocks are plain dicts, so they
-    would sail through the serializability check below and ship a megabyte of
-    base64 into the SSE event.
+    Inline media is text-extracted out, since media blocks are plain dicts that
+    would otherwise ship a megabyte of base64 into the SSE event.
     """
     if has_media_blocks(content):
         return extract_text_content(content)
@@ -631,36 +1122,426 @@ def _json_safe_tool_result(content: Any) -> Any:  # noqa: ANN401 -- framework co
     return content
 
 
-@traceable(run_type="llm", name="Call Agent")
+@dataclass
+class _StreamAccumulators:
+    """The per-run state execute_graph_streaming threads through its stream handlers."""
+
+    complete_message: str = ""
+    # Emit the model-fallback notice at most once per stream
+    fallback_emitted: bool = False
+    message_texts: dict[str, str] = field(default_factory=dict)
+    tool_call_message_ids: set[str] = field(default_factory=set)
+    # Track tool calls to avoid duplicate emissions
+    emitted_tool_calls: set[str] = field(default_factory=set)
+    # Buffer MCP App UI metadata by tool_call_id for deferred emission
+    # We detect UI metadata in "updates" but emit the mcp_app event in "messages"
+    # when the ToolMessage arrives with the actual result.
+    pending_mcp_apps: dict[str, _PendingMcpApp] = field(default_factory=dict)
+    # perf_counter of the first comms text yield in this run; None until then.
+    # Only comms_agent text reaches the yield below, so executor runs never stamp.
+    pipeline_ttft_perf: float | None = None
+    # The visible text of each held message already streamed.
+    released_text: dict[str, str] = field(default_factory=dict)
+
+
+async def _emit_mcp_app_event(
+    app_meta: _PendingMcpApp,
+    tool_call_id: str,
+    tool_result: object,
+    user_id: str | None,
+    failure_message: str,
+) -> AsyncGenerator[str, None]:
+    """Fetch the MCP-UI resource and emit the deferred mcp_app frame for one tool call."""
+    try:
+        ui_details = await fetch_mcp_ui_resource(
+            server_url=app_meta.server_url,
+            resource_uri=app_meta.mcp_ui.resource_uri,
+            user_id=user_id or "",
+        )
+        ui_resource = McpUiResource.model_validate(ui_details) if ui_details is not None else None
+        if ui_resource is not None and ui_resource.html:
+            yield format_sse_data(
+                {
+                    "tool_data": {
+                        "tool_name": "mcp_app",
+                        "tool_category": app_meta.tool_category,
+                        "data": {
+                            "tool_call_id": tool_call_id,
+                            "tool_name": app_meta.tool_name,
+                            "server_url": app_meta.server_url,
+                            "resource_uri": app_meta.mcp_ui.resource_uri,
+                            "html_content": ui_resource.html,
+                            "tool_result": tool_result,
+                            "csp": ui_resource.csp
+                            if ui_resource.csp is not None
+                            else app_meta.mcp_ui.csp,
+                            "permissions": ui_resource.permissions
+                            if ui_resource.permissions is not None
+                            else app_meta.mcp_ui.permissions,
+                            "tool_arguments": app_meta.tool_arguments,
+                        },
+                        "timestamp": app_meta.timestamp,
+                    }
+                }
+            )
+    except Exception as _e:
+        log.warning(
+            failure_message,
+            error=str(_e),
+            error_type=type(_e).__name__,
+        )
+
+
+def _model_fallback_frame(msg: object) -> str | None:
+    """Return the model-downgrade frame (retry-then-fallback in ainvoke_llm), when this message has one."""
+    if not isinstance(msg, BaseMessage):
+        return None
+    fallback = _FallbackResponseMetadata.model_validate(msg.response_metadata)
+    if not fallback.gaia_fell_back:
+        return None
+    return format_sse_data(
+        ModelFallbackFrame(model_fallback={"model": fallback.gaia_fallback_model}).model_dump()
+    )
+
+
+def _pending_mcp_app(entry: object) -> tuple[str, _PendingMcpApp] | None:
+    """Return the MCP-App buffer record a tool_calls_data entry announces, keyed by its call id.
+
+    None for any other entry, or one that names no UI resource or no call.
+    """
+    if not isinstance(entry, dict):
+        return None
+    app_entry = _McpAppEntry.model_validate(entry)
+    if app_entry.tool_name != "tool_calls_data" or not app_entry.mcp_ui:
+        return None
+    if not _McpUiHead.model_validate(app_entry.mcp_ui).resource_uri:
+        return None
+    if app_entry.data is None or not app_entry.data.tool_call_id:
+        return None
+    return app_entry.data.tool_call_id, _PendingMcpApp(
+        tool_category=app_entry.tool_category,
+        tool_name=app_entry.data.tool_name,
+        server_url=app_entry.mcp_server_url or "",
+        mcp_ui=McpUiMetadata.model_validate(app_entry.mcp_ui),
+        timestamp=app_entry.timestamp,
+        tool_arguments=app_entry.data.inputs,
+    )
+
+
+def _buffer_mcp_app(tool_entry: object, pending_mcp_apps: dict[str, _PendingMcpApp]) -> None:
+    """Buffer an MCP App UI tool entry until its ToolMessage result arrives."""
+    pending = _pending_mcp_app(tool_entry)
+    if pending is not None:
+        tool_call_id, app = pending
+        pending_mcp_apps[tool_call_id] = app
+
+
+async def _stream_tool_call_frames(
+    msg: object,
+    emitted_tool_calls: set[str],
+    pending_mcp_apps: dict[str, _PendingMcpApp],
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Emit a tool_data frame for each not-yet-emitted tool call this message announces."""
+    if not isinstance(msg, AIMessage) or not msg.tool_calls:
+        return
+    for tc in msg.tool_calls:
+        call = ToolCallView.model_validate(tc)
+        if not call.id or call.id in emitted_tool_calls:
+            continue
+
+        tool_metadata = await _handoff_metadata_for(call)
+
+        # Format and emit tool_data entry
+        tool_entry = await format_tool_call_entry(
+            tc,
+            icon_url=tool_metadata.icon_url,
+            integration_id=tool_metadata.integration_id,
+            integration_name=tool_metadata.integration_name,
+            user_id=user_id,
+        )
+        if tool_entry:
+            yield format_sse_data({"tool_data": tool_entry})
+            emitted_tool_calls.add(call.id)
+
+            # Buffer MCP App UI metadata for deferred emission
+            # The actual mcp_app event is emitted when the
+            # ToolMessage arrives with the tool result.
+            _buffer_mcp_app(tool_entry, pending_mcp_apps)
+
+
+async def _stream_updates(
+    payload: Mapping[str, object],
+    state: _StreamAccumulators,
+    is_comms: bool,
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Handle one "updates" event: model fallback, tool_data entries, message boundaries."""
+    for node_name, state_update in payload.items():
+        # Only emit tool_data from the LLM ("agent") node; pre-model hooks also
+        # produce "updates" events carrying historical tool_calls that would
+        # otherwise replay stale tool cards into the current SSE stream.
+        if node_name != "agent":
+            continue
+
+        # Process tool entries with metadata lookup
+        if isinstance(state_update, dict):
+            messages = NodeMessagesUpdate.model_validate(state_update).messages
+            for msg in messages:
+                # Surface a model downgrade (retry-then-fallback in
+                # ainvoke_llm) to the client, once per stream.
+                if (
+                    not state.fallback_emitted
+                    and (fallback_frame := _model_fallback_frame(msg)) is not None
+                ):
+                    state.fallback_emitted = True
+                    yield fallback_frame
+                async for frame in _stream_tool_call_frames(
+                    msg, state.emitted_tool_calls, state.pending_mcp_apps, user_id
+                ):
+                    yield frame
+
+            # The node has finished, so the message's fate is decided (kept, or
+            # a discarded handoff preamble); announce the boundary either way.
+            closing = last_ai_message(messages)
+            closing_text = ""  # pragma: no mutate — no closing message, no boundary to yield it at
+            if closing is not None:
+                closing_text = _finish_visible_text(state, closing.id or "")
+            state.complete_message, boundary_id, discarded = _settle_message_boundary(
+                messages,
+                is_comms,
+                state.complete_message,
+                state.message_texts,
+                state.tool_call_message_ids,
+            )
+            if boundary_id is not None:
+                if closing_text and not discarded:
+                    yield format_sse_response(closing_text)
+                yield format_sse_data(
+                    {
+                        "message_boundary": MessageBoundaryPayload(
+                            message_id=boundary_id, discarded=discarded
+                        ).model_dump()
+                    }
+                )
+
+
+async def _stream_tool_message_frames(
+    chunk: ToolMessage,
+    stream_id: str | None,
+    pending_mcp_apps: dict[str, _PendingMcpApp],
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Emit the tool_output frame for a ToolMessage, plus any deferred mcp_app event."""
+    # Todo tools already stream todo_progress; suppress tool_output noise.
+    # Safe: doesn't affect agent state; only avoids redundant UI events.
+    if (
+        chunk.name in {"plan_tasks", "update_tasks"}
+        or _ToolMessageKwargs.model_validate(chunk.additional_kwargs).todo_tool
+    ):
+        return
+    # Text-extract block content so inline media (base64 image blocks)
+    # never streams to the frontend or lands in the persisted message.
+    tool_output_payload = ToolOutputPayload(
+        tool_call_id=chunk.tool_call_id,
+        output=extract_text_content(chunk.content),
+    )
+    # claim_tool_output dedups: the executor's own driver can see the same
+    # ToolMessage while this comms stream is still open, so an ungated second
+    # copy would render the card twice. The run that announced the call wins.
+    if claim_tool_output(stream_id or "", chunk.tool_call_id):
+        yield format_sse_data({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
+
+    # Emit deferred mcp_app event now that tool result is available
+    app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
+    if app_meta:
+        tool_result_payload = _json_safe_tool_result(chunk.content)
+        async for frame in _emit_mcp_app_event(
+            app_meta,
+            chunk.tool_call_id,
+            tool_result_payload,
+            user_id,
+            "Failed to emit mcp_app event",
+        ):
+            yield frame
+
+
+def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
+    visible = visible_comms_text_so_far(state.message_texts[message_id])
+    new = visible[len(state.released_text.get(message_id, "")) :]
+    if new:
+        state.released_text[message_id] = visible
+    return new
+
+
+def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the rest of a finished comms message a user may see, and forget it streamed."""
+    sent = state.released_text.pop(message_id, "")
+    return visible_comms_text(state.message_texts.get(message_id, ""))[len(sent) :]
+
+
+async def _stream_messages(
+    payload: tuple[BaseMessage, StreamChunkMetadata],
+    state: _StreamAccumulators,
+    is_comms: bool,
+    stream_id: str | None,
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Handle one "messages" event: streamed reply text, or a ToolMessage result."""
+    metadata: StreamChunkMetadata
+    chunk, metadata = payload
+    if metadata.get("silent"):
+        return
+
+    # Stream AI response content (only from comms_agent to avoid duplication)
+    if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+        # Comms thinking, streamed like the executor's, so reasoning before a
+        # reply is visible instead of a frozen UI. No subagent_id: the client
+        # renders the root turn as a top-level thinking block.
+        if is_comms:
+            reasoning_delta = extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                yield format_sse_data(
+                    {
+                        "reasoning": ReasoningPayload(content=reasoning_delta).model_dump(
+                            exclude_none=True
+                        )
+                    }
+                )
+        message_id, held_text = _held_chunk_text(chunk, is_comms, state.tool_call_message_ids)
+        if held_text:
+            if state.pipeline_ttft_perf is None:
+                state.pipeline_ttft_perf = time.perf_counter()
+            state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
+            if visible := _stream_visible_text(state, message_id):
+                yield format_sse_response(visible)
+
+    # Emit tool_output when ToolMessage arrives
+    elif chunk and isinstance(chunk, ToolMessage):
+        async for frame in _stream_tool_message_frames(
+            chunk, stream_id, state.pending_mcp_apps, user_id
+        ):
+            yield frame
+
+
+async def _stream_custom(
+    payload: object,
+    state: _StreamAccumulators,
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Handle one "custom" event: forward it, then honour subagent MCP App metadata."""
+    drop_retracted_text(payload, state.message_texts, state.released_text)
+    yield f"data: {json.dumps(payload)}\n\n"
+
+    if not isinstance(payload, dict):
+        return
+    event = _CustomEvent.model_validate(payload)
+    # Custom MCP tools execute inside subagents, so their tool_data arrives here
+    # as a forwarded custom event, not on "updates"/"messages".
+    _buffer_mcp_app(event.tool_data, state.pending_mcp_apps)
+
+    # Intercept subagent tool_output events to emit deferred mcp_app
+    if event.tool_output is not None:
+        tc_id = event.tool_output.tool_call_id
+        app_meta = state.pending_mcp_apps.pop(tc_id, None)
+        if app_meta:
+            async for frame in _emit_mcp_app_event(
+                app_meta,
+                tc_id,
+                event.tool_output.output,
+                user_id,
+                "Failed to emit mcp_app from subagent",
+            ):
+                yield frame
+
+
+async def _record_interruption_quietly(
+    graph: CompiledAgentGraph, config: AgentRunnableConfig
+) -> None:
+    """Record the run's interruption; the cancel ack must still reach the client."""
+    try:
+        await record_interruption(graph, config)
+    except Exception as e:  # the cancel ack must still reach the client
+        log.error(
+            f"{LogTag.AGENT} Failed to record interruption",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
+def _parse_stream_event(event: tuple[object, ...]) -> tuple[str, object] | None:
+    """Return the (mode, payload) of a stream event; handles the 2-tuple and 3-tuple shapes, else None.
+
+    NOT traceable: decorating it as an llm run flooded LangSmith with one
+    empty "Call Agent" root run per chunk (dozens/hundreds per turn).
+    """
+    # The mode is a str by LangGraph's own stream contract (Type Safety item 12).
+    if len(event) == 3:
+        _ns, stream_mode, payload = event
+        return cast(str, stream_mode), payload
+    if len(event) == 2:
+        stream_mode, payload = event
+        return cast(str, stream_mode), payload
+    return None
+
+
+async def _frames_for_stream_event(
+    event: tuple[object, ...],
+    state: _StreamAccumulators,
+    is_comms: bool,
+    stream_id: str | None,
+    user_id: str | None,
+) -> AsyncGenerator[str, None]:
+    """Yield the SSE frames one langgraph stream event produces."""
+    parsed = _parse_stream_event(event)
+    if parsed is None:
+        return
+    stream_mode, payload = parsed
+    # Each mode's payload shape is LangGraph's contract: a node->update map,
+    # a (chunk, metadata) pair, or the custom event as written (item 12).
+    if stream_mode == "updates":
+        frames = _stream_updates(cast(Mapping[str, object], payload), state, is_comms, user_id)
+    elif stream_mode == "messages":
+        frames = _stream_messages(
+            cast(tuple[BaseMessage, StreamChunkMetadata], payload),
+            state,
+            is_comms,
+            stream_id,
+            user_id,
+        )
+    elif stream_mode == "custom":
+        frames = _stream_custom(payload, state, user_id)
+    else:
+        return
+    async for frame in frames:
+        yield frame
+
+
 async def execute_graph_streaming(
     graph: CompiledAgentGraph,
-    initial_state: dict[str, Any],
+    initial_state: Mapping[str, object],
     config: AgentRunnableConfig,
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
 
-    Cancellable via stream_id in config (through stream_manager).
-
-    LangGraph emits three stream modes:
-        - "updates": state changes after each node; AIMessage.tool_calls carry full
-          args, emitted as tool_data entries (frontend shows loading state).
-        - "messages": AIMessageChunk text content; ToolMessage results -> tool_output.
-        - "custom": application-specific tool events, forwarded as-is.
+    Cancellable via stream_id in config (through stream_manager). Handles
+    LangGraph's three stream modes: "updates" (tool_data), "messages"
+    (text/tool_output), and "custom" (forwarded as-is).
     """
-    complete_message = ""
-    stream_id = agent_configurable(config).get("stream_id")
-    user_id = agent_configurable(config).get("user_id")
+    scope = read_agent_configurable(config)
+    stream_id = scope.stream_id
+    user_id = scope.user_id
+    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
 
-    # Emit the model-fallback notice at most once per stream
-    fallback_emitted = False
-    # Track tool calls to avoid duplicate emissions
-    emitted_tool_calls: set[str] = set()
-    # Buffer MCP App UI metadata by tool_call_id for deferred emission
-    # We detect UI metadata in "updates" but emit the mcp_app event in "messages"
-    # when the ToolMessage arrives with the actual result.
-    pending_mcp_apps: dict[str, dict[str, Any]] = {}
+    # ``state.message_texts`` holds streamed text per message until known to be
+    # a real reply, not a handoff preamble (text deltas precede tool-call deltas
+    # on the wire). Keyed by message id since delegated-tier chunks interleave.
+    state = _StreamAccumulators()
 
     cancelled = False
+    graph_status = "success"
+    run_start = time.perf_counter()
     # Yields (namespace, mode, payload) triples — occasionally (mode, payload)
     # pairs, handled below — and is a real async generator, so it supports
     # aclose(); langgraph's astream overloads express neither.
@@ -673,297 +1554,52 @@ async def execute_graph_streaming(
             subgraphs=True,
         ),
     )
-    async for event in stream:
-        # Check for cancellation at each event
-        if stream_id and await stream_manager.is_cancelled(stream_id):
-            cancelled = True
-            break
-
-        # Parse event tuple - handle both 2-tuple and 3-tuple (subgraphs=True)
-        if len(event) == 3:
-            _ns, stream_mode, payload = event
-        elif len(event) == 2:
-            stream_mode, payload = event
-        else:
-            continue
-
-        if stream_mode == "updates":
-            for node_name, state_update in payload.items():
-                # Only emit tool_data from the LLM ("agent") node.
-                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
-                # etc.) also produce "updates" events that include historical
-                # AIMessages with tool_calls from previous turns — emitting those
-                # would replay stale tool cards into the current SSE stream.
-                if node_name != "agent":
-                    continue
-
-                # Process tool entries with metadata lookup
-                if isinstance(state_update, dict) and "messages" in state_update:
-                    for msg in state_update["messages"]:
-                        # Surface a model downgrade (retry-then-fallback in
-                        # ainvoke_llm) to the client, once per stream.
-                        if not fallback_emitted and isinstance(
-                            getattr(msg, "response_metadata", None), dict
-                        ):
-                            metadata_rm = msg.response_metadata
-                            if metadata_rm.get("gaia_fell_back"):
-                                fallback_emitted = True
-                                yield format_sse_data(
-                                    ModelFallbackFrame(
-                                        model_fallback={
-                                            "model": metadata_rm.get("gaia_fallback_model", "")
-                                        }
-                                    ).model_dump()
-                                )
-                        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-                            continue
-                        for tc in msg.tool_calls:
-                            tc_id = tc.get("id")
-                            if not tc_id or tc_id in emitted_tool_calls:
-                                continue
-
-                            # Look up metadata based on tool type
-                            tool_name = tc.get("name")
-                            tool_metadata: HandoffMetadata = {}
-
-                            # Handoff metadata stays pre-resolved here (it's a special
-                            # subagent-display path). MCP tool metadata is now resolved
-                            # inside format_tool_call_entry when user_id is passed.
-                            if tool_name == "handoff":
-                                args = tc.get("args", {})
-                                subagent_id = args.get("subagent_id", "")
-                                if subagent_id:
-                                    tool_metadata = await get_handoff_metadata(subagent_id)
-
-                            # Format and emit tool_data entry
-                            tool_entry = await format_tool_call_entry(
-                                tc,
-                                icon_url=tool_metadata.get("icon_url"),
-                                integration_id=tool_metadata.get("integration_id"),
-                                integration_name=tool_metadata.get("integration_name"),
-                                user_id=user_id,
-                            )
-                            if tool_entry:
-                                yield format_sse_data({"tool_data": tool_entry})
-                                emitted_tool_calls.add(tc_id)
-
-                                # Buffer MCP App UI metadata for deferred emission
-                                # The actual mcp_app event is emitted when the
-                                # ToolMessage arrives with the tool result.
-                                mcp_ui = tool_entry.get("mcp_ui")
-                                if (
-                                    tool_entry.get("tool_name") == "tool_calls_data"
-                                    and mcp_ui
-                                    and mcp_ui.get("resource_uri")
-                                ):
-                                    # ToolDataEntry["data"] is open per tool, but a
-                                    # tool_calls_data entry only ever comes from
-                                    # format_tool_call_entry, whose data is the
-                                    # ToolCallsDataEntryData dump (item 12).
-                                    entry_data = cast(dict[str, Any], tool_entry["data"])
-                                    tc_id_for_app = entry_data.get("tool_call_id", "")
-                                    if tc_id_for_app:
-                                        pending_mcp_apps[tc_id_for_app] = {
-                                            "tool_category": tool_entry.get("tool_category", ""),
-                                            "tool_name": entry_data.get("tool_name", ""),
-                                            "server_url": tool_entry.get("mcp_server_url", ""),
-                                            "mcp_ui": mcp_ui,
-                                            "timestamp": tool_entry.get("timestamp"),
-                                            "tool_arguments": entry_data.get("inputs", {}),
-                                        }
-            continue
-
-        if stream_mode == "messages":
-            chunk, metadata = payload
-            if metadata.get("silent"):
-                continue
-
-            # Stream AI response content (only from comms_agent to avoid duplication)
-            if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-                content = chunk.text
-                if content and config.get("agent_name") == "comms_agent":
-                    yield format_sse_response(content)
-                    complete_message += content
-
-            # Emit tool_output when ToolMessage arrives
-            elif chunk and isinstance(chunk, ToolMessage):
-                # Todo tools already stream todo_progress; suppress tool_output noise.
-                # Safe: doesn't affect agent state; only avoids redundant UI events.
-                if getattr(chunk, "name", None) in {
-                    "plan_tasks",
-                    "update_tasks",
-                } or chunk.additional_kwargs.get("todo_tool", False):
-                    continue
-                # Text-extract block content so inline media (base64 image blocks)
-                # never streams to the frontend or lands in the persisted message.
-                tool_output_payload = ToolOutputPayload(
-                    tool_call_id=chunk.tool_call_id,
-                    output=extract_text_content(chunk.content),
-                )
-                # One emission per result per stream. The executor runs as a
-                # detached task whose own driver (subagent_runner) sees the same
-                # ToolMessage, and this comms stream is still open while it does
-                # — so an ungated second copy renders the card twice. The run that
-                # announced the call owns the result; comms announced its own, so
-                # it wins those and loses a subagent's. See
-                # background.session.claim_tool_output.
-                if claim_tool_output(stream_id or "", chunk.tool_call_id):
-                    yield format_sse_data(
-                        {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
-                    )
-
-                # Emit deferred mcp_app event now that tool result is available
-                app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
-                if app_meta:
-                    tool_result_payload = _json_safe_tool_result(chunk.content)
-                    try:
-                        ui_resource = await fetch_mcp_ui_resource(
-                            server_url=app_meta["server_url"],
-                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
-                            user_id=user_id or "",
-                        )
-                        html_content = (
-                            ui_resource.get("html") if isinstance(ui_resource, dict) else None
-                        )
-                        if html_content:
-                            content_csp = (
-                                ui_resource.get("csp") if isinstance(ui_resource, dict) else None
-                            )
-                            content_permissions = (
-                                ui_resource.get("permissions")
-                                if isinstance(ui_resource, dict)
-                                else None
-                            )
-                            yield format_sse_data(
-                                {
-                                    "tool_data": {
-                                        "tool_name": "mcp_app",
-                                        "tool_category": app_meta["tool_category"],
-                                        "data": {
-                                            "tool_call_id": chunk.tool_call_id,
-                                            "tool_name": app_meta["tool_name"],
-                                            "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
-                                            "html_content": html_content,
-                                            "tool_result": tool_result_payload,
-                                            "csp": content_csp
-                                            if content_csp is not None
-                                            else app_meta["mcp_ui"].get("csp"),
-                                            "permissions": content_permissions
-                                            if content_permissions is not None
-                                            else app_meta["mcp_ui"].get("permissions", []),
-                                            "tool_arguments": app_meta.get("tool_arguments", {}),
-                                        },
-                                        "timestamp": app_meta["timestamp"],
-                                    }
-                                }
-                            )
-                    except Exception as _e:
-                        log.warning(
-                            "Failed to emit mcp_app event",
-                            error=str(_e),
-                            error_type=type(_e).__name__,
-                        )
-            continue
-
-        if stream_mode == "custom":
-            yield f"data: {json.dumps(payload)}\n\n"
-
-            # Intercept subagent tool_data events for MCP App detection.
-            # Custom MCP tools execute inside subagents and their events
-            # arrive here as "custom" stream events, not "updates"/"messages".
-            if isinstance(payload, dict) and "tool_data" in payload:
-                sub_entry = payload["tool_data"]
-                if (
-                    isinstance(sub_entry, dict)
-                    and sub_entry.get("tool_name") == "tool_calls_data"
-                    and sub_entry.get("mcp_ui")
-                    and sub_entry["mcp_ui"].get("resource_uri")
+    with span() as elapsed_graph:
+        try:
+            async for event in stream:
+                # Check for cancellation at each event
+                if stream_id and await stream_manager.is_cancelled(stream_id):
+                    cancelled = True
+                    break
+                async for frame in _frames_for_stream_event(
+                    event, state, is_comms, stream_id, user_id
                 ):
-                    tc_id_for_app = sub_entry.get("data", {}).get("tool_call_id", "")
-                    if tc_id_for_app:
-                        pending_mcp_apps[tc_id_for_app] = {
-                            "tool_category": sub_entry.get("tool_category", ""),
-                            "tool_name": sub_entry.get("data", {}).get("tool_name", ""),
-                            "server_url": sub_entry.get("mcp_server_url", ""),
-                            "mcp_ui": sub_entry["mcp_ui"],
-                            "timestamp": sub_entry.get("timestamp"),
-                            "tool_arguments": sub_entry.get("data", {}).get("inputs", {}),
-                        }
+                    yield frame
+        except GeneratorExit:
+            # Abandoned mid-stream without cancellation (server shutdown path):
+            # neither success nor cancelled, and neither label may claim it.
+            graph_status = "abandoned"
+            raise
+        except Exception:
+            graph_status = "error"
+            raise
+        finally:
+            observe_comms_graph(
+                elapsed_graph(), status=graph_status if not cancelled else "cancelled"
+            )
 
-            # Intercept subagent tool_output events to emit deferred mcp_app
-            if isinstance(payload, dict) and "tool_output" in payload:
-                sub_output = payload["tool_output"]
-                tc_id = sub_output.get("tool_call_id", "")
-                app_meta = pending_mcp_apps.pop(tc_id, None)
-                if app_meta:
-                    try:
-                        ui_resource = await fetch_mcp_ui_resource(
-                            server_url=app_meta["server_url"],
-                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
-                            user_id=user_id or "",
-                        )
-                        html_content = (
-                            ui_resource.get("html") if isinstance(ui_resource, dict) else None
-                        )
-                        if html_content:
-                            content_csp = (
-                                ui_resource.get("csp") if isinstance(ui_resource, dict) else None
-                            )
-                            content_permissions = (
-                                ui_resource.get("permissions")
-                                if isinstance(ui_resource, dict)
-                                else None
-                            )
-                            yield format_sse_data(
-                                {
-                                    "tool_data": {
-                                        "tool_name": "mcp_app",
-                                        "tool_category": app_meta["tool_category"],
-                                        "data": {
-                                            "tool_call_id": tc_id,
-                                            "tool_name": app_meta["tool_name"],
-                                            "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
-                                            "html_content": html_content,
-                                            "tool_result": sub_output.get("output"),
-                                            "csp": content_csp
-                                            if content_csp is not None
-                                            else app_meta["mcp_ui"].get("csp"),
-                                            "permissions": content_permissions
-                                            if content_permissions is not None
-                                            else app_meta["mcp_ui"].get("permissions", []),
-                                            "tool_arguments": app_meta.get("tool_arguments", {}),
-                                        },
-                                        "timestamp": app_meta["timestamp"],
-                                    }
-                                }
-                            )
-                    except Exception as _e:
-                        log.warning(
-                            "Failed to emit mcp_app from subagent",
-                            error=str(_e),
-                            error_type=type(_e).__name__,
-                        )
+    # A run that ends without its closing node update (cancellation, a graph that
+    # never reaches the agent node again) still owes the user what it streamed.
+    for message_id in list(state.message_texts):
+        if visible := _finish_visible_text(state, message_id):
+            yield format_sse_response(visible)
+    state.complete_message = _flush_held_messages(state.complete_message, state.message_texts)
+    if state.pipeline_ttft_perf is not None:
+        log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
 
     if cancelled:
-        # Stop the run before touching the checkpoint: aclose() raises
-        # GeneratorExit at the run's yield point so LangGraph cancels in-flight
-        # work and commits nothing further — the state read by
-        # record_interruption is then the run's final state.
+        # aclose() raises GeneratorExit at the run's yield point so LangGraph
+        # cancels in-flight work and commits nothing further before the state
+        # read by record_interruption.
         await stream.aclose()
-        try:
-            await record_interruption(graph, config)
-        except Exception as e:  # the cancel ack must still reach the client
-            log.error(
-                f"{LogTag.AGENT} Failed to record interruption",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-        yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
+        await _record_interruption_quietly(graph, config)
+        yield (
+            "nostream: "
+            f"{json.dumps({'complete_message': state.complete_message, 'cancelled': True})}"
+        )
         yield "data: [DONE]\n\n"
         return
 
     # Yield complete message for DB storage
-    yield f"nostream: {json.dumps({'complete_message': complete_message})}"
+    yield f"nostream: {json.dumps({'complete_message': state.complete_message})}"
     yield "data: [DONE]\n\n"

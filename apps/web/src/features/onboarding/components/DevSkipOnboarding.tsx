@@ -1,12 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
-import { completeOnboarding } from "@/features/onboarding/api/onboardingApi";
+import { authApi } from "@/features/auth/api/authApi";
+import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { isDevelopment } from "@/lib/fetchAll";
 import { toast } from "@/lib/toast";
@@ -18,8 +17,7 @@ import { toast } from "@/lib/toast";
  */
 export function DevSkipOnboarding() {
   const router = useRouter();
-  const user = useUser();
-  const { setUser, updateUser } = useUserActions();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
   if (!isDevelopment()) return null;
@@ -28,29 +26,27 @@ export function DevSkipOnboarding() {
     trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, { source: "dev_skip" });
     setLoading(true);
     try {
-      const res = await completeOnboarding({
-        name: user.name || "Dev User",
-        profession: "Software Developer",
+      const res = await authApi.completeOnboarding({
+        profession: "engineering",
+        needs: ["inbox", "engineering_prs"],
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        focus: "Testing GAIA in development",
       });
-      if (res.user) setUser(userInfoToStoreUser(res.user));
-      // Force completed locally so useOnboardingGuard routes to /c instead of
-      // holding on /onboarding while the backend intelligence pipeline runs.
-      updateUser({ onboarding: { completed: true, phase: "completed" } });
+      if (res.success) {
+        await queryClient.invalidateQueries({
+          queryKey: CURRENT_USER_QUERY_KEY,
+        });
+      }
       router.push("/c");
     } catch (error) {
       console.error("[DevSkipOnboarding] skip failed:", error);
-      toast.error("Dev skip failed — check the console.");
+      toast.error("Dev skip failed. Check the console.");
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2">
-      <Chip size="sm" color="warning" variant="flat">
-        dev only
-      </Chip>
+    <div className="fixed bottom-4 left-4 z-50">
       <Button
         size="sm"
         radius="full"
@@ -59,7 +55,7 @@ export function DevSkipOnboarding() {
         isLoading={loading}
         onPress={skip}
       >
-        Skip onboarding
+        Skip onboarding (dev only)
       </Button>
     </div>
   );

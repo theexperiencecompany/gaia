@@ -1,9 +1,9 @@
 """Real-Postgres coverage for the naive-timestamp -> timestamptz promotion.
 
-``_ensure_timestamptz_columns`` runs on every startup (``init_postgresql``
-calls it right after ``create_all``) and had no test at all. The whitelist it
+_ensure_timestamptz_columns runs on every startup (init_postgresql
+calls it right after create_all) and had no test at all. The whitelist it
 walks happens to hold only lowercase, non-reserved identifiers, so the old
-unquoted ``ALTER TABLE {table} ALTER COLUMN {column}`` worked by luck: the
+unquoted ALTER TABLE {table} ALTER COLUMN {column} worked by luck: the
 moment an entry needs quoting — a mixed-case column, or one named after a
 reserved word — Postgres case-folds the identifier, the ALTER fails against a
 column that "does not exist", and startup dies.
@@ -47,7 +47,7 @@ def connection(postgres_url: str) -> Iterator[Connection]:
 
 @pytest.fixture
 def legacy_table(connection: Connection) -> Iterator[None]:
-    """A table holding a naive ``timestamp`` column whose name requires quoting."""
+    """Create a table holding a naive timestamp column whose name requires quoting."""
     connection.execute(DDL(f"DROP TABLE IF EXISTS {_QUALIFIED}"))
     connection.execute(
         DDL(f"CREATE TABLE {_QUALIFIED} (id serial PRIMARY KEY, {_QUOTED_COLUMN} timestamp)")
@@ -85,14 +85,17 @@ def test_promotes_naive_column_whose_name_requires_quoting(connection: Connectio
 @pytest.mark.usefixtures("legacy_table", "promote_probe_column")
 def test_promotion_reinterprets_the_stored_value_as_utc(connection: Connection) -> None:
     """A naive value is UTC wall-clock, so promotion must reinterpret, not shift."""
+    # _QUALIFIED/_QUOTED_COLUMN are hardcoded test constants, not user input.
     connection.execute(
-        text(f"INSERT INTO {_QUALIFIED} ({_QUOTED_COLUMN}) VALUES (:value)"),
+        text(f"INSERT INTO {_QUALIFIED} ({_QUOTED_COLUMN}) VALUES (:value)"),  # noqa: S608 -- hardcoded test constants, not user input
         {"value": "2026-01-02 03:04:05"},
     )
 
     postgresql._ensure_timestamptz_columns(connection)
 
-    stored = connection.execute(text(f"SELECT {_QUOTED_COLUMN} FROM {_QUALIFIED}")).scalar()
+    stored = connection.execute(
+        text(f"SELECT {_QUOTED_COLUMN} FROM {_QUALIFIED}")  # noqa: S608 -- hardcoded test constants, not user input
+    ).scalar()
     assert stored is not None
     assert stored.tzinfo is not None, "column should be tz-aware after promotion"
     assert stored.astimezone(UTC).replace(tzinfo=None) == datetime(2026, 1, 2, 3, 4, 5)

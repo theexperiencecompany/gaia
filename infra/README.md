@@ -4,14 +4,17 @@ Infrastructure configuration for GAIA.
 
 ## Structure
 
-- **docker/** — Docker Compose files and Nx project config for managing local and production services.
+- **docker/** — Docker Compose files and Nx project config for local and self-hosted services.
+
+Production topology (`docker-compose.prod.yml`, the observability configs, the
+self-hosted CI runner) lives in the private `theexperiencecompany/gaia-infra`
+repo: this repo is public, and prod's shape is not.
 
 ## Docker
 
 | File | Purpose |
 |------|---------|
 | `docker-compose.yml` | Local development environment (all services) |
-| `docker-compose.prod.yml` | Production deployment |
 | `docker-compose.selfhost.yml` | Self-hosted deployment configuration |
 
 ### Services

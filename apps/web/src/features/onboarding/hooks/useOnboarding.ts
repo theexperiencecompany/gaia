@@ -1,135 +1,104 @@
 /**
  * Top-level orchestrator hook for the onboarding flow. Wires the reducer to
- * every effect (persistence, OAuth, Gmail auto-advance, submission, backend
- * sync, phase, analytics, auto-redirect) and exposes the derived stage plus
- * a `restart` action that wipes local state and asks the server to reset.
+ * every effect (persistence, submission, analytics) and exposes the derived
+ * stage plus a `restart` action that wipes local state and asks the server
+ * to reset.
+ *
+ * The stage cursor needs one fact this reducer does not own — whether the
+ * user is subscribed — so it is read here and passed into `getStage`.
  */
 
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useReducer } from "react";
 
-import type { UserInfo } from "@/features/auth/api/authApi";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
-import { db as chatDb } from "@/lib/db/chatDb";
+import {
+  CURRENT_USER_QUERY_KEY,
+  patchCurrentUser,
+  useCurrentUser,
+  useCurrentUserIsFresh,
+} from "@/features/auth/hooks/useCurrentUser";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
-import { useChatStore } from "@/stores/chatStore";
 
 import { resetOnboarding } from "../api/onboardingApi";
-import { questions } from "../constants";
-import { useBackendSync } from "../effects/useBackendSync";
-import { useGmailAutoAdvance } from "../effects/useGmailAutoAdvance";
-import { useIntegrationsSubmission } from "../effects/useIntegrationsSubmission";
-import { useOAuthCallback } from "../effects/useOAuthCallback";
 import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
+import { useOnboardingPreferences } from "../effects/useOnboardingPreferences";
 import { useOnboardingSubmission } from "../effects/useOnboardingSubmission";
-import { usePhaseSync } from "../effects/usePhaseSync";
-import { getStage } from "../state/derive";
+import { draftFromServerPreferences, getStage } from "../state/derive";
 import { initialState } from "../state/initial";
-import { clearPersisted } from "../state/persist";
+import { usePaceStore } from "../state/paceStore";
+import {
+  clearIntroSeen,
+  clearPersisted,
+  saveIntroSeen,
+} from "../state/persist";
 import { reducer } from "../state/reducer";
 import type { Action, OnboardingState, Stage } from "../state/types";
-import { useClarifyQuestions } from "./useClarifyQuestions";
 
 interface UseOnboardingReturn {
   state: OnboardingState;
   stage: Stage;
   dispatch: React.Dispatch<Action>;
+  /** Whether the intro has already been watched; `null` until storage is read. */
+  introSeen: boolean | null;
+  markIntroSeen: () => void;
   restart: () => Promise<void>;
 }
 
-interface UseOnboardingArgs {
-  skipAutoRedirect?: boolean;
-}
-
-export function useOnboarding({
-  skipAutoRedirect = false,
-}: UseOnboardingArgs = {}): UseOnboardingReturn {
-  const router = useRouter();
-  const user = useUser();
-  const { setUser, updateUser } = useUserActions();
+export function useOnboarding(): UseOnboardingReturn {
+  const queryClient = useQueryClient();
+  const { userId, onboarding } = useCurrentUser();
+  // The persisted user cache paints first and may predate a server-side
+  // reset; the draft is only reconciled against an answer from this session.
+  const userIsFresh = useCurrentUserIsFresh();
   const [state, dispatch] = useReducer(reducer, initialState);
-  const stage = getStage(state);
+  const { isPaid } = useIsPaid();
+  const stage = getStage(state, isPaid);
 
-  useOnboardingPersistence(state, dispatch);
-
-  // Resume past the Q&A if the backend already accepted a submission, so a
-  // post-clear reload doesn't drop the user back on Q1.
-  useEffect(() => {
-    if (state.questionIndex >= questions.length) return;
-    if (state.isRestarting) return;
-    const onboarding = user.onboarding;
-    if (!onboarding?.completed) return;
-    if (onboarding.phase === "completed") return;
-    dispatch({
-      type: "hydrate",
-      partial: { questionIndex: questions.length },
-    });
-  }, [user.onboarding, state.questionIndex, state.isRestarting]);
-
-  useGmailAutoAdvance(state, dispatch);
-
-  useOAuthCallback(dispatch);
-
-  const handleSubmissionSuccess = useCallback(
-    (info: UserInfo) => {
-      setUser(userInfoToStoreUser(info));
-    },
-    [setUser],
+  // Stable per user record: the hydrate effect takes it as a dependency.
+  const serverDraft = useMemo(
+    () => draftFromServerPreferences(onboarding),
+    [onboarding],
   );
-  useOnboardingSubmission(state, handleSubmissionSuccess);
 
-  useIntegrationsSubmission(state);
+  const hydrated = useOnboardingPersistence(
+    userIsFresh ? userId : "",
+    serverDraft,
+    state,
+    dispatch,
+  );
+  useOnboardingPreferences(state, dispatch);
 
-  useClarifyQuestions(state, dispatch);
+  // The onboarding endpoint's `user` is the raw stored document, not the
+  // /user/me contract; refetching keeps the one source of truth honest.
+  const handleSubmissionSuccess = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+  }, [queryClient]);
+  useOnboardingSubmission(state, stage, handleSubmissionSuccess);
 
-  useBackendSync(state, stage, dispatch);
+  useOnboardingAnalytics(state, stage, hydrated);
 
-  usePhaseSync(stage);
+  const markIntroSeen = useCallback(() => {
+    saveIntroSeen(userId);
+    dispatch({ type: "introSeen" });
+  }, [userId]);
 
-  useOnboardingAnalytics(state);
-
-  const redirectedRef = useRef(false);
-  useEffect(() => {
-    if (skipAutoRedirect) return;
-    if (redirectedRef.current) return;
-    if (stage !== "chat") return;
-    const conversationId = state.server?.first_message_conversation_id;
-    if (!conversationId) return;
-    redirectedRef.current = true;
-    router.push(`/c/${conversationId}`);
-  }, [
-    stage,
-    state.server?.first_message_conversation_id,
-    skipAutoRedirect,
-    router,
-  ]);
-
+  // Every part of a restart lives here: the caches (wizard blob, intro flag,
+  // typed-line pacing), the reducer, the user record and the server reset.
   const restart = useCallback(async () => {
     if (state.isRestarting) return;
 
-    const oldConversationId = state.server?.first_message_conversation_id;
-
-    clearPersisted();
+    // Captured before the reset, so the event says where the user gave up.
+    trackEvent(ANALYTICS_EVENTS.ONBOARDING_RESTARTED, { from_stage: stage });
+    clearPersisted(userId);
+    clearIntroSeen(userId);
+    usePaceStore.getState().reset();
     dispatch({ type: "restartStart" });
-    updateUser({ onboarding: undefined });
-
-    if (oldConversationId) {
-      useChatStore.getState().removeConversation(oldConversationId);
-      void chatDb
-        .deleteConversationAndMessages(oldConversationId)
-        .catch((error: unknown) => {
-          console.error(
-            "Failed to delete onboarding conversation from IndexedDB:",
-            error,
-          );
-        });
-    }
-
-    redirectedRef.current = false;
+    patchCurrentUser(queryClient, { onboarding: undefined });
 
     try {
       await resetOnboarding();
@@ -141,11 +110,14 @@ export function useOnboarding({
     } finally {
       dispatch({ type: "restartDone" });
     }
-  }, [
-    state.isRestarting,
-    state.server?.first_message_conversation_id,
-    updateUser,
-  ]);
+  }, [state.isRestarting, stage, userId, queryClient]);
 
-  return { state, stage, dispatch, restart };
+  return {
+    state,
+    stage,
+    dispatch,
+    introSeen: state.introSeen,
+    markIntroSeen,
+    restart,
+  };
 }

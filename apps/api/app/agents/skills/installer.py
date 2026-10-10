@@ -9,6 +9,7 @@ JuiceFS stores body-only content (no frontmatter). Metadata lives in MongoDB
 as flat fields on the Skill document.
 """
 
+from dataclasses import dataclass
 import re
 from typing import cast
 
@@ -21,14 +22,21 @@ from app.agents.skills.parser import (
     validate_skill_content,
 )
 from app.agents.skills.registry import (
+    SkillInstallRequest,
     get_skill,
     get_skill_by_name,
     install_skill,
     uninstall_skill,
     update_skill,
 )
-from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
+from app.agents.skills.utils import (
+    GITHUB_API_BASE,
+    GitHubContentEntry,
+    get_github_headers,
+    github_url,
+)
 from app.constants.log_tags import LogTag
+from app.constants.skills import SKILL_SOURCE_FILENAME
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
@@ -46,17 +54,9 @@ def _skill_storage_path(user_id: str, name: str) -> str:
 def _parse_github_url(url: str) -> tuple[str, str, str | None]:
     """Parse a GitHub URL or shorthand into owner, repo, and optional path.
 
-    Accepts:
-        - "owner/repo"
-        - "owner/repo/path/to/skill"
-        - "https://github.com/owner/repo"
-        - "https://github.com/owner/repo/tree/main/path/to/skill"
-        - "https://github.com/owner/repo/blob/main/path/to/skill"
-
-    Returns:
-        Tuple of (owner, repo, path_within_repo)
+    Accepts "owner/repo", "owner/repo/path/to/skill", and full github.com
+    URLs (plain, /tree/, or /blob/).
     """
-    # Strip whitespace and trailing slashes
     url = url.strip().rstrip("/")
 
     # Full GitHub URL
@@ -87,12 +87,12 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> list[dict]:
+) -> list[GitHubContentEntry]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
     """
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    url = github_url(GITHUB_API_BASE, "repos", owner, repo, "contents", path)
     params = {"ref": branch}
 
     resp = await client.get(url, params=params, headers=get_github_headers())
@@ -109,15 +109,18 @@ async def _fetch_github_contents(
         )
 
     resp.raise_for_status()
-    data: list[dict] | dict = resp.json()
+    data: list[GitHubContentEntry] | GitHubContentEntry = resp.json()
 
-    if isinstance(data, dict):
-        return [data]
-    return data
+    if isinstance(data, list):
+        return data
+    return [data]
 
 
-async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> str:
-    """Download raw file content from a URL."""
+async def _fetch_file_content(entry: GitHubContentEntry, client: httpx.AsyncClient) -> str:
+    """Download a file entry's raw content."""
+    download_url = entry["download_url"]
+    if download_url is None:
+        raise ValueError(f"GitHub returned no download URL for {entry['path']}")
     resp = await client.get(download_url, headers=get_github_headers())
     resp.raise_for_status()
     return resp.text
@@ -132,25 +135,10 @@ async def install_from_github(
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
-    Downloads SKILL.md, parses frontmatter for metadata, writes body-only
-    to VFS, and registers flat metadata in MongoDB.
-
-    Args:
-        user_id: Owner user ID
-        repo_url: GitHub repo reference (owner/repo, full URL, etc.)
-        skill_path: Optional path within repo to skill folder
-        target_override: Override target from SKILL.md frontmatter
-        allowed_targets: If provided, the effective target (override or the
-            repo's frontmatter target) must be in this set, else ValueError.
-            Used by the REST endpoint to block scoping a skill to an
-            integration the user hasn't connected; left None for agent tools.
-
-    Returns:
-        The installed skill
-
-    Raises:
-        ValueError: If skill is invalid, already installed, or its effective
-            target is not in ``allowed_targets``.
+    Writes body-only to VFS and flat metadata to MongoDB. allowed_targets, when given,
+    restricts the effective target — the REST endpoint uses it to block scoping to an
+    integration the user hasn't connected. Raises ValueError if the skill is invalid,
+    already installed, or its effective target is not in allowed_targets.
     """
     owner, repo, url_path = _parse_github_url(repo_url)
 
@@ -172,25 +160,21 @@ async def install_from_github(
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Fetch the directory contents
-        contents = await _fetch_github_contents(owner, repo, base_path, client=client)
+        contents: list[GitHubContentEntry] = await _fetch_github_contents(
+            owner, repo, base_path, client=client
+        )
 
-        # Find SKILL.md
-        skill_md_entry = None
-        for entry in contents:
-            if entry["name"] == "SKILL.md":
-                skill_md_entry = entry
-                break
-
-        if not skill_md_entry:
+        skill_md_entry: GitHubContentEntry | None = next(
+            (entry for entry in contents if entry["name"] == SKILL_SOURCE_FILENAME), None
+        )
+        if skill_md_entry is None:
             raise ValueError(
                 f"No SKILL.md found in {owner}/{repo}/{base_path}. "
                 "A valid skill must contain a SKILL.md file."
             )
 
-        # Download SKILL.md
-        skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
+        skill_md_content = await _fetch_file_content(skill_md_entry, client=client)
 
-        # Validate
         errors = validate_skill_content(skill_md_content)
         if errors:
             raise ValueError(f"Invalid SKILL.md: {'; '.join(errors)}")
@@ -215,15 +199,12 @@ async def install_from_github(
         file_list: list[str] = []
 
         # Write body-only SKILL.md to JuiceFS (metadata lives in MongoDB)
-        await write_skill_file(user_id, metadata.name, "SKILL.md", body)
-        file_list.append("SKILL.md")
+        await write_skill_file(user_id, metadata.name, SKILL_SOURCE_FILENAME, body)
+        file_list.append(SKILL_SOURCE_FILENAME)
 
         # Download subdirectories and files recursively
         await _download_github_dir(
-            user_id=user_id,
-            skill_name=metadata.name,
-            owner=owner,
-            repo=repo,
+            _GitHubRef(user_id=user_id, skill_name=metadata.name, owner=owner, repo=repo),
             remote_path=base_path,
             contents=contents,
             file_list=file_list,
@@ -236,19 +217,21 @@ async def install_from_github(
     installed = cast(
         Skill,
         await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=target,
-            vfs_path=storage_path,
-            source=SkillSource.GITHUB,
-            source_url=source_url,
-            body_content=body,
-            files=file_list,
-            skill_license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
+            SkillInstallRequest(
+                user_id=user_id,
+                name=metadata.name,
+                description=metadata.description,
+                target=target,
+                vfs_path=storage_path,
+                source=SkillSource.GITHUB,
+                source_url=source_url,
+                body_content=body,
+                files=file_list,
+                license_name=metadata.license,
+                compatibility=metadata.compatibility,
+                metadata=metadata.metadata,
+                allowed_tools=metadata.allowed_tools,
+            )
         ),
     )
 
@@ -261,13 +244,20 @@ async def install_from_github(
     return installed
 
 
+@dataclass
+class _GitHubRef:
+    """Where a skill's files come from and whose workspace they land in."""
+
+    user_id: str
+    skill_name: str
+    owner: str
+    repo: str
+
+
 async def _download_github_dir(
-    user_id: str,
-    skill_name: str,
-    owner: str,
-    repo: str,
+    ref: _GitHubRef,
     remote_path: str,
-    contents: list[dict],
+    contents: list[GitHubContentEntry],
     file_list: list[str],
     client: httpx.AsyncClient,
 ) -> None:
@@ -276,22 +266,21 @@ async def _download_github_dir(
         name = entry["name"]
         entry_type = entry["type"]
 
-        if name == "SKILL.md":
+        if name == SKILL_SOURCE_FILENAME:
             continue  # Already handled
 
         if entry_type == "file":
-            content = await _fetch_file_content(entry["download_url"], client=client)
+            content = await _fetch_file_content(entry, client=client)
             relative_path = entry["path"].removeprefix(f"{remote_path}/")
-            await write_skill_file(user_id, skill_name, relative_path, content)
+            await write_skill_file(ref.user_id, ref.skill_name, relative_path, content)
             file_list.append(relative_path)
 
         elif entry_type == "dir":
-            sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
+            sub_contents = await _fetch_github_contents(
+                ref.owner, ref.repo, entry["path"], client=client
+            )
             await _download_github_dir(
-                user_id=user_id,
-                skill_name=skill_name,
-                owner=owner,
-                repo=repo,
+                ref,
                 remote_path=remote_path,
                 contents=sub_contents,
                 file_list=file_list,
@@ -311,17 +300,6 @@ async def install_from_inline(
 
     Generates a SKILL.md from the provided components, validates it,
     writes body-only to VFS, and registers flat metadata in MongoDB.
-
-    Args:
-        user_id: Owner user ID
-        name: Skill name (kebab-case)
-        description: What the skill does
-        instructions: Markdown body instructions
-        target: Target agent (default: executor)
-        extra_metadata: Optional additional metadata key-values
-
-    Returns:
-        The installed skill
     """
     log.set(
         user_id=user_id,
@@ -347,7 +325,7 @@ async def install_from_inline(
     # Write body-only to JuiceFS (metadata lives in MongoDB)
     storage_path = _skill_storage_path(user_id, metadata.name)
     await ensure_user_skills_dir(user_id)
-    await write_skill_file(user_id, metadata.name, "SKILL.md", body)
+    await write_skill_file(user_id, metadata.name, SKILL_SOURCE_FILENAME, body)
 
     # Register flat metadata in MongoDB
     # install_skill is wrapped in @CacheInvalidator, whose __call__ erases the
@@ -355,18 +333,20 @@ async def install_from_inline(
     installed = cast(
         Skill,
         await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=metadata.target,
-            vfs_path=storage_path,
-            source=SkillSource.INLINE,
-            body_content=body,
-            files=["SKILL.md"],
-            skill_license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
+            SkillInstallRequest(
+                user_id=user_id,
+                name=metadata.name,
+                description=metadata.description,
+                target=metadata.target,
+                vfs_path=storage_path,
+                source=SkillSource.INLINE,
+                body_content=body,
+                files=[SKILL_SOURCE_FILENAME],
+                license_name=metadata.license,
+                compatibility=metadata.compatibility,
+                metadata=metadata.metadata,
+                allowed_tools=metadata.allowed_tools,
+            )
         ),
     )
 
@@ -384,16 +364,10 @@ async def update_skill_inline(
 ) -> Skill | None:
     """Edit an existing skill's description, instructions (body), and/or target.
 
-    Only provided fields change; the rest are preserved. The skill ``name`` is
-    immutable (it keys the VFS directory), so the storage path never moves. The
-    VFS SKILL.md is rewritten only when the body actually changes; description
-    and target are metadata and live only in MongoDB.
-
-    Returns the updated skill, or None if it does not exist for this user.
-
-    Raises:
-        ValueError: If the new values are invalid, or retargeting would collide
-            with an existing skill of the same name on that target.
+    Only provided fields change. The skill name is immutable, so the storage path never
+    moves; VFS SKILL.md is rewritten only when the body changes. Returns None if the skill
+    does not exist for this user. Raises ValueError if the new values are invalid, or if
+    retargeting would collide with an existing skill of the same name on that target.
     """
     skill = await get_skill(user_id, skill_id)
     if not skill:
@@ -430,7 +404,7 @@ async def update_skill_inline(
     # metadata-only and never touch the filesystem.
     if body != (skill.body_content or ""):
         await ensure_user_skills_dir(user_id)
-        await write_skill_file(user_id, skill.name, "SKILL.md", body)
+        await write_skill_file(user_id, skill.name, SKILL_SOURCE_FILENAME, body)
 
     # update_skill is wrapped in @CacheInvalidator, whose __call__ erases the
     # return type to Awaitable[Any]; update_skill itself is annotated -> Skill | None.

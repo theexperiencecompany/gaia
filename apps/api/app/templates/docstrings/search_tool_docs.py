@@ -3,16 +3,16 @@
 WEB_SEARCH_TOOL = """
 Perform a quick, high-level web search to gather brief and relevant information from multiple sources.
 
-This tool is designed for fast, general-purpose lookups — returning summarized snippets and titles
+This tool is designed for fast, general-purpose lookups, returning summarized snippets and titles
 from various web and news sources. It prioritizes speed and topical variety over detail.
 
-⚠️ ANTI-HALLUCINATION RULES (CRITICAL — NEVER VIOLATE):
+⚠️ ANTI-HALLUCINATION RULES (CRITICAL, NEVER VIOLATE):
 - NEVER make up, invent, or guess URLs. Only use URLs that appear in the tool's returned results.
 - NEVER fabricate article titles, source names, or publication dates.
-- If the search returns no results or fails, say so clearly — do NOT invent fake results.
+- If the search returns no results or fails, say so clearly: do NOT invent fake results.
 - Only report URLs, titles, and snippets that the tool actually returned.
 - When presenting results, always attribute them as "found via search" and show only what the tool returned.
-- If you cannot find information, say "I couldn't find results for that" — never fill the gap with made-up links.
+- If you cannot find information, say "I couldn't find results for that"; never fill the gap with made-up links.
 
 ✅ USE THIS TOOL WHEN:
 - The user asks a general question requiring current or public knowledge.
@@ -39,7 +39,7 @@ Args:
 
 Returns:
     A JSON string with summarized search data, formatted text, and raw result structure.
-    All URLs in the result came directly from the search API — they are real and verified.
+    All URLs in the result came directly from the search API; they are real and verified.
 """
 
 DEEP_RESEARCH_TOOL = """

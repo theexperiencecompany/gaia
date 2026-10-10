@@ -1,16 +1,10 @@
 /**
  * Regression tests for the chat failure surface.
  *
- * The bug: a turn that died client-side was persisted with `status: "failed"`
- * but no `error` string. Nothing reads `status`, and the failed-response bubble
- * keys off `error` — so the message rendered as empty, `filterEmptyMessagePairs`
- * dropped it from the thread entirely, and the only trace of the failure was a
- * transient toast. A stream that closed without its completion signal was worse:
- * it was persisted as `"sent"`, indistinguishable from a finished answer.
- *
- * These pin the three seams that chain together to put a failure on screen:
- * the record carries the error, the outcome rule classifies a truncated stream
- * as failed, and the empty-message filter keeps an errored turn in the thread.
+ * A client-side failure persisted `status: "failed"` with no `error`, so the
+ * failed bubble (keyed off `error`) rendered empty and vanished; a stream
+ * that died silently persisted as `"sent"`, indistinguishable from success.
+ * Pins the record, the outcome rule, and the empty-message filter that catch it.
  */
 import { createTurnAccumulator, type TurnAccumulator } from "@shared/chat";
 import { describe, expect, it, vi } from "vitest";
@@ -46,8 +40,7 @@ const meta = (): TurnMessageMeta => ({
 });
 
 const accWithText = (text: string): TurnAccumulator => ({
-  ...createTurnAccumulator(),
-  responseText: text,
+  ...createTurnAccumulator(text),
 });
 
 describe("buildTurnMessageRecord", () => {

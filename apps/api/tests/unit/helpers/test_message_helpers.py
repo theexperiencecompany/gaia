@@ -1,17 +1,23 @@
-"""Tests for app/helpers/message_helpers.py"""
+"""Tests for app/helpers/message_helpers.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import SystemMessage
 import pytest
 
+from app.agents.prompts.onboarding_prompts import ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.db.repositories.users import UserDocument
 from app.helpers.message_helpers import (
+    _uploaded_file_lines,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
+    get_onboarding_system_prompt_if_applicable,
 )
 from app.models.message_models import (
     FileData,
@@ -19,6 +25,12 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import (
+    OnboardingPhase,
+    OnboardingPreferences,
+    OnboardingSubdocument,
+)
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # create_system_message
@@ -26,23 +38,20 @@ from app.models.message_models import (
 
 
 class TestCreateSystemMessage:
-    """The main system prompt must be byte-identical across users/channels so
-    implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    per-user context is assembled separately by ``app.agents.context``."""
+    """The main system prompt must be byte-identical across users/channels so implicit LLM caching hits."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
-        """Different user_name must produce identical content on the same
-        channel (byte-stable prefix). Different channels produce different
-        content (OpenUI on web, platform restrictions on WhatsApp)."""
+        """Different user_name must produce identical content on the same channel; different channels differ."""
         web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
         web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
         whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
-        # Output-format addenda should be inline in the static per-channel
-        # prompt — web has OpenUI, text-only has platform restrictions.
-        assert ":::openui" in web_a.content
+        # Output-format addenda are inline in the static per-channel prompt (web
+        # has OpenUI, text-only has platform restrictions). Assert on the addendum
+        # marker, not the fence literal: the base prompt names :::openui either way.
+        assert "## Output Format (this app renders rich components)" in web_a.content
         assert "Platform Context" in whatsapp.content
 
     def test_executor_agent_is_static(self) -> None:
@@ -79,6 +88,9 @@ class TestFormatToolSelectionMessage:
         assert "Find info about AI" in result
         assert "Web Search" in result
         assert "TOOL SELECTION" in result
+        assert "activate_integration" in result
+        assert "handoff" not in result
+        assert "subagent:" not in result
 
     def test_without_content(self) -> None:
         result = format_tool_selection_message(
@@ -246,6 +258,39 @@ class TestFormatWorkflowExecutionMessage:
 # ---------------------------------------------------------------------------
 
 
+class TestSignalMatchingSectionRenders:
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_an_integration_fire_with_tracked_todos_renders_the_signal_section(
+        self,
+    ) -> None:
+        """Regression: str.format read the literal example "- {date} {what happened}" as real placeholders, causing KeyError: 'date' 54 times in one day in production."""
+        selected = SelectedWorkflowData(
+            id="wf_meeting",
+            title="Meeting Reminder",
+            description="Remind me before meetings",
+            steps=[{"title": "Remind", "category": "calendar", "description": "send the reminder"}],
+        )
+        trigger_ctx = {
+            "type": "googlecalendar",
+            "trigger_type": "integration",
+            "tracked_todos_context": "- todo_1: Ship the launch post (Key Details: thread abc)",
+            "triggered_at": "2026-09-03T10:00:00Z",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "Ship the launch post" in result
+        assert "- {date} {what happened}" in result
+
+
 class TestFormatCalendarEventContext:
     def test_timed_event_with_content(self) -> None:
         event = SelectedCalendarEventData(
@@ -259,7 +304,20 @@ class TestFormatCalendarEventContext:
         result = format_calendar_event_context(event, "What should I prepare?")
         assert "Team Standup" in result
         assert "Work" in result
+        assert "2024-01-01T09:00:00 to 2024-01-01T09:30:00" in result
         assert "What should I prepare?" in result
+
+    def test_timed_event_without_bounds_reads_unknown(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev1b", summary="Standup", description="", start={}, end={}
+        )
+        assert "Unknown to Unknown" in format_calendar_event_context(event)
+
+    def test_all_day_event_without_a_date_reads_unknown_date(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev2b", summary="Holiday", description="", start={}, end={}, isAllDay=True
+        )
+        assert "All day on Unknown date" in format_calendar_event_context(event)
 
     def test_all_day_event(self) -> None:
         event = SelectedCalendarEventData(
@@ -271,8 +329,7 @@ class TestFormatCalendarEventContext:
             isAllDay=True,
         )
         result = format_calendar_event_context(event)
-        assert "All day" in result
-        assert "2024-12-25" in result
+        assert "All day on 2024-12-25" in result
 
     def test_no_calendar_title(self) -> None:
         event = SelectedCalendarEventData(
@@ -357,10 +414,7 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result
 
-    # The workspace mirror is best-effort — it needs JuiceFS, and `sandbox_path`
-    # is None whenever it was unavailable. Handing the agent a path anyway sent
-    # the executor into read/bash attempts that could only fail; it burned the
-    # recursion limit on a real GAIA .xlsx case doing exactly that.
+    # sandbox_path is None when the JuiceFS mirror was unavailable; handing the agent a path anyway burned the recursion limit on a real .xlsx case.
 
     def test_omits_the_path_when_the_file_never_reached_the_workspace(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path=None)]
@@ -372,7 +426,7 @@ class TestFormatFilesList:
     def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" not in result
+        assert "Read the file at its path" not in result
         assert "copy into" not in result
         assert ".summary.md" not in result
         assert "a summary" in result
@@ -388,5 +442,441 @@ class TestFormatFilesList:
             )
         ]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" in result
+        assert "Read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
+
+
+class TestWorkflowExecutionMessageBranches:
+    """The branch choices and bounds inside format_workflow_execution_message.
+
+    The existing tests above assert a title survives into the output, which a
+    great many wrong implementations also satisfy. These pin the decisions: which
+    template is chosen, where the email preview is cut, and whether a partially
+    replayed run's evidence reaches the agent — getting that last one wrong makes
+    the agent redo steps that already had side effects.
+    """
+
+    @staticmethod
+    def _selected() -> SelectedWorkflowData:
+        return SelectedWorkflowData(
+            id="wf_1",
+            title="Morning Brief",
+            description="desc",
+            prompt="do the thing",
+            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+        )
+
+    @staticmethod
+    def _no_db_workflow():
+        return patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_gmail_trigger_selects_the_email_template(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "Subj", "message_text": "Body"},
+                    "triggered_at": "2026-08-27T00:00:00Z",
+                },
+            )
+
+        assert "a@b.com" in result
+        assert "Subj" in result
+        assert "2026-08-27T00:00:00Z" in result
+
+    @pytest.mark.asyncio
+    async def test_a_non_gmail_trigger_does_not_select_the_email_template(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"type": "schedule", "triggered_at": "2026-08-27T00:00:00Z"},
+            )
+
+        assert "a@b.com" not in result
+        assert "Morning Brief" in result
+
+    @pytest.mark.asyncio
+    async def test_a_long_email_body_is_previewed_not_pasted_whole(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 500},
+                },
+            )
+
+        assert "x" * 200 + "..." in result
+        assert "x" * 201 not in result
+
+    @pytest.mark.asyncio
+    async def test_a_short_email_body_is_not_marked_truncated(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "short"},
+                },
+            )
+
+        assert "short" in result
+        assert "short..." not in result
+
+    @pytest.mark.asyncio
+    async def test_a_stopped_replay_tells_the_agent_what_already_ran(self) -> None:
+        """Without this the agent repeats steps whose side effects already happened."""
+        note = "<already_ran>sent the digest email</already_ran>"
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={PLAYBOOK_FALLBACK_CONTEXT_KEY: note},
+            )
+
+        assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_the_same_evidence_reaches_an_email_triggered_fallback(self) -> None:
+        note = "<already_ran>archived 3 threads</already_ran>"
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "m"},
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: note,
+                },
+            )
+
+        assert result.endswith(note)
+        assert "a@b.com" in result
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_run_carries_no_replay_evidence(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(self._selected(), user_id="u1")
+
+        assert "already_ran" not in result
+
+    @pytest.mark.asyncio
+    async def test_a_gmail_trigger_missing_every_field_renders_the_stated_defaults(self) -> None:
+        """Each missing field renders its own named placeholder, not the literal None a bare .get would leave."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"type": "gmail", "email_data": {"message_text": ""}},
+            )
+
+        lines = result.splitlines()
+        assert "- From: Unknown" in lines
+        assert "- Subject: No Subject" in lines
+        assert "- Preview: " in lines
+        assert "- Received: Unknown" in lines
+
+    @pytest.mark.asyncio
+    async def test_an_email_body_at_the_preview_limit_is_not_marked_truncated(self) -> None:
+        """Exactly at the bound is a whole body, not a cut one — an ellipsis would imply a nonexistent rest."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 200},
+                },
+            )
+
+        assert f"- Preview: {'x' * 200}" in result.splitlines()
+
+    @pytest.mark.asyncio
+    async def test_an_email_body_one_char_over_the_limit_is_marked_truncated(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 201},
+                },
+            )
+
+        assert f"- Preview: {'x' * 200}..." in result.splitlines()
+
+    @pytest.mark.asyncio
+    async def test_a_manual_run_ends_with_the_users_own_message(self) -> None:
+        """The user's words are the last thing the prompt says, so the model reads them as the instruction."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", existing_content="Run it now please"
+            )
+
+        assert result.splitlines()[-1] == "Run it now please"
+
+    @pytest.mark.asyncio
+    async def test_a_manual_run_with_no_message_falls_back_to_naming_the_workflow(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", existing_content=""
+            )
+
+        assert result.splitlines()[-1] == "Execute workflow: Morning Brief"
+
+
+# ---------------------------------------------------------------------------
+# _uploaded_file_lines
+# ---------------------------------------------------------------------------
+
+
+class TestUploadedFileLines:
+    """One attachment's rendered lines; format_files_list only joins these."""
+
+    @staticmethod
+    def _file(**overrides: object) -> FileData:
+        fields: dict[str, object] = {
+            "fileId": "f1",
+            "url": "u",
+            "filename": "a.txt",
+            "sandbox_path": "/mirrored/a.txt",
+        }
+        fields.update(overrides)
+        return FileData(**fields)  # type: ignore[arg-type]  # overrides are typed per-field by FileData
+
+    def test_a_run_with_no_conversation_uses_the_relative_upload_dir(self) -> None:
+        entry = _uploaded_file_lines(self._file(), None, True)
+
+        assert entry == (["- a.txt  (id: f1)  →  `./user-uploaded/a.txt`"], True)
+
+    def test_a_file_that_never_reached_the_workspace_names_the_search_tool(self) -> None:
+        entry = _uploaded_file_lines(self._file(sandbox_path=None), "conv1", True)
+
+        assert entry == (
+            ["- a.txt  (id: f1), not on disk, use `search_uploaded_files`"],
+            False,
+        )
+
+    def test_a_summary_exactly_at_the_limit_is_kept_whole(self) -> None:
+        summary = "s" * UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+        entry = _uploaded_file_lines(self._file(description=summary), "conv1", True)
+
+        assert entry == (
+            [
+                "- a.txt  (id: f1)  →  `/workspace/sessions/conv1/user-uploaded/a.txt`",
+                f"    summary: {summary}",
+                "    full summary: `/workspace/sessions/conv1/user-uploaded/a.txt.summary.md`",
+            ],
+            True,
+        )
+
+    def test_an_over_long_summary_is_cut_at_the_limit_with_no_dangling_space(self) -> None:
+        """The cut often lands right after a space; leaving it in strands the ellipsis from the last word."""
+        body = "s" * (UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS - 1)
+        entry = _uploaded_file_lines(
+            self._file(description=f"{body} tail-past-the-limit"), "conv1", True
+        )
+
+        assert entry == (
+            [
+                "- a.txt  (id: f1)  →  `/workspace/sessions/conv1/user-uploaded/a.txt`",
+                f"    summary: {body}…",
+                "    full summary: `/workspace/sessions/conv1/user-uploaded/a.txt.summary.md`",
+            ],
+            True,
+        )
+
+    def test_an_unsafe_filename_is_dropped_rather_than_rendered(self) -> None:
+        assert _uploaded_file_lines(self._file(filename=".."), "conv1", True) is None
+
+
+# ---------------------------------------------------------------------------
+# get_onboarding_system_prompt_if_applicable
+# ---------------------------------------------------------------------------
+
+
+class TestGetOnboardingSystemPromptIfApplicable:
+    """The prompt is scoped to a RevealTodos "Run Now" demo turn, not any tagged onboarding conversation."""
+
+    @staticmethod
+    def _user(onboarding: OnboardingSubdocument | None, name: str = "Ada") -> UserDocument:
+        return UserDocument(id="u1", name=name, onboarding=onboarding)
+
+    @staticmethod
+    def _patched_repository(user: UserDocument | None) -> AsyncMock:
+        repository = MagicMock()
+        repository.get = AsyncMock(return_value=user)
+        return repository
+
+    async def test_a_typed_message_is_not_a_demo_turn_and_never_reads_the_user(self) -> None:
+        repository = self._patched_repository(self._user(OnboardingSubdocument()))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Summarise my inbox please"
+            )
+
+        assert prompt is None
+        repository.get.assert_not_awaited()
+
+    @pytest.mark.parametrize("latest_user_message", [None, ""])
+    async def test_a_turn_with_no_user_message_is_not_a_demo_turn(
+        self, latest_user_message: str | None
+    ) -> None:
+        repository = self._patched_repository(self._user(OnboardingSubdocument()))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", latest_user_message
+            )
+
+        assert prompt is None
+        repository.get.assert_not_awaited()
+
+    async def test_a_demo_turn_renders_the_profession_and_only_the_triage_summary_line(
+        self,
+    ) -> None:
+        """triage_summary is the persisted dump of the triage model; keying off it wholesale would leak it."""
+        onboarding = OnboardingSubdocument(
+            preferences=OnboardingPreferences(profession="doctor"),
+            triage_summary={
+                "summary": "12 unread, 3 need a reply",
+                "categories": ["billing", "scheduling"],
+                "email_count": 12,
+            },
+        )
+        repository = self._patched_repository(self._user(onboarding))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="Ada",
+            onboarding_context="Profession: doctor\nInbox summary: 12 unread, 3 need a reply",
+        )
+        repository.get.assert_awaited_once_with("u1")
+
+    async def test_a_triage_dump_without_a_summary_line_renders_no_inbox_line(self) -> None:
+        """A dump with no summary key must render the profession alone, not a placeholder line."""
+        onboarding = OnboardingSubdocument(
+            preferences=OnboardingPreferences(profession="doctor"),
+            triage_summary={"categories": ["billing"], "email_count": 12},
+        )
+        repository = self._patched_repository(self._user(onboarding))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="Ada", onboarding_context="Profession: doctor"
+        )
+
+    async def test_the_demo_prefix_is_matched_past_leading_whitespace(self) -> None:
+        repository = self._patched_repository(self._user(OnboardingSubdocument()))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "\n  Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="Ada", onboarding_context="Profession: not specified"
+        )
+
+    @pytest.mark.parametrize(
+        "onboarding",
+        [None, OnboardingSubdocument(), OnboardingSubdocument(preferences=OnboardingPreferences())],
+    )
+    async def test_an_unset_profession_renders_as_not_specified(
+        self, onboarding: OnboardingSubdocument | None
+    ) -> None:
+        repository = self._patched_repository(self._user(onboarding))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="Ada", onboarding_context="Profession: not specified"
+        )
+
+    async def test_a_nameless_user_is_addressed_as_there(self) -> None:
+        repository = self._patched_repository(
+            UserDocument(id="u1", name=None, onboarding=OnboardingSubdocument())
+        )
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="there", onboarding_context="Profession: not specified"
+        )
+
+    async def test_a_completed_onboarding_gets_no_prompt(self) -> None:
+        onboarding = OnboardingSubdocument(
+            phase=OnboardingPhase.COMPLETED,
+            preferences=OnboardingPreferences(profession="doctor"),
+        )
+        repository = self._patched_repository(self._user(onboarding))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt is None
+
+    @pytest.mark.parametrize(
+        "phase",
+        [OnboardingPhase.INITIAL, OnboardingPhase.GETTING_STARTED],
+    )
+    async def test_an_unfinished_phase_still_gets_the_prompt(self, phase: OnboardingPhase) -> None:
+        repository = self._patched_repository(self._user(OnboardingSubdocument(phase=phase)))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name="Ada", onboarding_context="Profession: not specified"
+        )
+
+    async def test_a_missing_user_gets_no_prompt(self) -> None:
+        repository = self._patched_repository(None)
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt is None
+
+    async def test_a_failed_user_read_is_swallowed_but_lands_on_the_wide_event(self) -> None:
+        repository = MagicMock()
+        repository.get = AsyncMock(side_effect=RuntimeError("mongo down"))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            async with captured_wide_event() as event:
+                prompt = await get_onboarding_system_prompt_if_applicable(
+                    "u1", "conv1", "Execute this todo for me: reply to the clinic"
+                )
+
+        assert prompt is None
+        assert event["warnings"] == [
+            {
+                "msg": "[onboarding_prompt] Failed to check onboarding conversation",
+                "error": "mongo down",
+                "error_type": "RuntimeError",
+                "user_id": "u1",
+                "conversation_id": "conv1",
+            }
+        ]

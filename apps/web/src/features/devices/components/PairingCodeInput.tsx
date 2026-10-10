@@ -11,6 +11,7 @@ import {
   PAIRING_CODE_LENGTH,
   PAIRING_CODE_PATTERN,
 } from "../constants";
+import { normalizePairingCode } from "../utils";
 
 interface PairingCodeInputProps {
   /** The code without its separator, e.g. "ABCD2345". */
@@ -44,6 +45,10 @@ export function PairingCodeInput({
       value={value}
       onChange={(next) => onChange(next.toUpperCase())}
       onComplete={onComplete}
+      // A code copied from chat carries the "-" separator (and can be
+      // lowercase); without this transformer the paste is rejected wholesale by
+      // the pattern regexp and nothing lands in the slots.
+      pasteTransformer={normalizePairingCode}
       disabled={isDisabled}
       autoFocus
       // Not an SMS code — it is read off a terminal, and Chrome otherwise

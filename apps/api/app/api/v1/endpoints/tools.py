@@ -33,7 +33,7 @@ async def list_available_tools(
     are included only for the desktop client (`X-Client-Type: desktop`)."""
     log.set(operation="list_tools")
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         include_desktop = (
             request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
             == ConversationSource.DESKTOP.value

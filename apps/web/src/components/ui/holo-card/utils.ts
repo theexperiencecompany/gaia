@@ -1,4 +1,5 @@
 import { POSITION_CALC } from "./constants";
+import type { HoloCardDisplayData } from "./types";
 
 interface BackgroundPosition {
   lp: number;
@@ -26,4 +27,25 @@ export function calculateBackgroundPosition(
   const tp = 50 + (py - 50) / POSITION_CALC.DAMPING_FACTOR;
 
   return { lp, tp };
+}
+
+// Folds a freshly-arrived card into the edited copy: every field (name,
+// bio, account, member_since) must come through on refetch, except the
+// overlay — it wins only where it differs from the last-seen incoming card, preserving a mid-pick choice.
+export function mergeIncomingCard(
+  edited: HoloCardDisplayData,
+  incoming: HoloCardDisplayData,
+  previousIncoming: HoloCardDisplayData,
+): HoloCardDisplayData {
+  return {
+    ...incoming,
+    overlay_color:
+      incoming.overlay_color !== previousIncoming.overlay_color
+        ? incoming.overlay_color
+        : edited.overlay_color,
+    overlay_opacity:
+      incoming.overlay_opacity !== previousIncoming.overlay_opacity
+        ? incoming.overlay_opacity
+        : edited.overlay_opacity,
+  };
 }

@@ -16,6 +16,8 @@ export const BOT_EVENTS = {
   FILE_UPLOADED: "bot:file_uploaded",
   /** Outbound artifact the bot tried to hand back, successfully or not. */
   FILE_DELIVERED: "bot:file_delivered",
+  /** Native emoji reaction the bot attached (or fell back to text for). */
+  REACTION_DELIVERED: "bot:reaction_delivered",
 } as const;
 
 export type BotEventName = (typeof BOT_EVENTS)[keyof typeof BOT_EVENTS];

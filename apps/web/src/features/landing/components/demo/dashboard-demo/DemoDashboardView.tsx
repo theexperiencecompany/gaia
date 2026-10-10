@@ -469,7 +469,7 @@ function formatEventTime(start: string, end: string): string {
       ? `${h12} ${ampm}`
       : `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
   };
-  return `${fmt(s)} – ${fmt(e)}`;
+  return `${fmt(s)} to ${fmt(e)}`;
 }
 
 export default function DemoDashboardView() {

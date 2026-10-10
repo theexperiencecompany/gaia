@@ -1,11 +1,11 @@
 """Regression tests for #917's class — workflow payloads carried native datetimes.
 
-``get/pause/resume_workflow``, ``apply_workflow_edit``, and the workflow tool
-returns serialized ``Workflow`` models in python mode, whose ``BaseScheduledTask``
-base always carries ``created_at``/``updated_at`` native datetimes. The
-stream-writer payload is JSON-encoded with stdlib ``json.dumps`` downstream
-(``redis_writer.py``), so every emission crashed with "Object of type datetime
-is not JSON serializable", and ``get_workflow``'s return value degraded to
+get/pause/resume_workflow, apply_workflow_edit, and the workflow tool
+returns serialized Workflow models in python mode, whose BaseScheduledTask
+base always carries created_at/updated_at native datetimes. The
+stream-writer payload is JSON-encoded with stdlib json.dumps downstream
+(redis_writer.py), so every emission crashed with "Object of type datetime
+is not JSON serializable", and get_workflow's return value degraded to
 Python reprs inside the ToolMessage. These tests pin the boundary contract:
 whatever crosses into a stream frame or a tool return is JSON-safe.
 """
@@ -40,7 +40,7 @@ def _cfg() -> RunnableConfig:
 
 
 def _workflow() -> Workflow:
-    """A real document — its python-mode dump carries native datetimes."""
+    """Build a real document — its python-mode dump carries native datetimes."""
     return Workflow(
         user_id=FAKE_USER_ID,
         title="Morning digest",

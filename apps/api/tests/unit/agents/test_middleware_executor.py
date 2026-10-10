@@ -5,7 +5,7 @@ and wrap_tool_call middleware hooks.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
@@ -23,16 +23,17 @@ import pytest
 
 from app.agents.middleware.executor import (
     MiddlewareExecutor,
+    _apply_state_update,
     _has_override,
 )
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.override.langgraph_bigtool.utils import State
 from app.services.analytics_service import AnalyticsEvents
 
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
-    """Keep every test hermetic: TOOL_USED events are asserted through this
-    mock and never reach a real PostHog client."""
+    """TOOL_USED events are asserted through this mock and never reach a real PostHog client."""
     with patch("app.agents.middleware.executor.capture_event") as mock_capture:
         yield mock_capture
 
@@ -154,7 +155,7 @@ class _MessagesAppendingMiddleware(AgentMiddleware):
 
 
 def _summarizing_executor(trigger_after: int, keep: int) -> MiddlewareExecutor:
-    """Executor wrapping the real ``SummarizationMiddleware``, tuned to fire immediately."""
+    """Executor wrapping the real SummarizationMiddleware, tuned to fire immediately."""
     summarizer = GenericFakeChatModel(messages=iter([AIMessage(content="SUMMARY")] * 50))
     return MiddlewareExecutor(
         [
@@ -237,6 +238,14 @@ class TestMiddlewareExecutorInit:
     def test_none_middleware(self) -> None:
         executor = MiddlewareExecutor(None)
         assert executor.middleware == []
+
+    def test_the_stacks_loop_guard_is_exposed_for_select_tools(self) -> None:
+        guard = LoopGuardMiddleware()
+        executor = MiddlewareExecutor([_NoOpMiddleware(), guard, _BeforeModelMiddleware()])
+        assert executor.loop_guard is guard
+
+    def test_a_stack_without_a_loop_guard_exposes_none(self) -> None:
+        assert MiddlewareExecutor([_NoOpMiddleware()]).loop_guard is None
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +395,7 @@ class TestExecuteBeforeModelStateUpdates:
 
     The executor runs those hooks inside a single bigtool node, so it — not the
     graph — has to resolve them through the channel reducers. Merging them with
-    ``dict.update`` instead is what put a ``RemoveMessage(REMOVE_ALL_MESSAGES)``
+    dict.update instead is what put a RemoveMessage(REMOVE_ALL_MESSAGES)
     tombstone at position 0 of the list handed to the model, 500ing the executor
     endpoint in production.
     """
@@ -415,13 +424,7 @@ class TestExecuteBeforeModelStateUpdates:
     async def test_summarized_messages_are_accepted_by_the_real_provider_serializer(
         self, mock_rt: MagicMock
     ) -> None:
-        """The production symptom, pinned to the real serializer that raised it.
-
-        ``langchain_google_genai._parse_chat_history`` is the function that
-        raised "Unexpected message with type RemoveMessage at the position 0"
-        in the traceback behind the 500s. It runs before any network call, so
-        the real one is used here rather than a stand-in.
-        """
+        """langchain_google_genai._parse_chat_history raised "Unexpected message with type RemoveMessage" in prod."""
         executor = _summarizing_executor(trigger_after=6, keep=2)
         state = _make_state(messages=_long_history(10))
 
@@ -434,12 +437,7 @@ class TestExecuteBeforeModelStateUpdates:
         return_value=MagicMock(),
     )
     async def test_summarization_drops_the_summarized_history(self, mock_rt: MagicMock) -> None:
-        """The tombstone must be *applied*, not merely dropped.
-
-        Filtering the sentinel out without honouring it would leave the full
-        pre-summarization history in front of the model — no crash, but
-        summarization silently doing nothing, which is the harder bug to see.
-        """
+        """The tombstone must be applied, not merely filtered out, or summarization silently does nothing."""
         executor = _summarizing_executor(trigger_after=6, keep=2)
         state = _make_state(messages=_long_history(10))
 
@@ -456,13 +454,7 @@ class TestExecuteBeforeModelStateUpdates:
     async def test_message_update_appends_instead_of_replacing_history(
         self, mock_rt: MagicMock
     ) -> None:
-        """A hook returning one message must not wipe the conversation.
-
-        ``LLMAccountingMiddleware.abefore_model`` is documented to start
-        returning ``{"messages": [AIMessage("Credit limit reached…")]}`` for
-        credit gating; under ``dict.update`` that would hand the model a
-        one-message conversation.
-        """
+        """LLMAccountingMiddleware.abefore_model may return one message for credit gating; dict.update would wipe history."""
         executor = MiddlewareExecutor([_MessagesAppendingMiddleware()])
         state = _make_state(messages=_long_history(2))
 
@@ -484,7 +476,7 @@ class TestExecuteBeforeModelStateUpdates:
 
 
 class TestExecuteAfterModelStateUpdates:
-    """``execute_after_model`` merges hook returns the same way and needs the same fix."""
+    """execute_after_model merges hook returns the same way and needs the same fix."""
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -745,7 +737,7 @@ class TestWrapToolInvocation:
         _no_real_analytics.assert_called_once()
         assert _no_real_analytics.call_args.args[0] == "user_123"
         assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
-        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool"}
+        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool", "via": "bound"}
 
     async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
@@ -911,6 +903,54 @@ class TestWrapToolInvocation:
 # ---------------------------------------------------------------------------
 # has_wrap_model_call / has_wrap_tool_call
 # ---------------------------------------------------------------------------
+
+
+class _RecordingWrapToolMiddleware(AgentMiddleware):
+    """Record the request each tool call hands the middleware chain."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[ToolCallRequest] = []
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+        self.requests.append(request)
+        return await handler(request)
+
+
+class TestTheRequestTheChainSees:
+    async def test_carries_this_calls_tool_state_and_runtime(self) -> None:
+        """Compaction and HIL read the request, not the raw arguments; a blanked field is a tool they never see."""
+        tool_call = {"name": "test_tool", "args": {"q": 1}, "id": "call_1"}
+        tool = MagicMock(name="tool")
+        runtime = MagicMock(name="runtime")
+        state = _make_state()
+        recorder = _RecordingWrapToolMiddleware()
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="call_1"))
+
+        with patch(
+            "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+            return_value=runtime,
+        ):
+            await MiddlewareExecutor([recorder]).wrap_tool_invocation(
+                tool_call, tool, state, _make_config(), None, invoke_fn
+            )
+
+        (request,) = recorder.requests
+        assert request.tool_call == tool_call
+        assert request.tool is tool
+        assert request.state is state
+        assert request.runtime is runtime
+        invoke_fn.assert_awaited_once_with(tool_call)
+
+
+class TestApplyStateUpdate:
+    def test_messages_into_a_state_without_any_start_the_channel(self) -> None:
+        state = cast(State, {})
+        message = HumanMessage(id="m1", content="hi")
+
+        _apply_state_update(state, {"messages": [message]})
+
+        assert state["messages"] == [message]
 
 
 class TestHasWrapMethods:

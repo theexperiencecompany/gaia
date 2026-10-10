@@ -1,14 +1,14 @@
 """The resolved answer to "which model will this run call, and how".
 
-One immutable :class:`ModelLane` is resolved once per user turn by
-:func:`resolve_lane` and then carried verbatim — to the executor, to every
+One immutable :class:ModelLane is resolved once per user turn by
+:func:resolve_lane and then carried verbatim — to the executor, to every
 handoff subagent, across a queue hop, through a HIL resume. Everything
 downstream reads the lane instead of re-deriving a model from loose keys, so
 there is exactly one place a lane can be wrong.
 
 This replaces a pipeline of in-place mutations spread across six files in which
 every key propagated by a different rule: some parent-overrides, some
-child-wins, ``reasoning`` deliberately not inherited at all, and several dropped
+child-wins, reasoning deliberately not inherited at all, and several dropped
 entirely by the queue's serializer. That table is what made model selection
 unreadable and its bugs invisible.
 """
@@ -16,15 +16,17 @@ unreadable and its bugs invisible.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
-from app.agents.llm.types import DevModelOption, LLMProviderName
+from pydantic import TypeAdapter
+
+from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
+from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_REASONING,
+    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -33,11 +35,17 @@ from app.constants.llm import (
     MODEL_KWARGS_FIELD_ID,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
+    PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_FIELD_ID,
     REASONING_FIELD_ID,
+    DevModelOption,
+    LaneConfig,
+    LLMProviderName,
+    OpenRouterModelKwargs,
+    OpenRouterReasoning,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -71,9 +79,11 @@ _DEFAULT_LANE_PRIORITY = (
 def set_runtime_config_lookup(
     fn: "Callable[[str], ProviderConfig | None]",
 ) -> None:
-    """Wire the snapshot lookup used by :func:`_default_lane` (DI seam — lane
-    and client are mutually importing, so registration happens in
-    provider_registration which already imports both)."""
+    """Wire the snapshot lookup used by _default_lane.
+
+    DI seam: lane and client import each other, so provider_registration wires
+    this after both modules load.
+    """
     global _RUNTIME_CONFIG_LOOKUP
     _RUNTIME_CONFIG_LOOKUP = fn
 
@@ -86,12 +96,15 @@ BINDING_FIELD_IDS: frozenset[str] = frozenset(
 )
 
 
+#: Validates a stored lane at the boundary where it comes back off a configurable:
+#: a queue hop and a HIL resume hand it back as plain JSON.
+_LANE_CONFIG: TypeAdapter[LaneConfig] = TypeAdapter(LaneConfig)
+
+
 class AgentRole(StrEnum):
     """Which tier is asking for a lane.
 
-    Only the reasoning budget differs by role today: comms is mostly routing and
-    acknowledgement work, so a paid turn spends its thinking budget on the
-    executor's tool selection instead.
+    Only the reasoning budget differs by role today — see :func:_reasoning_for.
     """
 
     COMMS = "comms"
@@ -101,8 +114,11 @@ class AgentRole(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ModelLane:
-    """A complete, resolved model selection. Immutable on purpose: a lane is
-    decided once per turn and inherited, never edited in flight."""
+    """A complete, resolved model selection.
+
+    Immutable on purpose: a lane is decided once per turn and inherited,
+    never edited in flight.
+    """
 
     #: The logical lane, not a free string: an unknown provider must fail at the
     #: boundary that produced it, not as a silent miss in the alternatives map.
@@ -110,14 +126,14 @@ class ModelLane:
     #: ``None`` means "let the client use its own configured default" — the
     #: env-defined custom dev endpoint serves ``DEV_LLM_MODEL`` this way.
     model: str | None
-    reasoning: dict[str, Any] | None
+    reasoning: OpenRouterReasoning | None
     #: OpenRouter provider-routing pin. Provider-specific by definition, so it
     #: never survives :meth:`fallback`.
-    provider_pin: dict[str, Any] | None
+    provider_pin: OpenRouterModelKwargs | None
     max_input_tokens: int
 
-    def to_configurable(self) -> dict[str, Any]:
-        """The JSON-safe form stored on ``configurable[LANE_CONFIG_KEY]``."""
+    def to_configurable(self) -> LaneConfig:
+        """Return the JSON-safe form stored on configurable[LANE_CONFIG_KEY]."""
         return {
             "provider": self.provider,
             "model": self.model,
@@ -127,20 +143,15 @@ class ModelLane:
         }
 
     def binding_keys(self) -> AgentConfigurable:
-        """The top-level ``configurable`` keys LangChain's own field resolution
-        reads — ``provider`` picks the alternative, the rest are ConfigurableFields
-        (see ``client._openrouter_wire_configurables``).
+        """Return the top-level configurable keys LangChain's own field resolution reads.
 
-        Written ONLY by ``build_agent_config`` from the lane, and read only by
-        LangChain. GAIA code reads the lane. A key is omitted rather than set to
-        ``None`` so the client's own default survives — the custom dev endpoint
-        pins no model, and a non-reasoning model must not carry a reasoning pin.
+        Written ONLY by build_agent_config, read only by LangChain. A key is
+        omitted rather than set to None so the client's own default survives —
+        the custom dev endpoint pins no model, and a non-reasoning model must
+        not carry a reasoning pin.
         """
-        # Literal keys, not the *_FIELD_ID constants: the return is an
-        # AgentConfigurable, and mypy only checks TypedDict keys when they are
-        # literals (`literal-required`). The TypedDict IS the enforcement here —
-        # stronger than a constant, since it also checks the value types.
-        # BINDING_FIELD_IDS below keeps the id set itself in one place.
+        # Literal keys, not the *_FIELD_ID constants: mypy only checks TypedDict
+        # keys when they are literals (`literal-required`).
         keys: AgentConfigurable = {"provider": self.provider}
         if self.model is not None:
             keys["model"] = self.model
@@ -150,15 +161,13 @@ class ModelLane:
             keys["model_kwargs"] = self.provider_pin
         return keys
 
-    def rebind(self, configurable: Mapping[str, Any]) -> dict[str, Any]:
-        """``configurable`` with THIS lane's binding keys, and the previous lane's cleared.
+    def rebind(self, configurable: Mapping[str, object]) -> dict[str, object]:
+        """Build configurable with THIS lane's binding keys, and the previous lane's cleared.
 
-        A plain merge is not enough, and that is why the fallback silently did
-        nothing: LangChain merges a passed config OVER a ``with_config`` one
-        (later wins), so re-passing the run's config restored the very provider
-        that had just failed. Stale keys must be REMOVED, not just overwritten —
-        the fallback drops the pin, and an un-cleared ``model_kwargs`` would carry
-        the old provider's routing onto the new one.
+        A plain merge is not enough: LangChain merges a passed config OVER a
+        with_config one, so re-passing the run's config restored the just-failed
+        provider. Stale keys must be REMOVED, not overwritten — an un-cleared
+        model_kwargs would carry the old provider's routing onto the new one.
         """
         return {
             **{k: v for k, v in configurable.items() if k not in BINDING_FIELD_IDS},
@@ -167,30 +176,28 @@ class ModelLane:
 
     @classmethod
     def from_configurable(cls, raw: object) -> "ModelLane | None":
-        """Rebuild a lane from a configurable, or ``None`` when there isn't one.
+        """Rebuild a lane from a configurable, or None when there isn't one.
 
-        ``None`` is a real answer, not an error: a bag written before lanes
-        existed (an in-flight queue item or a stored HIL ``resume_item``) has no
-        lane, and the caller resolves a fresh one rather than crashing on it.
+        A bag written before lanes existed has none, and the caller resolves a
+        fresh lane. A present lane is validated whole and raises ValidationError.
         """
         if not isinstance(raw, dict) or "provider" not in raw:
             return None
+        config: LaneConfig = _LANE_CONFIG.validate_python(raw)
         return cls(
-            provider=LLMProviderName(raw["provider"]),
-            model=raw.get("model"),
-            reasoning=raw.get("reasoning"),
-            provider_pin=raw.get("provider_pin"),
-            max_input_tokens=int(raw.get("max_input_tokens") or DEFAULT_MAX_TOKENS),
+            provider=config["provider"],
+            model=config["model"],
+            reasoning=config["reasoning"],
+            provider_pin=config["provider_pin"],
+            max_input_tokens=config["max_input_tokens"],
         )
 
     def fallback(self) -> "ModelLane | None":
-        """The same run on the next configured provider, or ``None`` when there
-        is no other one.
+        """Return the same run on the next configured provider, or None when there is no other one.
 
         The pin AND the reasoning config are dropped: both are OpenRouter-wire
-        concepts (``client._openrouter_wire_configurables`` declares them, while
-        the Gemini lane declares only the model), so carrying either onto a
-        different provider is how a fallback turns one failure into two.
+        concepts, so carrying either onto a different provider is how a
+        fallback turns one failure into two.
         """
         nxt = next_fallback_provider(self.provider)
         if nxt is None:
@@ -199,33 +206,29 @@ class ModelLane:
         return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
-def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:
-    """Today's effective effort per (role, tier).
+def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
+    """Return the effort a PAID lane gives each role. The free lane's is fixed in :func:_default_lane.
 
-    Characterization, not endorsement: a FREE comms turn resolves ``medium``
-    because it never set the key and inherited the client default, while a PAID
-    comms turn explicitly set ``low`` — so free currently out-thinks pro. That is
-    a deliberate open non-decision (see the plan's Task 2); it is written out
-    explicitly here so it is visible and cannot change by accident.
+    Comms gets its own knob so it can be raised past the executor's default.
+    It must never resolve BELOW the free lane's effort — it once sat at low
+    against free's medium, a paying user's agent thinking less than a free one's.
     """
-    if paid and role is AgentRole.COMMS:
-        return COMMS_REASONING
+    if role is AgentRole.COMMS:
+        return PAID_COMMS_REASONING
     return OPENROUTER_REASONING
 
 
 def _default_lane() -> ModelLane:
-    """The lane for a default (free / unresolved-plan) turn.
+    """Return the lane for a default (free or unresolved-plan) turn.
 
-    Hosted instances run OpenRouter's default model exactly as always. An
-    instance whose configured lanes don't include it (a bare self-host with
-    only a custom/Nous key, or Ollama-only) resolves its default to the
-    highest-priority AVAILABLE lane via the runtime snapshot — otherwise
-    LangChain would be asked for an alternative that doesn't exist.
+    Hosted instances run OpenRouter's default model exactly as always. A bare
+    self-host without it resolves the highest-priority AVAILABLE lane via the
+    runtime snapshot, so LangChain is never asked for a lane that has no config.
     """
     lookup = _RUNTIME_CONFIG_LOOKUP
     if lookup is not None:
         for name in _DEFAULT_LANE_PRIORITY:
-            cfg = lookup(name.value)
+            cfg: ProviderConfig | None = lookup(name.value)
             if not cfg:
                 continue
             if name is LLMProviderName.OPENROUTER:
@@ -252,63 +255,65 @@ def _default_lane() -> ModelLane:
     )
 
 
-def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
-    """A lane pinned from the DEV-ONLY model menu.
-
-    An entry may carry no model (the env-defined "custom" endpoint), in which
-    case the client binds ``PROVIDER_MODELS[provider]`` (``DEV_LLM_MODEL``) as
-    its own default. The lane resolves that same value rather than leaving the
-    model ``None``: it changes nothing about which model runs, and it keeps the
-    resolved name visible to accounting instead of metering the turn at
-    DEFAULT_PRICING as "unknown". ``None`` survives only when the env var itself
-    is unset, since then the model is genuinely unknown ahead of the call.
-
-    Non-reasoning models get no reasoning config at all rather than an inherited
-    one, so a prior OpenRouter pin cannot leak onto a Gemini-routed model.
-    """
-    provider = LLMProviderName(option["provider"])
+def _comms_lane() -> ModelLane | None:
+    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
+    if not openai_lane_available():
+        return None
     return ModelLane(
-        provider=provider,
-        model=option["model"] or PROVIDER_MODELS.get(provider) or None,
-        reasoning=_reasoning_for(role, paid=True) if option["reasoning"] else None,
-        provider_pin=option["model_kwargs"],
+        provider=LLMProviderName.OPENAI,
+        model=COMMS_MODEL_NAME,
+        # The effort is fixed on the client; a reasoning key would only be ignored.
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def inherits_lane(parent_lane: ModelLane, role: AgentRole) -> bool:
+    """Whether a child run in role takes its parent's lane; comms' OpenAI lane never passes down."""
+    return role is AgentRole.COMMS or parent_lane.provider is not LLMProviderName.OPENAI
+
+
+def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
+    """Build a lane pinned from the DEV-ONLY model menu.
+
+    An entry may carry no model (the env-defined "custom" endpoint); the lane
+    resolves PROVIDER_MODELS[provider] instead of leaving it None, so
+    accounting sees the real name instead of metering as "unknown". None
+    survives only when the env var itself is unset.
+    """
+    return ModelLane(
+        provider=option.provider,
+        model=option.model or PROVIDER_MODELS.get(option.provider) or None,
+        reasoning=_reasoning_for(role) if option.reasoning else None,
+        provider_pin=option.provider_pin,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
 
 def dev_model_id(model_id: str | None, use_defaults: bool) -> str | None:
-    """The dev-menu key a request selected, or ``None``.
+    """Return the dev-menu key a request selected, or None.
 
-    ``use_defaults`` means the request expressed no preference, so the
-    env-configured ``DEV_DEFAULT_MODEL`` applies — that is what routes bots,
-    scripts and plain requests onto the dev model too. An explicit choice wins
-    over it; an unknown id selects nothing.
+    use_defaults means the request expressed no preference, so the
+    env-configured DEV_DEFAULT_MODEL applies. An explicit choice wins over it;
+    an unknown id selects nothing.
     """
     if use_defaults:
-        dev_default = settings.DEV_DEFAULT_MODEL
-        if dev_default and dev_default not in DEV_MODEL_OPTIONS:
-            log.warning(
-                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
-                "keeping the plan-resolved lane",
-                dev_default=dev_default,
-            )
-            return None
-        model_id = dev_default
+        return dev_default_model_id()
     return model_id if model_id in DEV_MODEL_OPTIONS else None
 
 
 def dev_option(model_id: str | None) -> DevModelOption | None:
-    """The dev-menu entry for an ALREADY-resolved id.
+    """Return the dev-menu entry for an ALREADY-resolved id.
 
-    What the executor needs: comms resolved the request's preference once and
-    stashed the winning id, so re-running that resolution downstream would only
-    give ``DEV_DEFAULT_MODEL`` a second chance to override an explicit choice.
+    Re-running the resolution downstream would only give DEV_DEFAULT_MODEL a
+    second chance to override comms' already-stashed explicit choice.
     """
     return DEV_MODEL_OPTIONS.get(model_id) if model_id else None
 
 
 def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption | None:
-    """The dev-menu entry a request selected, or ``None``."""
+    """Return the dev-menu entry a request selected, or None."""
     return dev_option(dev_model_id(model_id, use_defaults))
 
 
@@ -317,29 +322,30 @@ async def resolve_lane(
     role: AgentRole,
     dev_option: DevModelOption | None = None,
 ) -> tuple[ModelLane, PlanType | None]:
-    """The single place a model is chosen. Returns the lane and the plan tier it
-    was resolved from (``None`` when there is no user to resolve one for).
+    """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
-    Free runs the default model; every paid tier gets the paid model, so a new
-    paid plan is covered without touching this. A paid user whose monthly spend
-    has crossed the economic guard is
-    degraded to the free lane rather than blocked — a paying user is never
-    hard-walled mid-month, and every other pro entitlement stays intact.
-
-    ``dev_option`` (development only) wins over all of it.
+    Comms runs its own lane on every plan, otherwise free runs the default model
+    and paid the paid model; a paid user past the monthly guard degrades to free.
+    In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
+    of it: every top-level run, not only chat, starts on it.
     """
+    dev_option = dev_option or dev_default_option()
     if dev_option is not None:
         return _dev_lane(dev_option, role), None
 
+    comms_lane = _comms_lane() if role is AgentRole.COMMS else None
     if not user_id:
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
 
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         # A transient lookup failure must not fail the turn — keep the default.
         log.warning(f"{LogTag.AGENT} plan lookup failed; keeping the default lane", error=str(e))
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
+
+    if comms_lane is not None:
+        return comms_lane, plan
 
     if plan == PlanType.FREE:
         return _default_lane(), plan
@@ -358,13 +364,10 @@ async def resolve_lane(
         ModelLane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
-            reasoning=_reasoning_for(role, paid=True),
-            # No routing pin, deliberately. The session_id key on every request
-            # forces OpenRouter's sticky routing, which keeps a conversation on
-            # the provider holding its warm prompt cache; an explicit `only`
-            # pin conflicted with that and measured WORSE (64% cache hits vs
-            # 83-91% per turn without it). See the DEFAULT_MODEL_NAME note in
-            # constants/llm.py for the measurements.
+            reasoning=_reasoning_for(role),
+            # No per-lane `only` pin: it conflicts with session_id sticky
+            # routing and measured WORSE (64% cache hits vs 83-91% without it).
+            # The soft `order` preference is set on the client instead.
             provider_pin=None,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         ),
@@ -373,13 +376,14 @@ async def resolve_lane(
 
 
 async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
-    """True when the month's spend has crossed the pro economic guard.
+    """Return whether the month's spend has crossed the pro economic guard.
 
-    Fails open (False) on infra errors — never punish a paying user for a Redis
-    hiccup.
+    Fails open (False) on infra errors — never punish a paying user for a
+    Redis hiccup.
     """
-    if not settings.billing_enabled:
-        # No billing ⇒ no economic guard; the configured model always serves.
+    if settings.is_selfhost:
+        # No paid lane on a self-hosted instance ⇒ no economic guard; the
+        # configured model always serves. Dev keeps the guard.
         return False
     try:
         spent = await get_cost(user_id, RateLimitPeriod.MONTH)

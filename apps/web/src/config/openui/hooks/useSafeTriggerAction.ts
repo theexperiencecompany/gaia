@@ -5,18 +5,17 @@ const NOOP = () => {
 };
 
 /**
- * `useTriggerAction` from @openuidev/react-lang throws when called outside a
- * `<Renderer />`. Components that need to support standalone rendering (e.g.
- * the OpenUI demo page) call this wrapper instead — it falls back to a no-op
- * when no Renderer context is mounted.
+ * `useTriggerAction` throws outside a `<Renderer />`; this wrapper falls
+ * back to a no-op when no Renderer context is mounted (e.g. the OpenUI
+ * demo page).
  *
- * Hook order is preserved: the underlying hook always invokes one `useContext`
- * call before deciding whether to throw, so the try/catch only swallows the
- * thrown error, not a missed hook.
+ * `@openuidev/react-lang` doesn't export `OpenUIContext`, so we can't check
+ * for a mounted Renderer ourselves — it calls exactly one `useContext`
+ * before deciding, so hook order stays stable; the try/catch only swallows the thrown error.
  */
 export function useSafeTriggerAction(): ReturnType<typeof useTriggerAction> {
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: useTriggerAction internally calls exactly one useContext before deciding whether to throw, so the try/catch keeps hook order stable across renders.
+    // biome-ignore lint/correctness/useHookAtTopLevel: @openuidev/react-lang throws outside <Renderer /> and does not export OpenUIContext; see doc comment above
     const trigger = useTriggerAction();
     return trigger;
   } catch (err) {

@@ -98,7 +98,7 @@ Inside it, use the `wideLog` facade: `wideLog.set({ ... })` / `wideLog.setNs("ns
 
 A field named like an envelope key (`platform`, `service`, `component`, `message`, `logger`, `level`, `time`, `env`, `commit`) is re-emitted as `ctx_<key>`. That is a bug marker, not a feature: `platform` is already on every line, so `logger.warn("x", { platform })` only produces a `ctx_platform` nobody queries. Drop the field.
 
-**The bots surface is gated at 100/100.** `node scripts/ci/evlog-map-bots.mjs` (the TypeScript counterpart of `tools/evlog_map`) discovers every entry point above, scores it on boundary/context/audit/error-handling, and CI runs it as `--min-score 100 --min-entries 23` — the score gate blocks under-instrumented handlers, the entry-count gate blocks a refactor that makes the scanner stop finding them (an empty map scores a perfect 100). Run it locally before pushing. If a check genuinely does not apply, waive it with `// evlog-map-disable-next-line <check-id> -- <reason>`; the `--` reason is mandatory, and waivers are counted in every report.
+**The bots surface is gated at 100/100.** `node scripts/ci/checks.mjs evlog-map-bots` (the TypeScript counterpart of `tools/evlog_map`) discovers every entry point above, scores it on boundary/context/audit/error-handling, and CI runs it as `--min-score 100 --min-entries 23` — the score gate blocks under-instrumented handlers, the entry-count gate blocks a refactor that makes the scanner stop finding them (an empty map scores a perfect 100). Run it locally before pushing. If a check genuinely does not apply, waive it with `// evlog-map-disable-next-line <check-id> -- <reason>`; the `--` reason is mandatory, and waivers are counted in every report.
 
 ## Analytics (PostHog)
 

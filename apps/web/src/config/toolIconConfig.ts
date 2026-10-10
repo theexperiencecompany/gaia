@@ -7,7 +7,6 @@
  * For the canonical config, see: libs/shared/ts/src/icons/tool-icon-config.ts
  */
 
-import type { ToolIconConfig } from "@shared/icons";
 import {
   getCategoryInitial,
   getToolIconConfig,
@@ -17,7 +16,6 @@ import {
   toolIconConfigs,
 } from "@shared/icons";
 
-export type { ToolIconConfig };
 export {
   getCategoryInitial,
   getToolIconConfig,

@@ -1,5 +1,5 @@
 import type { TurnAccumulator } from "@shared/chat";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
@@ -16,6 +16,18 @@ export interface TurnMessageMeta {
   botMessageId: string;
   createdAt: Date;
   options: TurnOptions;
+}
+
+/**
+ * The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack (server frame
+ * `emoji_ack`). The record becomes the bare emoji stamped `emoji_ack` +
+ * `reacts_to_message_id`, which `foldReactionAcks` turns into a reaction badge
+ * on the user's message instead of a bubble.
+ */
+export interface EmojiAckStamp {
+  kind: "emoji_ack";
+  emoji: string;
+  reactsToMessageId: string;
 }
 
 /** Shown when a stream ended without ever signalling completion. */
@@ -40,10 +52,11 @@ export const buildTurnMessageRecord = (
   acc: TurnAccumulator,
   status: IMessage["status"],
   error: string | null = null,
+  emojiAck: EmojiAckStamp | null = null,
 ): IMessage => ({
   id: meta.botMessageId,
   conversationId: meta.conversationId,
-  content: acc.responseText,
+  content: emojiAck ? emojiAck.emoji : acc.responseText,
   role: "assistant",
   status,
   createdAt: meta.createdAt,
@@ -56,7 +69,8 @@ export const buildTurnMessageRecord = (
   workflowId: meta.options.selectedWorkflow?.id ?? null,
   selectedWorkflow: meta.options.selectedWorkflow,
   selectedCalendarEvent: meta.options.selectedCalendarEvent,
-  tool_data: acc.toolData.length > 0 ? (acc.toolData as ToolDataEntry[]) : null,
+  tool_data:
+    acc.toolData.length > 0 ? (acc.toolData as TypedToolDataEntry[]) : null,
   follow_up_actions: acc.followUpActions,
   image_data: (acc.imageData as ImageData | null) ?? null,
   memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,
@@ -64,6 +78,8 @@ export const buildTurnMessageRecord = (
   pinned: false,
   isConvoSystemGenerated: false,
   error,
+  kind: emojiAck?.kind,
+  reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,
   replyToMessageData: meta.options.replyToMessage,
 });

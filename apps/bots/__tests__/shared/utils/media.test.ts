@@ -15,7 +15,7 @@ import {
   type IncomingMedia,
   processBotMedia,
   unsupportedMediaMessage,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 
 // A fake GaiaClient exposing only the two methods processBotMedia uses. We

@@ -1,13 +1,8 @@
-"""seed_free_plan_if_missing must provision exactly the catalogue's Free row.
+"""The free-plan seeder must provision exactly the catalogue Free row.
 
-Instances without a payment provider (selfhost/dev) can never run the Dodo
-setup script, so this seeder is what lets the startup gate pass. Idempotency
-is load-bearing: a reboot with plans already present must not re-insert or
-mutate the catalogue.
-
-Mutation check: flip the ``count() > 0`` guard and the empty-collection test
-fails (no seed happens); delete the guard and the existing-plans test fails
-(create is awaited).
+Instances without a payment provider can never run the Dodo setup script, so
+this seeder is what lets the startup gate pass. Idempotency is load-bearing:
+a reboot with plans present must not re-insert or mutate the catalogue.
 """
 
 from collections.abc import Iterator

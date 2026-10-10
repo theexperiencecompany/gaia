@@ -17,6 +17,12 @@ interface ChatState {
   setActiveChatId: (id: string | null) => void;
   setMessages: (conversationId: string, messages: Message[]) => void;
   clearMessages: (conversationId: string) => void;
+  /** Swap the in-flight turn's temp ids (its last two messages) for the server's. */
+  adoptTurnMessageIds: (
+    conversationId: string,
+    userMessageId: string,
+    botMessageId: string,
+  ) => void;
   updateLastMessage: (conversationId: string, text: string) => void;
   updateLastAssistantMessage: (
     conversationId: string,
@@ -53,6 +59,23 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((state) => {
       const { [conversationId]: _, ...rest } = state.messagesByConversation;
       return { messagesByConversation: rest };
+    }),
+
+  adoptTurnMessageIds: (conversationId, userMessageId, botMessageId) =>
+    set((state) => {
+      const messages = state.messagesByConversation[conversationId] || [];
+      const userIndex = messages.length - 2;
+      const botIndex = messages.length - 1;
+      return {
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: messages.map((message, index) => {
+            if (index === userIndex) return { ...message, id: userMessageId };
+            if (index === botIndex) return { ...message, id: botMessageId };
+            return message;
+          }),
+        },
+      };
     }),
 
   updateLastMessage: (conversationId, text) =>

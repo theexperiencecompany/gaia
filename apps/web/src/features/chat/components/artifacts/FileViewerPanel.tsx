@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
   conversationId: string;
@@ -211,14 +211,15 @@ function FileViewerBody({
     );
   }
   if (isPdf) {
-    // Render via the browser's native PDF viewer. Never fetch a PDF as text
-    // (the old fallback did, streaming the whole binary as a string — slow on a
-    // cold R2 read, and the bytes rendered as a garbage code block).
+    // Native PDF viewer — never fetch as text (old fallback streamed the
+    // binary as a string, slow on cold R2 reads, rendered as garbage). Fully
+    // sandboxed like the HTML preview; downloads stay via the panel's own button.
     return (
       <iframe
         title={filename}
         src={sessionFilesApi.artifactUrl(conversationId, path)}
         className="h-full w-full bg-white"
+        sandbox=""
       />
     );
   }
@@ -265,7 +266,7 @@ export default function FileViewerPanel({
     error,
   } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
   const [copied, setCopied] = useState(false);
-  const closeSidebar = useRightSidebar((state) => state.close);
+  const closeSidebar = useCloseRightSidebar();
 
   const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 
@@ -291,20 +292,22 @@ export default function FileViewerPanel({
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");
+    let objectUrl: string | null = null;
     if (isImage || content === null) {
       // For binary artifacts (images etc.) anchor to the auth-gated URL —
       // we never fetched the body and don't want to.
       link.href = sessionFilesApi.artifactUrl(conversationId, path);
     } else {
       const blob = new Blob([content], { type: contentType });
-      link.href = URL.createObjectURL(blob);
+      objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
     }
     link.download = filename;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    if (!isImage && content !== null) URL.revokeObjectURL(link.href);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }, [content, contentType, conversationId, filename, isImage, path]);
 
   const ext = getExtension(filename).toUpperCase();

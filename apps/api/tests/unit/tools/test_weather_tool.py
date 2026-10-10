@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.integrations.weather import WeatherLocation, WeatherReport
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -155,6 +157,32 @@ class TestGetWeather:
         data_call = writer.call_args_list[1][0][0]
         assert data_call["weather_data"] == weather_data
         assert data_call["location"] == "Paris,FR"
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
+    async def test_a_weather_report_streams_only_the_fields_it_carries(
+        self,
+        mock_user_weather: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """Unset optional fields (name, sys) are omitted from the card, not sent as nulls."""
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_user_weather.return_value = WeatherReport(
+            forecast=[],
+            location=WeatherLocation(city="Pune", country="IN", region=None),
+            main={"temp": 21.5},
+        )
+
+        from app.agents.tools.weather_tool import get_weather
+
+        await get_weather.coroutine(config=_make_config(), location="Pune,IN")
+
+        assert writer.call_args_list[1][0][0]["weather_data"] == {
+            "main": {"temp": 21.5},
+            "forecast": [],
+            "location": {"city": "Pune", "country": "IN", "region": None},
+        }
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)

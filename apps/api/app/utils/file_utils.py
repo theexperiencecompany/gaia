@@ -1,21 +1,15 @@
-"""
-Document processing and summarization. PDF/DOCX/XLSX/PPTX/CSV are extracted
-locally (no network call) via ``local_document_parser``; scanned/image-based
-PDFs fall back to LlamaParse, which is the only path here that can OCR them.
-The default LLM summarizes images, text, and every extracted chunk. Summaries
-are embedded into ChromaDB for retrieval.
+"""Document processing and summarization.
+
+PDF/DOCX/XLSX/PPTX/CSV are extracted locally (no network call) via local_document_parser; scanned/image-based PDFs fall back to LlamaParse, which is the only path here that can OCR them. The default LLM summarizes images, text, and every extracted chunk, and summaries are embedded into ChromaDB for retrieval.
 """
 
 import asyncio
 from pathlib import Path
-from typing import Union, cast
+from typing import TYPE_CHECKING, Union, cast
 
 from langchain_core.messages import BaseMessage
-from langchain_text_splitters import MarkdownTextSplitter
-from llama_cloud_services import LlamaParse
-from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
+from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model, with_llm_retry
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -43,6 +37,9 @@ from app.utils import local_document_parser
 from app.utils.image_codec import ImageCodec, InvalidImageError
 from shared.py.wide_events import log
 
+if TYPE_CHECKING:
+    from llama_cloud_services import LlamaParse
+
 _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
 
 
@@ -52,30 +49,52 @@ def _chunk_markdown(markdown: str, max_chunk_chars: int = MAX_CHUNK_CHARS) -> li
     MarkdownTextSplitter guarantees the size bound and prefers natural cut
     points (heading > paragraph > line > character) over arbitrary offsets.
     """
+    from langchain_text_splitters import (  # noqa: PLC0415 -- the package __init__ pulls in nltk (~1s); only document uploads need it
+        MarkdownTextSplitter,
+    )
+
     splitter = MarkdownTextSplitter(chunk_size=max_chunk_chars, chunk_overlap=0)
     return splitter.split_text(markdown)
+
+
+# Office-style formats all go through LlamaParse; the suffix tells it the codec.
+_OFFICE_SUFFIX_BY_MIME: dict[str, str] = {
+    DOCX_MIME: ".docx",
+    DOC_MIME: ".doc",
+    XLSX_MIME: ".xlsx",
+    PPTX_MIME: ".pptx",
+    CSV_MIME: ".csv",
+    RTF_MIME: ".rtf",
+    EPUB_MIME: ".epub",
+    ODT_MIME: ".odt",
+    ODS_MIME: ".ods",
+    ODP_MIME: ".odp",
+}
 
 
 class DocumentProcessor:
     """Document processing and summarization: local extraction first, LlamaParse for OCR."""
 
     def __init__(self, user_id: str) -> None:
-        """Initialize the document processor. The LlamaParse client is built
-        lazily -- only scanned/image-based PDFs need it as an OCR fallback.
+        """Initialize the document processor; the LlamaParse client is built lazily since only scanned/image-based PDFs need it as an OCR fallback.
 
-        ``user_id`` is whose COGS this processor's LLM spend is attributed to.
-        Held here rather than passed through every branch: one upload fans out
-        to an image description or a summary per PDF page, and each of those is
-        a billable call that must name the same user.
+        user_id is whose COGS this processor's LLM spend is attributed to, held here rather than passed through every branch since one upload fans out to a billable call per image/PDF page that must all name the same user.
         """
         self._parser: LlamaParse | None = None
         self.user_id = user_id
-        self.llm = get_helper_llm()
+        self.llm = resolve_model()
 
     @property
-    def parser(self) -> LlamaParse:
+    def parser(self) -> "LlamaParse":
         """LlamaCloud client, constructed on first use."""
         if self._parser is None:
+            from llama_cloud_services import (  # noqa: PLC0415 -- ~0.7s SDK import; only the scanned-PDF OCR fallback needs it
+                LlamaParse,
+            )
+            from llama_cloud_services.parse.utils import (  # noqa: PLC0415 -- same: deferred with LlamaParse
+                ResultType,
+            )
+
             self._parser = LlamaParse(
                 result_type=ResultType.MD,
                 api_key=settings.LLAMA_INDEX_KEY or "",
@@ -83,51 +102,23 @@ class DocumentProcessor:
         return self._parser
 
     @parser.setter
-    def parser(self, value: LlamaParse) -> None:
+    def parser(self, value: "LlamaParse") -> None:
         self._parser = value
 
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
     ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-        """Process and summarize a file based on its content type.
-
-        Args:
-            file_content: Raw file bytes
-            content_type: MIME type of the file
-            filename: Name of the file
-
-        Returns:
-            Appropriate summary based on file type
-        """
+        """Process and summarize a file based on its content type."""
         log.set(filename=filename, content_type=content_type)
         try:
             if content_type.startswith("image/"):
                 return await self.process_image(file_content)
             if content_type == PDF_MIME:
                 return await self.process_doc(file_content)
-            if content_type == DOCX_MIME:
-                return await self.process_office_document(file_content, suffix=".docx")
-            if content_type == DOC_MIME:
-                return await self.process_office_document(file_content, suffix=".doc")
-            if content_type == XLSX_MIME:
-                return await self.process_office_document(file_content, suffix=".xlsx")
-            if content_type == PPTX_MIME:
-                return await self.process_office_document(file_content, suffix=".pptx")
-            if content_type == CSV_MIME:
-                return await self.process_office_document(file_content, suffix=".csv")
-            if content_type == RTF_MIME:
-                return await self.process_office_document(file_content, suffix=".rtf")
-            if content_type == EPUB_MIME:
-                return await self.process_office_document(file_content, suffix=".epub")
-            if content_type == ODT_MIME:
-                return await self.process_office_document(file_content, suffix=".odt")
-            if content_type == ODS_MIME:
-                return await self.process_office_document(file_content, suffix=".ods")
-            if content_type == ODP_MIME:
-                return await self.process_office_document(file_content, suffix=".odp")
-            if content_type.startswith("text/"):
-                return await self.process_text(file_content)
-            if content_type == "application/json":
+            suffix = _OFFICE_SUFFIX_BY_MIME.get(content_type)
+            if suffix is not None:
+                return await self.process_office_document(file_content, suffix=suffix)
+            if content_type.startswith("text/") or content_type == "application/json":
                 return await self.process_text(file_content)
             ext = Path(filename).suffix.lower()
             return f"File of type {ext} (no content extraction available)"
@@ -146,7 +137,7 @@ class DocumentProcessor:
 
         Runs on the same codec and vision call as every other image path, so the
         MIME the provider is told about is sniffed from the bytes rather than
-        assumed: a PNG or WEBP upload used to be labelled ``image/jpeg``, which
+        assumed: a PNG or WEBP upload used to be labelled image/jpeg, which
         the provider rejects outright.
         """
         try:
@@ -169,11 +160,7 @@ class DocumentProcessor:
     async def process_doc(self, data: bytes) -> list[DocumentSummaryModel]:
         """Parse a PDF into per-page chunks and summarize each with the default model.
 
-        Classified first (pdf_inspector): text-based PDFs are extracted
-        locally, one native call for the whole document; scanned/image-based
-        PDFs fall back to LlamaParse for OCR. Extraction errors propagate to
-        the caller (``process_file``) instead of being swallowed here,
-        matching ``process_text``.
+        Classified first (pdf_inspector): text-based PDFs are extracted locally in one native call; scanned/image-based PDFs fall back to LlamaParse for OCR. Extraction errors propagate to the caller (process_file) instead of being swallowed here, matching process_text.
         """
         chunks = await self._extract_pdf_chunks(data)
         return await self._summarize_chunks(chunks)
@@ -190,11 +177,7 @@ class DocumentProcessor:
     async def _extract_pdf_chunks(self, data: bytes) -> list[str]:
         """Extract PDF text locally when possible; fall back to LlamaParse for OCR.
 
-        The local calls are synchronous, CPU-bound native code, so they run
-        on a thread to avoid blocking the event loop; a timeout bounds
-        worst-case time (e.g. a decompression-bomb PDF) but note that the
-        underlying native call itself has no cooperative cancellation and
-        keeps running in its thread until it finishes, even past a timeout.
+        Local calls are synchronous CPU-bound native code, run on a thread to avoid blocking the event loop; a timeout bounds worst-case time (e.g. a decompression-bomb PDF), but the native call itself has no cooperative cancellation and keeps running in its thread past the timeout.
         """
         classification = await asyncio.wait_for(
             asyncio.to_thread(local_document_parser.classify_pdf, data),
@@ -225,11 +208,7 @@ class DocumentProcessor:
     async def _summarize_chunks(self, chunks: list[str]) -> list[DocumentSummaryModel]:
         """Summarize extracted chunks with the default model for retrieval.
 
-        Blank chunks (e.g. empty PDF pages) are skipped, not summarized — a
-        summary of nothing is hallucinated content in the search index. At
-        most MAX_INDEXED_CHUNKS are indexed; a trailing note entry records
-        any truncation so retrieval knows the index is partial. Original
-        chunk positions are preserved as page numbers.
+        Blank chunks are skipped, not summarized — a summary of nothing is hallucinated content in the index. At most MAX_INDEXED_CHUNKS are indexed; a trailing note entry records any truncation, and original chunk positions are preserved as page numbers.
         """
         numbered = [(i, chunk) for i, chunk in enumerate(chunks) if chunk.strip()]
         if not numbered:
@@ -356,15 +335,7 @@ async def generate_file_summary(
     """Generate a description for a file based on its content type.
 
     Args:
-        file_content: Raw file bytes
-        content_type: MIME type of the file
-        filename: Name of the file
-        user_id: Whose COGS the summarization spend is attributed to. Required,
-            not optional: this path runs one LLM call per image and per PDF page,
-            and an omitted id records that spend against nobody.
-
-    Returns:
-        Description of the file content or DocumentSummaryModel instances
+        user_id: whose COGS the summarization spend is attributed to; required because this path runs one LLM call per image/PDF page, and an omitted id records that spend against nobody.
     """
     processor = DocumentProcessor(user_id=user_id)
     return await processor.process_file(

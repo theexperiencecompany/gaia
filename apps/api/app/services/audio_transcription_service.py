@@ -1,10 +1,7 @@
-"""
-Audio transcription service.
+"""Convert short-form voice notes to text via OpenAI Whisper for bot adapters.
 
-Wraps OpenAI Whisper for short-form audio → text conversion used by bot
-adapters that receive voice notes (WhatsApp, Telegram, etc.). Provider-
-agnostic on the surface so the underlying model can swap without changing
-callers.
+Provider-agnostic on the surface so the underlying model can swap without
+changing callers.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ from typing import Final
 from openai import AsyncOpenAI
 
 from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
     resolve as resolve_openai_config,
 )
 from shared.py.wide_events import log
@@ -75,12 +73,7 @@ async def transcribe_audio(
 ) -> str:
     """Transcribe a single audio clip via OpenAI Whisper.
 
-    The OpenAI SDK expects a tuple of ``(filename, file_obj, content_type)``
-    for streamed multipart upload. Returns the trimmed transcript string.
-
-    The key resolves through the credential store first (Settings → OpenAI),
-    falling back to the environment — the same store → env policy every
-    runtime consumer follows.
+    The API key resolves store-first with env fallback; raises when unconfigured.
     """
     log.set(
         component="audio_transcription_service",
@@ -90,7 +83,7 @@ async def transcribe_audio(
         size=len(audio_bytes),
     )
 
-    config = await resolve_openai_config("openai")
+    config: ProviderConfig | None = await resolve_openai_config("openai")
     api_key = config["api_key"] if config else None
     if not api_key:
         raise RuntimeError(

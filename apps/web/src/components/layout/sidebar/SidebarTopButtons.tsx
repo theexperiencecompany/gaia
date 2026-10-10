@@ -12,27 +12,53 @@ import {
 } from "@icons";
 import Link from "next/link";
 import React from "react";
-import {
-  getNavigationShortcut,
-  ShortcutKeysDisplay,
-} from "@/config/keyboardShortcuts";
+import { ChevronLeft } from "@/components/shared/icons";
+import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
+import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import {
-  usePricing,
-  useUserSubscriptionStatus,
-} from "@/features/pricing/hooks/usePricing";
+import { paywallCopyFor } from "@/features/pricing/constants";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
 
+const buttonData = [
+  {
+    route: "/dashboard",
+    icon: <Home11Icon />,
+    label: "Home",
+  },
+  {
+    route: "/todos",
+    icon: <CheckListIcon />,
+    label: "Tasks",
+  },
+  {
+    route: "/integrations",
+    icon: <ConnectIcon />,
+    label: "Integrations",
+  },
+  {
+    route: "/workflows",
+    icon: <ZapIcon />,
+    label: "Workflows",
+  },
+  {
+    route: "/c",
+    icon: <MessageMultiple02Icon />,
+    label: "Chats",
+  },
+];
+
 export default function SidebarTopButtons() {
   const pathname = usePathname();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const { plans } = usePricing();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const { data: setupStatus } = useSetupStatus();
   // Self-host instances have no billing — the promo makes no sense there.
   const billingHidden = setupStatus?.billing_enabled === false;
@@ -50,6 +76,22 @@ export default function SidebarTopButtons() {
     (n) => n.status !== NotificationStatus.READ,
   ).length;
 
+  // In settings, the app nav is noise — a single "Back to chats" is all you need.
+  if (pathname.startsWith("/settings")) {
+    return (
+      <Button
+        as={Link}
+        href="/c"
+        size="sm"
+        variant="light"
+        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        startContent={<ChevronLeft className="size-4" />}
+      >
+        Back to chats
+      </Button>
+    );
+  }
+
   const isRouteActive = (route: string) => {
     if (route === "/c") {
       return pathname === "/c" || pathname.startsWith("/c/");
@@ -57,57 +99,23 @@ export default function SidebarTopButtons() {
     return pathname === route;
   };
 
-  const buttonData = [
-    {
-      route: "/dashboard",
-      icon: <Home11Icon />,
-      label: "Home",
-    },
-    // Temporarily disabled — Calendar feature is not yet ready.
-    // {
-    //   route: "/calendar",
-    //   icon: <Calendar03Icon />,
-    //   label: "Calendar",
-    // },
-    {
-      route: "/todos",
-      icon: <CheckListIcon />,
-      label: "Tasks",
-    },
-    {
-      route: "/integrations",
-      icon: <ConnectIcon />,
-      label: "Integrations",
-    },
-    // {
-    //   route: "/mail",
-    //   icon: <Mail01Icon />,
-    //   label: "Mail",
-    // },
-    {
-      route: "/workflows",
-      icon: <ZapIcon />,
-      label: "Workflows",
-    },
-    {
-      route: "/c",
-      icon: <MessageMultiple02Icon />,
-      label: "Chats",
-    },
-
-    // {
-    //   route: "/browser",
-    //   icon: <AiBrowserIcon height={23} width={23} />,
-    //   label: "Use Browser",
-    // },
-  ];
-
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when billing exists and the user
-          doesn't have an active subscription */}
-      {!billingHidden && !subscriptionStatus?.is_subscribed && (
-        <SidebarPromo price={price} onUpgrade={openPricingModal} />
+      {/* Only show Upgrade to Pro button when billing is enabled, the plan is
+          known and the user doesn't have an active subscription — never while
+          unknown, or a paying user on a cold cache briefly sees the free-tier
+          promo. Self-host instances have no billing at all. */}
+      {!billingHidden && !isUnknown && !isPaid && (
+        <SidebarPromo
+          price={price}
+          copy={paywallCopyFor(hasEverSubscribed)}
+          onUpgrade={() =>
+            openUpgradeModal(undefined, {
+              dismissible: true,
+              source: "sidebar",
+            })
+          }
+        />
       )}
 
       <div className="flex w-full flex-col gap-0.5">

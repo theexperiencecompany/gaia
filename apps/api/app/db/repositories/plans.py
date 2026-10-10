@@ -1,8 +1,8 @@
-"""Repository for the ``subscription_plans`` collection — the global plan catalog.
+"""Repository for the subscription_plans collection — the global plan catalog.
 
-Global (not user-scoped), keyed by Mongo ``_id``. Seeded by scripts and read-only
+Global (not user-scoped), keyed by Mongo _id. Seeded by scripts and read-only
 in the app. The plan-list cache in the payment service (a non-entity Redis cache
-of ``PlanResponse`` shapes) stays where it is, so this repository holds no policy.
+of PlanResponse shapes) stays where it is, so this repository holds no policy.
 """
 
 from app.db.repositories.base import MongoRepository

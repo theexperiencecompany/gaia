@@ -11,6 +11,7 @@ import {
   fetchOrigin,
   getUpdateStatus,
   pullAndRestart,
+  type UpdateStatus,
   WATCH_PATHS,
 } from "./flow.js";
 
@@ -85,7 +86,7 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
     return;
   }
 
-  let status;
+  let status: UpdateStatus;
   try {
     status = await getUpdateStatus(repoPath);
   } catch (e) {

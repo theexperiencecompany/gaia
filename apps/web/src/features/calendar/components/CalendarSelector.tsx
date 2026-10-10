@@ -12,8 +12,10 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
   // const contrastingTextColor = getContrastingColor(computedColor);
 
   return (
-    <div
-      className={`relative min-w-full cursor-pointer rounded-lg px-2 text-left transition hover:bg-zinc-800`}
+    <button
+      type="button"
+      className="relative min-w-full cursor-pointer rounded-lg px-2 text-left transition hover:bg-zinc-800"
+      aria-label={`Toggle calendar ${calendar.summary}`}
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
@@ -46,7 +48,7 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
           {calendar.summary}
         </div>
       </Chip>
-    </div>
+    </button>
   );
 }
 
@@ -58,9 +60,7 @@ export default function CalendarSelector({
   const selectedCalendarSet = new Set(selectedCalendars);
 
   return (
-    <div
-      className={`relative flex flex-col justify-center gap-1 transition-all`}
-    >
+    <div className={`relative flex flex-col justify-center gap-1`}>
       {calendars && calendars.length > 0 ? (
         calendars
           .toSorted((a, b) => a.summary.localeCompare(b.summary))

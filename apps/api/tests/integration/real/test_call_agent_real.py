@@ -15,6 +15,7 @@ import pytest
 from app.agents.core.agent import call_agent
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.models.message_models import MessageRequestWithHistory
+from tests.factories import make_authenticated_user
 from tests.helpers import create_fake_llm
 from tests.integration.agents.test_comms_agent_flow import (
     _common_patches,
@@ -49,12 +50,9 @@ class TestCallAgentReal:
                 )
 
                 with (
-                    # Model selection now happens inside build_agent_config, which
-                    # resolves the lane; there is no separate plan-routing mutation
-                    # left to stub out.
-                    # GraphManager.get_graph uses providers.aget which is patched
-                    # globally by _common_patches[0] to return store_mock. Override
-                    # specifically for call_agent so it gets the real graph.
+                    # build_agent_config now resolves the model lane, so there's no
+                    # plan-routing mutation to stub. GraphManager.get_graph uses
+                    # providers.aget (patched globally to store_mock); override here.
                     patch(
                         "app.agents.core.agent.GraphManager.get_graph",
                         new=AsyncMock(return_value=graph),
@@ -63,7 +61,7 @@ class TestCallAgentReal:
                     gen = await call_agent(
                         request=body,
                         conversation_id="call-agent-conv-1",
-                        user={"user_id": "agent-user-1", "name": "Test"},
+                        user=make_authenticated_user(user_id="agent-user-1", name="Test"),
                     )
 
                     chunks = []
@@ -95,7 +93,7 @@ class TestCallAgentReal:
             gen = await call_agent(
                 request=body,
                 conversation_id="call-agent-conv-2",
-                user={"user_id": "agent-user-2"},
+                user=make_authenticated_user(user_id="agent-user-2"),
             )
 
             chunks = []

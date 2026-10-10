@@ -1,9 +1,7 @@
-"""Unit tests for app/services/llm_metering.py — the one pricing + recording
-seam both metering routes share.
+"""Unit tests for app/services/llm_metering.py, the pricing + recording seam both metering routes share.
 
-Covers ``extract_message_usage`` (the AIMessage -> token counts read, including
-every provider-shape fallback), ``extract_message_model`` (the model the
-provider says served the call), and ``record_llm_call`` itself (the funnel every
+Covers extract_message_usage (the AIMessage -> token counts read, including
+every provider-shape fallback) and record_llm_call itself (the funnel every
 metering route prices through).
 """
 
@@ -11,10 +9,15 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+import pytest
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.llm_metering import (
+    LLMCallContext,
+    TokenUsage,
     extract_generation_id,
+    extract_message_cost,
     extract_message_model,
     extract_message_usage,
     record_llm_call,
@@ -158,18 +161,14 @@ def test_missing_input_token_details_does_not_raise() -> None:
 
 
 def test_the_model_is_read_from_what_the_provider_reported() -> None:
-    """The response is the only account of what actually RAN. A provider that
-    fell back serves a different model than the lane asked for, and the spend
-    belongs to the one that answered."""
+    """The spend belongs to the model that actually answered, not the one the lane asked for."""
     message = AIMessage(content="hi", response_metadata={"model_name": "served/model"})
 
     assert extract_message_model(message) == "served/model"
 
 
 def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
-    """``unknown`` prices at DEFAULT_PRICING instead of a real rate, so the
-    metering seams log it loudly; silently substituting a plausible default
-    would hide the miss."""
+    """Unknown prices at DEFAULT_PRICING instead of a real rate, so the miss is loud, not hidden."""
     assert extract_message_model(AIMessage(content="hi")) == UNKNOWN_MODEL_NAME
     assert extract_message_model(AIMessage(content="hi", response_metadata={})) == (
         UNKNOWN_MODEL_NAME
@@ -180,11 +179,16 @@ def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
     )
 
 
+# The call's identity, which every route now has to state. These tests are about
+# pricing and the rollup, so they pass the same minimal one throughout — the
+# ledger row it produces is covered in test_llm_metering_ledger.py.
+_CONTEXT = LLMCallContext(agent_name="test_agent", background=False, charge_to_budget=True)
+_UNCHARGED = LLMCallContext(agent_name="test_agent", background=True, charge_to_budget=False)
+
+
 # --- record_llm_call ---------------------------------------------------------- #
-#
-# Reached only through the callers above and LLMAccountingMiddleware, all of
-# which fill in every counter — so the funnel's own signature has never been
-# exercised, and a wrong default silently mis-books real money.
+# Only exercised through callers that fill in every counter; a wrong default here
+# would silently mis-book real money.
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
@@ -197,24 +201,19 @@ async def test_the_priced_call_reaches_the_rollup_whole(
 ) -> None:
     cost = await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=40, reasoning_tokens=7),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=100,
-        output_tokens=20,
-        cached_tokens=40,
-        reasoning_tokens=7,
         root_request_id="req-1",
-        charge_to_budget=True,
+        context=_CONTEXT,
     )
 
     assert cost == 0.25
     usage.assert_awaited_once_with(
         "u1",
-        0.25,
+        UsageDailyIncrement(
+            cost=0.25, input_tokens=100, output_tokens=20, cached_tokens=40, reasoning_tokens=7
+        ),
         "req-1",
-        input_tokens=100,
-        output_tokens=20,
-        cached_tokens=40,
-        reasoning_tokens=7,
         charge_to_budget=True,
     )
 
@@ -232,32 +231,196 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
     # usage for every one of them.
     await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=100,
-        output_tokens=20,
-        charge_to_budget=False,
+        context=_UNCHARGED,
     )
 
-    assert usage.await_args.kwargs["reasoning_tokens"] == 0
-    assert usage.await_args.kwargs["cached_tokens"] == 0
+    assert usage.await_args.args[1].reasoning_tokens == 0
+    assert usage.await_args.args[1].cached_tokens == 0
 
 
 # --- extract_generation_id ------------------------------------------------------ #
 
 
 def test_the_generation_id_is_read_from_the_response() -> None:
-    """The id is the only handle on WHICH UPSTREAM served the call: ChatOpenRouter
-    keeps the aggregator's own name (``model_provider="openrouter"``) and drops the
-    upstream's ``provider`` field, and this id resolves to the serving upstream
-    through the generation-metadata endpoint without spending a model call."""
+    """The id resolves the serving upstream via the generation-metadata endpoint, no model call spent."""
     message = AIMessage(content="hi", response_metadata={"id": "gen-abc123"})
 
     assert extract_generation_id(message) == "gen-abc123"
 
 
 def test_a_response_with_no_generation_id_is_none_rather_than_empty() -> None:
-    """``None`` drops the key from the wide event; an empty string would land in
-    the logs as a real-looking id that resolves to nothing."""
+    """None drops the key from the wide event; an empty string would look like a real id."""
     assert extract_generation_id(AIMessage(content="hi")) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={})) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={"id": ""})) is None
+
+
+# --- the price the provider reported ------------------------------------------ #
+# OpenRouter's per-model pool spans $0.030-$0.440/M input tokens; table pricing
+# under-stated real spend by 44% across 1,486 calls, so the provider's own figure wins.
+
+
+def test_the_reported_price_is_read_from_the_response() -> None:
+    assert (
+        extract_message_cost(AIMessage(content="hi", response_metadata={"cost": 0.0037})) == 0.0037
+    )
+
+
+def test_a_reported_price_of_zero_is_a_real_answer_not_a_missing_one() -> None:
+    # Free and promotional routes exist. Returning None here would send the
+    # caller back to the pricing table and invent a charge that never happened.
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": 0})) == 0.0
+
+
+def test_a_response_with_no_price_reports_none_so_the_table_is_used() -> None:
+    assert extract_message_cost(AIMessage(content="hi")) is None
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={})) is None
+
+
+def test_an_unparseable_price_falls_back_rather_than_raising() -> None:
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": "n/a"})) is None
+
+
+@pytest.mark.parametrize("raw", ["inf", "-inf", "nan", float("inf"), float("nan")])
+def test_a_non_finite_price_falls_back_to_the_table(raw: str | float) -> None:
+    # `inf >= 0.0` is true, so the ordinary sign check waves these through; a
+    # non-finite dollar figure poisons every sum it reaches, so it falls back to the table.
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": raw})) is None
+
+
+def test_a_negative_price_falls_back_to_the_table() -> None:
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": -1.0})) is None
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: AsyncMock) -> None:
+    cost = await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(
+            input_tokens=73_093, output_tokens=390, cached_tokens=0, reasoning_tokens=0
+        ),
+        model_name="deepseek/deepseek-v4-flash",
+        provider_cost=0.0037,
+        context=_CONTEXT,
+    )
+
+    assert cost == 0.0037
+    price.assert_not_called()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1].cost == 0.0037
+
+
+@pytest.mark.parametrize("bad_cost", [float("inf"), float("-inf"), float("nan")])
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_non_finite_provider_price_is_repriced_from_the_table(
+    price: MagicMock, usage: AsyncMock, bad_cost: float
+) -> None:
+    # `inf >= 0.0` is true, so a malformed provider cost would otherwise write a
+    # non-finite figure into budget windows and usage_daily, contaminating every total.
+    cost = await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="deepseek/deepseek-v4-flash",
+        provider_cost=bad_cost,
+        context=_CONTEXT,
+    )
+
+    assert cost == 0.25
+    price.assert_called_once()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1].cost == 0.25
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_free_call_is_booked_as_free_not_repriced(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    cost = await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="deepseek/deepseek-v4-flash",
+        provider_cost=0.0,
+        context=_UNCHARGED,
+    )
+
+    assert cost == 0.0
+    price.assert_not_called()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1].cost == 0.0
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_lane_that_reports_no_price_still_uses_the_table(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    # Direct Gemini and the sim lane never report a price; they must keep
+    # working exactly as before.
+    cost = await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="gemini-3.1-flash-lite",
+        provider_cost=None,
+        context=_CONTEXT,
+    )
+
+    assert cost == 0.25
+    price.assert_called_once()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1].cost == 0.25
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch("app.services.llm_metering.calculate_token_cost", return_value={"total_cost": 0.25})
+async def test_the_provider_priced_path_records_against_the_same_call_as_the_table_one(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    """Only the dollar figure differs between the provider-priced and table-priced paths."""
+    await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="deepseek/deepseek-v4-flash",
+        root_request_id="req-42",
+        provider_cost=0.0037,
+        context=_UNCHARGED,
+    )
+
+    price.assert_not_called()
+    assert usage.await_args is not None
+    assert usage.await_args.args[0] == "u1"
+    assert usage.await_args.args[2] == "req-42"
+    assert usage.await_args.kwargs["charge_to_budget"] is False
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch("app.services.llm_metering.calculate_token_cost", return_value={"total_cost": 0.25})
+async def test_the_provider_priced_path_charges_the_budget_when_the_caller_says_so(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="deepseek/deepseek-v4-flash",
+        provider_cost=0.0037,
+        context=_CONTEXT,
+    )
+
+    assert usage.await_args is not None
+    assert usage.await_args.kwargs["charge_to_budget"] is True

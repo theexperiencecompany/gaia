@@ -11,7 +11,6 @@ import { marked } from "marked";
 import { useCallback, useState } from "react";
 import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type {
   EmailCompositionFormState,
@@ -36,6 +35,27 @@ const defaultUIState: EmailCompositionUIState = {
   error: null,
   isAiModalOpen: false,
   activeTagIndex: null,
+};
+
+const compositionOptions = {
+  writingStyles: [
+    { id: "formal", label: "Formal" },
+    { id: "friendly", label: "Friendly" },
+    { id: "casual", label: "Casual" },
+    { id: "persuasive", label: "Persuasive" },
+    { id: "humorous", label: "Humorous" },
+  ],
+  contentLengthOptions: [
+    { id: "none", label: "None" },
+    { id: "shorten", label: "Shorten" },
+    { id: "lengthen", label: "Lengthen" },
+    { id: "summarize", label: "Summarize" },
+  ],
+  clarityOptions: [
+    { id: "none", label: "None" },
+    { id: "simplify", label: "Simplify" },
+    { id: "rephrase", label: "Rephrase" },
+  ],
 };
 
 export function useEmailComposition(): UseEmailCompositionReturn {
@@ -94,28 +114,6 @@ export function useEmailComposition(): UseEmailCompositionReturn {
 
   const editor = useEditor(editorConfig);
 
-  // Options
-  const options = {
-    writingStyles: [
-      { id: "formal", label: "Formal" },
-      { id: "friendly", label: "Friendly" },
-      { id: "casual", label: "Casual" },
-      { id: "persuasive", label: "Persuasive" },
-      { id: "humorous", label: "Humorous" },
-    ],
-    contentLengthOptions: [
-      { id: "none", label: "None" },
-      { id: "shorten", label: "Shorten" },
-      { id: "lengthen", label: "Lengthen" },
-      { id: "summarize", label: "Summarize" },
-    ],
-    clarityOptions: [
-      { id: "none", label: "None" },
-      { id: "simplify", label: "Simplify" },
-      { id: "rephrase", label: "Rephrase" },
-    ],
-  };
-
   // Actions
   const handleAiSelect = useCallback(
     (selectedSuggestions: EmailSuggestion[]) => {
@@ -143,24 +141,10 @@ export function useEmailComposition(): UseEmailCompositionReturn {
           clarityOption,
         });
 
-        if (response.content) {
-          const parsedContent = JSON.parse(response.content);
-          if (parsedContent.subject && parsedContent.body) {
-            const formattedBody = marked(
-              parsedContent.body.replace(/\n/g, "<br />"),
-            );
-            if (editor) editor.commands.setContent(formattedBody);
-            setSubject(parsedContent.subject);
-            trackEvent(ANALYTICS_EVENTS.EMAIL_AI_DRAFT_GENERATED, {
-              writing_style: overrideStyle || writingStyle,
-              content_length: contentLength,
-              has_subject: !!subject,
-              has_prompt: !!prompt,
-            });
-          } else {
-            setError("Invalid response format from server");
-            toast.error("Invalid response format from server");
-          }
+        if (response.subject && response.body) {
+          const formattedBody = marked(response.body.replace(/\n/g, "<br />"));
+          if (editor) editor.commands.setContent(formattedBody);
+          setSubject(response.subject);
         } else {
           setError("Invalid response format from server");
           toast.error("Invalid response format from server");
@@ -237,6 +221,6 @@ export function useEmailComposition(): UseEmailCompositionReturn {
     },
     editor,
     editorConfig,
-    options,
+    options: compositionOptions,
   };
 }

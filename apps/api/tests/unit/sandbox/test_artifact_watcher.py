@@ -41,12 +41,11 @@ def fs_event(name: str, etype: str = "WRITE") -> SimpleNamespace:
 
 
 def fake_sandbox(**files: Any) -> AsyncSandbox:
-    """A duck-typed stand-in for e2b's AsyncSandbox.
+    """Build a duck-typed stand-in for e2b's AsyncSandbox.
 
-    The watcher only ever reaches through ``.files``, so a namespace carrying the
-    methods under test is a complete double — constructing a real AsyncSandbox
-    would require a live E2B session. Stating that once here keeps the assumption
-    in one reviewable place instead of repeated at every construction site.
+    The watcher only reaches through .files, so a namespace carrying the
+    tested methods is a complete double — a real AsyncSandbox needs a live
+    E2B session.
     """
     return cast(AsyncSandbox, SimpleNamespace(files=SimpleNamespace(**files)))
 
@@ -72,7 +71,7 @@ def watcher() -> ArtifactWatcher:
 def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the JuiceFS stat succeed.
 
-    Without this the real ``stat_artifact`` raises ``JuiceFSUnavailable`` (no
+    Without this the real stat_artifact raises JuiceFSUnavailable (no
     mount under unit tests) and every "publishes nothing" assertion passes for
     that reason instead of the guard under test — a mutation of the guard stays
     green. With it, a publish is what happens unless a guard stops it.
@@ -88,8 +87,8 @@ def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     """Record every upsert_event construction, including invalid ones.
 
-    ``_on_fs_event`` wraps its body in a broad ``except Exception``, so a guard
-    removal that makes ``upsert_event`` raise is otherwise indistinguishable
+    _on_fs_event wraps its body in a broad except Exception, so a guard
+    removal that makes upsert_event raise is otherwise indistinguishable
     from the guard working.
     """
     calls: list[tuple[str, Any]] = []

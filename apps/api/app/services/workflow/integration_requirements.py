@@ -1,8 +1,9 @@
 """Compute which integrations a workflow requires and which are missing."""
 
+from collections.abc import Sequence
 from functools import lru_cache
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.models.workflow_models import (
     IntegrationRef,
@@ -10,6 +11,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.services.integrations.integration_status import get_all_integrations_status
 from app.utils.trigger_utils import get_integration_for_trigger
 
 
@@ -17,11 +19,9 @@ from app.utils.trigger_utils import get_integration_for_trigger
 def _category_to_integration() -> dict[str, str]:
     """Map category names to integration IDs using the static OAUTH catalog.
 
-    Covers both registry categories (via subagent_config.tool_space) and
-    subagent integration IDs used directly as step categories.
-
-    Internal integrations (todos, reminders, …) are excluded — they are
-    always available and never require the user to connect anything.
+    Covers registry categories (via subagent_config.tool_space) and subagent
+    integration IDs used as step categories. Internal integrations (todos,
+    reminders, …) are excluded — always available, no connection needed.
     """
     result: dict[str, str] = {}
     for integration in OAUTH_INTEGRATIONS:
@@ -71,9 +71,11 @@ def build_integration_refs(
     required: set[str],
     status_map: dict[str, bool],
 ) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
-    """Split `required` into (all required refs, missing refs) against a connection
-    status map. Pure — the caller owns the (cached) status fetch, so a workflow list
-    resolves every row from a single `get_all_integrations_status` call."""
+    """Split required into (all required refs, missing refs) against a connection status map.
+
+    Pure — the caller owns the (cached) status fetch, so a workflow list
+    resolves every row from a single get_all_integrations_status call.
+    """
     name_map = _integration_name_map()
     required_refs = [
         IntegrationRef(id=iid, name=name_map.get(iid, iid)) for iid in sorted(required)
@@ -89,11 +91,28 @@ async def compute_missing_integrations(
     """Return IntegrationRef objects for required integrations not yet connected."""
     if not required:
         return []
-    # Deferred to avoid circular import: oauth_service → provisioner → service → here
-    from app.services.oauth.oauth_service import get_all_integrations_status
 
     status_map = await get_all_integrations_status(user_id)
     return build_integration_refs(required, status_map)[1]
+
+
+async def confirm_disconnected(user_id: str, integration_ids: Sequence[str]) -> list[str]:
+    """Return the subset of integration_ids the user genuinely has not connected.
+
+    Unlike the rest of this module, these ids come from a run's own claim, not
+    declared steps — a model can misname an integration or blame a connected
+    one, so this checks against real status before trusting it. Unknown ids
+    are dropped rather than reported missing.
+    """
+    if not integration_ids:
+        return []
+
+    status_map = await get_all_integrations_status(user_id)
+    return [
+        integration_id
+        for integration_id in dict.fromkeys(integration_ids)
+        if get_integration_by_id(integration_id) is not None and not status_map.get(integration_id)
+    ]
 
 
 async def compute_integration_refs(
@@ -101,13 +120,13 @@ async def compute_integration_refs(
     trigger_config: TriggerConfig | None,
     user_id: str,
 ) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
-    """Resolve (required, missing) refs for one workflow in a single status fetch —
-    the read-path helper for enriching a workflow response."""
+    """Resolve (required, missing) refs for one workflow in a single status fetch.
+
+    The read-path helper for enriching a workflow response.
+    """
     required = compute_required_integrations(steps, trigger_config)
     if not required:
         return [], []
-    # Deferred to avoid circular import: oauth_service → provisioner → service → here
-    from app.services.oauth.oauth_service import get_all_integrations_status
 
     status_map = await get_all_integrations_status(user_id)
     return build_integration_refs(required, status_map)

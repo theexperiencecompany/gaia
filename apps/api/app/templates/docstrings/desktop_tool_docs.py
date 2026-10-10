@@ -1,4 +1,4 @@
-"""Docstrings for desktop tools — actions executed on the user's own computer.
+"""Docstrings for desktop tools: actions executed on the user's own computer.
 
 These descriptions are embedded into ChromaDB for tool discovery, so they must
 make clear the action happens on the user's machine via the GAIA desktop app.
@@ -13,11 +13,11 @@ screen?", "help me with this error", "summarize this page I have open") or when
 you need visual context from their computer.
 
 The capture is saved to the session workspace and the result names its path. Only
-the most recent screenshots stay in your context — `read` that path to look at an
+the most recent screenshots stay in your context; `read` that path to look at an
 older one again.
 
 Args:
-    query (str): What to look for. Be specific — e.g. "the error dialog text",
+    query (str): What to look for. Be specific, e.g. "the error dialog text",
         "what app is focused and what is it showing".
 
 Returns:

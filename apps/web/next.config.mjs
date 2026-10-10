@@ -11,13 +11,9 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// When this checkout is a worktrunk worktree, `apps/web/node_modules` is a
-// symlink to the primary worktree's directory (sibling of this repo). The
-// default Turbopack root (`../..`, the repo root) considers that an out-of-root
-// symlink and refuses to dev. Bump the root one level up — to the parent of
-// the repo — so the symlink target stays inside it. Non-worktree checkouts
-// (CI, fresh clones, anyone not using `wt`) have a real `node_modules`
-// directory, so this codepath never triggers and behavior is unchanged.
+// In a worktrunk worktree, apps/web/node_modules symlinks to the primary
+// worktree's dir, which the default Turbopack root (../..) treats as an
+// out-of-root symlink and refuses; bump root up one level so it stays inside (non-worktree checkouts have a real node_modules and are unaffected).
 const webNodeModules = path.join(__dirname, "node_modules");
 const isWorktreeWithSharedDeps =
   fs.existsSync(webNodeModules) &&
@@ -30,20 +26,14 @@ const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
 
-// The Cloudflare Image Resizing loader (/cdn-cgi/image/) is only valid when the
-// app is served through the Cloudflare edge. Only the Cloudflare build sets this
-// flag (see the cf:build/deploy/preview scripts in package.json). Every other
-// build — Docker staging, Electron standalone — leaves it unset and falls back
-// to Next's built-in image optimizer, otherwise every image 404s off-edge.
+// The Cloudflare Image Resizing loader (/cdn-cgi/image/) is only valid served
+// through the Cloudflare edge (see cf:build/deploy/preview in package.json);
+// every other build (Docker, Electron) leaves it unset and falls back to Next's built-in optimizer, else images 404 off-edge.
 const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 
-// PostHog is proxied through /ingest so ingestion stays first-party and
-// survives ad blockers. The destinations follow NEXT_PUBLIC_POSTHOG_HOST
-// rather than being pinned to the US cloud, so an EU or self-hosted
-// deployment ingests into its own region instead of shipping data across a
-// data-residency boundary. PostHog Cloud serves the SDK bundles from a
-// sibling `<region>-assets` host; a self-hosted instance serves them from the
-// same origin, which is what the unmatched case falls through to.
+// PostHog proxies through /ingest to stay first-party and survive ad blockers,
+// following NEXT_PUBLIC_POSTHOG_HOST for region-correct ingestion. PostHog Cloud
+// serves SDK bundles from a sibling <region>-assets host; self-hosted uses the same origin (the unmatched fallback).
 const posthogHost = (
   process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
 ).replace(/\/+$/, "");
@@ -53,16 +43,26 @@ const posthogAssetsHost = posthogHost.replace(
 );
 
 const nextConfig = {
+  // Dev only (ignored in prod): Next 15+ refuses to serve /_next/* to any origin
+  // but localhost, so opening the dev server from a phone on LAN/Tailscale got
+  // 403 scripts and never hydrated. These are the private ranges devices sit on.
+  allowedDevOrigins: [
+    "192.168.*.*",
+    "10.*.*.*",
+    "172.*.*.*",
+    "100.*.*.*",
+    "*.local",
+    "*.ts.net",
+    "*.*.ts.net",
+  ],
   // Next's dev-server dedup locks on distDir, refusing a second `next dev` for
   // the same directory. A dedicated dist dir (agents driving the app while a
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
-  // OpenNext file-traces every `public/*.wasm` into the Worker as a wasm chunk
-  // (it shows up even in unrelated routes' .nft.json), which collects the
-  // desktop-only ~12 MiB wake-word WASM into the Worker script and blows past
-  // Cloudflare's 10 MiB limit. Exclude it from tracing on the Cloudflare build;
-  // the Electron standalone build copies `public/` wholesale and is unaffected.
+  // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
+  // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
+  // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.
   ...(useCloudflareImageLoader
     ? { outputFileTracingExcludes: { "*": ["**/public/wake-word/**"] } }
     : {}),
@@ -82,22 +82,14 @@ const nextConfig = {
   // Resolved above as `turbopackRoot` to handle worktrunk worktrees correctly.
   turbopack: {
     root: turbopackRoot,
-    // Change the value here to swap the entire icon variant across the app
-    // node:* aliases rewrite Node built-in specifiers to their bare form so
-    // Turbopack does not emit chunks named `[externals]_node:foo_*.js` — the
-    // colon is illegal on NTFS and breaks `next build` on Windows during
-    // standalone output tracing (breaks the Electron Windows installer).
-    // See: https://github.com/vercel/next.js/discussions/86194
-    // and:  https://nextjs-forum.com/post/1471409705514569798
+    // node:* aliases rewrite Node built-in specifiers to bare form so Turbopack
+    // doesn't emit chunks named [externals]_node:foo_*.js — the colon is illegal
+    // on NTFS and breaks `next build` on Windows during standalone tracing (breaks the Electron Windows installer). See vercel/next.js#86194.
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
-      // The wake-word ONNX runtime (onnxruntime-web + its ~12 MiB WASM) is
-      // desktop-only: the `/wake-listener` route runs solely in the Electron
-      // shell. On Cloudflare, Turbopack still pulls onnxruntime's WASM loader
-      // into the route's server chunk, and the WASM gets collected into the
-      // Worker script — pushing it past Cloudflare's 10 MiB limit. Stub it out
-      // for the Cloudflare build only; the standalone build Electron bundles
-      // (IMAGE_LOADER unset) keeps the real runtime.
+      // The wake-word ONNX runtime (onnxruntime-web + ~12MiB WASM) is desktop-only
+      // (/wake-listener runs only in Electron). Turbopack still pulls its WASM
+      // into the route's server chunk on Cloudflare, past the 10MiB Worker limit — stub it there; the Electron build (IMAGE_LOADER unset) keeps the real runtime.
       ...(useCloudflareImageLoader
         ? {
             "onnxruntime-web": "./scripts/empty-module.mjs",
@@ -139,19 +131,12 @@ const nextConfig = {
   },
   experimental: {
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
-    // protocol. As of @opennextjs/cloudflare 1.20.2 it does not: /_tree
-    // requests get the full build-time RSC payload back, with no
-    // x-nextjs-postponed header. With inlining on, that payload carries the
-    // InliningHintsStale bit; OpenNext serves that same payload for every
-    // /_tree prefetch, so the client marks the route cache entry immediately
-    // stale and refetches in an infinite ~5 req/s loop for every viewport-
-    // visible <Link> (observed on heygaia.io /signup, 2026-08-18).
+    // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
+    // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
     prefetchInlining: false,
-    // optimizeCss stays OFF. Two reasons, both verified: (1) it crashes the
-    // Cloudflare/OpenNext bundle (unconditional cpSync of .next/static/css,
-    // which Turbopack doesn't emit -> ENOENT); (2) tested on a webpack build it
-    // does NOT inline the critical CSS — the render-blocking stylesheet <link>s
-    // remain — so it provides no FCP benefit while adding the `critters` risk.
+    // optimizeCss stays OFF: (1) crashes the Cloudflare/OpenNext bundle (unconditional
+    // cpSync of .next/static/css, which Turbopack doesn't emit → ENOENT); (2) tested
+    // on webpack it does NOT inline critical CSS (render-blocking <link>s remain) — no FCP benefit, only added critters risk.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
@@ -196,15 +181,9 @@ const nextConfig = {
       config.resolve.alias["onnxruntime-web/wasm"] = false;
     }
 
-    // Keep gaia-icons out of the eager/initial landing chunk.
-    // By default, modules reachable from >= 2 chunks get hoisted into a shared
-    // common chunk — that's how ~137 icons ended up on the critical path even
-    // though most are only referenced by dynamically-imported below-the-fold
-    // sections. Scoping this cache group to `chunks: "async"` means icons
-    // shared across async sections consolidate into a single async gaia-icons
-    // chunk that loads with the first async section, while the handful of
-    // icons reachable from initial code (Navbar) stay inlined in the main
-    // chunk.
+    // Keep gaia-icons out of the eager initial chunk: by default, modules reachable
+    // from ≥2 chunks hoist into a shared common chunk, putting ~137 icons on the
+    // critical path though most are only used by dynamically-imported below-the-fold sections; scoping to chunks:"async" consolidates them into one async chunk while Navbar's icons stay inlined in main.
     if (!isServer && config.optimization?.splitChunks) {
       const splitChunks = config.optimization.splitChunks;
       splitChunks.cacheGroups = {
@@ -224,23 +203,24 @@ const nextConfig = {
   },
   images: {
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
-    // custom loader — edge-cached, off the worker. Requires Transformations
-    // enabled on the zone. Gated on the Cloudflare build (see image-loader.ts);
-    // off-edge builds fall through to Next's built-in optimizer.
+    // custom loader — edge-cached, off the worker. Requires Transformations enabled
+    // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
     ...(useCloudflareImageLoader
       ? { loader: "custom", loaderFile: "./image-loader.ts" }
       : {}),
-    // Kept on: remote SVGs are relied upon (cdn.simpleicons.org logos, the
-    // ProductHunt featured.svg badge, integration icon URLs). Next serves
-    // remote SVGs with a restrictive CSP for images, so this is scoped to the
-    // image pipeline only.
+    // Kept on: remote SVGs are relied upon (simpleicons.org logos, ProductHunt
+    // featured.svg, integration icon URLs). Next serves remote SVGs with a
+    // restrictive image-pipeline CSP, so this is scoped narrowly.
     dangerouslyAllowSVG: true,
+    // Hardening required alongside dangerouslyAllowSVG: optimizer responses are
+    // marked as downloads so a directly-navigated SVG can't execute as a live
+    // document, and CSP blocks scripts/sandboxes it; <img> loads ignore Content-Disposition/CSP — only top-level navigation is affected.
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
-    // Image sources are open-ended (user avatars from arbitrary OAuth
-    // providers, LLM/backend-driven integration icon URLs, Unsplash, map tiles,
-    // etc.), so the https host set can't be safely enumerated without breaking
-    // images. The http wildcard is dropped — every real source is https, and
-    // allowing plaintext http fetches is an unnecessary SSRF/mixed-content risk.
+    // Image sources are open-ended (OAuth avatars, LLM/backend integration icons,
+    // Unsplash, map tiles), so the https host set can't be enumerated without
+    // breaking images; http is dropped since every real source is https and plaintext fetches are an SSRF/mixed-content risk.
     remotePatterns: [
       {
         protocol: "https",
@@ -251,11 +231,9 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   },
-  // Files named *.dev.tsx / *.dev.ts are only routable in development. In
-  // production builds Next never registers them as routes, so their pages,
-  // layouts, and everything they import are completely absent from the
-  // build graph — no chunks emitted, no compile time spent. Used by the
-  // demo and debug routes under `app/[locale]/dev/*`.
+  // *.dev.tsx/*.dev.ts route only in development; production builds never
+  // register them, so their pages/layouts/imports are absent from the build
+  // graph entirely (no chunks, no compile time). Used by demo/debug routes under app/[locale]/dev/*.
   pageExtensions: [
     "js",
     "jsx",
@@ -280,13 +258,9 @@ const nextConfig = {
           },
         ],
       },
-      // /_next/static/* — intentionally NOT setting a custom Cache-Control
-      // here. Next.js content-hashes chunk filenames in production builds, so
-      // its default immutable cache headers are already correct; in dev
-      // Turbopack reuses the same chunk filenames across rebuilds, and any
-      // custom long-cache header would pin a stale bundle in the browser and
-      // break hot reloads (Next itself warns "Setting a custom Cache-Control
-      // header can break Next.js development behavior").
+      // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
+      // Next content-hashes chunk filenames in prod, so its default immutable
+      // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
       {
         source: "/images/(.*)",
         headers: [
@@ -360,16 +334,13 @@ export default withSentryConfig(
   // Keep source maps in the build output so browsers can load them (don't delete after Sentry upload)
   hideSourceMaps: false,
 
-  // Uncomment to route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-  // This can increase your server load as well as your hosting bill.
-  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-  // side errors will fail.
+  // Uncomment to route Sentry requests through a Next.js rewrite to bypass
+  // ad-blockers (raises server load/hosting cost); ensure the route doesn't collide with Next.js middleware or client-side error reporting fails.
   // tunnelRoute: "/monitoring",
 
-  // Sentry's autoInstrument* flags are only honored under `webpack:` and are
-  // explicitly "Not supported with Turbopack" per the deprecation warning.
-  // We rely on bundleSizeOptimizations.excludeTracing/PerformanceMonitoring
-  // instead (those work for both bundlers).
+  // Sentry's autoInstrument* flags only work under `webpack:` (unsupported with
+  // Turbopack per deprecation warning); bundleSizeOptimizations.excludeTracing/
+  // PerformanceMonitoring covers both bundlers instead.
   webpack: {
     autoInstrumentServerFunctions: false,
     autoInstrumentMiddleware: false,
@@ -379,12 +350,9 @@ export default withSentryConfig(
     },
   },
 
-  // Strip unused Sentry features from the bundle.
-  // - excludeTracing kills the @opentelemetry + @sentry/node-core + protobuf
-  //   tracing chunk (~1.5 MB raw on the server). Server-side Sentry is not
-  //   initialized in this app (sentry.server.config.ts is intentionally empty)
-  //   so dropping the tracing pipeline is safe.
-  // - excludePerformanceMonitoring drops the rest of the perf SDK.
+  // Strip unused Sentry features: excludeTracing kills the @opentelemetry +
+  // @sentry/node-core + protobuf tracing chunk (~1.5MB raw server-side) — safe
+  // since server Sentry isn't initialized (sentry.server.config.ts is empty); excludePerformanceMonitoring drops the rest of the perf SDK.
   bundleSizeOptimizations: {
     excludeDebugStatements: true,
     excludeReplayShadowDom: true,

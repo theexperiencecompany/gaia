@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
@@ -70,27 +70,112 @@ def mock_deps():
         patch(f"{_MOD}.TodoService.create_todo", new_callable=AsyncMock) as m_create,
         patch(f"{_MOD}.store_canvas_embedding", new_callable=AsyncMock) as m_store,
         patch(f"{_MOD}.mark_canvas_completed", new_callable=AsyncMock) as m_mark,
-        patch(f"{_MOD}.update_canvas_embedding", new_callable=AsyncMock) as m_update_emb,
         patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
-        patch(f"{_MOD}.read_canvas", new_callable=AsyncMock) as m_read,
-        patch(f"{_MOD}.write_canvas", new_callable=AsyncMock) as m_write,
+        # create=True: append_activity is imported into the service only on
+        # this branch. The regression lane runs these tests against base,
+        # where the name is absent, and an erroring fixture is not proof.
+        patch(f"{_MOD}.append_activity", new_callable=AsyncMock, create=True) as m_append_activity,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
+        patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
+        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as m_record,
     ):
         yield SimpleNamespace(
             create=m_create,
             store=m_store,
             mark=m_mark,
-            update_emb=m_update_emb,
             sync=m_sync,
             pool=m_pool,
-            read=m_read,
-            write=m_write,
+            append_activity=m_append_activity,
             append_log=m_append_log,
+            teardown=m_teardown,
+            record=m_record,
         )
 
 
 class TestCreateTrackedTodo:
+    async def test_activity_in_the_initial_canvas_is_moved_to_activity_md(
+        self, mock_repo, mock_deps
+    ):
+        """Seen with a real model: it still composes an Activity Log section inside initial_canvas; the split at create time keeps canvas.md a recall doc without waiting for the sweep."""
+        mock_deps.create.return_value = _todo_response()
+        initial = (
+            "# T\n\n## Key Details\n- Thread: NW-4471\n\n## Current State\nWaiting.\n\n"
+            "## Activity Log\n- 2026-09-12: Tracked todo created.\n\n## Learnings\n"
+        )
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", initial_canvas=initial
+        )
+
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert "## Activity Log" not in update.canvas_content
+        assert "- Thread: NW-4471" in update.canvas_content
+        assert update.activity_content.startswith("- 2026-09-12: Tracked todo created.")
+        assert update.activity_content.endswith("[created]")
+        assert "Tracked todo created" in mock_deps.store.await_args.kwargs["canvas_content"]
+
+    async def test_activity_and_embedding_are_joined_with_a_blank_line(self, mock_repo, mock_deps):
+        """The moved activity, creation marker, and embedding text are separate paragraphs joined by a blank line; any other joiner welds them into one line the append-only parser can no longer read."""
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+        initial = "# T\n\n## Activity Log\n- did x\n\n## Learnings\n"
+
+        with (
+            patch("app.services.todo_activity.datetime") as m_dt,
+            patch(f"{_MOD}.datetime") as m_now,
+        ):
+            m_dt.now.return_value = fixed
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Prepare Q3 report", initial_canvas=initial
+            )
+
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.activity_content == "- did x\n\n- 2026-09-13T12:00:00+00:00 [created]"
+        assert mock_deps.store.await_args.kwargs["canvas_content"] == (
+            f"{update.canvas_content}\n\n- did x\n\n- 2026-09-13T12:00:00+00:00 [created]"
+        )
+
+    async def test_the_creation_entry_names_its_conversation_at_the_creation_time(
+        self, mock_repo, mock_deps
+    ):
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Prepare Q3 report", source_conversation_id="0123abcd-ffff-4444"
+            )
+
+        assert mock_repo.update.await_args.kwargs["update"].activity_content == (
+            "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
+        )
+
+    async def test_an_initial_canvas_missing_sections_gets_them(self, mock_repo, mock_deps):
+        """A canvas a later edit would refuse for its shape must not be created in that shape."""
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", initial_canvas="# T\n\n## Key Details\nk\n"
+        )
+
+        canvas = mock_repo.update.await_args.kwargs["update"].canvas_content
+        for section in ("## Current State", "## Context", "## Learnings"):
+            assert canvas.count(section) == 1
+
+    async def test_a_clean_initial_canvas_sets_no_activity(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", initial_canvas="# T\n\n## Key Details\nk\n"
+        )
+
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.canvas_content.startswith("# T\n\n## Key Details\nk\n")
+        assert update.activity_content.count("\n") == 0  # only the creation marker
+
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
 
@@ -105,8 +190,13 @@ class TestCreateTrackedTodo:
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
         assert update.canvas_content == CANVAS_TEMPLATE.format(title="Prepare Q3 report")
-        assert "[CREATED]" in update.log_content
-        assert "Source: agent" in update.log_content
+        # Lifecycle lives in activity.md; log.md is only the audit of file writes.
+        assert update.log_content == "# System Log: Prepare Q3 report\n"
+        # activity.md is never empty: an `edit` that appends needs a last line
+        # to anchor on, and a real model tried exactly that on a fresh todo.
+        assert update.activity_content is not None
+        assert update.activity_content.startswith("- 20")
+        assert update.activity_content.endswith("[created]")
 
         mock_deps.store.assert_awaited_once()
         store_kwargs = mock_deps.store.call_args.kwargs
@@ -123,8 +213,27 @@ class TestCreateTrackedTodo:
             USER_ID, "Prepare Q3 report", initial_canvas="custom canvas"
         )
 
-        assert mock_repo.update.await_args.kwargs["update"].canvas_content == "custom canvas"
-        assert mock_deps.store.call_args.kwargs["canvas_content"] == "custom canvas"
+        assert mock_repo.update.await_args.kwargs["update"].canvas_content.startswith(
+            "custom canvas"
+        )
+        assert mock_deps.store.call_args.kwargs["canvas_content"].startswith("custom canvas")
+
+    async def test_run_results_are_delivered_unless_the_caller_opts_out(self, mock_repo, mock_deps):
+        """The default decides whether a new tracked todo ever messages the user at all."""
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is True
+
+    async def test_a_caller_can_create_a_silent_todo(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", notify_on_run=False
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is False
 
     async def test_preserves_caller_labels(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -140,13 +249,13 @@ class TestCreateTrackedTodo:
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
         assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is False
-        mock_deps.append_log.assert_not_awaited()
+        mock_deps.record.assert_not_awaited()
 
     async def test_idempotent_for_already_completed(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc(completed=True)
 
         assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is True
-        mock_deps.append_log.assert_not_awaited()
+        mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
     async def test_appends_log_marks_completed_and_archives_path(self, mock_repo, mock_deps):
@@ -155,9 +264,9 @@ class TestCompleteTrackedTodo:
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
 
         assert ok is True
-        log_entry = mock_deps.append_log.await_args.args[2]
-        assert "[COMPLETED]" in log_entry
-        assert "Wrapped it up" in log_entry
+        mock_deps.record.assert_awaited_once_with(
+            TODO_ID, USER_ID, TodoActivityEvent.COMPLETED, "Wrapped it up"
+        )
 
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.completed is True
@@ -166,11 +275,26 @@ class TestCompleteTrackedTodo:
         mock_deps.mark.assert_awaited_once_with(TODO_ID)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
+    async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
+        # Teardown lives inside completion rather than at its callers (tool, sweep,
+        # worker) so no completion path can forget it and strand a live trigger.
+        mock_repo.get.return_value = _todo_doc()
+
+        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        mock_deps.teardown.assert_awaited_once_with(TODO_ID, USER_ID, reason="completed")
+
+    async def test_an_already_completed_todo_does_not_tear_down_again(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _todo_doc(completed=True)
+
+        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        mock_deps.teardown.assert_not_awaited()
+
     async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """A doc with no stored label must get the derived /workspace-scoped one —
-        never None, and never a label derived from the wrong id."""
+        """A doc with no stored label must get the derived /workspace-scoped one — never None, never derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
@@ -182,8 +306,7 @@ class TestCompleteTrackedTodo:
     async def test_legacy_user_scoped_label_is_healed_on_completion(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """A doc still storing the host-side /users/<uid> label must not have it
-        persisted back on completion — the derived archive label replaces it."""
+        """A doc still storing the host-side /users/<uid> label must not have it persisted back on completion."""
         mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
@@ -201,19 +324,24 @@ class TestGetActiveTrackedSummary:
     async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
-        path must never reach the LLM, which only knows /workspace-scoped paths."""
+        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side path must never reach the LLM."""
         stale_doc = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
         mock_repo.list_active_tracked.return_value = [stale_doc]
-        mock_deps.read.return_value = "## Key Details\nthread: abc123\n"
 
         summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
 
         assert USER_ID not in summary
-        assert USER_ID not in context
         assert "/users/" not in summary
-        assert "/users/" not in context
+
+    async def test_summary_names_the_absolute_notes_folder(self, mock_repo):
+        """A real model read gaia-tasks/<folder>/canvas.md relative and got file not found before retrying with the absolute path."""
+        mock_repo.list_active_tracked.return_value = [
+            _todo_doc(id="66f838cc8829054e5f10e407", title="Fix the thing")
+        ]
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+
+        assert "files: /workspace/gaia-tasks/fix-the-thing-5f10e407/" in summary
 
     async def test_renders_summary_lines(self, mock_repo):
         mock_repo.list_active_tracked.return_value = [_todo_doc()]
@@ -257,55 +385,6 @@ class TestGetActiveTrackedSummary:
         assert " OVERDUE(4d)" in summary.split("\n")[2]
 
 
-class TestAppendCanvasTimeline:
-    async def test_false_when_canvas_read_fails(self, mock_repo, mock_deps):
-        mock_deps.read.side_effect = RuntimeError("mongo down")
-
-        assert await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "step") is False
-        mock_deps.write.assert_not_awaited()
-
-    async def test_false_when_canvas_empty(self, mock_repo, mock_deps):
-        mock_deps.read.return_value = None
-
-        assert await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "step") is False
-
-    async def test_inserts_at_top_of_existing_timeline_section(self, mock_repo, mock_deps):
-        canvas = "# T\n\n## Timeline\n- old step\n"
-        mock_deps.read.return_value = canvas
-        mock_deps.write.return_value = True
-
-        ok = await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "new step")
-
-        assert ok is True
-        written = mock_deps.write.await_args.args[2]
-        assert written == "# T\n\n## Timeline\n- new step\n- old step\n"
-
-    async def test_appends_section_when_timeline_missing(self, mock_repo, mock_deps):
-        canvas = "# T\n\n## Key Details\nnothing"
-        mock_deps.read.return_value = canvas
-        mock_deps.write.return_value = True
-
-        ok = await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "first step")
-
-        assert ok is True
-        written = mock_deps.write.await_args.args[2]
-        assert written == "# T\n\n## Key Details\nnothing\n\n## Timeline\n- first step\n"
-
-    async def test_adds_dash_prefix_to_plain_entry(self, mock_repo, mock_deps):
-        mock_deps.read.return_value = "# T\n\n## Timeline\n"
-        mock_deps.write.return_value = True
-
-        await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "bare entry")
-
-        assert mock_deps.write.await_args.args[2].count("- bare entry") == 1
-
-    async def test_false_when_write_fails(self, mock_repo, mock_deps):
-        mock_deps.read.return_value = "# T\n\n## Timeline\n"
-        mock_deps.write.side_effect = RuntimeError("write failed")
-
-        assert await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "step") is False
-
-
 class TestSystemLog:
     async def test_appends_formatted_entry(self, mock_repo, mock_deps):
         await TrackedTodoService.system_log(TODO_ID, USER_ID, "rescheduled", "Retry at 9am")
@@ -313,75 +392,6 @@ class TestSystemLog:
         entry = mock_deps.append_log.await_args.args[2]
         assert "[rescheduled]" in entry
         assert "Retry at 9am" in entry
-
-
-class TestGetSignalMatchingContext:
-    async def test_empty_string_without_docs(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.get_signal_matching_context(USER_ID) == ""
-
-    async def test_renders_entries_with_indented_key_details(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.return_value = (
-            "# Prepare Q3 report\n\n## Key Details\nthread: abc123\nemail: x@y.com\n"
-        )
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        lines = context.split("\n")
-        assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1)'
-        assert USER_ID not in context
-        assert "    thread: abc123" in lines[2]
-        assert "    email: x@y.com" in lines[3]
-
-    async def test_caps_key_details_at_five_lines(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.return_value = "## Key Details\n" + "\n".join(f"line {i}" for i in range(8))
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        indented = [line for line in context.split("\n") if line.startswith("    ")]
-        assert len(indented) == 5
-
-    async def test_degrades_gracefully_when_canvas_unreadable(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.side_effect = RuntimeError("read failed")
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        assert context.startswith("ACTIVE TRACKED TODOS")
-        assert "thread: abc123" not in context
-
-
-class TestReindexCanvas:
-    async def test_false_for_missing_todo(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID) is False
-        mock_deps.update_emb.assert_not_awaited()
-
-    async def test_false_without_canvas_content(self, mock_repo, mock_deps):
-        mock_repo.get.return_value = _todo_doc(canvas_content=None)
-
-        assert await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID) is False
-
-    async def test_reindexes_with_document_content(self, mock_repo, mock_deps):
-        mock_repo.get.return_value = _todo_doc()
-        mock_deps.update_emb.return_value = True
-
-        ok = await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID)
-
-        assert ok is True
-        kwargs = mock_deps.update_emb.call_args.kwargs
-        assert kwargs["todo_id"] == TODO_ID
-        assert kwargs["user_id"] == USER_ID
-        assert kwargs["title"] == "Prepare Q3 report"
-        assert kwargs["labels"] == [GAIA_TRACKED_LABEL, "work"]
-        assert "thread: abc123" in kwargs["canvas_content"]
-
-    async def test_propagates_embedding_failure(self, mock_repo, mock_deps):
-        mock_repo.get.return_value = _todo_doc()
-        mock_deps.update_emb.return_value = False
-
-        assert await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID) is False
 
 
 class TestScheduleExecution:
@@ -406,25 +416,17 @@ class TestScheduleExecution:
 
         assert await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
 
-    async def test_reschedule_reuses_schedule(self, mock_repo, mock_deps):
-        pool = AsyncMock()
-        mock_deps.pool.return_value = pool
-        when = datetime.now(UTC) + timedelta(hours=2)
-
-        assert await TrackedTodoService.reschedule_execution(TODO_ID, when) is True
-        pool.enqueue_job.assert_awaited_once()
-
 
 class TestArchiveTrackedTodo:
-    async def test_logs_reason_and_completes(self, mock_repo, mock_deps):
+    async def test_completes_with_the_reason_on_the_timeline(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc()
 
         ok = await TrackedTodoService.archive_tracked_todo(TODO_ID, USER_ID, "expired")
 
         assert ok is True
-        archived_entry = mock_deps.append_log.await_args_list[0].args[2]
-        assert "[auto_archived]" in archived_entry
-        assert "expired" in archived_entry
+        mock_deps.record.assert_awaited_once_with(
+            TODO_ID, USER_ID, TodoActivityEvent.COMPLETED, "Auto-archived: expired"
+        )
 
     async def test_false_when_completion_fails(self, mock_repo, mock_deps):
         mock_repo.get.return_value = None
@@ -432,7 +434,8 @@ class TestArchiveTrackedTodo:
         assert await TrackedTodoService.archive_tracked_todo(TODO_ID, USER_ID, "expired") is False
 
     async def test_false_when_unexpected_error(self, mock_repo, mock_deps):
-        mock_deps.append_log.side_effect = RuntimeError("boom")
+        mock_repo.get.return_value = _todo_doc()
+        mock_repo.update.side_effect = RuntimeError("boom")
 
         assert await TrackedTodoService.archive_tracked_todo(TODO_ID, USER_ID, "expired") is False
 
@@ -443,3 +446,117 @@ class TestSingleton:
 
     def test_priority_default_is_none(self):
         assert Priority.NONE.value == "none"
+
+
+class TestMigrateLegacyCanvas:
+    LEGACY = (
+        "# T\n\n## Key Details\nk\n\n## Activity Log\n- did x\n\n"
+        "## Timeline\n- 2026-01-02T00:00:00+00:00 second\n- 2026-01-01T00:00:00+00:00 first\n\n"
+        "## Learnings\n"
+    )
+
+    async def test_legacy_canvas_is_split_into_both_fields(self):
+        doc = _todo_doc(canvas_content=self.LEGACY, activity_content=None)
+        with patch(
+            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+        ) as write:
+            assert await TrackedTodoService.normalize_stored_canvas(doc) is True
+
+        kwargs = write.await_args.kwargs
+        assert write.await_args.args == (doc.id, doc.user_id)
+        assert kwargs["expected_updated_at"] == doc.updated_at
+        assert "## Activity Log" not in kwargs["canvas"]
+        assert "## Timeline" not in kwargs["canvas"]
+        assert kwargs["activity"].index("first") < kwargs["activity"].index("second")
+        assert "did x" in kwargs["activity"]
+
+    async def test_moved_legacy_entries_come_before_existing_activity(self):
+        doc = _todo_doc(canvas_content=self.LEGACY, activity_content="- already here")
+        with patch(
+            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+        ) as write:
+            await TrackedTodoService.normalize_stored_canvas(doc)
+
+        activity = write.await_args.kwargs["activity"]
+        assert activity == (
+            "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
+            "- did x\n\n- already here"
+        )
+
+    async def test_clean_canvas_is_not_touched(self):
+        doc = _todo_doc(
+            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        )
+        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+            assert await TrackedTodoService.normalize_stored_canvas(doc) is False
+
+        write.assert_not_awaited()
+
+    async def test_empty_canvas_is_not_touched(self):
+        doc = _todo_doc(canvas_content=None)
+        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+            assert await TrackedTodoService.normalize_stored_canvas(doc) is False
+
+        write.assert_not_awaited()
+
+    async def test_revision_race_retries_once_against_fresh_content(self, mock_repo):
+        stale = _todo_doc(canvas_content=self.LEGACY, activity_content=None)
+        fresh = _todo_doc(
+            canvas_content=self.LEGACY,
+            activity_content="- fresh here",
+            updated_at=datetime.now(UTC),
+        )
+        mock_repo.get.return_value = fresh
+        with patch(
+            f"{_MOD}.write_canvas_and_activity",
+            new_callable=AsyncMock,
+            side_effect=[False, True],
+        ) as write:
+            assert await TrackedTodoService.normalize_stored_canvas(stale) is True
+
+        mock_repo.get.assert_awaited_once_with(stale.id, user_id=stale.user_id)
+        assert write.await_count == 2
+        assert write.await_args_list[0].args == (stale.id, stale.user_id)
+        assert write.await_args_list[1].args == (fresh.id, fresh.user_id)
+        assert write.await_args_list[0].kwargs["expected_updated_at"] == stale.updated_at
+        assert write.await_args_list[1].kwargs["expected_updated_at"] == fresh.updated_at
+        assert write.await_args_list[1].kwargs["canvas"] == (
+            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
+        )
+        assert write.await_args_list[1].kwargs["activity"] == (
+            "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
+            "- did x\n\n- fresh here"
+        )
+
+    async def test_fresh_doc_already_clean_skips_retry(self, mock_repo):
+        """When the re-read doc has no legacy sections, the migration gives up instead of reporting a write it never made."""
+        fresh = _todo_doc(
+            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n",
+            updated_at=datetime.now(UTC),
+        )
+        mock_repo.get.return_value = fresh
+        with patch(
+            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+        ) as write:
+            assert (
+                await TrackedTodoService.normalize_stored_canvas(
+                    _todo_doc(canvas_content=self.LEGACY)
+                )
+                is False
+            )
+
+        write.assert_awaited_once()
+
+    async def test_vanished_todo_is_not_retried(self, mock_repo):
+        mock_repo.get.return_value = None
+        with patch(
+            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+        ) as write:
+            assert (
+                await TrackedTodoService.normalize_stored_canvas(
+                    _todo_doc(canvas_content=self.LEGACY)
+                )
+                is False
+            )
+
+        write.assert_awaited_once()

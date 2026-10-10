@@ -84,11 +84,9 @@ export async function runEnvSetup(
     envParser.applyPortOverrides(envValues, portOverrides, setupMode);
   }
 
-  // Merge-don't-clobber against an existing apps/api/.env: previously
-  // assigned values (hand-edited or from an earlier run) are carried forward
-  // wherever this run didn't compute a fresh value. Machine secrets are then
-  // generated only for the trio members still missing — writeEnvFile keeps
-  // the .bak backup behavior for pre-existing files.
+  // Merge-don't-clobber with existing apps/api/.env: carry forward prior values
+  // this run didn't recompute; machine secrets generate only for still-missing
+  // members (writeEnvFile keeps .bak backups).
   const apiEnvPath = path.join(repoPath, "apps", "api", ".env");
   const existingEnv = fs.existsSync(apiEnvPath)
     ? fs.readFileSync(apiEnvPath, "utf-8")

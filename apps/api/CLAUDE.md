@@ -36,7 +36,7 @@ nx run api:test:coverage
 
 The agent system uses two compiled LangGraph graphs registered via `GraphManager` / `ProviderRegistry`:
 
-- **`comms_agent`** — thin front-door agent. Has only three tools: `call_executor`, `add_memory`, `search_memory`. Handles user-facing chat (streaming or silent).
+- **`comms_agent`** — thin front-door agent. Statically bound to a small fixed tool set (no semantic retrieval): `call_executor` / `cancel_executor`, the three browser-task reply tools (`browser_step_done` / `stop_browser_task` / `tell_browser_task`, which act on a browser task already running), the memory tools, the two discovery tools (`find_integration`, `search_public_workflows`) that read catalogues, and the open-web tools `web_search_tool` / `fetch_webpages` (comms runs quick outside-world lookups itself; everything touching the user's own data or accounts still delegates via `call_executor`). Connecting an integration is delegated to the executor, which owns the connect card. Handles user-facing chat (streaming or silent).
 - **`executor_agent`** — full-tool agent. Receives tasks from `comms_agent` via the `call_executor` tool. Has access to the entire tool registry retrieved from ChromaDB.
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
@@ -94,7 +94,7 @@ Default to **less**. The code is the documentation — docstrings and comments e
 - **Docstrings** belong on public API surface — exported services, route handlers, shared utilities, and functions whose behavior is genuinely non-obvious. Skip them on private/internal helpers, obvious wrappers, and anything whose name + signature already says everything.
 - **One line** is the default — and for helpers/internal functions it is a HARD CAP of two lines. A multi-paragraph docstring is reserved for genuinely complex public API; anywhere else it is a review comment waiting to happen. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
 - **Never** document params/returns/raises that don't exist or no longer match the signature. A stale or hallucinated docstring is worse than none.
-- **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code — git already has it. `ERA001` is *not* currently enforced (213 findings in `app/`, concentrated in `models/calendar_models.py`, `agents/tools/webpage_tool.py` and the deliberately-parked `utils/calendar_utils.py`), so this one is on you rather than the linter until that backlog is cleared.
+- **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code — git already has it. `ERA001` is *not* currently enforced (16 findings left in `app/`, mostly examples inside comments), so this one is on you rather than the linter until that backlog is cleared.
 - When editing AI-generated code, treat trimming its redundant docstrings/comments as part of the change, not a separate cleanup.
 
 ### Tooling and the autofix hook
@@ -120,6 +120,12 @@ One domain per file. Never let a file span multiple domains.
 - `app/api/v1/endpoints/` — route handlers, one file per domain. No business logic.
 - `app/db/` — DB client setup and connection utilities only.
 - `app/constants/` — constants by domain (`cache.py`, `llm.py`, `auth.py`). Never hardcode values.
+
+### The import fence (`lint-imports`)
+
+`app/constants/` and `app/config/` are leaves: import-linter contracts in `apps/api/pyproject.toml` `[tool.importlinter]` forbid them from reaching `app.agents`/`app.services`/`app.api`/`app.db` or langchain/langgraph/transformers, and forbid `app/utils/` from reaching the model stack. This is a startup-cost fence, not a style rule — `app.constants.llm` importing one langchain-typed alias cost every pytest process, xdist worker and mutation run ~1.5 s of transformers/langchain import, and `app.utils.timezone` did the same to every module that touches a user model.
+
+Run it from `apps/api` with `uvx --no-build --from import-linter==2.6 lint-imports --no-cache` (the `--no-cache` matters: grimp's cache drops function-scope imports and a cached run can go green on a violation). It gates the `python-static` lane in CI and a prek hook. If a new import breaks a contract, move the shared piece down into a leaf module rather than adding an `ignore_imports` entry; every existing entry is one edge with a stated reason and was verified load-bearing.
 
 ## Pydantic Models
 
@@ -154,6 +160,58 @@ async def create_todo(
 - Use correct status codes (`201` create, `204` delete, `404` not found).
 - Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
 - A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
+
+### The API contract — what the generated TypeScript types are built from
+
+The OpenAPI document is a build output (`apps/api/openapi.json`, written by `mise api:types`), and every TypeScript consumer types its requests against what is generated from it. Three rules keep that contract honest, and `tests/meta/test_route_contract.py` is the ratchet that fails a route breaking any of them:
+
+- **Every documented route declares its response body** — a Pydantic model (or dataclass) as the return annotation, a `Response` subclass for streams/files/redirects, or `204` with `-> None`. No `Any`, no bare `dict`; `dict[str, X]` is fine. Response-only models extend `ResponseModel` (`app/schemas/common.py`): a defaulted field is always serialized, and that base marks it required in the output schema so the generated TypeScript key is not optional (the memory models are the pattern).
+- **Every model has a unique class name** — the TypeScript consumer imports it under exactly that name (`import type { TodoResponse } from "@gaia/shared/api/generated"`), so `scripts/export_openapi.py` refuses two models that share one (FastAPI would otherwise mangle both into `app__models__…`). A model used both as a request body and a response body exports as `NameInput` / `NameOutput`.
+- **Every router is mounted with `tags=[...]`**, because the operation id is `<router_tag>_<function_name>` (`app/core/openapi.py`), not FastAPI's path-derived default: moving a route must not rename the client type generated from it. Ids must be unique — an alias path served by the same handler is `include_in_schema=False`.
+- **Errors are `ErrorEnvelope`** (`app/schemas/errors.py`): every non-2xx body — `AppError`, `HTTPException` (string or structured `detail`), validation, the crash handler, the middlewares — renders `{message, code?, why?, fix?, errors?, ...context}` through `error_response`, and every router mount declares it for 4xx/5xx/422 via `ERROR_RESPONSES`. Put the machine-readable value in `code`; nothing nests under `detail` any more.
+
+After changing a route or a model, run `mise api:types` and commit both artifacts (the prek hook does it on commit); the CI `api-schema` lane regenerates and fails on drift.
+
+## Entitlements — Every New Route Is Paywalled Until You Say Otherwise
+
+GAIA is paid-only, and the gate is a middleware, not a decorator:
+`app/api/v1/middleware/entitlement.py` 402s **every authenticated HTTP request**
+whose caller is not on PRO. A route is free only if its path is named in
+`app/api/v1/middleware/entitlement_allowlist.py`.
+
+This is deny-by-default on purpose — the opt-in `@require_subscription()`
+decorator it replaced meant every new endpoint shipped free until somebody
+noticed. The cost is that the rule is invisible from the route file, the router
+and the OpenAPI schema:
+
+- **Adding an endpoint that must stay free** (a provider callback, a probe, a
+  surface a lapsed user still needs) means adding its prefix to
+  `FREE_PATH_PREFIXES` **with the reason, in that file and nowhere else**. A
+  prefix is a plain `startswith`, so it frees the whole subtree — keep it as
+  specific as the surface actually needs.
+- **An inexplicable 402 in local dev** on a route you just wrote is this, not
+  your auth. `tests/unit/middleware/test_entitlement_coverage.py` sweeps the
+  whole route table and will tell you which paths escaped or over-freed.
+- **The 402 body is a fixed wire contract** — `{code, message, checkout_url,
+  discount_code}`, narrowed in `libs/shared/ts/src/types/subscription.ts` and
+  parsed by the web interceptor and the mobile SSE client. `checkout_url` is
+  always `null`: the gate never mints a Dodo session, because it runs on every
+  request and an unpaid shell load would mint a pile of single-use links nobody
+  asked for. Clients mint on user intent, from
+  `POST /api/v1/payments/checkout-session`. The bots do not read this body at
+  all — the bot chat turn renders its own paywall notice with its own link
+  (`endpoints/bot.py::_bot_upgrade_url`).
+- **A plan read that fails is a 503, not a 402.** "We could not read your plan"
+  is not "you are not subscribed", and answering 402 there showed every paying
+  user a paywall during a Redis blip.
+- **Routes outside the middleware's reach gate themselves**, imperatively via
+  `require_active_subscription(user_id, feature=...)`: the bot router (excluded
+  from `WorkOSAuthMiddleware`, so there is no `request.state.user`) and the
+  allowlisted-but-spending `/api/v1/onboarding` LLM routes. Workers have no
+  request at all — the reminder and workflow executors gate at their own choke
+  points with `is_subscription_active` plus one `confirm_subscription_active`
+  fresh read, and they **skip**; deactivating anything belongs to the billing
+  webhook.
 
 ## Analytics (PostHog)
 
@@ -521,7 +579,7 @@ Tier summary (full table in `tests/CLAUDE.md`):
 - `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).
 - `tests/composio/`, `tests/model_onboarding/` — live-credential, opt-in, excluded by default.
 
-Never run a raw full `pytest` locally — use the nx targets (`nx test api`, `nx run api:test:*`); they pin the dirs, markers, and xdist settings.
+Never run a raw full `pytest` locally, and never with xdist: the default `addopts` carries `-n 4`, each worker imports the whole app, and parallel workers exhaust a laptop's memory fast. For a targeted run use `mise test:one <file> [more files]` from the repo root, or `mise run //:test:one …` from inside `apps/api` (pytest with `-p no:xdist` and `pytest.ini`'s real `addopts`; never `-o addopts=""`, which drops `--strict-markers` and lets an unregistered marker pass locally and fail collection in CI), one file at a time, files back to back in a single command; suites belong to CI or the nx targets (`nx test api`, `nx run api:test:*`), which pin the dirs, markers and xdist settings for the home-box runners.
 
 **Unmark the patch-away.** A caller mocking a service means that service's logic has never run — the mock is a permanent blind spot. When you see an endpoint test mocking a service it barely touches, or a service test mocking a repo call whose logic matters, prefer un-mocking: let the real component run against mocked seams one layer down. Same rule as "never mock the thing under test."
 
@@ -645,7 +703,8 @@ nx run-many -t lint --projects=web,desktop
 - **`app/core/lazy_loader.py` `providers` is a global singleton** — unique provider names are critical. Use UUID suffixes in tests to avoid cross-test pollution (the registry is never reset between tests).
 - **LangGraph checkpointer**: Uses PostgreSQL (`langgraph-checkpoint-postgres`) in production, falls back to in-memory `InMemorySaver` if the checkpointer manager is unavailable.
 - **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).
-- **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
+- **`UJSONResponse`** is the default response class (faster JSON serialization), and `error_response` (`app/schemas/errors.py`) uses it too — success and failure bodies go through one serializer so they cannot drift. The dump is in JSON mode, so an error may carry a datetime or a UUID.
+- **The exception handlers live in `app/core/exception_handlers.py`**, registered by `register_exception_handlers` on both FastAPI apps (the API and the embedding sidecar). A crash is converted to the envelope by `UnhandledExceptionMiddleware` *inside* CORS; the handler Starlette runs in `ServerErrorMiddleware` is a last resort, and its body is unreadable cross-origin by construction.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
 - **Context-assembly sections are the one deliberate exception to "fail loud" (root `CLAUDE.md`).** Every fetcher in `app/agents/context/fetchers.py` catches broadly and returns `""` instead of raising — a context section is enrichment, and failing a user's whole turn because a memory recall or a knowledge-base lookup timed out trades a degraded answer for no answer. The exception is narrow and enforced: only these fetchers and `assemble_context`'s outer catch swallow; every swallow still calls `log.warning`/`log.error` so the failure is visible in the wide event, and a persistent failure degrades to a byte-stable empty block rather than a different one every call (which would itself invalidate the prompt cache). Do not generalize this pattern to other services — see `app/agents/context/fetchers.py`'s module docstring for the full reasoning.
 - **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

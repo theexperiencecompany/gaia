@@ -1,18 +1,18 @@
 """Greppable log-line prefixes.
 
 A single registry of bracketed, uppercase tags prepended to real-time log
-messages (``log.info`` / ``log.warning`` / ``log.error`` / ``log.debug``) so one
-subsystem's activity can be filtered with a single token — ``grep '\\[SANDBOX\\]'``
-locally or ``|= "[SANDBOX]"`` in LogQL.
+messages (log.info / log.warning / log.error / log.debug) so one
+subsystem's activity can be filtered with a single token — grep '\\[SANDBOX\\]'
+locally or |= "[SANDBOX]" in LogQL.
 
-This is the cross-cutting counterpart to ``FsOps`` (which centralizes latency-
+This is the cross-cutting counterpart to FsOps (which centralizes latency-
 metric op names): one canonical home so prefixes never drift or collide across
 files. Add a subsystem's tag here, then prefix that subsystem's log lines with
-it — never inline a bare ``"[foo]"`` literal at the call site.
+it — never inline a bare "[foo]" literal at the call site.
 
 A tag annotates the human-readable *message*. Structured business context still
-belongs in ``log.set(...)`` wide-event fields (see the ``*Context`` TypedDicts in
-``shared.py.wide_events``), not in the prefix.
+belongs in log.set(...) wide-event fields (see the *Context TypedDicts in
+shared.py.wide_events), not in the prefix.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ class LogTag:
     NOTIFICATION: Final[str] = "[NOTIFICATION]"  # utils/notification
     DESKTOP: Final[str] = "[DESKTOP]"  # services/desktop
     HIL: Final[str] = "[HIL]"  # services/hil + agents/middleware/hil_approval
+    BROWSER: Final[str] = "[BROWSER]"  # services/browser + agents/tools/browser_tool
 
     # --- Infra / platform ---
     API: Final[str] = "[API]"  # api/v1 endpoints + middleware (HTTP layer)
@@ -58,5 +59,6 @@ class LogTag:
     MONGO: Final[str] = "[MONGO]"  # db/mongodb
     CHROMA: Final[str] = "[CHROMA]"  # db/chroma (vector store)
     STARTUP: Final[str] = "[STARTUP]"  # app boot / provider registration / lifespan
+    LOCK: Final[str] = "[LOCK]"  # utils/redis_lock (cross-replica distributed leases)
     PATCH: Final[str] = "[PATCH]"  # app/patches (third-party monkey-patches applied on import)
     DEV: Final[str] = "[DEV]"  # dev-only tooling (identity minting, seeding)

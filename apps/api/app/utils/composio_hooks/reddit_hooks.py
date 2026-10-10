@@ -5,132 +5,182 @@ These hooks implement response processing for raw Reddit API data,
 minimizing token usage by extracting only critical information.
 """
 
-from typing import Any
+from typing import TypedDict
 
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
+from app.models.integrations.composio_hooks import ComposioToolCall, ComposioToolResponse
+from app.models.integrations.reddit_hooks import (
+    RedditComment,
+    RedditCommentListing,
+    RedditCommentsData,
+    RedditCreatedContent,
+    RedditCreatePostArguments,
+    RedditPost,
+    RedditPostDetail,
+    RedditSearchData,
+)
 from shared.py.wide_events import log
 
-from .registry import register_after_hook, register_before_hook
+from .registry import AfterHookResponse, register_after_hook, register_before_hook
+
+# Reddit's ``kind`` prefixes: a link (post) and a comment.
+_POST_KIND = "t3"
+_COMMENT_KIND = "t1"
+_UI_COMMENT_LIMIT = 50
+_UI_SELFTEXT_LIMIT = 200
 
 
-def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
+class RedditPostSummary(TypedDict):
+    """A post trimmed to what the LLM needs."""
+
+    id: str
+    title: str
+    author: str
+    subreddit: str
+    subreddit_name_prefixed: str
+    created_utc: int | float
+    score: int
+    upvote_ratio: int | float
+    num_comments: int
+    selftext: str
+    url: str
+    permalink: str
+    is_self: bool
+    link_flair_text: str | None
+    over_18: bool
+    spoiler: bool
+    locked: bool
+    stickied: bool
+
+
+class RedditSearchSummary(TypedDict):
+    posts: list[RedditPostSummary]
+    after: str | None
+    before: str | None
+    result_count: int
+
+
+class RedditCommentSummary(TypedDict):
+    """A comment trimmed to what the LLM needs."""
+
+    id: str
+    author: str
+    body: str
+    created_utc: int | float
+    score: int
+    permalink: str
+    parent_id: str
+    link_id: str
+    subreddit: str
+    is_submitter: bool
+    stickied: bool
+    distinguished: str | None
+    edited: bool | int | float
+
+
+class RedditCommentsSummary(TypedDict):
+    comments: list[RedditCommentSummary]
+    comment_count: int
+
+
+class RedditContentCreatedSummary(TypedDict):
+    id: str | None
+    success: bool
+    message: str
+
+
+def process_reddit_post(post: RedditPost) -> RedditPostSummary:
+    """Extract only critical information from a Reddit post (a t3 thing's data)."""
+    return {
+        "id": post.id,
+        "title": post.title,
+        "author": post.author,
+        "subreddit": post.subreddit,
+        "subreddit_name_prefixed": post.subreddit_name_prefixed,
+        "created_utc": post.created_utc,
+        "score": post.score,
+        "upvote_ratio": post.upvote_ratio,
+        "num_comments": post.num_comments,
+        "selftext": post.selftext,
+        "url": post.url,
+        "permalink": post.permalink,
+        "is_self": post.is_self,
+        "link_flair_text": post.link_flair_text,
+        "over_18": post.over_18,
+        "spoiler": post.spoiler,
+        "locked": post.locked,
+        "stickied": post.stickied,
+    }
+
+
+def process_reddit_search_results(data: RedditSearchData) -> RedditSearchSummary:
+    """Process Reddit search results to minimize data: the t3 posts and the page cursors."""
+    listing = data.search_results.data
+    processed_posts = [
+        process_reddit_post(child.data) for child in listing.children if child.kind == _POST_KIND
+    ]
+
+    return {
+        "posts": processed_posts,
+        "after": listing.after,
+        "before": listing.before,
+        "result_count": len(processed_posts),
+    }
+
+
+def process_reddit_comment(comment: RedditComment) -> RedditCommentSummary:
+    """Extract only critical information from a Reddit comment (a t1 thing's data)."""
+    return {
+        "id": comment.id,
+        "author": comment.author,
+        "body": comment.body,
+        "created_utc": comment.created_utc,
+        "score": comment.score,
+        "permalink": comment.permalink,
+        "parent_id": comment.parent_id,
+        "link_id": comment.link_id,
+        "subreddit": comment.subreddit,
+        "is_submitter": comment.is_submitter,
+        "stickied": comment.stickied,
+        "distinguished": comment.distinguished,
+        "edited": comment.edited,
+    }
+
+
+def _ui_selftext(post: RedditPost) -> str:
+    return (
+        post.selftext[:_UI_SELFTEXT_LIMIT] + "..."
+        if len(post.selftext) > _UI_SELFTEXT_LIMIT
+        else post.selftext
+    )
+
+
+def _comment_listing(raw: object) -> RedditCommentListing:
+    """Return the comments listing from either shape REDDIT_RETRIEVE_POST_COMMENTS answers.
+
+    Composio types data as a dict, but Reddit's raw listing API for this endpoint
+    returns a top-level array [post_listing, comments_listing] — either shape can arrive.
     """
-    Extract only critical information from a Reddit post.
-
-    Args:
-        post_data: Raw Reddit post data
-
-    Returns:
-        Minimized post data with only essential fields
-    """
-    try:
-        data = post_data.get("data", {})
-
-        return {
-            "id": data.get("id", ""),
-            "title": data.get("title", ""),
-            "author": data.get("author", ""),
-            "subreddit": data.get("subreddit", ""),
-            "subreddit_name_prefixed": data.get("subreddit_name_prefixed", ""),
-            "created_utc": data.get("created_utc", 0),
-            "score": data.get("score", 0),
-            "upvote_ratio": data.get("upvote_ratio", 0),
-            "num_comments": data.get("num_comments", 0),
-            "selftext": data.get("selftext", ""),
-            "url": data.get("url", ""),
-            "permalink": data.get("permalink", ""),
-            "is_self": data.get("is_self", False),
-            "link_flair_text": data.get("link_flair_text"),
-            "over_18": data.get("over_18", False),
-            "spoiler": data.get("spoiler", False),
-            "locked": data.get("locked", False),
-            "stickied": data.get("stickied", False),
-        }
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error processing Reddit post",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return {}
+    if isinstance(raw, list):
+        if len(raw) > 1 and isinstance(raw[1], dict):
+            return RedditCommentListing.model_validate(raw[1])
+        return RedditCommentListing()
+    return RedditCommentsData.model_validate(raw).comments
 
 
-def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Process Reddit search results to minimize data.
-
-    Args:
-        response_data: Raw Reddit API search response
-
-    Returns:
-        Processed search results with only critical information
-    """
-    try:
-        search_results = response_data.get("search_results", {})
-        data = search_results.get("data", {})
-        children = data.get("children", [])
-
-        # Process each post
-        processed_posts = []
-        for child in children:
-            if child.get("kind") == "t3":  # t3 is a link/post
-                processed_post = process_reddit_post(child)
-                if processed_post:
-                    processed_posts.append(processed_post)
-
-        return {
-            "posts": processed_posts,
-            "after": data.get("after"),
-            "before": data.get("before"),
-            "result_count": len(processed_posts),
-        }
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error processing Reddit search results",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return response_data
-
-
-def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Extract only critical information from a Reddit comment.
-
-    Args:
-        comment_data: Raw Reddit comment data
-
-    Returns:
-        Minimized comment data with only essential fields
-    """
-    try:
-        data = comment_data.get("data", {})
-
-        return {
-            "id": data.get("id", ""),
-            "author": data.get("author", ""),
-            "body": data.get("body", ""),
-            "created_utc": data.get("created_utc", 0),
-            "score": data.get("score", 0),
-            "permalink": data.get("permalink", ""),
-            "parent_id": data.get("parent_id", ""),
-            "link_id": data.get("link_id", ""),
-            "subreddit": data.get("subreddit", ""),
-            "is_submitter": data.get("is_submitter", False),
-            "stickied": data.get("stickied", False),
-            "distinguished": data.get("distinguished"),
-            "edited": data.get("edited", False),
-        }
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error processing Reddit comment",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return {}
+def _ui_comment(comment: RedditComment) -> dict[str, object]:
+    return {
+        "id": comment.id,
+        "author": comment.author,
+        "body": comment.body,
+        "score": comment.score,
+        "created_utc": comment.created_utc,
+        "permalink": comment.permalink,
+        "is_submitter": comment.is_submitter,
+    }
 
 
 # ====================== BEFORE EXECUTE HOOKS ======================
@@ -150,11 +200,11 @@ def reddit_content_before_hook(
     try:
         writer = get_stream_writer()
         if writer is not None:
-            arguments = params.get("arguments", {})
-
             if tool == "REDDIT_CREATE_REDDIT_POST":
-                subreddit = arguments.get("subreddit", "")
-                payload = {"progress": f"Creating post in r/{subreddit}..."}
+                arguments = RedditCreatePostArguments.model_validate(
+                    ComposioToolCall.model_validate(params).arguments
+                )
+                payload = {"progress": f"Creating post in r/{arguments.subreddit}..."}
             elif tool == "REDDIT_POST_REDDIT_COMMENT":
                 payload = {"progress": "Posting comment..."}
             elif tool == "REDDIT_EDIT_REDDIT_COMMENT_OR_POST":
@@ -226,38 +276,40 @@ def reddit_retrieve_before_hook(
 @register_after_hook(tools=["REDDIT_SEARCH_ACROSS_SUBREDDITS"])
 def reddit_search_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process Reddit search response to minimize raw data."""
     log.set(reddit_tool=tool, toolkit=toolkit)
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response.get("data", {})
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
         # Process the raw search response
-        processed_response = process_reddit_search_results(response["data"])
+        data = RedditSearchData.model_validate(raw)
+        processed_response = process_reddit_search_results(data)
+        posts = [
+            child.data for child in data.search_results.data.children if child.kind == _POST_KIND
+        ]
 
-        if writer is not None and processed_response.get("posts"):
+        if writer is not None and posts:
             # Send search results to frontend
-            reddit_search_data = []
-            for post in processed_response["posts"]:
-                reddit_search_data.append(
-                    {
-                        "id": post.get("id", ""),
-                        "title": post.get("title", ""),
-                        "author": post.get("author", ""),
-                        "subreddit": post.get("subreddit_name_prefixed", ""),
-                        "score": post.get("score", 0),
-                        "num_comments": post.get("num_comments", 0),
-                        "created_utc": post.get("created_utc", 0),
-                        "permalink": post.get("permalink", ""),
-                        "url": post.get("url", ""),
-                        "selftext": post.get("selftext", "")[:200] + "..."
-                        if len(post.get("selftext", "")) > 200
-                        else post.get("selftext", ""),
-                    }
-                )
+            reddit_search_data = [
+                {
+                    "id": post.id,
+                    "title": post.title,
+                    "author": post.author,
+                    "subreddit": post.subreddit_name_prefixed,
+                    "score": post.score,
+                    "num_comments": post.num_comments,
+                    "created_utc": post.created_utc,
+                    "permalink": post.permalink,
+                    "url": post.url,
+                    "selftext": _ui_selftext(post),
+                }
+                for post in posts
+            ]
 
             payload = {
                 "reddit_data": {
@@ -276,42 +328,40 @@ def reddit_search_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_REDDIT_POST"])
 def reddit_post_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process single Reddit post response and stream to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response.get("data", {})
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        # Get the post data (it's usually nested under 'data' in Reddit API)
-        post_response = response.get("data", {})
+        # The post is nested under 'data', as a Reddit thing
+        post = RedditPostDetail.model_validate(raw).data
 
-        # Process the post
-        processed_post = process_reddit_post(post_response)
-
-        if writer is not None and processed_post:
+        if writer is not None:
             # Send post data to frontend
             reddit_post_data = {
-                "id": processed_post.get("id", ""),
-                "title": processed_post.get("title", ""),
-                "author": processed_post.get("author", ""),
-                "subreddit": processed_post.get("subreddit_name_prefixed", ""),
-                "score": processed_post.get("score", 0),
-                "upvote_ratio": processed_post.get("upvote_ratio", 0),
-                "num_comments": processed_post.get("num_comments", 0),
-                "created_utc": processed_post.get("created_utc", 0),
-                "selftext": processed_post.get("selftext", ""),
-                "url": processed_post.get("url", ""),
-                "permalink": processed_post.get("permalink", ""),
-                "is_self": processed_post.get("is_self", False),
-                "link_flair_text": processed_post.get("link_flair_text"),
+                "id": post.id,
+                "title": post.title,
+                "author": post.author,
+                "subreddit": post.subreddit_name_prefixed,
+                "score": post.score,
+                "upvote_ratio": post.upvote_ratio,
+                "num_comments": post.num_comments,
+                "created_utc": post.created_utc,
+                "selftext": post.selftext,
+                "url": post.url,
+                "permalink": post.permalink,
+                "is_self": post.is_self,
+                "link_flair_text": post.link_flair_text,
             }
 
             payload = {
@@ -323,7 +373,7 @@ def reddit_post_detail_after_hook(
             writer(payload)
 
         # Return processed response for LLM
-        return processed_post
+        return process_reddit_post(post)
 
     except Exception as e:
         log.error(
@@ -331,63 +381,36 @@ def reddit_post_detail_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_POST_COMMENTS"])
 def reddit_comments_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process Reddit comments response and stream to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response.get("data", {})
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        # Extract comments from Reddit API response. Composio's envelope types `data`
-        # as a plain Dict, but Reddit's raw listing API for this endpoint returns a
-        # top-level JSON array `[post_listing, comments_listing]` — genuinely either
-        # shape can arrive here.
-        response_data: dict[str, Any] | list[Any] = response.get("data", {})
+        listing = _comment_listing(raw)
 
-        # Reddit returns an array with [post_data, comments_data]
-        if isinstance(response_data, list):
-            if len(response_data) > 1:
-                comments_listing = response_data[1]
-                if isinstance(comments_listing, dict):
-                    comments_data = comments_listing.get("data", {}).get("children", [])
-                else:
-                    comments_data = []
-            else:
-                comments_data = []
-        else:
-            # Alternative structure
-            comments_data = response_data.get("comments", {}).get("data", {}).get("children", [])
-
-        # Process comments
-        processed_comments = []
-        for comment_child in comments_data:
-            if comment_child.get("kind") == "t1":  # t1 is a comment
-                processed_comment = process_reddit_comment(comment_child)
-                if processed_comment and processed_comment.get("body"):
-                    processed_comments.append(processed_comment)
+        # Process comments: the ``t1`` things that carry a body
+        comment_things = [
+            child
+            for child in listing.data.children
+            if child.kind == _COMMENT_KIND and child.data.body
+        ]
+        processed_comments = [process_reddit_comment(child.data) for child in comment_things]
 
         if writer is not None and processed_comments:
-            # Transform to frontend format
-            reddit_comment_data = []
-            for comment in processed_comments[:50]:  # Limit to 50 comments for UI
-                reddit_comment_data.append(
-                    {
-                        "id": comment.get("id", ""),
-                        "author": comment.get("author", ""),
-                        "body": comment.get("body", ""),
-                        "score": comment.get("score", 0),
-                        "created_utc": comment.get("created_utc", 0),
-                        "permalink": comment.get("permalink", ""),
-                        "is_submitter": comment.get("is_submitter", False),
-                    }
-                )
+            # Transform to frontend format, limited for the UI
+            reddit_comment_data = [
+                _ui_comment(child.data) for child in comment_things[:_UI_COMMENT_LIMIT]
+            ]
 
             payload = {
                 "reddit_data": {
@@ -398,10 +421,11 @@ def reddit_comments_after_hook(
             writer(payload)
 
         # Return minimal data for LLM
-        return {
+        summary: RedditCommentsSummary = {
             "comments": processed_comments,
             "comment_count": len(processed_comments),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -409,63 +433,58 @@ def reddit_comments_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw
 
 
 @register_after_hook(tools=["REDDIT_CREATE_REDDIT_POST", "REDDIT_POST_REDDIT_COMMENT"])
 def reddit_content_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process Reddit content creation response and stream to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response.get("data", {}):
-            return response.get("data", {})
+        if isinstance(raw, dict) and "error" in raw:
+            return raw
 
-        response_data = response.get("data", {})
+        created = RedditCreatedContent.model_validate(raw)
 
         if writer is not None:
             if tool == "REDDIT_CREATE_REDDIT_POST":
-                # Extract post info from response
-                post_id = response_data.get("id", "")
-                post_url = response_data.get("url", "")
-
                 payload = {
                     "reddit_data": {
                         "type": "post_created",
                         "data": {
-                            "id": post_id,
-                            "url": post_url,
+                            "id": created.id,
+                            "url": created.url,
                             "message": "Post created successfully!",
-                            "permalink": response_data.get("permalink", ""),
+                            "permalink": created.permalink,
                         },
                     }
                 }
                 writer(payload)
 
             elif tool == "REDDIT_POST_REDDIT_COMMENT":
-                # Extract comment info from response
-                comment_id = response_data.get("id", "")
-
                 payload = {
                     "reddit_data": {
                         "type": "comment_created",
                         "data": {
-                            "id": comment_id,
+                            "id": created.id,
                             "message": "Comment posted successfully!",
-                            "permalink": response_data.get("permalink", ""),
+                            "permalink": created.permalink,
                         },
                     }
                 }
                 writer(payload)
 
         # Return minimal response for LLM
-        return {
-            "id": response_data.get("id", ""),
+        summary: RedditContentCreatedSummary = {
+            "id": created.id,
             "success": True,
             "message": "Content created successfully",
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -473,4 +492,4 @@ def reddit_content_created_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response.get("data", {})
+        return raw

@@ -3,12 +3,10 @@
 Resolution order (first match wins):
 
 1. Exempt orchestration/plumbing tools → safe.
-2. A server-declared MCP ``destructiveHint`` → destructive. Escalation-only: an
-   untrusted MCP server may flag danger but never clear it, so ``readOnlyHint``
-   and ``destructiveHint=False`` are ignored; a true hint gates even over a
-   reviewed-safe registry flag.
-3. The tool registry's flag — authoritative for internal tools and curated
-   integration slugs.
+2. A server-declared MCP destructiveHint → destructive. Escalation-only: an
+   untrusted MCP server may flag danger but never clear it, so readOnlyHint and
+   destructiveHint=False are ignored; a true hint gates even a reviewed-safe flag.
+3. The tool registry's flag — authoritative for internal tools and curated slugs.
 4. A cached Mongo classification for a previously-seen custom tool.
 5. A one-shot LLM classification, persisted to Mongo + the live registry.
 
@@ -21,7 +19,7 @@ import hashlib
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
+from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
@@ -43,10 +41,10 @@ async def is_tool_destructive(
     *,
     destructive_hint: bool | None = None,
 ) -> bool:
-    """Return whether ``tool_name`` must be gated by HIL. Fails closed.
+    """Return whether tool_name must be gated by HIL. Fails closed.
 
-    ``destructive_hint`` is the caller-read MCP ``destructiveHint`` (see
-    :func:`mcp_destructive_hint`); it escalates an otherwise-unclassified tool
+    destructive_hint is the caller-read MCP destructiveHint (see
+    :func:mcp_destructive_hint); it escalates an otherwise-unclassified tool
     to destructive without an LLM call.
     """
     if tool_name in HIL_EXEMPT_TOOLS:
@@ -74,11 +72,11 @@ async def is_tool_destructive(
 
 
 def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
-    """Return ``True`` only when an MCP tool declares itself destructive.
+    """Return True only when an MCP tool declares itself destructive.
 
-    Honors the ``destructiveHint`` annotation ``SanitizingLangChainAdapter``
+    Honors the destructiveHint annotation SanitizingLangChainAdapter
     stashes on tool metadata. Escalation-only (see module docstring): a falsey
-    or missing hint yields ``None`` (defer), never ``False``.
+    or missing hint yields None (defer), never False.
     """
     metadata = getattr(tool, "metadata", None)
     if not isinstance(metadata, dict):
@@ -104,32 +102,35 @@ async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, descrip
 
 
 async def _cached_classification(tool_name: str, description_hash: str) -> bool | None:
-    """A prior classification for this exact tool+description, or ``None``."""
+    """Return a prior classification for this exact tool+description, or None."""
     record = await hil_tool_risk_repository.find_classification(tool_name, description_hash)
     return record.is_destructive if record else None
 
 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
-    """Classify a TOOL, not a request — so this call deliberately carries no
-    user attribution. The verdict is cached per tool+description (DB + registry)
-    and shared by every user, so billing its COGS to whichever user happened to
-    trigger the first classification would be arbitrary. The unattributed-spend
-    warning from ``ainvoke_structured`` is expected here, and rare: this runs
-    once per tool, not per call."""
+    """Classify a TOOL, not a request — deliberately carries no user attribution.
+
+    The verdict is cached per tool+description and shared by every user, so billing
+    its COGS to whichever user triggered the first classification would be
+    arbitrary. The unattributed-spend warning from ainvoke_structured is expected
+    here, and rare: this runs once per tool, not per call.
+    """
     return await ainvoke_structured(
         _ClassifyResult,
         TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
         label="hil_tool_classification",
-        timeout=HIL_LLM_TIMEOUT_SECONDS,
         config=SILENT_LLM_CONFIG,
+        options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
     )
 
 
 async def _persist_classification(
     tool_name: str, description_hash: str, result: _ClassifyResult
 ) -> None:
-    """Cache the classification in Mongo so restarts/refreshes don't re-run the
-    LLM (the description_hash key means only a changed description re-classifies)."""
+    """Cache the classification in Mongo so restarts/refreshes don't re-run the LLM.
+
+    The description_hash key means only a changed description re-classifies.
+    """
     record = HILToolRiskRecord(
         tool_name=tool_name,
         description_hash=description_hash,

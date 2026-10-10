@@ -83,6 +83,21 @@ const res = await fetch("/api/todos");
 const todos = await apiService.get<Todo[]>("/api/todos");
 ```
 
+### API types are generated, never hand-written
+
+Every request/response shape the backend owns comes from `@gaia/shared/api/generated` (`@shared/api/generated` under the web path alias):
+
+```ts
+import type { TodoListResponse, TodoResponse } from "@shared/api/generated";
+
+const todos: TodoListResponse = await api.get("/api/v1/todos");
+```
+
+- Every Pydantic model is exported under its own name (`TodoResponse` is the class `TodoResponse`; a model used both as a request and a response comes as `WorkflowStepInput` / `WorkflowStepOutput`); `paths`/`operations` carry the per-route request and response types; `ErrorEnvelope` is the one error envelope (`{ message, code?, ... }` — narrow it with `getErrorMessage` / `getErrorCode` from `@/lib/api/errors`).
+- Never declare an `interface`/`type` that mirrors a Pydantic model. `checks.mjs api-schema-types` (the CI `api-schema` lane) fails the file and names the generated type to import instead. A feature's type hub may re-export a generated type (`export type { TodoResponse } from "@shared/api/generated"`) or name it for its consumers (`export type Workflow = WorkflowWithIntegrations`); a client-side view model that genuinely differs gets a name that is not a schema name (`TriggerConfigDraft`, `AttachedFileData`).
+- Changed a route or model? Run `mise api:types` (the prek hook does it for you on commit) and commit `apps/api/openapi.json` + `libs/shared/ts/src/api/generated/schema.d.ts`. CI regenerates and fails on drift.
+- Generator traps: `dict[str, Any]` → `Record<string, unknown>` and `Any` → `unknown`; `datetime` → `string`; `X | None` → `X | null` on a required key, not an optional key; a `StrEnum` → a string-literal union (keep a `const` map when you need runtime values). A Pydantic field with a default becomes an optional key (`memories?:`) unless the model extends `ResponseModel` (`apps/api/app/schemas/common.py`) — fix that on the API side rather than guarding `undefined` in every consumer.
+
 ## Error Boundaries
 
 - Every major feature area that renders independently should be wrapped in an `ErrorBoundary`.
@@ -104,9 +119,9 @@ Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.
 Two patterns in use:
 
 1. **Simple store** — `create<State>()(...)` with plain setters.
-2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `userStore`, keyed to `localStorage`).
+2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `composerStore`, keyed to `localStorage`).
 
-Export named selectors from the store file (e.g. `useUserProfile`) using `useShallow` for object selectors to avoid unnecessary re-renders.
+Export named selectors from the store file (e.g. `useLayoutSidebar`) using `useShallow` for object selectors to avoid unnecessary re-renders.
 
 Patterns that are not tool-enforced but required:
 
@@ -161,7 +176,8 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
-- _(none currently — all interactive buttons use HeroUI `<Button>`.)_
+- Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
+- Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
 
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
@@ -174,7 +190,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 - `config.ts` — locale list (`en`, `es`, `fr`, `de`, `ja`, `ko`, `pt-BR`) and `defaultLocale = "en"`
 - `routing.ts` — `localePrefix: "as-needed"` (default locale has no prefix in URL)
 - `request.ts` — server-side locale resolution passed to `createNextIntlPlugin`
-- `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname`, `redirect` wrappers
+- `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname` wrappers
 
 **When to use `@/i18n/navigation` vs `next/navigation`:**
 

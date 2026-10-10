@@ -34,6 +34,13 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleClose = useCallback(() => {
+    if (isLoading) return; // Prevent closing while loading
+    setBearerToken("");
+    setError(null);
+    onClose();
+  }, [isLoading, onClose]);
+
   const handleSubmit = useCallback(async () => {
     if (!bearerToken.trim() || isLoading) return;
 
@@ -48,17 +55,12 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [bearerToken, isLoading, integrationId, onSubmit]);
-
-  const handleClose = () => {
-    if (isLoading) return; // Prevent closing while loading
-    setBearerToken("");
-    setError(null);
-    onClose();
-  };
+  }, [bearerToken, isLoading, integrationId, onSubmit, handleClose]);
 
   const keyDownStateRef = useRef({ isLoading, isMac, handleSubmit });
-  keyDownStateRef.current = { isLoading, isMac, handleSubmit };
+  useEffect(() => {
+    keyDownStateRef.current = { isLoading, isMac, handleSubmit };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

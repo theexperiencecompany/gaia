@@ -7,11 +7,11 @@ import {
   SearchIcon,
 } from "@icons";
 import { useState } from "react";
+import { safeUrl } from "@/features/chat/utils/safeUrl";
 import type {
   DeepResearchResults,
   EnhancedWebResult,
 } from "@/types/features/convoTypes";
-
 import SearchResultsTabs from "./SearchResultsTabs";
 
 interface DeepResearchResultsTabsProps {
@@ -35,7 +35,7 @@ export default function DeepResearchResultsTabs({
           aria-label="Deep Research Results"
           indicator={null}
           title={
-            <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-all hover:bg-white/20">
+            <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-colors hover:bg-white/20">
               {isExpanded
                 ? "Hide Deep research Results"
                 : "Show Deep research Results"}
@@ -111,7 +111,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
       {results.map((result) => (
         <div
           key={result.url}
-          className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
+          className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
         >
           <h2 className="truncate text-sm font-medium text-primary">
             <a
@@ -133,13 +133,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {(() => {
-                  try {
-                    return new URL(result.url).hostname;
-                  } catch {
-                    return result.url;
-                  }
-                })()}
+                {safeUrl(result.url)?.hostname ?? result.url}
               </a>
             </span>
           </div>
@@ -150,6 +144,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 href={result.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Open search result"
                 className="group relative block"
               >
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100">

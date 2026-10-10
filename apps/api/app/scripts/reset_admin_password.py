@@ -26,11 +26,24 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TypedDict
 
 from pymongo import MongoClient
 
 from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+
+
+class StoredCredential(TypedDict):
+    """One ``auth_credentials`` row, narrowed to the field this script reads.
+
+    The projection below asks Mongo for ``user_id`` alone, and that field is the
+    only one every row carries (``LocalCredentialsRepository`` writes it), so
+    the raw BSON mapping is named here rather than read key-by-key with no
+    declared shape.
+    """
+
+    user_id: str
 
 
 def main() -> None:
@@ -46,9 +59,10 @@ def main() -> None:
         print("MONGO_DB is not configured", file=sys.stderr)
         sys.exit(1)
 
-    client: MongoClient[dict] = MongoClient(settings.MONGO_DB)
+    client: MongoClient[dict[str, object]] = MongoClient(settings.MONGO_DB)
     db = client[MONGO_DATABASE_NAME]
-    count = db["auth_credentials"].count_documents({})
+    credentials = db.get_collection("auth_credentials")
+    count = credentials.count_documents({})
 
     if count == 0:
         print("No admin account found — you can already sign up at /signup")
@@ -61,13 +75,11 @@ def main() -> None:
 
     # Capture user_ids before deleting so we can clean up orphaned users
     # (otherwise signup with the same email is blocked by the existing-identity gate).
-    user_ids = [
-        doc.get("user_id")
-        for doc in db["auth_credentials"].find({}, {"user_id": 1})
-        if doc.get("user_id")
-    ]
+    # Materialised before the delete, exactly as the lazy cursor was.
+    rows: list[StoredCredential] = [*credentials.find({}, {"user_id": 1})]
+    user_ids = [row["user_id"] for row in rows if row.get("user_id")]
 
-    result = db["auth_credentials"].delete_many({})
+    result = credentials.delete_many({})
     print(f"Deleted {result.deleted_count} admin credential(s).")
 
     if user_ids:
@@ -84,7 +96,11 @@ def main() -> None:
                 except Exception:
                     continue
             if object_ids:
-                deleted_users = db["users"].delete_many({"_id": {"$in": object_ids}}).deleted_count
+                deleted_users = (
+                    db.get_collection("users")
+                    .delete_many({"_id": {"$in": object_ids}})
+                    .deleted_count
+                )
                 if deleted_users:
                     print(f"Also removed {deleted_users} associated user(s).")
         except Exception as exc:  # pragma: no cover

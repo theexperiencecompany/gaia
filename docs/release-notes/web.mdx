@@ -4,6 +4,37 @@ description: "Version history and changelog for the GAIA web application, includ
 icon: "browser"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Web v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.23.0)
+
+### Features
+- **A New Marketing Site**: The homepage, navbar, footer, pricing page, and product demos were rebuilt from scratch.
+- **Explore Workflows, Redesigned**: A curated set of starter workflows with their own icons and cards, so there's something to run on day one.
+- **Pick Your Apps During Onboarding**: Onboarding now asks which integrations you use and suggests workflows built from them, instead of starting you on an empty page.
+- **Workflows Tell You What They Need**: Turning on a workflow whose steps need an app you haven't connected now explains which one is missing, rather than activating and failing later.
+- **A Better Composer**: The character limit is gone, pasted images become attachments, and you can upload files directly from the composer.
+- **Clearer Pricing**: Plan features show the platforms they cover inline, iMessage is marked as Pro, and the yearly plan gives two months free.
+- **Founder's Letter**: A letter from the founder with an early-bird discount for the first users.
+
+### Bug Fixes
+- **Failures Are Visible**: When the model fails, the chat now says so instead of stalling, and it stops piling retry on retry.
+- **Notifications**: The notification list honours its limit, drops dead routes, and runs off one hook instead of two that disagreed.
+- **Workflow Icons**: Cards now render the icon you picked for a workflow.
+- **Canvas Documents**: The canvas document viewer 404'd on every open; it loads again.
+- **Landing Pages**: Fixed an infinite prefetch loop and a navbar hydration mismatch on production landing pages.
+- **Recovering From Stale Assets**: A deploy mid-session no longer leaves you on a broken route — the app reloads the route instead.
+- **Private Browsing**: When the browser refuses to open the local database the chat history is cached in — a private window, or hardened privacy settings — that layer quietly turns itself off instead of breaking the page.
+- **Search Listings**: Page titles are single-brand, utility pages are noindexed, and the sitemap reports honest signals.
+- **Texting GAIA on a Non-Apple Device**: The iMessage page now shows the number to text instead of a deep link only Apple devices could open.
+
+### Infrastructure
+- **Next.js 16.3 and TypeScript 7**: The web app moved to Next.js 16.3 and onto TypeScript 7's new native compiler, which made builds and type-checking noticeably faster.
+- **One Deploy Path**: Removed the leftover Vercel setup, and a change that touches both the backend and the web app now ships them together instead of one at a time.
+- **Cleaner Error Reports**: Crashes caused by browser extensions no longer show up as GAIA errors, so what's left is actually ours.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [Web v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.22.0)

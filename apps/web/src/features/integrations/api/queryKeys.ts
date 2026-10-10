@@ -5,14 +5,16 @@
  * stay consistent across hooks, pages, and components. Values match the keys
  * used elsewhere in the app (incl. mobile), so cache identity is preserved.
  *
- * Backend data model (PR #816): a single personalized catalog at
- * GET /integrations/me, plus per-integration tools at GET /integrations/{id}/tools.
+ * The catalog snapshot and status map are separate queries; per-integration
+ * tools are still fetched on demand at GET /integrations/{id}/tools.
  */
 export const integrationKeys = {
-  /** Prefix — invalidating this busts the catalog, per-integration tools, and instructions. */
+  /** Prefix — invalidating this busts the catalog, status, per-integration tools, and instructions. */
   all: ["integrations"] as const,
-  /** The personalized catalog (GET /integrations/me). */
+  /** Fast personalized catalog snapshot. */
   me: ["integrations", "me"] as const,
+  /** The independently refreshed connection map (GET /integrations/status). */
+  status: ["integrations", "status"] as const,
   /** One integration's tools (GET /integrations/{id}/tools). */
   tools: (integrationId: string) =>
     ["integrations", integrationId, "tools"] as const,

@@ -74,8 +74,7 @@ class TestTranscribeAudio:
         mock_resolve: MagicMock,
         mock_client_cls: MagicMock,
     ):
-        """A key configured in Settings (credential store) is passed explicitly
-        to the client — the SDK must not depend on the OPENAI_API_KEY env var."""
+        """Pass a Settings-stored key explicitly; the SDK must not need the env var."""
         mock_resolve.return_value = {
             "api_key": "sk-stored",
             "base_url": None,

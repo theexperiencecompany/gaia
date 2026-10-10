@@ -2,14 +2,15 @@
 Skill Registry - repository-backed CRUD for installed skills.
 
 Tracks which skills are installed per user, their VFS paths, and whether they're
-enabled/disabled. The actual skill content lives in VFS; the ``skills`` collection
-stores the index (see ``SkillsRepository``). System skills use user_id="system".
+enabled/disabled. The actual skill content lives in VFS; the skills collection
+stores the index (see SkillsRepository). System skills use user_id="system".
 
 Caching: get_skills_for_agent is cached in Redis (12h TTL). Write operations
 (install/uninstall/enable/disable) invalidate both the per-agent user skills cache
 and the composed skills text cache.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -22,6 +23,7 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.skills import skill_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
+from app.utils.errors import AppError
 from shared.py.wide_events import SkillContext, log
 
 # Invalidation patterns for write operations — clears all agent variants for the user
@@ -34,55 +36,72 @@ _SKILLS_INVALIDATION_PATTERNS = [
 ]
 
 
-@CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
-async def install_skill(
-    user_id: str,
-    name: str,
-    description: str,
-    target: str,
-    vfs_path: str,
-    source: SkillSource,
-    source_url: str | None = None,
-    body_content: str | None = None,
-    files: list[str] | None = None,
-    skill_license: str | None = None,
-    compatibility: str | None = None,
-    metadata: dict[str, str] | None = None,
-    allowed_tools: list[str] | None = None,
-) -> Skill:
+@dataclass
+class SkillInstallRequest:
+    """Everything install_skill needs to register a skill."""
+
+    user_id: str
+    name: str
+    description: str
+    target: str
+    vfs_path: str
+    source: SkillSource
+    source_url: str | None = None
+    body_content: str | None = None
+    files: list[str] | None = None
+    license_name: str | None = None
+    compatibility: str | None = None
+    metadata: dict[str, str] | None = None
+    allowed_tools: list[str] | None = None
+
+
+def _skills_invalidation_keys_for_request(
+    _func_name: str, request: SkillInstallRequest
+) -> list[str]:
+    """Resolve user_id from the request: install_skill's single request-object arg breaks key_patterns' flat binding."""
+    return [pattern.format(user_id=request.user_id) for pattern in _SKILLS_INVALIDATION_PATTERNS]
+
+
+@CacheInvalidator(key_generator=_skills_invalidation_keys_for_request)
+async def install_skill(request: SkillInstallRequest) -> Skill:
     """Register a newly installed skill in the registry.
 
-    Returns the created Skill with its assigned ID. Raises ``ValueError`` if a
-    skill with the same name already exists for the same target.
+    Returns the created Skill with its assigned ID. Raises AppError (409)
+    if a skill with the same name already exists for the same target.
     """
     log.set(
-        user_id=user_id,
-        skill=SkillContext(operation="install", skill_name=name),
+        user_id=request.user_id,
+        skill=SkillContext(operation="install", skill_name=request.name),
     )
 
     # Check for duplicate by name + user_id + target
-    existing = await skill_repository.find_by_name(user_id, name, target)
+    existing = await skill_repository.find_by_name(request.user_id, request.name, request.target)
     if existing:
-        raise ValueError(
-            f"Skill '{name}' already installed for target "
-            f"'{target}'. Uninstall first or use a different name."
+        raise AppError(
+            message=(
+                f"Skill '{request.name}' already installed for target "
+                f"'{request.target}'. Uninstall first or use a different name."
+            ),
+            why="Skill names are unique per user and target.",
+            fix="Uninstall the existing skill first, or install under a different name.",
+            status_code=409,
         )
 
     skill = Skill(
         id=str(uuid4()),
-        user_id=user_id,
-        name=name,
-        description=description,
-        target=target,
-        license=skill_license,
-        compatibility=compatibility,
-        metadata=metadata or {},
-        allowed_tools=allowed_tools or [],
-        vfs_path=vfs_path,
-        source=source,
-        source_url=source_url,
-        body_content=body_content,
-        files=files or [],
+        user_id=request.user_id,
+        name=request.name,
+        description=request.description,
+        target=request.target,
+        license=request.license_name,
+        compatibility=request.compatibility,
+        metadata=request.metadata or {},
+        allowed_tools=request.allowed_tools or [],
+        vfs_path=request.vfs_path,
+        source=request.source,
+        source_url=request.source_url,
+        body_content=request.body_content,
+        files=request.files or [],
         enabled=True,
         installed_at=datetime.now(UTC),
     )
@@ -91,10 +110,10 @@ async def install_skill(
 
     log.info(
         f"{LogTag.SKILLS} Installed skill for user",
-        skill_name=name,
-        user_id=user_id,
-        target=target,
-        source=source.value,
+        skill_name=request.name,
+        user_id=request.user_id,
+        target=request.target,
+        source=request.source.value,
     )
     return skill
 
@@ -147,7 +166,6 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
 async def enable_skill(user_id: str, skill_id: str) -> bool:
-    """Enable a skill."""
     return await skill_repository.set_enabled(user_id, skill_id, True)
 
 
@@ -161,7 +179,7 @@ async def disable_skill(user_id: str, skill_id: str) -> bool:
 async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> Skill | None:
     """Patch metadata fields on an existing skill and return the updated record.
 
-    Always stamps ``updated_at``. Scoped to ``{_id, user_id}`` so a user can only
+    Always stamps updated_at. Scoped to {_id, user_id} so a user can only
     edit their own skills. Returns None if no matching skill exists.
     """
     log.set(user_id=user_id, skill=SkillContext(skill_id=skill_id))

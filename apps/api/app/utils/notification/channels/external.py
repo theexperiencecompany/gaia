@@ -5,13 +5,13 @@ sent from Python. This adapter renders notification content to platform-agnostic
 CommonMark text and publishes it to the per-platform RabbitMQ queue the bot
 processes consume; the bots own all platform formatting and the actual send.
 
-Subclasses set only ``channel_type`` and ``platform``.
+Subclasses set only channel_type and platform.
 """
 
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TypedDict
+from dataclasses import dataclass
 
 from app.config.settings import settings
 from app.models.chat_models import ConversationSource
@@ -24,14 +24,15 @@ from app.services.outbound_delivery import OutboundResult, publish_outbound_mess
 from app.utils.notification.channels.base import ChannelAdapter
 
 
-class ExternalPayload(TypedDict):
+@dataclass(slots=True, frozen=True)
+class ExternalPayload:
     """What this adapter hands the bot consumers: the rendered CommonMark parts."""
 
     parts: list[str]
 
 
 def _join_nonempty(*segments: str, sep: str = "\n") -> str:
-    """Join only the non-empty segments with ``sep`` (no leading/trailing seps)."""
+    """Join only the non-empty segments with sep (no leading/trailing seps)."""
     return sep.join(s for s in segments if s)
 
 
@@ -51,11 +52,11 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         return self.platform.value
 
     def can_handle(self, notification: NotificationRequest) -> bool:  # noqa: ARG002 -- polymorphic interface; implementations keep the full signature
-        """Always claim the notification; the real guards live downstream.
+        """Return True unconditionally; the real guards live downstream.
 
         External adapters are auto-injected by the orchestrator regardless of
         the explicit channel list. The orchestrator's preference check and the
-        platform-link lookup in ``publish_outbound_message`` decide whether the
+        platform-link lookup in publish_outbound_message decide whether the
         message is actually delivered.
         """
         return True
@@ -90,8 +91,7 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         when the publish itself fails (so retries/alerting fire), and a skip when
         the user has no linked platform or there is nothing to send.
         """
-        parts = content.get("parts", [])
-        result = await publish_outbound_message(self.platform, user_id, parts)
+        result = await publish_outbound_message(self.platform, user_id, content.parts)
         if result is OutboundResult.PUBLISHED:
             return self._success()
         if result is OutboundResult.FAILED:

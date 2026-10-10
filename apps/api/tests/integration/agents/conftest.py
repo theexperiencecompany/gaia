@@ -8,12 +8,14 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import Runnable
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 import pytest
 
-from app.agents.llm.client import _build_default_llm, _sim_llm
+from app.agents.llm import client as llm_client
+from app.agents.llm.client import _build_default_llm, _sim_llm, with_llm_retry
 from app.config.settings import settings
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 from tests.integration.conftest import SimpleState
@@ -23,23 +25,10 @@ from tests.integration.conftest import SimpleState
 def no_model_fallback():
     """Build the graph with NO default-model fallback available.
 
-    ``create_agent`` resolves the fallback once, at build time, from
-    ``get_default_llm()``. A test asserting that a provider error *propagates*
-    must therefore pin off whatever key that factory needs, or an ambient key
-    (Infisical, a developer's shell, CI secrets) silently makes the fallback
-    available and swallows the error the test exists to catch.
-
-    Both provider keys are pinned rather than the one the default happens to use
-    today: the default model has already moved providers once, and naming a
-    single key here is what let this fixture keep passing while quietly no
-    longer disabling anything.
-
-    Sim mode is pinned off and the model caches cleared for the same reason —
-    each is a way ``get_default_llm()`` still hands back a model with every
-    provider key unset: sim mode short-circuits to the stub before the key check,
-    and a cached instance built by an earlier test outlives the patch. Either one
-    silently restores the fallback this fixture exists to remove, and the test
-    then passes while asserting nothing.
+    Pins off both provider keys (not just the one the default currently uses,
+    since that has moved before), sim mode, and clears the model caches —
+    each is a way resolve_model() could otherwise silently hand back a
+    working fallback and make the test pass while asserting nothing.
     """
     _build_default_llm.cache_clear()
     _sim_llm.cache_clear()
@@ -55,8 +44,25 @@ def no_model_fallback():
 
 
 @pytest.fixture
+def single_llm_attempt(monkeypatch: pytest.MonkeyPatch):
+    """Make the graph's LLM call fail fast: one attempt, no retry backoff.
+
+    with_llm_retry's tenacity backoff otherwise costs ~4s of sleeps per
+    wrapped call even for a fake model. Patched by name (not functools.partial)
+    since ainvoke_with_fallback passes max_attempts= explicitly, which would
+    override a partial's bound keyword.
+    """
+
+    def _single_attempt(runnable: Runnable, *, max_attempts: int = 1) -> Runnable:
+        del max_attempts  # the caller's budget is exactly what this fixture removes
+        return with_llm_retry(runnable, max_attempts=1)
+
+    monkeypatch.setattr(llm_client, "with_llm_retry", _single_attempt)
+
+
+@pytest.fixture
 def simple_tool():
-    """A trivial tool for testing tool execution in graphs."""
+    """Build a trivial tool for testing tool execution in graphs."""
 
     @tool
     def greet(name: str) -> str:
@@ -151,16 +157,5 @@ def real_agent_config() -> dict:
 
 @pytest.fixture
 def fake_llm() -> FakeMessagesListChatModel:
-    """A FakeMessagesListChatModel pre-loaded with a single plain-text response.
-
-    Use this fixture when a test needs a properly configured LLM stand-in that
-    can be bound to tools and invoked via the standard LangChain interface
-    without hitting any external API.
-
-    Example::
-
-        def test_something(fake_llm):
-            result = fake_llm.invoke([HumanMessage(content="hello")])
-            assert result.content == "Fake response"
-    """
+    """Build a FakeMessagesListChatModel pre-loaded with a single plain-text response."""
     return create_fake_llm(["Fake response"])

@@ -180,6 +180,46 @@
   ],
   "overrides": [
     {
+      "includes": [
+        "apps/web/src/**",
+        "!apps/web/src/lib/api/**",
+        "!apps/web/src/__tests__/**",
+        "!apps/web/src/**/__tests__/**",
+        "!apps/web/src/**/*.test.ts",
+        "!apps/web/src/**/*.test.tsx",
+        "!apps/web/src/features/team/api/teamApi.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/lib/api/client": {
+                    "importNames": ["apiauth", "api"],
+                    "message": "The axios instances belong to apps/web/src/lib/api. Use `api` from \"@/lib/api/typed\", whose paths and response shapes are checked against openapi.json; apiBaseUrl/clientHeaders/registerApiErrorHandler stay importable."
+                  },
+                  "@/lib/api/service": "apiService is the untyped request engine behind the typed client. Use `api` from \"@/lib/api/typed\" instead.",
+                  "axios": {
+                    "allowImportNames": [
+                      "AxiosError",
+                      "AxiosInstance",
+                      "AxiosRequestConfig",
+                      "AxiosResponse",
+                      "InternalAxiosRequestConfig",
+                      "isAxiosError"
+                    ],
+                    "message": "Only apps/web/src/lib/api may build an axios client. Use `api` from \"@/lib/api/typed\"; the error helpers stay importable for narrowing."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/web/src/features/desktop-popup/desktop-popup.css"],
       "linter": {
         "rules": {
@@ -253,6 +293,18 @@
         "rules": {
           "correctness": {
             "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/features/chat/components/code-block/FlowchartPreview.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noNoninteractiveTabindex": "off"
           }
         }
       }

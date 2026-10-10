@@ -1,25 +1,9 @@
-"""Integration tests for ChromaStore.
+"""Integration tests for ChromaStore and the chroma_tools_store indexing helpers.
 
-Tests exercise ChromaStore (app.db.chroma.chroma_store) and the tool-indexing
-helpers (app.db.chroma.chroma_tools_store).
-
-Client strategy
----------------
-USE_REAL_SERVICES=1 (Dagger CI): uses the real AsyncHttpClient connected to
-the chroma service container.  This tests the full HTTP protocol path.
-
-Otherwise (local run): falls back to _AsyncEphemeralWrapper, an in-process
-synchronous EphemeralClient wrapped in an async shim.  chromadb 1.x has no
-AsyncEphemeralClient, so the shim provides the same async interface at zero
-infrastructure cost.
-
-Key production modules under test
-----------------------------------
-- app.db.chroma.chroma_store.ChromaStore
-- app.db.chroma.chroma_tools_store._compute_tool_diff
-- app.db.chroma.chroma_tools_store._build_put_operations
-- app.db.chroma.chroma_tools_store._get_existing_tools_from_chroma
-- app.db.chroma.chroma_tools_store.delete_tools_by_namespace
+USE_REAL_SERVICES=1 (Dagger CI) uses the real AsyncHttpClient against the
+chroma service container, exercising the full HTTP path. Otherwise this falls
+back to _AsyncEphemeralWrapper — an async shim over the synchronous
+EphemeralClient, since chromadb 1.x has no AsyncEphemeralClient.
 """
 
 from __future__ import annotations
@@ -34,57 +18,29 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
-from app.db.chroma.chroma_store import ChromaStore
+from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
     _get_existing_tools_from_chroma,
     delete_tools_by_namespace,
 )
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
 _CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 
 
-# ---------------------------------------------------------------------------
-# Async wrapper for synchronous EphemeralClient (local fallback)
-# chromadb.AsyncEphemeralClient does not exist in chromadb 1.x – this wrapper
-# exposes the same async interface that ChromaStore expects by delegating to the
-# synchronous EphemeralClient under the hood.
-# ---------------------------------------------------------------------------
+# chromadb.AsyncEphemeralClient does not exist in chromadb 1.x — this wrapper
+# exposes the same async interface by delegating to the synchronous
+# EphemeralClient under the hood.
 
 
-class _NoOpEmbeddingFunction:
-    """No-op embedding function — defense-in-depth for the test wrapper.
-
-    ChromaStore already registers its own no-op EF on every collection
-    (see chroma_store._NOOP_EF), but the wrapper also defaults to this
-    for any collection created outside of ChromaStore's _get_collection.
-    Implements chroma 1.x's full EmbeddingFunction contract (name /
-    get_config / build_from_config / is_legacy) so the ephemeral client's
-    config serialization never falls into the legacy-warning path.
-    """
-
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        return [[0.0] * 384 for _ in input]
-
-    @staticmethod
-    def name() -> str:
-        return "test-noop"
-
-    def get_config(self) -> dict[str, str]:
-        return {"name": "test-noop"}
-
-    @staticmethod
-    def build_from_config(config: dict) -> _NoOpEmbeddingFunction:
-        return _NoOpEmbeddingFunction()
-
-    def is_legacy(self) -> bool:
-        return False
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
+# Defense-in-depth for the test wrapper: ChromaStore already registers this on
+# every collection it creates, but the wrapper also defaults to it for any
+# collection created outside ChromaStore._get_collection.
+_NOOP_EF = NoOpEmbeddingFunction()
 
 
 class _AsyncCollectionWrapper:
@@ -165,19 +121,18 @@ class _AsyncEphemeralWrapper:
 
 @pytest.fixture
 def collection_prefix() -> str:
-    """A per-test namespace for every collection this module creates.
+    """Build a per-test namespace for every collection this module creates.
 
     Under USE_REAL_SERVICES the Chroma server is shared by the whole run, so
-    collection names must be unique per test: a plain fixed name collides with
-    the same test on another xdist worker, and the cleanup below must only
-    delete what this test made (deleting everything wipes collections other
-    workers — notably the memory suite's ``gaia_memories`` — are actively using).
+    names must be unique per test — a fixed name would collide across xdist
+    workers, and cleanup must delete only this test's collections (deleting
+    everything wipes others', notably the memory suite's gaia_memories).
     """
     return f"test_{uuid4().hex[:8]}_"
 
 
 @pytest.fixture
-async def ephemeral_client(collection_prefix: str):
+async def ephemeral_client(collection_prefix: str, _precreate_ephemeral_chroma: None):
     """Return a ChromaDB client per test.
 
     Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,
@@ -337,7 +292,7 @@ class TestChromaStoreCRUD:
         assert result_gmail[0] is None  # not in gmail namespace
 
     async def test_batch_mixed_ops(self, chroma_store):
-        """abatch should handle multiple operations in a single call."""
+        """Abatch should handle multiple operations in a single call."""
         ops = [
             PutOp(namespace=("ns",), key="a", value={"x": 1, "tool_hash": "h_a"}),
             PutOp(namespace=("ns",), key="b", value={"x": 2, "tool_hash": "h_b"}),
@@ -429,14 +384,7 @@ class TestChromaStoreSearch:
         assert results[0] == []
 
     async def test_search_limit_is_respected(self, chroma_store):
-        """SearchOp limit should cap the number of returned items to exactly the limit.
-
-        The original test used populated_store which only has 2 items in the
-        searched namespace, and asserted ``<= 1`` — that passes even when 0
-        items are returned (false confidence).  This version seeds MORE items
-        than the limit into a dedicated namespace, so a zero-result bug would
-        cause the assertion to fail.
-        """
+        """Seeds more items than the limit, unlike the old <= 1 assertion that passed even with 0 results returned."""
         # Seed 3 items into a dedicated namespace.
         seed_ops = [
             PutOp(
@@ -462,14 +410,7 @@ class TestChromaStoreSearch:
         assert len(results[0]) == 2
 
     async def test_partial_failure_in_gather_does_not_block_successful_puts(self, chroma_store):
-        """_apply_put_ops uses asyncio.gather(return_exceptions=True).
-
-        If one upsert task raises, the others should still complete and their
-        items should be retrievable afterwards.
-
-        ChromaStore uses __slots__, so we patch at the class level to avoid
-        the 'read-only attribute' error from patch.object on the instance.
-        """
+        """ChromaStore uses __slots__, so _upsert_item is patched at the class level — patch.object on the instance raises a read-only-attribute error."""
         from unittest.mock import patch
 
         success_key = "ok_tool"
@@ -483,7 +424,10 @@ class TestChromaStoreSearch:
                 raise RuntimeError("Simulated upsert failure")
             return await original_upsert_item(self_arg, doc_id, op, collection)
 
-        with patch.object(type(chroma_store), "_upsert_item", selective_upsert):
+        with (
+            patch.object(type(chroma_store), "_upsert_item", selective_upsert),
+            pytest.raises(ChromaBatchWriteError),
+        ):
             await chroma_store.abatch(
                 [
                     PutOp(
@@ -499,7 +443,7 @@ class TestChromaStoreSearch:
                 ]
             )
 
-        # The successful item should be present.
+        # The successful item should be present despite the surfaced failure.
         ok_results = await chroma_store.abatch([GetOp(namespace=ns, key=success_key)])
         assert ok_results[0] is not None
         assert ok_results[0].key == success_key
@@ -510,11 +454,7 @@ class TestChromaStoreSearch:
 
     @pytest.mark.regression
     async def test_concurrent_apply_put_ops_share_one_semaphore(self, chroma_store):
-        """Two concurrent _apply_put_ops calls must share one process-wide
-        semaphore (loop_bound_semaphore), not each get their own local one —
-        otherwise the fd cap doubles for every concurrent caller (e.g. the
-        startup catalog warmup fanning out over every provider toolkit).
-        """
+        """Must share one process-wide semaphore (loop_bound_semaphore), or the fd cap doubles per concurrent caller (e.g. startup catalog warmup)."""
         batch_size = MAX_CONCURRENT_CHROMA_WRITES
         in_flight = 0
         max_in_flight = 0
@@ -574,13 +514,7 @@ class TestChromaStoreCollectionResolution:
     async def test_concurrent_first_resolution_does_not_race_on_create(
         self, ephemeral_client, collection_prefix: str
     ):
-        """Two stores resolving the same new collection must both succeed.
-
-        _get_collection used to list-then-create, so two callers racing on a
-        fresh collection both saw it missing and both issued create — the
-        loser got "Collection already exists". The startup catalog warmup
-        fans out exactly this way.
-        """
+        """_get_collection used to list-then-create — two racing callers both saw it missing and the loser got "Collection already exists" (as the startup catalog warmup does)."""
         name = f"{collection_prefix}race"
         stores = [
             ChromaStore(client=ephemeral_client, collection_name=name, index=None) for _ in range(2)
@@ -801,11 +735,9 @@ class TestGetExistingToolsFromChroma:
         col = await ephemeral_client.create_collection(
             f"{collection_prefix}tools", metadata={"hnsw:space": "cosine"}
         )
-        # Supply pre-computed dummy embeddings so the client does not try to
-        # download the 79 MB ONNX model to compute them.  Without embeddings
-        # the default EF triggers a ~10-min download that causes the Chroma
-        # server connection to time out before the upsert can complete.
-        # The tests only inspect metadata and IDs, not vector content.
+        # Pre-computed dummy embeddings avoid the default EF's ~10-min, 79 MB ONNX
+        # model download, which times out the Chroma connection before upsert
+        # completes — tests only inspect metadata and IDs, not vector content.
         dummy_embedding = [0.1] * 384
         await col.upsert(
             ids=["general::web_search"],

@@ -19,7 +19,7 @@ public-IP DNS check. ``OLLAMA_BASE_URL`` server-side env still works as a
 fallback for deployments that prefer it.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,7 +30,7 @@ from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
-from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS
+from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
 from app.db.repositories.instance_settings import instance_settings_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.provider_credentials import provider_credentials_repository
@@ -52,10 +52,8 @@ router = APIRouter(tags=["Setup"])
 # Doc key under which wizard progress is persisted in instance settings.
 SETUP_DOC_KEY = "setup"
 
-# Providers that constitute a working LLM lane for ``needs_setup`` — NOT every
-# credential provider: tavily (search) plus the composio/e2b/openai/resend/
-# cloudinary/google_oauth/firecrawl tool & integration keys are configured
-# here too but cannot serve chat.
+# Providers that constitute a working LLM lane for needs_setup. The search,
+# tool, and integration keys configured here too cannot serve chat.
 _LLM_PROVIDER_KEYS = ("openrouter", "gemini", "ollama", "custom")
 
 # Providers whose outbound traffic targets a caller-configurable base_url — the
@@ -91,8 +89,102 @@ class SetupCompleteBody(BaseModel):
     step: str = Field(min_length=1)
 
 
+class ProviderConfiguredState(BaseModel):
+    """Per-provider readiness as the wizard reads it: "can this serve a request?"."""
+
+    configured: bool = Field(description="Whether a usable credential or env fallback exists")
+
+
+class SetupStatusResponse(BaseModel):
+    """``GET /setup/status`` — what the first-run wizard branches on."""
+
+    auth_mode: str = Field(description="Active auth stack (``local`` or ``workos``)")
+    has_admin_account: bool = Field(description="Whether the single admin slot is taken")
+    needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
+    billing_enabled: bool = Field(description="Whether payments are live for this instance")
+    providers: dict[str, ProviderConfiguredState] = Field(
+        description="Readiness per credential-store provider"
+    )
+    plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
+
+
+class ProviderCatalogResponse(BaseModel):
+    """``GET /setup/catalog`` — display metadata, partitioned by role.
+
+    Each map holds ``app.constants.providers.PRESETS`` entries verbatim, so the
+    wizard never ships its own copy of the catalog.
+    """
+
+    providers: dict[str, ProviderPreset] = Field(
+        description="One entry per credential-store provider, in display order"
+    )
+    custom_presets: dict[str, ProviderPreset] = Field(
+        description="OpenAI-compatible gateway presets for the custom lane's card"
+    )
+    llm_provider_keys: list[str] = Field(description="Which providers can serve chat")
+
+
+class MaskedProvider(BaseModel):
+    """One row of ``GET /setup/providers`` — a credential with the key masked."""
+
+    provider: str = Field(description="Provider name")
+    configured: bool = Field(description="Whether a credential resolves for this provider")
+    base_url: str | None = Field(None, description="Configured endpoint, if any")
+    model: str | None = Field(None, description="Configured model, if any")
+    api_key_hint: str | None = Field(
+        None, description="Last four characters of the key; the key itself never leaves the server"
+    )
+
+
+class ProviderListResponse(BaseModel):
+    providers: dict[str, MaskedProvider] = Field(description="Masked view per provider")
+
+
+class ProviderTestResponse(BaseModel):
+    """``POST /setup/providers/{provider}/test`` — the live connectivity probe."""
+
+    ok: bool = Field(description="Whether the provider answered a models request")
+    detail: str = Field(description="Human-readable outcome; never contains credentials")
+    models: list[str] = Field(description="Model ids the endpoint advertised")
+
+
+class _ModelIdEntry(TypedDict, total=False):
+    """One entry of an OpenAI-wire ``/models`` list — ``{"id": "..."}``."""
+
+    id: str
+
+
+class _OpenAIWireModels(TypedDict, total=False):
+    """The ``{"data": [{"id": ...}]}`` envelope every OpenAI-wire endpoint returns."""
+
+    data: list[_ModelIdEntry]
+
+
+class _GeminiModel(TypedDict, total=False):
+    """One entry of a name-keyed model list — ``{"name": "models/gemini-..."}``."""
+
+    name: str
+
+
+class _NamedModelList(TypedDict, total=False):
+    """The ``{"models": [{"name": ...}]}`` envelope Gemini's listModels and
+    Ollama's /api/tags both return."""
+
+    models: list[_GeminiModel]
+
+
+class SetupProgress(TypedDict, total=False):
+    """The ``setup`` instance-settings value: which wizard steps are done.
+
+    Written only by ``complete_setup_step`` below; ``total=False`` because a
+    wizard that has recorded no step yet has no ``steps`` key at all.
+    """
+
+    steps: dict[str, bool]
+
+
 @router.get("/status")
-async def get_setup_status() -> dict[str, Any]:
+async def get_setup_status() -> SetupStatusResponse:
     """First-run status for the web setup wizard and desktop CLI.
 
     Public only under AUTH_MODE=local (middleware conditionally excludes it
@@ -101,18 +193,18 @@ async def get_setup_status() -> dict[str, Any]:
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.any_exists()
     configured = {p: await _is_usably_configured(p) for p in CREDENTIAL_PROVIDERS}
-    return {
-        "auth_mode": settings.AUTH_MODE,
-        "has_admin_account": has_admin_account,
-        "needs_setup": _needs_setup(has_admin_account, configured),
-        "billing_enabled": settings.billing_enabled,
-        "providers": {p: {"configured": c} for p, c in configured.items()},
-        "plans_seeded": await is_payment_setup(),
-    }
+    return SetupStatusResponse(
+        auth_mode=settings.AUTH_MODE,
+        has_admin_account=has_admin_account,
+        needs_setup=_needs_setup(has_admin_account, configured),
+        billing_enabled=settings.billing_enabled,
+        providers={p: ProviderConfiguredState(configured=c) for p, c in configured.items()},
+        plans_seeded=await is_payment_setup(),
+    )
 
 
 @router.get("/catalog")
-async def get_provider_catalog() -> dict[str, Any]:
+async def get_provider_catalog() -> ProviderCatalogResponse:
     """The provider catalog the setup wizard and Settings render from.
 
     Serves ``app.constants.providers.PRESETS`` — display metadata only (no
@@ -131,11 +223,11 @@ async def get_provider_catalog() -> dict[str, Any]:
     cards before an admin session exists.
     """
     log.set(operation="setup_catalog", auth_mode=settings.AUTH_MODE)
-    return {
-        "providers": {name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
-        "custom_presets": {name: PRESETS[name] for name in ("opencode", "nous")},
-        "llm_provider_keys": list(_LLM_PROVIDER_KEYS),
-    }
+    return ProviderCatalogResponse(
+        providers={name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
+        custom_presets={name: PRESETS[name] for name in ("opencode", "nous")},
+        llm_provider_keys=list(_LLM_PROVIDER_KEYS),
+    )
 
 
 async def stored_credential_exists(provider: str) -> bool:
@@ -170,24 +262,24 @@ def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
 @router.get("/providers")
 async def list_providers(
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
-) -> dict[str, dict[str, Any]]:
+) -> ProviderListResponse:
     """Masked per-provider view for the settings UI. Never returns raw keys.
 
     Admin-only: the listing reveals configured base_urls and models.
     """
-    log.set(user={"id": user["user_id"]})
-    masked: dict[str, dict[str, Any]] = {}
+    log.set(user={"id": user.user_id})
+    masked: dict[str, MaskedProvider] = {}
     for provider in CREDENTIAL_PROVIDERS:
-        config = await resolve_provider_config(provider)
+        config: ProviderConfig | None = await resolve_provider_config(provider)
         api_key = config.get("api_key") if config else None
-        masked[provider] = {
-            "provider": provider,
-            "configured": config is not None,
-            "base_url": config.get("base_url") if config else None,
-            "model": config.get("model") if config else None,
-            "api_key_hint": f"...{api_key[-4:]}" if api_key else None,
-        }
-    return {"providers": masked}
+        masked[provider] = MaskedProvider(
+            provider=provider,
+            configured=config is not None,
+            base_url=config.get("base_url") if config else None,
+            model=config.get("model") if config else None,
+            api_key_hint=f"...{api_key[-4:]}" if api_key else None,
+        )
+    return ProviderListResponse(providers=masked)
 
 
 @router.put("/providers/{provider}")
@@ -205,7 +297,7 @@ async def put_provider(
     except for ``ollama`` which is expected to be local
     (``host.docker.internal`` / ``localhost``) and skips the public-IP check.
     """
-    log.set(user={"id": user["user_id"]})
+    log.set(user={"id": user.user_id})
     _ensure_known_provider(provider)
     if (
         body.preset is None
@@ -214,7 +306,7 @@ async def put_provider(
         and body.model is None
     ):
         raise HTTPException(status_code=422, detail="No fields to update")
-    stored = await resolve_provider_config(provider)
+    stored: ProviderConfig | None = await resolve_provider_config(provider)
     # Merge omitted fields with stored config — a partial PUT (e.g. base_url
     # only) must not erase the existing api_key. None means "not provided",
     # not "clear".
@@ -252,7 +344,7 @@ async def remove_provider(
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> dict[str, bool]:
     """Drop one provider's stored credential."""
-    log.set(user={"id": user["user_id"]})
+    log.set(user={"id": user.user_id})
     _ensure_known_provider(provider)
     await delete_provider_config(provider)
     await invalidate_provider_cache(provider)
@@ -266,7 +358,7 @@ async def test_provider(
     provider: str,
     body: ProviderCredentialBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
-) -> dict[str, Any]:
+) -> ProviderTestResponse:
     """Live-connectivity probe with strict credential binding.
 
     Contract (H1): once a credential is stored for ``provider`` — including an
@@ -277,12 +369,12 @@ async def test_provider(
     anything has been saved. Non-public endpoints are refused outright with a
     422 by the SSRF guard inside ``_probe``.
     """
-    log.set(user={"id": user["user_id"]})
+    log.set(user={"id": user.user_id})
     if provider == "tavily":
         raise HTTPException(status_code=422, detail="Tavily keys cannot be connection-tested")
     _ensure_known_provider(provider)
 
-    stored = await resolve_provider_config(provider)
+    stored: ProviderConfig | None = await resolve_provider_config(provider)
     if stored is not None:
         config = stored
     else:
@@ -295,7 +387,7 @@ async def test_provider(
         )
     ok, detail, models = await _probe(provider, config)
     log.info("Provider connectivity tested", provider=provider, ok=ok)
-    return {"ok": ok, "detail": detail, "models": models}
+    return ProviderTestResponse(ok=ok, detail=detail, models=models)
 
 
 async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False) -> None:
@@ -336,10 +428,9 @@ async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False)
         )
 
     if allow_private:
-        # Local Ollama is expected to run on the host or loopback; skip the
-        # public-IP DNS check that would reject host.docker.internal /
-        # localhost / 192.168.x.x. The scheme/host/credential checks above are
-        # still enforced, so malformed or metadata URLs are still rejected.
+        # Local Ollama runs on the host or loopback: skip the public-IP DNS check.
+        # Scheme, host, and credential checks above still apply, so malformed
+        # or metadata URLs are still rejected.
         return
 
     try:
@@ -393,7 +484,11 @@ async def _probe_openai_wire(
     response = await client.get(url, headers=headers)
     if response.status_code != 200:
         return False, f"{provider} returned HTTP {response.status_code}", []
-    models = sorted(str(m["id"]) for m in response.json().get("data", []) if m.get("id"))
+    # The provider owns this payload's wire shape; we read two fields off it and
+    # skip anything malformed rather than failing the whole probe.
+    payload: _OpenAIWireModels = cast(_OpenAIWireModels, response.json())
+    entries: list[_ModelIdEntry] = payload.get("data", [])
+    models = sorted(str(m["id"]) for m in entries if m.get("id"))
     return True, f"Connected to {provider}", models
 
 
@@ -406,11 +501,9 @@ async def _probe_gemini(
     response = await client.get(_GEMINI_MODELS_URL, params={"key": api_key})
     if response.status_code != 200:
         return False, f"Gemini returned HTTP {response.status_code}", []
-    names = (
-        str(m["name"]).removeprefix("models/")
-        for m in response.json().get("models", [])
-        if m.get("name")
-    )
+    payload: _NamedModelList = cast(_NamedModelList, response.json())
+    listed: list[_GeminiModel] = payload.get("models", [])
+    names = (str(m["name"]).removeprefix("models/") for m in listed if m.get("name"))
     return True, "Connected to Google Gemini", sorted(names)
 
 
@@ -423,7 +516,9 @@ async def _probe_ollama(
     response = await client.get(f"{base_url.rstrip('/')}/api/tags")
     if response.status_code != 200:
         return False, f"Ollama returned HTTP {response.status_code}", []
-    models = sorted(str(m["name"]) for m in response.json().get("models", []) if m.get("name"))
+    payload: _NamedModelList = cast(_NamedModelList, response.json())
+    listed: list[_GeminiModel] = payload.get("models", [])
+    models = sorted(str(m["name"]) for m in listed if m.get("name"))
     return True, "Connected to Ollama", models
 
 
@@ -438,10 +533,14 @@ async def complete_setup_step(
 
     Mutates shared instance state — admin-only like the rest of the surface.
     """
-    log.set(user={"id": user["user_id"]})
+    log.set(user={"id": user.user_id})
     record = await instance_settings_repository.find_by_key(SETUP_DOC_KEY)
-    value: dict[str, Any] = dict(record.value) if record is not None else {}
-    steps: dict[str, bool] = {**value.get("steps", {}), body.step: True}
+    value: dict[str, object] = dict(record.value) if record is not None else {}
+    # ``value`` is the instance-settings mapping (``dict[str, object]``); the
+    # ``setup`` document's own shape is declared here, so the read below is
+    # checked instead of guessed.
+    progress: SetupProgress = cast(SetupProgress, value)
+    steps: dict[str, bool] = {**progress.get("steps", {}), body.step: True}
     await instance_settings_repository.upsert_value(SETUP_DOC_KEY, {**value, "steps": steps})
     return {"ok": True}
 
@@ -459,5 +558,5 @@ def _apply_preset(
     """Explicit values win; a preset fills whatever the caller omitted."""
     if preset is None:
         return base_url, model
-    spec = PRESETS[preset]
+    spec: ProviderPreset = PRESETS[preset]
     return base_url or (spec["base_url"] or None), model or (spec["default_model"] or None)

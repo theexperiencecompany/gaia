@@ -1,20 +1,10 @@
+import { ApiError } from "@shared/api";
+import type { URLResponse } from "@shared/api/generated";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiauth } from "@/lib/api/client";
+import { api } from "@/lib/api/typed";
 
-interface UrlMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
-
-interface UrlMetadataError {
-  message: string;
-  code?: number;
-}
+type UrlMetadata = URLResponse;
 
 const isEmail = (str: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
 
@@ -58,12 +48,15 @@ const processBatch = async () => {
     // Single API call for all URLs
     // Authenticated client: email previews resolve against the user's own
     // Google contacts, so the endpoint requires the session.
-    const response = await apiauth.post("/fetch-url-metadata", { urls });
+    const response = await api.post("/api/v1/fetch-url-metadata", {
+      body: { urls },
+      silent: true,
+    });
 
     // Resolve individual promises with their data
     urls.forEach((url) => {
       const resolver = resolvers.get(url);
-      const metadata = response.data.results[url];
+      const metadata = response.results[url];
 
       if (resolver) {
         if (metadata) {
@@ -94,18 +87,13 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
 };
 
 /**
- * Custom hook to fetch URL metadata with React Query optimization
- * Features:
- * - Automatic caching with 5-minute stale time
- * - Deduplication of identical requests
- * - Background refetching for fresh data
- * - Error handling with retry logic
- * - Conditional fetching based on URL validity
+ * Fetches URL metadata via React Query, deduped and batched (1s window)
+ * across identical calls, with a 5-minute stale time.
  */
 export const useUrlMetadata = (url: string | undefined | null) => {
   const isValidUrl = url && isPreviewable(url);
 
-  const result = useQuery<UrlMetadata, UrlMetadataError>({
+  const result = useQuery<UrlMetadata, Error>({
     queryKey: ["url-metadata", url],
     queryFn: async () => {
       if (!url) {
@@ -118,12 +106,11 @@ export const useUrlMetadata = (url: string | undefined | null) => {
     staleTime: 5 * 60 * 1000, // 5 minutes - metadata rarely changes
     gcTime: 30 * 60 * 1000, // 30 minutes - keep in cache for longer
     retry: (failureCount, error) => {
+      // A 4xx is the server's verdict on this URL — retrying cannot change it.
       if (
-        error &&
-        "code" in error &&
-        error.code &&
-        error.code >= 400 &&
-        error.code < 500
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500
       ) {
         return false;
       }

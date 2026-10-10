@@ -1,18 +1,4 @@
-"""Integration tests for the production should_continue routing logic.
-
-Replaces the previous fake-graph routing tests with real tests that invoke
-the actual create_agent factory from app/override/langgraph_bigtool/create_agent.py.
-
-Tests verify routing behavior by observing output state after ainvoke():
-- Plain text response → no ToolMessages (routes to END / end_graph_hooks)
-- Tool call response → ToolMessage produced (routes to DynamicToolNode)
-- Multiple tool calls → all produce ToolMessages
-- end_graph_hooks fire when no tool calls
-- State accumulates across turns (InMemorySaver checkpointing)
-- Different thread IDs have isolated state
-
-Deletion test: delete create_agent.py → every test below immediately fails.
-"""
+"""Integration tests for the production should_continue routing logic."""
 
 from typing import Any
 from uuid import uuid4
@@ -22,7 +8,12 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 import pytest
 
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import (
     BindableToolsFakeModel,
     create_fake_llm,
@@ -41,7 +32,7 @@ def _thread_config() -> dict:
 def _build_minimal_registry():
     @tool
     def dummy_tool(query: str) -> str:
-        """A dummy tool used only by routing tests."""
+        """Echo the query back for routing tests."""
         return f"result for: {query}"
 
     return {"dummy_tool": dummy_tool}
@@ -52,10 +43,12 @@ def _compile(llm, end_graph_hooks=None):
     builder = create_agent(
         llm=llm,
         tool_registry=_build_minimal_registry(),
-        disable_retrieve_tools=True,
-        initial_tool_ids=["dummy_tool"],
-        agent_name="routing_test_agent",
-        end_graph_hooks=end_graph_hooks,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool"],
+        ),
+        agent_config=AgentConfig(agent_name="routing_test_agent"),
+        hooks_config=HookConfig(end_graph_hooks=end_graph_hooks),
     )
     return builder.compile(checkpointer=MemorySaver())
 
@@ -70,10 +63,7 @@ class TestGraphRouting:
     """Production should_continue routing verified through real graph execution."""
 
     async def test_plain_text_produces_no_tool_messages(self):
-        """LLM with no tool calls must not route to the tool node.
-
-        Fails if should_continue incorrectly routes plain-text AIMessages to 'tools'.
-        """
+        """LLM with no tool calls must not route to the tool node."""
         graph = _compile(create_fake_llm(["I can help you with that."]))
 
         result = await graph.ainvoke(
@@ -88,10 +78,7 @@ class TestGraphRouting:
         )
 
     async def test_tool_call_routes_to_tool_node_and_produces_tool_message(self):
-        """LLM with a tool call must route to DynamicToolNode → ToolMessage in state.
-
-        Fails if should_continue stops routing AIMessages with tool_calls to 'tools'.
-        """
+        """LLM with a tool call must route to DynamicToolNode → ToolMessage in state."""
         tool_call = {
             "name": "dummy_tool",
             "args": {"query": "test query"},
@@ -115,10 +102,7 @@ class TestGraphRouting:
         )
 
     async def test_tool_result_contains_production_function_output(self):
-        """ToolMessage content must reflect what the real tool function returned.
-
-        Fails if DynamicToolNode is not calling the production tool implementation.
-        """
+        """ToolMessage content must reflect what the real tool function returned."""
         tool_call = {
             "name": "dummy_tool",
             "args": {"query": "routing check"},
@@ -139,10 +123,7 @@ class TestGraphRouting:
         )
 
     async def test_multiple_tool_calls_all_produce_tool_messages(self):
-        """Two tool calls in one AIMessage must both be executed by DynamicToolNode.
-
-        Fails if should_continue only routes the first call or drops calls.
-        """
+        """Two tool calls in one AIMessage must both be executed by DynamicToolNode."""
         ai_with_two_calls = AIMessage(
             content="",
             tool_calls=[
@@ -176,10 +157,7 @@ class TestGraphRouting:
         assert "call_b" in tool_call_ids, "Second tool call was not executed"
 
     async def test_end_graph_hook_fires_after_plain_text(self):
-        """With end_graph_hooks, the hook must be called after a plain text response.
-
-        Fails if should_continue stops routing to 'end_graph_hooks' when no tool calls.
-        """
+        """With end_graph_hooks, the hook must be called after a plain text response."""
         hook_calls: list[Any] = []
 
         async def capture_hook(  # NOSONAR — async required for LangGraph hook interface
@@ -204,11 +182,7 @@ class TestGraphRouting:
         )
 
     async def test_end_graph_hook_fires_after_full_tool_cycle(self):
-        """After tool execution + final plain text, end_graph_hooks must still fire.
-
-        Verifies that hooks run at the end of the full tool-call cycle, not just
-        on direct plain text responses.
-        """
+        """After tool execution plus final plain text, end_graph_hooks must still fire."""
         hook_calls: list[Any] = []
 
         async def capture_hook(
@@ -239,10 +213,7 @@ class TestGraphRouting:
         )
 
     async def test_state_accumulates_across_turns(self):
-        """Consecutive ainvoke calls on the same thread must accumulate messages.
-
-        Fails if InMemorySaver checkpointing is broken in create_agent.
-        """
+        """Consecutive ainvoke calls on the same thread must accumulate messages."""
         graph = _compile(
             BindableToolsFakeModel(
                 responses=[
@@ -277,12 +248,7 @@ class TestGraphRouting:
         )
 
     async def test_different_thread_ids_have_isolated_state(self):
-        """Two threads on the SAME compiled graph must not share checkpointed state.
-
-        Uses a single graph with a single MemorySaver to test the production
-        scenario: one graph instance serving multiple users via different thread_ids.
-        Fails if thread isolation is broken in the compiled graph.
-        """
+        """Two threads on the SAME compiled graph must not share checkpointed state."""
         graph = _compile(
             BindableToolsFakeModel(
                 responses=[
@@ -317,10 +283,7 @@ class TestGraphRouting:
         )
 
     async def test_full_tool_cycle_message_sequence(self):
-        """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order.
-
-        Validates the entire routing cycle: model → tools → model → end.
-        """
+        """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order."""
         tool_call = {
             "name": "dummy_tool",
             "args": {"query": "cycle check"},

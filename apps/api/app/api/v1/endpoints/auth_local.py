@@ -7,7 +7,6 @@ A self-host instance has exactly one administrator: the first signup creates
 it, every later signup is refused with ``registration_closed``.
 """
 
-from datetime import datetime
 from typing import Never, cast
 
 import bcrypt
@@ -28,7 +27,7 @@ from app.models.auth_models import (
     LoginRequest,
     SignupRequest,
 )
-from app.models.user_models import AuthenticatedUser, UserDocument, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.utils.auth_utils import build_user_context
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -57,10 +56,8 @@ def _burn_one_verification(password: str) -> None:
         bcrypt.checkpw(password.encode(), _dummy_digest)
     except ValueError:
         # bcrypt >= 5 refuses inputs past its 72-byte cap without doing any
-        # work — there is no verification left to burn. The real path also
-        # fails fast on the same input, so skipping the burn keeps both
-        # failure routes equally cheap; the caller turns this into the
-        # uniform invalid-credentials response.
+        # work: skipping the burn keeps both failure routes equally cheap, and
+        # the caller turns this into the uniform invalid-credentials response.
         return
 
 
@@ -94,9 +91,7 @@ def _set_session_cookie(
     )
 
 
-def _clear_session_cookie(
-    response: JSONResponse, request: Request | None = None
-) -> None:
+def _clear_session_cookie(response: JSONResponse, request: Request | None = None) -> None:
     """Delete the session cookie with the same ``Secure`` logic as ``_set``.
 
     Mirrors ``_set_session_cookie``: when a ``Request`` is available the
@@ -121,26 +116,18 @@ def _clear_session_cookie(
 
 
 def _user_payload(user: UserDocument) -> dict[str, object]:
-    """Same shape the local middleware stores on ``request.state.user``, so a
-    client sees one identity shape from signup, login and ``GET /me``.
+    """Return one identity shape for signup, login and ``GET /me``.
 
-    JSON-safe on purpose: the legacy dict carries Mongo datetimes (created_at
-    etc.) that ``JSONResponse`` cannot encode — isoformat strings keep the
-    same information in the browser-facing payload.
+    Built through build_user_context so the payload is exactly what the local
+    middleware puts on ``request.state.user``, then serialized through the model
+    rather than a dict: ``AuthenticatedUser`` carries Mongo datetimes, which
+    ``JSONResponse`` cannot encode, so ``model_dump(mode="json")`` renders them
+    as the same isoformat strings the browser used to receive.
     """
-
-    def _jsonable(value: object) -> object:
-        if isinstance(value, datetime):
-            return value.isoformat()
-        if isinstance(value, dict):
-            return {k: _jsonable(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [_jsonable(v) for v in value]
-        return value
 
     return cast(
         "dict[str, object]",
-        _jsonable(dict(build_user_context(user_to_legacy_dict(user), auth_provider="email"))),
+        build_user_context(user, auth_provider="email").model_dump(mode="json"),
     )
 
 
@@ -155,7 +142,7 @@ def _registration_closed(email: str) -> Never:
     raise HTTPException(
         status_code=403,
         detail={
-            "error_code": REGISTRATION_CLOSED,
+            "code": REGISTRATION_CLOSED,
             "message": "An administrator account already exists on this instance",
         },
     )
@@ -207,17 +194,14 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         _registration_closed(email)
 
     if await user_repository.get_by_email(email) is not None:
-        # Email already belongs to an existing (e.g. WorkOS-era) identity.
-        # Attaching a credential to it would hand that identity to whoever
-        # knows the address — knowledge of an email is not ownership proof
-        # (Greptile finding). Refuse; only brand-new rows can become admin.
+        # Email already belongs to an existing identity. Attaching a credential
+        # would hand that identity to whoever knows the address, which is not
+        # ownership proof. Refuse; only brand-new rows can become admin.
         _registration_closed(email)
 
-    # Hash BEFORE creating any row: bcrypt >= 5 raises ValueError past its
-    # 72-byte input cap, and hashing after the insert would strand an orphaned
-    # user row on failure — locking that email out of signup forever via the
-    # existing-identity gate. Request validation enforces the cap; this guard
-    # keeps any hash refusal a clean 422 rather than a 500 with debris.
+    # Hash BEFORE creating any row: hashing after the insert would strand an
+    # orphaned user row on hash failure, locking that email out of signup
+    # forever. This guard keeps any hash refusal a clean 422, not a 500.
     try:
         password_hash = bcrypt.hashpw(
             body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
@@ -231,10 +215,8 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     user = await user_repository.create(
         UserDocument(
             email=email,
-            # Hosted signups always carry a WorkOS profile name; self-host
-            # name is optional. Default to the email local-part so the
-            # display name (greetings, founder letter, holo card) never
-            # has to handle null.
+            # Self-host name is optional, unlike hosted signups. Default to the
+            # email local-part so the display name never has to handle null.
             name=body.name or email.split("@", 1)[0],
         )
     )
@@ -248,9 +230,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         await _delete_user_best_effort(user.id)
         _registration_closed(email)
 
-    token = await issue_session_token(
-        user.id, int(getattr(credential, "token_version", 0) or 0)
-    )
+    token = await issue_session_token(user.id, int(getattr(credential, "token_version", 0) or 0))
     log.audit("account created", actor=user.id, mode="local")
 
     response = JSONResponse(status_code=201, content={"user": _user_payload(user)})
@@ -281,10 +261,9 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             else False
         )
     except ValueError:
-        # bcrypt >= 5 refuses to process passwords past its 72-byte cap.
-        # That is a wrong-password-shaped outcome, not a server error — fold
-        # it into the uniform 401 below (request validation normally rejects
-        # such passwords earlier with 422).
+        # bcrypt >= 5 refuses passwords past its 72-byte cap: a wrong-password
+        # outcome, not a server error. Fold into the uniform 401 below
+        # (request validation normally rejects such passwords earlier).
         verified = False
     if not verified:
         if user is None or credential is None:
@@ -298,14 +277,12 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": INVALID_CREDENTIALS,
+                "code": INVALID_CREDENTIALS,
                 "message": "Invalid email or password",
             },
         )
 
-    token = await issue_session_token(
-        user.id, int(getattr(credential, "token_version", 0) or 0)
-    )
+    token = await issue_session_token(user.id, int(getattr(credential, "token_version", 0) or 0))
     log.audit("logged in", actor=user.id, mode="local")
 
     response = JSONResponse(content={"user": _user_payload(user)})
@@ -355,17 +332,15 @@ async def change_password(
             else False
         )
     except ValueError:
-        # bcrypt >= 5 refuses inputs past its 72-byte cap — a
-        # wrong-password-shaped outcome, folded into the uniform 401 below
-        # exactly like login (request validation normally rejects such
-        # input earlier with a 422).
+        # bcrypt >= 5 refuses inputs past its 72-byte cap: a wrong-password
+        # outcome folded into the uniform 401 below, exactly like login.
         verified = False
     if not verified or credential is None:
         log.audit("password change rejected", actor=user_id)
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": INVALID_CREDENTIALS,
+                "code": INVALID_CREDENTIALS,
                 "message": "Current password is incorrect",
             },
         )

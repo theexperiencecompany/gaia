@@ -8,6 +8,7 @@ from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
+from app.models.integrations.composio_hooks import RunMetadata
 from app.models.support_models import (
     SupportRequestType,
 )
@@ -22,7 +23,7 @@ from shared.py.wide_events import log
 @with_doc(CREATE_SUPPORT_TICKET)
 async def create_support_ticket(
     config: RunnableConfig,
-    type: Annotated[
+    ticket_type: Annotated[
         SupportRequestType,
         "Type of support request: 'support' for technical issues/help, 'feature' for enhancement requests",
     ],
@@ -40,7 +41,7 @@ async def create_support_ticket(
 
     Args:
         config: Runtime configuration containing user metadata
-        type: Type of support request ("support" or "feature")
+        ticket_type: Type of support request ("support" or "feature")
         title: Brief title of the issue or request
         description: Detailed description of the issue or request
 
@@ -51,8 +52,7 @@ async def create_support_ticket(
         log.set(tool={"name": "create_support_ticket", "action": "create"})
         log.info(f"{LogTag.TOOL} Preparing support ticket draft")
 
-        metadata = config.get("metadata", {})
-        user_id = metadata.get("user_id")
+        user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
 
         if not user_id:
             return "User authentication required to create support ticket."
@@ -62,17 +62,17 @@ async def create_support_ticket(
         if not user:
             return "User not found. Please ensure you are logged in."
 
-        user_email = user.get("email")
-        user_name = user.get("name", "User")
+        user_email = user.email
+        user_name = user.name if user.name is not None else "User"
 
         if not user_email:
             return "User email is required to create a support ticket."
 
-        ticket_type = SupportRequestType(type.lower())
+        request_type = SupportRequestType(ticket_type.lower())
 
         # Prepare support ticket data for streaming
         support_ticket_data = {
-            "type": ticket_type.value,
+            "type": request_type.value,
             "title": title.strip(),
             "description": description.strip(),
             "user_name": user_name,
@@ -88,14 +88,16 @@ async def create_support_ticket(
 
         # Return confirmation message
         ticket_type_display = (
-            "feature request" if ticket_type == SupportRequestType.FEATURE else "support ticket"
+            "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
         )
-        return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
+        return (
+            f"Drafted a {ticket_type_display} for you. Check it over and hit "
+            "Submit Ticket when it looks right."
+        )
 
     except Exception as e:
-        # `type` is this tool's LLM-facing parameter name, so it shadows the builtin here.
         log.error(f"{LogTag.TOOL} Error preparing support ticket", error_type=e.__class__.__name__)
-        return f"Sorry, I encountered an error while preparing your support ticket: {e!s}"
+        return f"Could not prepare your support ticket: {e!s}"
 
 
 # Export tools list for registry

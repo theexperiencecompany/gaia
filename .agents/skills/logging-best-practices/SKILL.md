@@ -25,7 +25,7 @@ canonical log lines) is implemented as infrastructure:
 
 The rest of this skill covers the Python facade; the bots use the TS analogue
 (`wideLog.set`/`setNs`/`warning`/`error`/`audit`) with the same semantics and
-its own scanner, `scripts/ci/evlog-map-bots.mjs`.
+its own scanner, `scripts/ci/checks.mjs evlog-map-bots`.
 
 `trace_id`, `task`, `duration_ms`, `outcome` and `final_level` are stamped by
 the boundary; `env`/`service`/`commit` by the JSON sink, on every line. The

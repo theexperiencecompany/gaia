@@ -1283,7 +1283,16 @@ function computeGaugeColor(
   return "#00bbff";
 }
 
-export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
+type GaugeChartProps = z.infer<typeof gaugeChartSchema>;
+
+interface GaugeDerived {
+  min: number;
+  max: number;
+  pct: number;
+  color: string;
+}
+
+function deriveGauge(props: GaugeChartProps): GaugeDerived {
   const min = props.min ?? 0;
   const max = props.max ?? 100;
   const clampedValue = Math.min(Math.max(props.value, min), max);
@@ -1291,216 +1300,243 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const pct = ((clampedValue - min) / range) * 100;
   const warning = props.thresholds?.warning ?? 60;
   const danger = props.thresholds?.danger ?? 80;
-  const color = computeGaugeColor(pct, warning, danger);
-  const variant = props.variant ?? "gauge";
+  return { min, max, pct, color: computeGaugeColor(pct, warning, danger) };
+}
 
-  // ---------- variant: "text" ----------
-  if (variant === "text") {
-    return (
-      <Card>
-        {props.title ? <SectionTitle>{props.title}</SectionTitle> : null}
-        <View
+function GaugeTextVariant({
+  title,
+  value,
+  unit,
+  color,
+}: {
+  title?: string;
+  value: number;
+  unit?: string;
+  color: string;
+}) {
+  return (
+    <Card>
+      {title ? <SectionTitle>{title}</SectionTitle> : null}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 6,
+        }}
+      >
+        <Text
+          className="text-zinc-100"
           style={{
-            flexDirection: "row",
-            alignItems: "flex-end",
-            gap: 6,
+            fontSize: STAT_FONT,
+            fontWeight: "600",
+            color,
+            lineHeight: STAT_FONT + 2,
           }}
         >
+          {String(value)}
+        </Text>
+        {unit ? (
           <Text
-            className="text-zinc-100"
-            style={{
-              fontSize: STAT_FONT,
-              fontWeight: "600",
-              color,
-              lineHeight: STAT_FONT + 2,
-            }}
+            className="text-zinc-500"
+            style={{ fontSize: 14, marginBottom: 4 }}
           >
-            {String(props.value)}
+            {unit}
           </Text>
-          {props.unit ? (
-            <Text
-              className="text-zinc-500"
-              style={{ fontSize: 14, marginBottom: 4 }}
-            >
-              {props.unit}
-            </Text>
-          ) : null}
-        </View>
-      </Card>
-    );
-  }
+        ) : null}
+      </View>
+    </Card>
+  );
+}
 
-  // ---------- variant: "stacked" ----------
-  if (variant === "stacked") {
-    const secondValue = props.secondValue ?? 0;
-    const secondLabel = props.secondLabel ?? "Secondary";
-    const secondColor = CHART_COLORS[1];
-    return (
-      <Card>
-        {props.title ? <SectionTitle>{props.title}</SectionTitle> : null}
-        <View
+function GaugeStatColumn({
+  value,
+  unit,
+  label,
+  color,
+}: {
+  value: number;
+  unit?: string;
+  label: string;
+  color: string;
+}) {
+  return (
+    <View style={{ alignItems: "center", flex: 1 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 4,
+        }}
+      >
+        <Text
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-around",
-            paddingVertical: 4,
+            fontSize: STAT_FONT,
+            fontWeight: "600",
+            color,
+            lineHeight: STAT_FONT + 2,
           }}
         >
-          <View style={{ alignItems: "center", flex: 1 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-end",
-                gap: 4,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: STAT_FONT,
-                  fontWeight: "600",
-                  color,
-                  lineHeight: STAT_FONT + 2,
-                }}
-              >
-                {String(props.value)}
-              </Text>
-              {props.unit ? (
-                <Text
-                  className="text-zinc-500"
-                  style={{ fontSize: 14, marginBottom: 2 }}
-                >
-                  {props.unit}
-                </Text>
-              ) : null}
-            </View>
-            <View style={{ marginTop: 4 }}>
-              <Text className="text-zinc-500" style={{ fontSize: 12 }}>
-                {props.title ?? "Primary"}
-              </Text>
-            </View>
-          </View>
-          <View
-            className="bg-zinc-700/50"
-            style={{
-              width: 1,
-              height: 40,
-            }}
-          />
-          <View style={{ alignItems: "center", flex: 1 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-end",
-                gap: 4,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: STAT_FONT,
-                  fontWeight: "600",
-                  color: secondColor,
-                  lineHeight: STAT_FONT + 2,
-                }}
-              >
-                {String(secondValue)}
-              </Text>
-              {props.unit ? (
-                <Text
-                  className="text-zinc-500"
-                  style={{ fontSize: 14, marginBottom: 2 }}
-                >
-                  {props.unit}
-                </Text>
-              ) : null}
-            </View>
-            <View style={{ marginTop: 4 }}>
-              <Text className="text-zinc-500" style={{ fontSize: 12 }}>
-                {secondLabel}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Card>
-    );
-  }
-
-  // ---------- variant: "gauge" (default) ----------
-  const render = (width: number) => {
-    const cx = width / 2;
-    // Arc thickness 16 per design contract.
-    const arcThickness = 16;
-    // Leave room for center text & min/max labels at bottom.
-    const outerR = Math.max(Math.min(cx - 24, GAUGE_HEIGHT - 60), 40);
-    const innerR = outerR - arcThickness;
-    const cy = 24 + outerR;
-    // Semicircle from 180° (left) to 360° (right): π -> 2π
-    const start = Math.PI;
-    const end = 2 * Math.PI;
-    const valueEnd = start + (pct / 100) * (end - start);
-
-    return (
-      <Svg width={width} height={GAUGE_HEIGHT}>
-        {/* Background arc */}
-        <Path
-          d={describeArc(cx, cy, outerR, innerR, start, end)}
-          fill={GRID_COLOR}
-        />
-        {/* Value arc */}
-        {pct > 0 ? (
-          <Path
-            d={describeArc(cx, cy, outerR, innerR, start, valueEnd)}
-            fill={color}
-          />
+          {String(value)}
+        </Text>
+        {unit ? (
+          <Text
+            className="text-zinc-500"
+            style={{ fontSize: 14, marginBottom: 2 }}
+          >
+            {unit}
+          </Text>
         ) : null}
-        {/* Center value */}
+      </View>
+      <View style={{ marginTop: 4 }}>
+        <Text className="text-zinc-500" style={{ fontSize: 12 }}>
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function GaugeStackedVariant({
+  props,
+  color,
+}: {
+  props: GaugeChartProps;
+  color: string;
+}) {
+  return (
+    <Card>
+      {props.title ? <SectionTitle>{props.title}</SectionTitle> : null}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-around",
+          paddingVertical: 4,
+        }}
+      >
+        <GaugeStatColumn
+          value={props.value}
+          unit={props.unit}
+          label={props.title ?? "Primary"}
+          color={color}
+        />
+        <View
+          className="bg-zinc-700/50"
+          style={{
+            width: 1,
+            height: 40,
+          }}
+        />
+        <GaugeStatColumn
+          value={props.secondValue ?? 0}
+          unit={props.unit}
+          label={props.secondLabel ?? "Secondary"}
+          color={CHART_COLORS[1]}
+        />
+      </View>
+    </Card>
+  );
+}
+
+function renderGaugeArc(
+  width: number,
+  props: GaugeChartProps,
+  { min, max, pct, color }: GaugeDerived,
+) {
+  const cx = width / 2;
+  // Arc thickness 16 per design contract.
+  const arcThickness = 16;
+  // Leave room for center text & min/max labels at bottom.
+  const outerR = Math.max(Math.min(cx - 24, GAUGE_HEIGHT - 60), 40);
+  const innerR = outerR - arcThickness;
+  const cy = 24 + outerR;
+  // Semicircle from 180° (left) to 360° (right): π -> 2π
+  const start = Math.PI;
+  const end = 2 * Math.PI;
+  const valueEnd = start + (pct / 100) * (end - start);
+
+  return (
+    <Svg width={width} height={GAUGE_HEIGHT}>
+      {/* Background arc */}
+      <Path
+        d={describeArc(cx, cy, outerR, innerR, start, end)}
+        fill={GRID_COLOR}
+      />
+      {/* Value arc */}
+      {pct > 0 ? (
+        <Path
+          d={describeArc(cx, cy, outerR, innerR, start, valueEnd)}
+          fill={color}
+        />
+      ) : null}
+      {/* Center value */}
+      <SvgText
+        x={cx}
+        y={cy - 12}
+        fontSize={STAT_FONT}
+        fontWeight="600"
+        fill={color}
+        textAnchor="middle"
+      >
+        {String(props.value)}
+      </SvgText>
+      {props.unit ? (
         <SvgText
           x={cx}
-          y={cy - 12}
-          fontSize={STAT_FONT}
-          fontWeight="600"
-          fill={color}
-          textAnchor="middle"
-        >
-          {String(props.value)}
-        </SvgText>
-        {props.unit ? (
-          <SvgText
-            x={cx}
-            y={cy + 6}
-            fontSize={14}
-            fill={AXIS_COLOR}
-            textAnchor="middle"
-          >
-            {props.unit}
-          </SvgText>
-        ) : null}
-        {/* Min label */}
-        <SvgText
-          x={cx - outerR + arcThickness / 2}
-          y={cy + 16}
-          fontSize={AXIS_FONT}
+          y={cy + 6}
+          fontSize={14}
           fill={AXIS_COLOR}
           textAnchor="middle"
         >
-          {formatTick(min)}
+          {props.unit}
         </SvgText>
-        {/* Max label */}
-        <SvgText
-          x={cx + outerR - arcThickness / 2}
-          y={cy + 16}
-          fontSize={AXIS_FONT}
-          fill={AXIS_COLOR}
-          textAnchor="middle"
-        >
-          {formatTick(max)}
-        </SvgText>
-      </Svg>
+      ) : null}
+      {/* Min label */}
+      <SvgText
+        x={cx - outerR + arcThickness / 2}
+        y={cy + 16}
+        fontSize={AXIS_FONT}
+        fill={AXIS_COLOR}
+        textAnchor="middle"
+      >
+        {formatTick(min)}
+      </SvgText>
+      {/* Max label */}
+      <SvgText
+        x={cx + outerR - arcThickness / 2}
+        y={cy + 16}
+        fontSize={AXIS_FONT}
+        fill={AXIS_COLOR}
+        textAnchor="middle"
+      >
+        {formatTick(max)}
+      </SvgText>
+    </Svg>
+  );
+}
+
+export function GaugeChartView(props: GaugeChartProps) {
+  const derived = deriveGauge(props);
+  const variant = props.variant ?? "gauge";
+
+  if (variant === "text") {
+    return (
+      <GaugeTextVariant
+        title={props.title}
+        value={props.value}
+        unit={props.unit}
+        color={derived.color}
+      />
     );
-  };
+  }
+
+  if (variant === "stacked") {
+    return <GaugeStackedVariant props={props} color={derived.color} />;
+  }
 
   return (
     <ChartShell title={props.title} height={GAUGE_HEIGHT}>
-      {render}
+      {(width: number) => renderGaugeArc(width, props, derived)}
     </ChartShell>
   );
 }

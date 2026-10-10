@@ -1,13 +1,22 @@
-# False positive: generic-api-key reads build_user_context kwargs
-# (auth_provider=auth_provider, impersonated=True) as key=value credentials.
-# Fixed going forward by splitting the call one-kwarg-per-line (the lone
-# identifier falls below the rule's entropy bar); this entry silences the
-# original single-line commit already on the branch.
-fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276
-apps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
+# Per-finding allowlist for gitleaks. One fingerprint per line
+# (commit:path:rule:line), each with the reason it is not a credential.
+#
+# The value is a fake HMAC secret a test fixture assigns to SHARE_GRANT_SECRET;
+# it authenticates nothing and exists only to satisfy the service's 32-character
+# floor. The current file no longer carries a high-entropy literal, but gitleaks
+# scans the PR's commits, so the original one stays reachable in history.
+d57c64207d2a4275bbd922fc7fe898a4419298a6:apps/api/tests/integration/api/test_share_download_flow.py:generic-api-key:46
 
-# Pre-existing test fixture — high-entropy session keys in bot session claim tests
-apps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
-apps/api/tests/contracts/test_bot_sessions_repository.py:generic-api-key
-/Users/aryan/Projects/gaia.feat-self-host-experience/2e5d60be1c046230d32accb99ac7ea7a85928fa0pps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
-bc9015e37e3dc1c76c463c1ef30a6308bae58cd8:.secrets.baseline:generic-api-key
+# generic-api-key scores a run of keyword arguments on an AuthenticatedUser
+# constructed in a parametrized test at entropy 3.69. No credential is on the
+# line and there is no value to rotate. The literal is deliberately not quoted
+# here: reproducing it makes this file itself a finding.
+b93f415acf402c230a5692af29d55ae49c486337:apps/api/tests/unit/api/test_oauth_dependencies.py:generic-api-key:176
+
+# generic-api-key reads the build_user_context kwargs
+# (auth_provider=auth_provider, impersonated=True) as key=value credentials.
+# No secret is on the line. Fixed going forward by splitting the call
+# one-kwarg-per-line — with each kwarg isolated, the lone identifier falls below
+# the rule's entropy bar — so this entry only silences the original single-line
+# commit already on this branch.
+fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276

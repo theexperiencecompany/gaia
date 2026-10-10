@@ -1,13 +1,11 @@
-"""Local-auth session tokens (``AUTH_MODE="local"``, self-hosting).
+"""Local-auth session tokens for self-hosting.
 
-A session is an HS256 JWT signed with the per-instance secret (see
-``app.services.runtime.secrets_store``), carried in the ``gaia_session`` cookie
-— the self-host twin of the WorkOS sealed-session cookie. The jose usage
-mirrors ``app/api/v1/middleware/agent_auth.py``.
+A session is an HS256 JWT signed with the per-instance secret, carried in
+the gaia session cookie as the twin of the WorkOS sealed-session cookie.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import TypedDict, cast
 
 from jose import JWTError, jwt
 
@@ -19,11 +17,20 @@ from shared.py.wide_events import log
 LOCAL_SESSION_COOKIE = "gaia_session"
 SESSION_TTL_SECONDS = 30 * 24 * 3600
 
-# The instance secret is immutable for the life of an instance, so it is read
-# once per process and cached here: verify_session_token is sync by contract
-# (the middleware dispatch path is hot) and cannot await Mongo on every call.
-# Tests reset this attribute; production never has a reason to.
+# Cached once per process because the sync verify path cannot await Mongo;
+# tests reset this attribute directly.
 _resolved_secret: str | None = None
+
+
+class SessionClaims(TypedDict, total=False):
+    """The local-session JWT claims this module reads.
+
+    Sub carries the user id and ver the password-bumpable token version, so a
+    bump stops every older session verifying.
+    """
+
+    sub: str
+    ver: int
 
 
 async def _session_secret() -> str:
@@ -35,12 +42,10 @@ async def _session_secret() -> str:
 
 
 async def issue_session_token(user_id: str, token_version: int = 0) -> str:
-    """Mint a session JWT naming ``user_id``, valid for SESSION_TTL_SECONDS.
+    """Mint a session JWT for a user id, valid for the session TTL.
 
-    ``token_version`` is embedded as ``ver`` and checked against
-    ``auth_credentials.token_version`` on every request — bumping the stored
-    version (e.g. on password change) invalidates all previously issued JWTs.
-    Legacy tokens without ``ver`` are treated as 0 for backwards compat.
+    The version embeds as ver and is checked on every request, so bumping it
+    invalidates prior tokens; legacy tokens without ver read as zero.
     """
     secret = await _session_secret()
     now = datetime.now(UTC)
@@ -54,12 +59,10 @@ async def issue_session_token(user_id: str, token_version: int = 0) -> str:
 
 
 def verify_session_token(token: str) -> str | None:
-    """The ``sub`` of a valid, unexpired token, else ``None``.
+    """Return the subject of a valid unexpired token, else None.
 
-    Raises RuntimeError when the secret was never resolved in this process —
-    that is a caller bug (go through :func:`resolve_session_token`), not an
-    invalid session: silently returning ``None`` here would log every existing
-    user out after each restart until their next login, invisibly.
+    Raises when the secret was never resolved, since returning None there
+    would silently log every user out after each restart.
     """
     if _resolved_secret is None:
         raise RuntimeError(
@@ -70,14 +73,16 @@ def verify_session_token(token: str) -> str | None:
         payload = jwt.decode(token, _resolved_secret, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
-    sub = payload.get("sub")
+    claims: SessionClaims = payload
+    sub = claims.get("sub")
     return str(sub) if sub else None
 
 
 async def resolve_session_token(token: str) -> str | None:
-    """Async entry point for request paths: warms the secret cache, then
-    verifies. Returns the user id, or ``None`` for an invalid/expired/tampered
-    token or a revoked version (``ver`` mismatch)."""
+    """Warm the secret cache, then verify a request-path token.
+
+    Returns the user id, or None for an invalid, expired, or revoked token.
+    """
     await _session_secret()
     user_id = verify_session_token(token)
     if user_id is None:
@@ -89,7 +94,8 @@ async def resolve_session_token(token: str) -> str | None:
         payload = jwt.decode(token, _resolved_secret, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
-    token_ver = payload.get("ver", 0)
+    claims: SessionClaims = payload
+    token_ver = claims.get("ver", 0)
     try:
         token_ver_int = int(token_ver)
     except (TypeError, ValueError):

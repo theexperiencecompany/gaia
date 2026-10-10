@@ -1,9 +1,4 @@
-"""Integration tests for conversation API endpoints.
-
-Tests the conversation CRUD endpoints with mocked service layer
-to verify routing, auth enforcement, response status codes, and
-response body shape.
-"""
+"""Integration tests for conversation API endpoints."""
 
 from unittest.mock import AsyncMock, patch
 

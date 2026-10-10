@@ -19,7 +19,6 @@ interface NewChatLayoutProps {
     fileUploadRef: React.RefObject<{
       attachFiles: (files: File[]) => Promise<void>;
     } | null>;
-    appendToInputRef: React.RefObject<((text: string) => void) | null>;
     hasMessages: boolean;
     voiceModeActive: () => void;
   };
@@ -56,8 +55,10 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
           <UseCaseSection
             dummySectionRef={dummySectionRef}
             setShowUseCases={setShowUseCases}
-            showDescriptionAsTooltip={true}
-            hideUserWorkflows={false}
+            options={{
+              showDescriptionAsTooltip: true,
+              hideUserWorkflows: false,
+            }}
             columns={3}
           />
         )}

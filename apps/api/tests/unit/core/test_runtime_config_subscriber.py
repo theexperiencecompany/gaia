@@ -1,10 +1,8 @@
-"""Unit tests for the runtime-config subscriber (cross-pod invalidation, F4).
+"""Unit tests for the runtime-config subscriber (cross-pod invalidation).
 
-The credential service publishes ``{"scope": "provider:<name>"}`` on
-RUNTIME_CONFIG_CHANNEL; this listener must apply each remote update through the
-service's pod-local invalidation (cache drop → registry reset → aux LLM caches)
-without publishing anything itself, ignore malformed payloads, and never take
-boot down — no Redis or a dropped connection degrades to a log line.
+The credential service publishes provider-scope updates on the runtime config
+channel; this listener applies each through pod-local invalidation without
+publishing itself, ignores malformed payloads, and never takes boot down.
 """
 
 import asyncio
@@ -57,8 +55,11 @@ def _reset_task_state():
 
 @pytest.fixture
 def applied(monkeypatch) -> list[str]:
-    """Record invalidate_locally calls (the fan-out itself is covered by the
-    provider-credentials-service tests; these pin the listener's wiring)."""
+    """Record invalidate_locally calls.
+
+    The fan-out itself is covered by the provider-credentials-service tests; these
+    pin the listener's wiring.
+    """
     calls: list[str] = []
 
     def _record(provider: str) -> None:
@@ -193,8 +194,7 @@ async def test_stop_without_start_is_a_noop() -> None:
 async def test_listener_loop_disabled_without_redis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No Redis provider → the listener disables itself with a loud log instead
-    of crashing boot (start() still returns cleanly)."""
+    """Disable the listener loudly with no Redis; boot must not crash."""
     monkeypatch.setattr(redis_cache, "redis", None)
 
     await asyncio.wait_for(subscriber_module._listener_loop(), timeout=1.0)

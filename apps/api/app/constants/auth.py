@@ -4,20 +4,23 @@ Auth Constants.
 Constants for authentication and JWT operations.
 """
 
-# JWT algorithm
 JWT_ALGORITHM = "HS256"
 
 # Token expiration defaults (minutes)
 AGENT_TOKEN_EXPIRY_MINUTES = 20
 
-# Login-free integration-connect magic link (delivered via bots / non-UI).
-# An opaque, single-use code bound server-side to one (user, integration).
-# 12 bytes → 96 bits of entropy → unguessable online (the only way to test a
-# code is a request to the rate-limited endpoint; there is no offline oracle).
+# Login-free integration-connect magic link: opaque, single-use, server-side
+# bound to one (user, integration). 12 bytes -> 96 bits of entropy, unguessable
+# online (only test is a request to the rate-limited endpoint).
 CONNECT_LINK_CODE_BYTES = 12
 # Short window: a "click to connect now" link, not a saved bookmark. Keeps the
 # pool of live codes small and the leak/brute-force window tiny.
 CONNECT_LINK_TTL_MINUTES = 60
+
+# One-tap platform-linking code: 16 bytes -> 22 urlsafe-base64 chars, matched
+# by the adapters' trailing-#code regex. Changing this must update
+# LINK_CODE_LENGTH in libs/shared/ts/src/bots/link-codes.ts in the same commit.
+PLATFORM_LINK_CODE_BYTES = 16
 
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"
@@ -35,11 +38,8 @@ LOGIN_METHOD_WORKOS = "workos"
 LOGIN_METHOD_GOOGLE = "google"
 LOGIN_METHOD_EMAIL = "email"
 
-# log.audit() actors for credential routes with no user session to name. Each
-# identifies the *caller class* that authenticated (mirroring the "dodo-webhook"
-# actor on the payment webhook); `resource`/`provider` name whose account was
-# acted on. Never the credential itself.
-# Self-authenticates with the pairing / refresh credential.
+# log.audit() actors for credential routes with no user session to name; never
+# the credential itself. Self-authenticates with the pairing / refresh credential.
 AUDIT_ACTOR_DEVICE_DAEMON = "device-daemon"
 # Authenticated by the shared bot API key.
 AUDIT_ACTOR_BOT_API = "bot-api"

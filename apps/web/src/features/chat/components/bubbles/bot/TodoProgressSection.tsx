@@ -9,7 +9,7 @@ import {
   DashedLineCircleIcon,
   Loading03Icon,
 } from "@icons";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
@@ -106,10 +106,9 @@ export default function TodoProgressSection({
   const { getIntegrationName } = useIntegrationLookup();
   const sources = Object.keys(todo_progress);
 
-  // Custom MCP integrations stream their raw integration id as the source.
-  // Prefer the backend-provided display name, fall back to the client-side
-  // integration lookup (for older messages without it), then the raw id.
-  // Title-case whichever we land on so lowercase names/ids read cleanly.
+  // Custom MCP integrations stream their raw integration id as the source —
+  // prefer the backend display name, fall back to client-side lookup (older
+  // messages), then the raw id, title-cased so lowercase ids read cleanly.
   const getSourceLabel: SourceLabel = (source) =>
     toTitleCase(
       todo_progress[source]?.integration_name ??
@@ -203,9 +202,12 @@ function MultiSourceAccordion({
         latest = key;
       }
     }
-    prevDataRef.current = todo_progress;
     return latest ?? activeSources[activeSources.length - 1];
   }, [activeSources, todo_progress]);
+
+  useEffect(() => {
+    prevDataRef.current = todo_progress;
+  }, [todo_progress]);
 
   return (
     <div className="mt-2 mb-2 animate-scale-in rounded-2xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">

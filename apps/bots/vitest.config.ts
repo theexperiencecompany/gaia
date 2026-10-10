@@ -3,7 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["__tests__/**/*.test.ts"],
+    // Root __tests__ plus every co-located test — narrow globs silently drop
+    // any test placed next to its module.
+    include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
     globals: true,
     testTimeout: 15000,
     hookTimeout: 10000,
@@ -23,6 +25,10 @@ export default defineConfig({
       "@gaia/shared/analytics": path.resolve(
         __dirname,
         "../../libs/shared/ts/src/analytics/index.ts",
+      ),
+      "@gaia/shared/bots": path.resolve(
+        __dirname,
+        "../../libs/shared/ts/src/bots/index.ts",
       ),
       "@gaia/shared": path.resolve(
         __dirname,

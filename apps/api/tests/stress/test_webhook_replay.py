@@ -1,19 +1,16 @@
 """Stress: webhook replay — duplicate delivery of the same signed payload.
 
 Real code under test:
-1. The Composio webhook endpoint (``app/api/v1/endpoints/webhook_composio.py``)
-   with the REAL HMAC-SHA256 signature verification (``webhook_utils``) and the
-   REAL ``webhook-id`` dedup claim (``SET webhook:composio:{id} NX EX 3600``).
-   The endpoint is exercised over HTTP via the ASGI test client; Redis is an
-   in-process fake with genuine SET-NX semantics, so exactly-one-claim is
-   deterministic. Handlers are faked (they reach into workflow queueing).
-2. ``PaymentWebhookService.process_webhook``
-   (``app/services/payments/payment_webhook_service.py``) — Dodo payment
-   webhooks dedup on ``webhook_id`` against the processed-webhook store.
-   Repositories are stateful fakes; the handler logic is the real code.
+1. The Composio webhook endpoint (app/api/v1/endpoints/webhook_composio.py) with the
+   REAL HMAC-SHA256 verification (webhook_utils) and REAL dedup claim (SET
+   webhook:composio:{id} NX EX 3600), exercised over HTTP with an in-process fake
+   Redis (genuine SET-NX semantics). Handlers are faked.
+2. PaymentWebhookService.process_webhook (app/services/payments/payment_webhook_service.py)
+   — Dodo webhooks dedup on webhook_id against the processed-webhook store, with
+   stateful fake repositories but real handler logic.
 
-The invariant everywhere: duplicate delivery — sequential or concurrent —
-produces exactly one side effect.
+The invariant everywhere: duplicate delivery — sequential or concurrent — produces
+exactly one side effect.
 """
 
 import asyncio
@@ -27,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.payment_models import SubscriptionDocument
+from app.models.payment_models import ProcessedWebhookUpdate, SubscriptionDocument
 from app.services.payments.payment_webhook_service import payment_webhook_service
 
 pytestmark = pytest.mark.stress
@@ -40,9 +37,9 @@ TIMESTAMP = "2025-01-01T00:00:00Z"
 class _FakeRedisClient:
     """In-process Redis stand-in with real SET-NX semantics.
 
-    No ``await`` between the existence check and the set — exactly like Redis's
+    No await between the existence check and the set — exactly like Redis's
     single-threaded command execution, so of N concurrent claims precisely one
-    sees ``True``.
+    sees True.
     """
 
     def __init__(self) -> None:
@@ -61,8 +58,7 @@ class _FakeRedisClient:
 
 
 def _sign_composio(webhook_id: str, timestamp: str, body: bytes, secret: str) -> str:
-    """Real signature per ``app/utils/webhook_utils.py``: HMAC-SHA256 over
-    ``webhook_id.timestamp.body``, base64-encoded, prefixed ``v1,``."""
+    """HMAC-SHA256 over webhook_id.timestamp.body, base64-encoded, prefixed v1, (webhook_utils.py)."""
     signed_content = webhook_id.encode() + b"." + timestamp.encode() + b"." + body
     digest = hmac.new(secret.encode(), signed_content, hashlib.sha256).digest()
     return f"v1,{base64.b64encode(digest).decode()}"
@@ -102,8 +98,7 @@ def _webhook_handler() -> MagicMock:
 
 
 async def _settle_webhook_handler(handler: MagicMock) -> None:
-    """The endpoint acks before its fire-and-forget handler task runs; yield
-    until the handler has been invoked (mirrors tests/integration/real/test_webhook_composio.py)."""
+    """Yield until the fire-and-forget handler task has been invoked (mirrors tests/integration/real/test_webhook_composio.py)."""
     for _ in range(1000):
         if handler.process_event.await_count:
             break
@@ -139,8 +134,7 @@ class TestComposioWebhookReplay:
         handler.process_event.assert_awaited_once()
 
     async def test_concurrent_duplicate_deliveries_claim_exactly_once(self, client: AsyncClient):
-        """Two webhooks racing to claim the same id: the SET-NX dedup lets
-        exactly one through — the double-claims invariant at the webhook edge."""
+        """The SET-NX dedup lets exactly one of two racing claims for the same id through."""
         webhook_id = "wh-replay-race-001"
         body, headers = _signed_delivery(webhook_id)
         handler = _webhook_handler()
@@ -166,8 +160,7 @@ class TestComposioWebhookReplay:
     async def test_same_payload_with_different_webhook_ids_is_not_deduplicated(
         self, client: AsyncClient
     ):
-        """Dedup keys on the delivery id, not the payload: two genuinely
-        distinct deliveries of the same content are both legitimate."""
+        """Dedup keys on the delivery id, not the payload content."""
         handler = _webhook_handler()
         fake_redis = _FakeRedisClient()
 
@@ -188,27 +181,24 @@ class TestComposioWebhookReplay:
 
 
 class _FakeProcessedWebhookRepository:
-    """Stateful store: once marked, is_processed stays True — the dedup guard."""
+    """Mimics the unique index: the round trip yields once, then the insert decides atomically, so exactly one of N racing claims for one id sees True."""
 
     def __init__(self) -> None:
-        self._seen: set[str] = set()
-        self.marked: list[str] = []
+        self._claimed: set[str] = set()
+        self.outcomes: list[tuple[str, str | None]] = []
 
-    async def is_processed(self, webhook_id: str) -> bool:
-        return webhook_id in self._seen
+    async def claim(self, webhook_id: str, *, event_type: str) -> bool:
+        await asyncio.sleep(0)
+        if webhook_id in self._claimed:
+            return False
+        self._claimed.add(webhook_id)
+        return True
 
-    async def mark_processed(
-        self,
-        webhook_id: str,
-        *,
-        event_type: str,
-        status: str,
-        message: str | None = None,
-        payment_id: str | None = None,
-        subscription_id: str | None = None,
-    ) -> None:
-        self._seen.add(webhook_id)
-        self.marked.append(webhook_id)
+    async def record_outcome(self, webhook_id: str, outcome: ProcessedWebhookUpdate) -> None:
+        self.outcomes.append((webhook_id, outcome.status))
+
+    async def release(self, webhook_id: str) -> None:
+        self._claimed.discard(webhook_id)
 
 
 class _FakeSubscriptionRepository:
@@ -273,19 +263,19 @@ class TestDodoWebhookReplay:
                 processed_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.subscription_repository",
+                "app.services.payments.subscription_events.subscription_repository",
                 subs_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.user_repository.get",
+                "app.services.payments.subscription_events.user_repository.get",
                 AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.payments.payment_webhook_service.payment_service.invalidate_plan_cache_by_dodo_id",
+                "app.services.payments.subscription_events.invalidate_plan_cache",
                 invalidate_cache,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.track_subscription_event",
+                "app.services.payments.subscription_events.track_subscription_event",
                 track,
             ),
         ):
@@ -298,6 +288,43 @@ class TestDodoWebhookReplay:
         assert second.message == "Webhook already processed"
         assert len(subs_repo.created) == 1
         assert subs_repo.created[0].dodo_subscription_id == "sub_xyz789"
-        assert processed_repo.marked == ["wh_dodo_001"]
+        assert processed_repo.outcomes == [("wh_dodo_001", "processed")]
         track.assert_called_once()
         invalidate_cache.assert_awaited_once()
+
+    async def test_racing_duplicate_deliveries_activate_one_subscription(self):
+        """The atomic claim, not a check-then-act, is what keeps the redelivered copy from reaching the handler."""
+        payload = _dodo_subscription_active_payload()
+        processed_repo = _FakeProcessedWebhookRepository()
+        subs_repo = _FakeSubscriptionRepository()
+
+        with (
+            patch(
+                "app.services.payments.payment_webhook_service.processed_webhook_repository",
+                processed_repo,
+            ),
+            patch(
+                "app.services.payments.subscription_events.subscription_repository",
+                subs_repo,
+            ),
+            patch(
+                "app.services.payments.subscription_events.user_repository.get",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.payments.subscription_events.invalidate_plan_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "app.services.payments.subscription_events.track_subscription_event",
+                MagicMock(),
+            ),
+        ):
+            first, second = await asyncio.gather(
+                payment_webhook_service.process_webhook(payload, "wh_dodo_race"),
+                payment_webhook_service.process_webhook(payload, "wh_dodo_race"),
+            )
+
+        assert sorted([first.status, second.status]) == ["ignored", "processed"]
+        assert len(subs_repo.created) == 1
+        assert processed_repo.outcomes == [("wh_dodo_race", "processed")]

@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Payment Successful",
+  title: "Payment",
   description:
-    "Your GAIA payment was processed. Verify your subscription status and continue to your personal AI assistant.",
+    "The result of your GAIA payment: confirm your subscription and continue, or try the checkout again.",
   path: "/payment/success",
   noIndex: true,
 });

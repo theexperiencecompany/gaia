@@ -1,6 +1,4 @@
-"""
-Startup validation for GAIA.
-"""
+"""Startup validation for GAIA."""
 
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
@@ -30,21 +28,18 @@ async def is_payment_setup() -> bool:
 async def validate_startup_requirements() -> None:
     """Halt startup when payment plans are not seeded.
 
-    Registered ``strategy=ERROR``, so raising here aborts a blocking boot (see
-    ``provider_registration.unified_startup``) with an actionable message instead
-    of letting the app come up misconfigured. A prior broad ``except`` caught this
-    very ``RuntimeError`` and only logged it, so the check never actually halted —
-    the raise must propagate.
+    Registered strategy=ERROR, so raising here aborts a blocking boot with an
+    actionable message. A prior broad except swallowed this RuntimeError and
+    only logged it, so the check never actually halted — the raise must
+    propagate.
     """
     log.set(component="startup_validation", phase="startup")
     log.info("Starting startup scripts validation...")
 
     payment_ok = await is_payment_setup()
     if not payment_ok and not settings.DODO_PAYMENTS_API_KEY:
-        # No payment provider configured (selfhost/dev): the Dodo setup script
-        # cannot run at all, so provision the Free row instead of demanding it.
-        # With Dodo configured this never fires — a Dodo instance missing its
-        # plans is a real misconfiguration and keeps the remedy below.
+        # Without a payment provider the Dodo script cannot run, so seed the
+        # Free row instead; with Dodo configured a gap stays an error below.
         payment_ok = await seed_free_plan_if_missing()
         if not payment_ok:
             # The seeder returns False only when plans already exist (another

@@ -43,12 +43,9 @@ export default function LoginModal() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Self-host instances run local email/password auth and mount no WorkOS
-  // OAuth routes, so the Sign in button must route to the local /login page
-  // instead of dead-ending on the hosted redirect. Plain state + effect, not
-  // react-query: this modal mounts above the app's QueryClientProvider (same
-  // constraint as useOnboardingGuard). Resolved once per open session — a
-  // deployment's auth mode cannot change without a restart.
+  // Local auth has no WorkOS routes, so route Sign in to /login. Plain state
+  // + effect (modal mounts above QueryClientProvider). Resolved once per
+  // session — auth mode cannot change without a restart.
   const [authMode, setAuthMode] = useState<InstanceAuthMode | null>(null);
 
   useEffect(() => {

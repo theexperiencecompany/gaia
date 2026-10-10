@@ -1,6 +1,4 @@
-"""
-Blog service module — thin orchestration over the blog repository.
-"""
+"""Blog service module — thin orchestration over the blog repository."""
 
 from fastapi import HTTPException, status
 

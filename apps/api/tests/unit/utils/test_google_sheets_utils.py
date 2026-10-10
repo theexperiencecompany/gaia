@@ -1,8 +1,8 @@
 """Unit tests for app.utils.google_sheets_utils.
 
-The pure helpers (`hex_to_rgb`, `parse_a1_range`, `parse_a1_anchor`) run with no
+The pure helpers (hex_to_rgb, parse_a1_range, parse_a1_anchor) run with no
 mocking at all. The two lookup helpers mock only the real I/O boundary
-(`proxy_request_sync`).
+(proxy_request_sync).
 
 Several production bugs were found while writing these tests and fixed at the
 root; the tests pinning them down are marked with a "BUG:" comment.
@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 from app.utils.google_sheets_utils import (
     SHEETS_API_BASE,
@@ -26,6 +27,16 @@ from app.utils.google_sheets_utils import (
 MODULE = "app.utils.google_sheets_utils"
 
 
+def _rgb(hex_color: str) -> dict[str, float]:
+    """Return the Color JSON Google receives for hex_color."""
+    return hex_to_rgb(hex_color).model_dump()
+
+
+def _grid(a1: str) -> dict[str, int]:
+    """Return the GridRange JSON Google receives for a1, with open bounds omitted."""
+    return parse_a1_range(a1).model_dump(exclude_none=True)
+
+
 # ---------------------------------------------------------------------------
 # hex_to_rgb
 # ---------------------------------------------------------------------------
@@ -33,32 +44,32 @@ MODULE = "app.utils.google_sheets_utils"
 
 class TestHexToRgb:
     def test_pure_red(self) -> None:
-        assert hex_to_rgb("#FF0000") == {"red": 1.0, "green": 0.0, "blue": 0.0}
+        assert _rgb("#FF0000") == {"red": 1.0, "green": 0.0, "blue": 0.0}
 
     def test_pure_blue(self) -> None:
-        assert hex_to_rgb("#0000FF") == {"red": 0.0, "green": 0.0, "blue": 1.0}
+        assert _rgb("#0000FF") == {"red": 0.0, "green": 0.0, "blue": 1.0}
 
     def test_black_and_white_are_the_scale_endpoints(self) -> None:
-        assert hex_to_rgb("#000000") == {"red": 0.0, "green": 0.0, "blue": 0.0}
-        assert hex_to_rgb("#FFFFFF") == {"red": 1.0, "green": 1.0, "blue": 1.0}
+        assert _rgb("#000000") == {"red": 0.0, "green": 0.0, "blue": 0.0}
+        assert _rgb("#FFFFFF") == {"red": 1.0, "green": 1.0, "blue": 1.0}
 
     def test_leading_hash_is_optional(self) -> None:
         assert hex_to_rgb("00FF00") == hex_to_rgb("#00FF00")
 
     def test_lowercase_digits_accepted(self) -> None:
-        assert hex_to_rgb("#00ff00") == {"red": 0.0, "green": 1.0, "blue": 0.0}
+        assert _rgb("#00ff00") == {"red": 0.0, "green": 1.0, "blue": 0.0}
 
     def test_channels_are_not_transposed(self) -> None:
         # Distinct values per channel: a red/blue swap would still pass an
         # all-equal fixture, so pin each channel to its own byte.
-        assert hex_to_rgb("#112233") == {
+        assert _rgb("#112233") == {
             "red": 0x11 / 255.0,
             "green": 0x22 / 255.0,
             "blue": 0x33 / 255.0,
         }
 
     def test_midpoint_byte_scales_to_fraction(self) -> None:
-        assert hex_to_rgb("#808080")["red"] == pytest.approx(128 / 255.0)
+        assert hex_to_rgb("#808080").red == pytest.approx(128 / 255.0)
 
     # BUG: three-digit shorthand used to crash with "invalid literal for int()
     # with base 16: ''" — an opaque message for a colour the model routinely
@@ -82,7 +93,7 @@ class TestParseA1Range:
     def test_simple_range_is_half_open_on_the_end(self) -> None:
         # A1:B10 covers rows 1-10 and columns A-B, so the exclusive end indices
         # are 10 and 2 respectively.
-        assert parse_a1_range("A1:B10") == {
+        assert _grid("A1:B10") == {
             "startRowIndex": 0,
             "endRowIndex": 10,
             "startColumnIndex": 0,
@@ -90,7 +101,7 @@ class TestParseA1Range:
         }
 
     def test_single_cell_spans_exactly_one_row_and_column(self) -> None:
-        assert parse_a1_range("C3") == {
+        assert _grid("C3") == {
             "startRowIndex": 2,
             "endRowIndex": 3,
             "startColumnIndex": 2,
@@ -99,8 +110,8 @@ class TestParseA1Range:
 
     def test_multi_letter_columns_use_base_26(self) -> None:
         # AA is the 27th column (index 26); a naive per-character sum yields 0.
-        assert parse_a1_range("AA1")["startColumnIndex"] == 26
-        assert parse_a1_range("ZZ1")["startColumnIndex"] == 701
+        assert parse_a1_range("AA1").startColumnIndex == 26
+        assert parse_a1_range("ZZ1").startColumnIndex == 701
 
     def test_absolute_markers_are_stripped(self) -> None:
         assert parse_a1_range("$A$1:$B$2") == parse_a1_range("A1:B2")
@@ -108,33 +119,31 @@ class TestParseA1Range:
     def test_lowercase_is_normalized(self) -> None:
         assert parse_a1_range("a1:b10") == parse_a1_range("A1:B10")
 
-    # BUG: the sheet qualifier was not stripped, so parse_cell matched "SHEET1"
-    # as a column name and produced startColumnIndex=8826681 — garbage silently
-    # sent to Google. Sheet-qualified ranges are ordinary A1 notation and the
-    # tools' own responses format ranges this way.
+    # BUG: unstripped sheet qualifier matched "SHEET1" as a column name and
+    # produced startColumnIndex=8826681 — garbage silently sent to Google.
+    # Sheet-qualified ranges are ordinary A1 notation.
     def test_sheet_qualifier_is_stripped_not_read_as_a_column(self) -> None:
         assert parse_a1_range("Sheet1!A1:B2") == parse_a1_range("A1:B2")
 
     def test_quoted_sheet_name_with_spaces_is_stripped(self) -> None:
         assert parse_a1_range("'My Sheet'!B2:C3") == parse_a1_range("B2:C3")
 
-    # BUG: whole-column references collapsed onto row 1 (A:C returned the single
-    # cell A1), so "highlight column C" silently formatted one cell and reported
-    # success. Omitting the row bounds is what Google's GridRange means by
-    # "unbounded".
+    # BUG: whole-column refs collapsed onto row 1 (A:C returned cell A1 only), so
+    # "highlight column C" silently formatted one cell and reported success.
+    # Omitting row bounds is what Google's GridRange means by "unbounded".
     def test_whole_column_range_leaves_rows_unbounded(self) -> None:
-        assert parse_a1_range("A:C") == {"startColumnIndex": 0, "endColumnIndex": 3}
+        assert _grid("A:C") == {"startColumnIndex": 0, "endColumnIndex": 3}
 
     def test_single_whole_column_leaves_rows_unbounded(self) -> None:
-        assert parse_a1_range("B:B") == {"startColumnIndex": 1, "endColumnIndex": 2}
+        assert _grid("B:B") == {"startColumnIndex": 1, "endColumnIndex": 2}
 
     def test_whole_row_range_leaves_columns_unbounded(self) -> None:
-        assert parse_a1_range("1:5") == {"startRowIndex": 0, "endRowIndex": 5}
+        assert _grid("1:5") == {"startRowIndex": 0, "endRowIndex": 5}
 
     def test_open_ended_column_keeps_its_start_row(self) -> None:
         # "A2:A" means "column A from row 2 down", so the start row survives and
         # only the end is unbounded.
-        assert parse_a1_range("A2:A") == {
+        assert _grid("A2:A") == {
             "startRowIndex": 1,
             "startColumnIndex": 0,
             "endColumnIndex": 1,
@@ -222,11 +231,13 @@ class TestGetSheetIdByName:
         with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
             get_sheet_id_by_name("sid", "Data", "u1")
 
-        kwargs = proxy.call_args.kwargs
-        assert kwargs["endpoint"] == f"{SHEETS_API_BASE}/sid"
-        assert kwargs["method"] == "GET"
-        assert kwargs["query"] == {"fields": "sheets.properties"}
-        assert kwargs["user_id"] == "u1"
+        assert proxy.call_args.args[0] == ProxyRequest(
+            user_id="u1",
+            toolkit="GOOGLESHEETS",
+            endpoint=f"{SHEETS_API_BASE}/sid",
+            method="GET",
+            query={"fields": "sheets.properties"},
+        )
 
     def test_sheet_zero_is_returned_not_treated_as_missing(self) -> None:
         # Sheet id 0 is falsy; returning None for it would send every chart to
@@ -253,10 +264,9 @@ class TestGetSheetIdByName:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"sheets": [{}]}):
             assert get_sheet_id_by_name("sid", "Data", "u1") is None
 
-    # BUG: every exception was swallowed into `return None`, and callers turn
-    # None into "sheet 'X' not found". An expired Google token therefore told
-    # the user their tab was missing. Lookup failure must not masquerade as
-    # absence.
+    # BUG: every exception was swallowed into return None, and callers turn None
+    # into "sheet 'X' not found" — an expired Google token told the user their
+    # tab was missing. Lookup failure must not masquerade as absence.
     def test_auth_failure_propagates_instead_of_looking_like_a_missing_sheet(self) -> None:
         error = AppError(message="No active GOOGLESHEETS connection", why="w", status_code=403)
         with (
@@ -293,9 +303,12 @@ class TestGetColumnIndexByHeader:
         with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
             get_column_index_by_header("sid", "Data", "Revenue", "u1")
 
-        kwargs = proxy.call_args.kwargs
-        assert kwargs["endpoint"] == f"{SHEETS_API_BASE}/sid/values/Data!1:1"
-        assert kwargs["method"] == "GET"
+        assert proxy.call_args.args[0] == ProxyRequest(
+            user_id="u1",
+            toolkit="GOOGLESHEETS",
+            endpoint=f"{SHEETS_API_BASE}/sid/values/Data!1:1",
+            method="GET",
+        )
 
     def test_first_match_wins_for_duplicate_headers(self) -> None:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"values": [["A", "B", "A"]]}):

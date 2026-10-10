@@ -9,7 +9,11 @@
  * Run with: `pnpm deploy-commands` or `tsx src/deploy-commands.ts`
  */
 
-import { allCommands, type BotCommand, createBotLogger } from "@gaia/shared";
+import {
+  allCommands,
+  type BotCommand,
+  createBotLogger,
+} from "@gaia/shared/bots";
 import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,
@@ -22,16 +26,9 @@ import {
 } from "discord.js";
 
 /**
- * Converts a unified {@link BotCommand} definition into a Discord
- * `SlashCommandBuilder` JSON payload.
+ * Convert a unified {@link BotCommand} into a Discord slash command JSON payload.
  *
- * Handles three command shapes:
- * 1. Simple commands with no options (e.g. `/new`, `/help`)
- * 2. Commands with top-level options (e.g. `/gaia <message>`)
- * 3. Commands with subcommands (e.g. `/todo list`, `/todo add <title>`)
- *
- * @param cmd - The unified command definition.
- * @returns The Discord slash command JSON payload.
+ * Handles simple, top-level-option, and subcommand shapes.
  */
 function buildSlashCommand(
   cmd: BotCommand,

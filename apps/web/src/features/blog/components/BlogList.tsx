@@ -12,7 +12,10 @@ interface BlogListProps {
 }
 
 export function BlogList({ blogs }: BlogListProps) {
-  const [filtered, setFilteredBlogs] = useState<BlogPostMeta[]>(blogs);
+  const [filteredBlogs, setFilteredBlogs] = useState<BlogPostMeta[] | null>(
+    null,
+  );
+  const filtered = filteredBlogs ?? blogs;
 
   const featured = filtered.filter((b) => b.featured);
   const rest = filtered.filter((b) => !b.featured);

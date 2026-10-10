@@ -1,4 +1,4 @@
-import { shuffle } from "lodash";
+import shuffle from "lodash/shuffle";
 import type React from "react";
 import { useMemo } from "react";
 

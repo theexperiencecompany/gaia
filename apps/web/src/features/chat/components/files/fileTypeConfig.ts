@@ -97,3 +97,39 @@ export function getFileTypeExtension(
   const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
   return extension in FILE_TYPE_STYLES ? extension : "file";
 }
+
+const getFileExtension = (fileName: string): string => {
+  const parts = fileName.split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+};
+
+/** Format the file type more clearly, for chip labels. */
+export const getFormattedFileType = (fileType: string, fileName: string) => {
+  const ext = getFileExtension(fileName).toUpperCase();
+
+  // Handle common document types with cleaner labels
+  if (fileType.includes("msword") || fileType.includes("wordprocessing"))
+    return "DOC";
+
+  if (fileType.includes("spreadsheet") || fileType.includes("excel"))
+    return "SPREADSHEET";
+
+  // Extract meaningful part from MIME type or use extension
+  const typePart = fileType.split("/")[1];
+
+  if (!typePart || typePart === "octet-stream") {
+    return ext || "FILE";
+  }
+
+  // Cleanup and shorten common verbose MIME types
+  const cleanType = typePart
+    .replace("vnd.openxmlformats-officedocument.", "")
+    .replace("vnd.ms-", "")
+    .replace("x-", "")
+    .replace("document.", "")
+    .replace("presentation.", "")
+    .replace("application.", "")
+    .split(".")[0];
+
+  return cleanType.toUpperCase().substring(0, 8);
+};

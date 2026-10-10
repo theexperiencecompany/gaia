@@ -7,7 +7,7 @@ Docker Compose configuration for all GAIA environments.
 | File | Purpose |
 |---|---|
 | `docker-compose.yml` | Local development — profile-gated app services, infra always on |
-| `docker-compose.prod.yml` | Production — pulls pre-built images from ghcr.io |
+| `docker-compose.prod.yml` | **Moved** — production compose now lives in the private `theexperiencecompany/gaia-infra` repo (this repo is public; prod topology is not) |
 | `docker-compose.selfhost.yml` | Self-hosting — builds from source, includes web frontend |
 | `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
@@ -56,8 +56,7 @@ docker compose --profile voice up -d     # voice-agent + infra
 docker compose --profile bots up -d      # discord/slack/telegram/whatsapp bots
 docker compose --profile all up -d       # everything
 
-# Production
-docker compose -f docker-compose.prod.yml up -d
+# Production — compose lives in gaia-infra (private); CI deploys it via Swarm
 
 # Self-hosting
 docker compose -f docker-compose.selfhost.yml up -d

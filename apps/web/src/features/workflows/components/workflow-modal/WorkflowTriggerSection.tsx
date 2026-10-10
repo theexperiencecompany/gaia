@@ -3,6 +3,7 @@ import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import type { ReactElement } from "react";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { createDefaultTriggerConfig } from "../../triggers/registry";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
@@ -53,9 +54,15 @@ export default function WorkflowTriggerSection({
       const isTriggerType =
         currentType !== "schedule" && currentType !== "manual";
 
-      if (!isTriggerType && !selectedTrigger) {
-        // No previous event selection — default to email.
-        onTriggerConfigChange({ type: "email", enabled: true });
+      // The config still belongs to another tab — reseed it from the previous
+      // event selection so it always matches the Event tab being switched to.
+      if (!isTriggerType) {
+        const defaultConfig = selectedTrigger
+          ? createDefaultTriggerConfig(selectedTrigger)
+          : undefined;
+        onTriggerConfigChange(
+          defaultConfig ?? { type: "email", enabled: true },
+        );
       }
     } else if (triggerConfig.type !== "manual") {
       onTriggerConfigChange({ type: "manual", enabled: true });

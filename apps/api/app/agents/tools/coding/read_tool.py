@@ -9,6 +9,7 @@ falls back to reading through the sandbox so file reads still work.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from e2b import AsyncSandbox, NotFoundException
@@ -26,6 +27,7 @@ from app.agents.workspace.system_files import system_file_body
 from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
+from app.services import gaia_task_files
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
 from app.services.storage.juicefs import (
@@ -43,6 +45,67 @@ MAX_LIMIT = 10_000
 # Native-dev sandbox-read fallback slurps the whole file into memory (no
 # server-side range read), so cap it to avoid OOMing the worker on a huge file.
 MAX_SANDBOX_READ_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@dataclass(frozen=True)
+class ReadTarget:
+    """Where to read from — the resolved workspace location and actor."""
+
+    user_id: str
+    abs_path: str
+    rel: str
+    session_id: str | None
+
+
+@dataclass(frozen=True)
+class ReadPage:
+    """The normalized line window to return."""
+
+    offset: int
+    limit: int
+
+
+async def _read_special(
+    target: ReadTarget, page: ReadPage, mime_type: str | None
+) -> str | list[dict[str, Any]] | None:
+    """Serve image, in-memory system, and todo-document files.
+
+    Returns the tool result when handled, else None so the caller falls
+    through to JuiceFS. The resolve error is a handled result (returned
+    directly), not a fall-through.
+    """
+    if mime_type is not None:
+        return await _read_image(
+            user_id=target.user_id,
+            rel=target.rel,
+            abs_path=target.abs_path,
+            mime_type=mime_type,
+            session_id=target.session_id,
+        )
+    # System-owned files (INDEX.md, GUIDE.md docs, builtin skills) are held in
+    # process memory and served without touching the sandbox or JuiceFS; the
+    # per-user on-disk symlink (once the _system mount lands) is only for bash.
+    body = system_file_body(target.rel)
+    if body is not None and not await user_owns_regular_file(target.user_id, target.rel):
+        log.set(read_via="memory")
+        return _format_text_read(target.abs_path, body, page.offset, page.limit, target.session_id)
+    # Tracked-todo files live on the todo document, not on disk: serve them
+    # from Mongo so they read the same in native dev (no projection) and in
+    # the sandbox, and never pay a sandbox resume.
+    try:
+        task_ref = await gaia_task_files.resolve(target.rel, target.user_id)
+        if task_ref is not None:
+            log.set(read_via="todo_document")
+            body = await gaia_task_files.read_file(task_ref, target.user_id)
+            return _format_text_read(
+                target.abs_path, body, page.offset, page.limit, target.session_id
+            )
+    except gaia_task_files.GaiaTaskPathError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        log.error("read task file failed", error_type=type(e).__name__, exc_info=True)
+        return f"Error reading todo notes: {e}"
+    return None
 
 
 @tool
@@ -69,46 +132,35 @@ async def read(
     # relative remainder maps to the user's host root, where read_user_file
     # re-checks containment so a model-supplied path can't escape it.
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+    target = ReadTarget(user_id=user_id, abs_path=abs_path, rel=rel, session_id=session_id)
+    page = ReadPage(offset=max(offset, 0), limit=max(1, min(limit, MAX_LIMIT)))
 
-    mime_type = ImageCodec.mime_for_path(abs_path)
-    if mime_type is not None:
-        return await _read_image(
-            user_id=user_id,
-            rel=rel,
-            abs_path=abs_path,
-            mime_type=mime_type,
-            session_id=session_id,
-        )
-
-    offset = max(offset, 0)
-    limit = max(1, min(limit, MAX_LIMIT))
-
-    # System-owned files (INDEX.md, the GUIDE.md docs, builtin skills) are
-    # authored by GAIA and held in process memory — serve them without touching
-    # the sandbox OR JuiceFS. The per-user on-disk copy (a symlink, once the
-    # _system mount lands) exists only so in-sandbox `bash` can see them.
-    body = system_file_body(rel)
-    if body is not None and not await user_owns_regular_file(user_id, rel):
-        log.set(read_via="memory")
-        return _format_text_read(abs_path, body, offset, limit, session_id)
+    if (
+        special := await _read_special(target, page, ImageCodec.mime_for_path(abs_path))
+    ) is not None:
+        return special
 
     try:
         async with fs_timer(FsOps.TOOL_READ):
             try:
-                lines, total = await read_user_file(user_id, rel, offset=offset, limit=limit)
+                lines, total = await read_user_file(
+                    user_id, rel, offset=page.offset, limit=page.limit
+                )
             except JuiceFSUnavailable:
                 # Native dev (no host mount): read through the sandbox instead.
                 log.set(read_via="sandbox_fallback")
                 async with acquire_sandbox(user_id) as sbx:
-                    return await _read_file_sandbox(sbx, abs_path, offset, limit, session_id)
-        return _format_read(abs_path, lines, total, offset, limit, session_id)
+                    return await _read_file_sandbox(
+                        sbx, abs_path, page.offset, page.limit, session_id
+                    )
+        return _format_read(abs_path, lines, total, page.offset, page.limit, session_id)
     except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
     except ValueError as e:
         # Containment failure (path escaped the user root) or bad input.
         return f"Error: {e}"
     except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable — {e}"
+        return f"Error: sandbox unavailable ({e})"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
@@ -143,7 +195,7 @@ async def _read_image(
     except ValueError as e:
         return f"Error: {e}"
     except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable — {e}"
+        return f"Error: sandbox unavailable ({e})"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
@@ -152,7 +204,7 @@ async def _read_image(
     try:
         image = await ImageCodec.from_bytes(data)
     except InvalidImageError as e:
-        return f"Error: cannot read {abs_path} as an image — {e}"
+        return f"Error: cannot read {abs_path} as an image ({e})"
 
     # The file's own type and size, not the inline block's: `ImageCodec` may have
     # transcoded a large PNG to JPEG for delivery, and naming that here would tell
@@ -170,7 +222,7 @@ async def _read_image(
     )
 
     header = f"Image file {abs_path} ({mime_type}, {file_size} bytes)"
-    return [text_content_block(f"{header} — shown below."), image.to_block()]
+    return [text_content_block(f"{header}, shown below."), image.to_block()]
 
 
 def _format_text_read(
@@ -237,11 +289,9 @@ def _format_read(
 
 
 async def _read_sandbox_bytes(sbx: AsyncSandbox, abs_path: str, max_bytes: int) -> bytes:
-    # Native-dev fallback (host JuiceFS absent): read through the sandbox with
-    # the native filesystem API. There's no server-side range read, so we slurp
-    # the whole file — fine for this dev-only path, but cap the size first via
-    # get_info so a huge file can't OOM the worker (the host path streams
-    # line-by-line and needs no such guard).
+    # Native-dev fallback (host JuiceFS absent): no server-side range read, so
+    # slurp the whole file — cap the size first via get_info so a huge file
+    # can't OOM the worker.
     try:
         info = await sbx.files.get_info(abs_path)
     except NotFoundException:
@@ -269,7 +319,7 @@ async def _read_file_sandbox(
     except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
     except ValueError as e:
-        return f"Error: {e} — read a narrower range or run with the host mount"
+        return f"Error: {e}; read a narrower range or run with the host mount"
     # Decode with errors="replace" to stay binary-safe, matching read_user_file.
     text = raw.decode("utf-8", errors="replace")
     return _format_text_read(abs_path, text, offset, limit, session_id)

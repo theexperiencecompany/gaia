@@ -7,9 +7,9 @@ import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { integrationKeys } from "@/features/integrations/api/queryKeys";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationInstructionsModal } from "@/features/integrations/components/IntegrationInstructionsModal";
 import { useIntegrationInstructions } from "@/features/integrations/hooks/useIntegrationInstructions";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -149,11 +149,14 @@ export function IntegrationInstructionsSettings() {
                 key={integration.id}
                 label={integration.name}
                 description={preview || "No instructions yet"}
-                icon={getToolCategoryIcon(
-                  integration.id,
-                  { size: 22, width: 22, height: 22, showBackground: false },
-                  integration.iconUrl,
-                )}
+                icon={
+                  <IntegrationIcon
+                    integrationId={integration.id}
+                    iconUrl={integration.iconUrl}
+                    category={integration.category}
+                    size={22}
+                  />
+                }
                 onClick={() => openModal(integration)}
               >
                 <ChevronRight className="h-4 w-4 text-zinc-500" />

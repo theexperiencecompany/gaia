@@ -1,8 +1,8 @@
 """Tools registry warmup.
 
-Indexes the provider-tool catalog at startup so the first `/tools` and
-`retrieve_tools` calls don't pay the Composio-catalog cold start. Per-user
-`/tools` responses cache on demand under `tools:user:{user_id}:*`, so there is
+Indexes the provider-tool catalog at startup so the first /tools and
+retrieve_tools calls don't pay the Composio-catalog cold start. Per-user
+/tools responses cache on demand under tools:user:{user_id}:*, so there is
 no global response to pre-warm.
 """
 

@@ -7,6 +7,7 @@ import resend
 from app.config.settings import settings
 from app.services.email.models import EmailMessage
 from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
     resolve as resolve_resend_config,
 )
 
@@ -15,15 +16,12 @@ class ResendEmailProvider:
     """EmailProvider backed by the Resend HTTP API."""
 
     async def _apply_api_key(self) -> None:
-        """Point the Resend SDK's global key at the active credential.
+        """Point the Resend SDK global key at the active credential.
 
-        The SDK reads a module-global ``api_key``, so it is set on every call
-        from the credential store first (Settings → Resend), falling back to
-        ``RESEND_API_KEY`` — the store → env policy every runtime consumer
-        follows, which also means a key configured at runtime applies without
-        a restart.
+        Resolves store-first with env fallback on every call so a key saved at
+        runtime applies without a restart.
         """
-        config = await resolve_resend_config("resend")
+        config: ProviderConfig | None = await resolve_resend_config("resend")
         api_key = config["api_key"] if config else None
         if api_key is None:
             api_key = settings.RESEND_API_KEY
@@ -47,8 +45,11 @@ class ResendEmailProvider:
             params["reply_to"] = message.reply_to
         if message.headers:
             params["headers"] = message.headers
+        options: resend.Emails.SendOptions | None = (
+            {"idempotency_key": message.idempotency_key} if message.idempotency_key else None
+        )
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
-        await asyncio.to_thread(resend.Emails.send, params)
+        await asyncio.to_thread(resend.Emails.send, params, options)
 
     async def add_contact(self, user_email: str, user_name: str | None = None) -> None:
         """Add a contact to the Resend audience. No-op when RESEND_AUDIENCE_ID is unset."""

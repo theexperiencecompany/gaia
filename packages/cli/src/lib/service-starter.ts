@@ -33,15 +33,11 @@ const DEFAULT_START_TIMEOUT_MIN = 60;
 /**
  * Resolve the `docker compose up` timeout in milliseconds.
  *
- * docker-compose.selfhost.yml has services with only `build:` defined
- * (gaia-backend, arq_worker, seed-models). On the first start docker compose
- * has to build them implicitly even without --build, and on a
- * resource-constrained VM (e.g. a 4 GB self-hosted box) the full Web
- * production build alone can sit at 30+ minutes.
- *
- * The default ceiling is long enough for that slow path but short enough to
- * flag a genuinely stuck build. Override with GAIA_START_TIMEOUT_MIN when you
- * need more (or set it to 0 to disable the timeout entirely).
+ * docker-compose.selfhost.yml has build-only services (gaia-backend, arq_worker, seed-models)
+ * that compose builds implicitly on first start even without --build; on a resource-constrained
+ * VM (e.g. 4 GB) the Web production build alone can take 30+ minutes. The default ceiling
+ * covers that slow path while still catching a genuinely stuck build; override with
+ * GAIA_START_TIMEOUT_MIN, or 0 to disable.
  */
 function resolveStartTimeoutMs(): number | undefined {
   // Number("") and Number("  ") are 0, which would silently disable the

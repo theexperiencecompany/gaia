@@ -48,7 +48,7 @@ GetAddrInfoResult = list[tuple[int, int, int, str, tuple[str, int]]]
 
 
 def _resolver_returning(*addresses: str) -> Callable[..., GetAddrInfoResult]:
-    """Build a ``socket.getaddrinfo`` stand-in answering every host with ``addresses``."""
+    """Build a socket.getaddrinfo stand-in answering every host with the given addresses."""
 
     def fake_getaddrinfo(
         host: str, port: int | None, *args: int, **kwargs: int
@@ -86,17 +86,18 @@ def _routes(path: str) -> list[APIRoute]:
 
 
 def _walk_dependants(dependant: Dependant) -> Iterator[Dependant]:
-    """The dependency graph of one route: the handler itself plus every nested
-    sub-dependency (per-param Depends live on ``dependant.dependencies``, so a
-    flat scan misses guards wrapped inside another dependency)."""
+    """Walk the dependency graph of one route: handler plus every nested sub-dependency.
+
+    Per-param Depends live on the dependant dependencies list, so a flat scan
+    misses guards wrapped inside another dependency.
+    """
     yield dependant
     for sub in dependant.dependencies:
         yield from _walk_dependants(sub)
 
 
 def _requires(path: str, call: Callable[..., Any]) -> bool:
-    """True when EVERY route registered under ``path`` requires ``call``
-    anywhere in its dependency graph."""
+    """Report whether every route under the path requires the given dependency call."""
     return all(
         any(dep.call is call for dep in _walk_dependants(route.dependant))
         for route in _routes(path)
@@ -139,8 +140,7 @@ class TestStatus:
         assert not _requires("/status", require_instance_admin)
 
     async def test_status_stamps_the_request_wide_event(self, anon_client: AsyncClient) -> None:
-        """Route-contract step 1: the public status probe opens its wide event
-        with an operation tag (it has no user to stamp)."""
+        """Open the public status probe wide event with an operation tag; no user to stamp."""
         log.reset()
         try:
             resp = await anon_client.get(f"{API}/status")
@@ -230,8 +230,10 @@ class TestStatus:
 
 
 class TestProviderCatalog:
-    """GET /catalog serves the Python provider catalog so the web wizard and
-    Settings render dynamically — adding a provider stays a Python-only change."""
+    """Serve the Python provider catalog so the wizard and Settings render dynamically.
+
+    Adding a provider therefore stays a Python-only change.
+    """
 
     async def test_catalog_lists_every_provider_in_display_order(
         self, anon_client: AsyncClient
@@ -259,8 +261,7 @@ class TestProviderCatalog:
     async def test_custom_lane_presets_are_partitioned_out_of_providers(
         self, anon_client: AsyncClient
     ) -> None:
-        """opencode/nous are preset gateways inside the custom card, NOT
-        providers — they must never render as catalog cards."""
+        """Keep preset gateways inside the custom card, never as provider cards."""
         body = (await anon_client.get(f"{API}/catalog")).json()
         assert set(body["custom_presets"]) == {"opencode", "nous"}
         assert "opencode" not in body["providers"]
@@ -383,9 +384,7 @@ class TestProviderProbe:
     async def test_stored_key_never_sent_to_caller_supplied_base_url(
         self, client: AsyncClient
     ) -> None:
-        """H1 exfil scenario: stored credential + caller-supplied base_url.
-        The probe must hit the STORED endpoint with the STORED key and never
-        contact the attacker URL."""
+        """Hit the stored endpoint with the stored key, never the attacker URL."""
         await provider_service.upsert("custom", api_key=STORED_KEY, base_url="https://good.test/v1")
         with respx.mock(assert_all_called=False) as mock:
             good = mock.get("https://good.test/v1/models").mock(
@@ -407,9 +406,7 @@ class TestProviderProbe:
     async def test_openrouter_stored_key_goes_to_canonical_url_not_evil(
         self, client: AsyncClient
     ) -> None:
-        """Same binding for openrouter: its canonical models URL is used with
-        the stored key; a body base_url is never honored once a credential is
-        stored."""
+        """Use the canonical models URL with a stored key; a body base_url is never honored."""
         await provider_service.upsert("openrouter", api_key=STORED_KEY)
         with respx.mock(assert_all_called=False) as mock:
             canonical = mock.get(OPENROUTER_MODELS_URL).mock(
@@ -429,9 +426,7 @@ class TestProviderProbe:
     async def test_first_time_validation_honors_body_when_nothing_stored(
         self, client: AsyncClient
     ) -> None:
-        """Body base_url + key are honored only for first-time validation,
-        before any credential is saved — there is no server-held key to mix
-        them with."""
+        """Honor body base_url plus key only for first-time validation; nothing stored yet."""
         with respx.mock:
             route = respx.get("https://fresh.test/v1/models").mock(
                 return_value=httpx.Response(200, json={"data": []})
@@ -477,9 +472,7 @@ class TestProviderProbe:
         assert body["models"] == ["llama3.2:latest", "qwen3"]
 
     async def test_stored_config_used_exclusively_when_present(self, client: AsyncClient) -> None:
-        """H1 contract: once a credential exists, the probe uses the STORED
-        base_url + key exclusively — a caller-supplied base_url must never be
-        paired with a server-held key."""
+        """Use stored base_url plus key exclusively; caller base_url never pairs with a held key."""
         await provider_service.upsert("custom", api_key=STORED_KEY, base_url="https://old.test/v1")
         with respx.mock:
             route = respx.get("https://old.test/v1/models").mock(
@@ -532,17 +525,12 @@ class TestProviderProbe:
 
 
 class TestSsrfGuard:
-    """F3 regression locks: string-level checks alone missed decimal IP
-    shorthands and DNS names resolving into private ranges. The guard now
-    resolves every hostname (via ``app.utils.url_safety``) and validates EVERY
-    answer before any request is sent — on the probe path and at save time.
-    Resolution is stubbed per-test; no test touches real DNS."""
+    """Resolve every hostname then validate every answer; string checks alone missed shorthands."""
 
     async def test_decimal_ip_shorthand_resolving_private_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``http://2130706433/`` parses as a plain hostname string — only
-        resolution exposes it as 127.0.0.1."""
+        """Reject a decimal IP shorthand that resolution exposes as loopback."""
         monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
         resp = await client.post(
             f"{API}/providers/custom/test", json={"base_url": "http://2130706433/"}
@@ -563,8 +551,7 @@ class TestSsrfGuard:
     async def test_one_private_answer_among_several_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """EVERY resolved address must be public — a public record mixed with an
-        internal one must not slip through."""
+        """Require every resolved address to be public; one internal answer rejects."""
         monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning(STUB_PUBLIC_IP, "10.0.0.5"))
         resp = await client.post(
             f"{API}/providers/custom/test", json={"base_url": "https://mixed.test/v1"}
@@ -610,10 +597,7 @@ class TestSsrfGuard:
     async def test_put_allows_local_ollama_endpoint(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Ollama is the local LLM lane — private addresses like localhost /
-        host.docker.internal are intentionally saveable via the API (the
-        provider skips the public-IP SSRF check; see setup.py `_assert_url_safe`
-        `allow_private`)."""
+        """Allow private addresses for the local LLM lane; the provider skips the public-IP check."""
         monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
         resp = await client.put(
             f"{API}/providers/ollama",
@@ -633,8 +617,7 @@ class TestSsrfGuard:
         assert resp.status_code == 422
 
     async def test_probe_refuses_legacy_stored_private_endpoint(self, client: AsyncClient) -> None:
-        """Defense in depth: configs saved before save-time validation existed
-        are refused at probe time too — the guard is the last word before dialing."""
+        """Refuse legacy private-endpoint configs at probe time too, not just save time."""
         await provider_service.upsert(
             "custom", api_key=STORED_KEY, base_url="http://169.254.169.254/latest"
         )
@@ -648,11 +631,7 @@ class TestSsrfGuard:
 
 
 class TestInstanceAdminGuard:
-    """H1: every mutating/probing /setup route is bound to THE instance admin.
-
-    The admin is the owner of the single ``auth_credentials`` row; anyone else
-    authenticated (or any non-selfhost ENV reaching these handlers) gets 403.
-    """
+    """Every mutating and probing setup route is bound to the single instance admin."""
 
     async def test_put_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
         resp = await nonadmin_client.put(
@@ -706,9 +685,7 @@ class TestInstanceAdminGuard:
     async def test_guard_denies_when_env_is_not_selfhost(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Defensive layer: the router is unmounted outside selfhost, so a
-        request reaching it under any other ENV is refused even for the
-        credential owner."""
+        """Refuse the router under any non-selfhost ENV, even for the credential owner."""
         monkeypatch.setattr(settings, "ENV", "production")
         resp = await client.put(f"{API}/providers/gemini", json={"api_key": "g"})
         assert resp.status_code == 403

@@ -1,165 +1,79 @@
-import type { AxiosError } from "axios";
+import type {
+  CreateCheckoutSessionRequest,
+  CreateSubscriptionRequest,
+  CreateSubscriptionResponse,
+  PaymentVerificationResponse,
+  PlanResponse,
+  SubscriptionDocument,
+  UserSubscriptionStatus,
+} from "@shared/api/generated";
 
-import { apiService } from "@/lib/api/service";
-import { getErrorMessage } from "@/utils/interceptorUtils";
+export type {
+  CheckoutSource,
+  PaymentVerificationResponse,
+  UserSubscriptionStatus,
+} from "@shared/api/generated";
 
-export interface Plan {
-  id: string;
-  dodo_product_id: string; // Add Dodo product ID field
-  name: string;
-  description?: string;
-  amount: number;
-  currency: string;
-  duration: "monthly" | "yearly";
-  max_users?: number;
-  features: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import { api } from "@/lib/api/typed";
 
-export interface CreateSubscriptionRequest {
-  product_id: string;
-  discount_code?: string;
-}
+export type Plan = PlanResponse;
 
-export interface CreateSubscriptionResponse {
-  subscription_id: string;
-  payment_link: string;
-  status: string;
-}
+/** Where in the product a checkout was started. Mirrors `CheckoutSource` in
+ *  `app/models/payment_models.py`; the server emits it as a property on
+ *  `payment:checkout_started`, so a new surface adds a member on both sides. */
 
-export interface PaymentVerificationResponse {
-  payment_completed: boolean;
-  subscription_id?: string;
-  message: string;
-}
+export type Subscription = SubscriptionDocument;
 
-export interface Subscription {
-  id: string;
-  dodo_subscription_id: string;
-  user_id: string;
-  product_id: string;
-  status: string;
-  quantity: number;
-  payment_link?: string;
-  webhook_verified?: boolean;
-  created_at: string;
-  updated_at: string;
-  metadata?: Record<string, unknown>;
-  // Billing info from webhook
-  currency?: string;
-  recurring_pre_tax_amount?: number;
-  next_billing_date?: string;
-  previous_billing_date?: string;
-  payment_frequency_interval?: string;
-  subscription_period_count?: number;
-  subscription_period_interval?: string;
-  cancelled_at?: string;
-  cancel_at_next_billing_date?: boolean;
-}
-
-export interface UserSubscriptionStatus {
-  user_id: string;
-  current_plan?: Plan;
-  subscription?: Subscription;
-  is_subscribed: boolean;
-  days_remaining?: number;
-  can_upgrade: boolean;
-  can_downgrade: boolean;
-  // Legacy fields from backend
-  has_subscription?: boolean;
-  plan_type?: "free" | "pro";
-  status?: string;
-}
-
-// Helper function for consistent error handling
-const handleApiError = (error: unknown, context: string): never => {
-  let errorMessage = "An unexpected error occurred";
-  let status: number | undefined;
-
-  if (error && typeof error === "object" && "isAxiosError" in error) {
-    const axiosError = error as AxiosError;
-    errorMessage =
-      getErrorMessage(axiosError.response?.data) ||
-      axiosError.message ||
-      errorMessage;
-    status = axiosError.response?.status;
-  } else if (error instanceof Error) {
-    errorMessage = error.message;
-  }
-
-  console.error(`${context} failed:`, {
-    error: errorMessage,
-    status,
-  });
-
-  throw new Error(errorMessage);
-};
-
+/**
+ * Every call throws the shared `ApiError`, already logged and toasted by the
+ * typed client, whose `message` is the backend's own words and whose
+ * `envelope.code` is what a caller branches on. Nothing here re-wraps it.
+ */
 class PricingApi {
   // Get all available plans
-  async getPlans(activeOnly = true): Promise<Plan[]> {
-    try {
-      return await apiService.get<Plan[]>(
-        `/payments/plans?active_only=${activeOnly}`,
-      );
-    } catch (error) {
-      return handleApiError(error, "Get plans");
-    }
+  getPlans(activeOnly = true): Promise<Plan[]> {
+    return api.get("/api/v1/payments/plans", {
+      query: { active_only: activeOnly },
+    });
   }
 
   // Create subscription and get payment link
-  async createSubscription(
+  createSubscription(
     data: CreateSubscriptionRequest,
   ): Promise<CreateSubscriptionResponse> {
-    try {
-      return await apiService.post<CreateSubscriptionResponse>(
-        "/payments/subscriptions",
-        data,
-      );
-    } catch (error) {
-      return handleApiError(error, "Create subscription");
-    }
+    return api.post("/api/v1/payments/subscriptions", { body: data });
   }
 
-  // Verify payment completion after redirect
-  async verifyPayment(): Promise<PaymentVerificationResponse> {
-    try {
-      return await apiService.post<PaymentVerificationResponse>(
-        "/payments/verify-payment",
-        {},
-      );
-    } catch (error) {
-      return handleApiError(error, "Verify payment");
-    }
+  // Mint the Dodo checkout session the embedded overlay opens. The server
+  // resolves the Pro plan for the cycle, so no product id crosses the wire.
+  createCheckoutSession(
+    data: CreateCheckoutSessionRequest,
+  ): Promise<CreateSubscriptionResponse> {
+    return api.post("/api/v1/payments/checkout-session", { body: data });
+  }
+
+  // Verify payment completion after redirect. `subscriptionId` (from the Dodo
+  // return URL) lets the server reconcile against Dodo when the webhook that
+  // would have created the row never arrived.
+  verifyPayment(
+    subscriptionId?: string | null,
+  ): Promise<PaymentVerificationResponse> {
+    return api.post("/api/v1/payments/verify-payment", {
+      body: subscriptionId ? { subscription_id: subscriptionId } : {},
+    });
   }
 
   // Get user subscription status
-  async getSubscriptionStatus(): Promise<UserSubscriptionStatus> {
-    try {
-      return await apiService.get<UserSubscriptionStatus>(
-        "/payments/subscription-status",
-      );
-    } catch (error) {
-      return handleApiError(error, "Get subscription status");
-    }
+  getSubscriptionStatus(): Promise<UserSubscriptionStatus> {
+    return api.get("/api/v1/payments/subscription-status");
   }
 
   // Cancel the user's subscription (effective at the end of the billing period)
-  async cancelSubscription(): Promise<UserSubscriptionStatus> {
-    try {
-      return await apiService.post<UserSubscriptionStatus>(
-        "/payments/subscriptions/cancel",
-        {},
-        {
-          successMessage: "Subscription cancelled",
-          errorMessage: "Failed to cancel subscription",
-        },
-      );
-    } catch (error) {
-      return handleApiError(error, "Cancel subscription");
-    }
+  cancelSubscription(): Promise<UserSubscriptionStatus> {
+    return api.post("/api/v1/payments/subscriptions/cancel", {
+      successMessage: "Subscription cancelled",
+      errorMessage: "Failed to cancel subscription",
+    });
   }
 }
 

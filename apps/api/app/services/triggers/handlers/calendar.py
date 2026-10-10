@@ -57,17 +57,14 @@ class CalendarTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        _workflow_id: str,
+        _owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register calendar triggers with parallel execution and rollback.
+        """Register calendar triggers in parallel, one per calendar id, with rollback.
 
-        Handles multi-calendar registration - creates one Composio trigger
-        per calendar ID for proper event matching. If any fail, all are rolled back.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
+        Multi-calendar registration creates one Composio trigger per calendar id
+        for proper event matching. Raises TriggerRegistrationError if any fail.
         """
         trigger_data = trigger_config.trigger_data
 

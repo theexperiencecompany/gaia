@@ -32,7 +32,7 @@ Dashboard Builds has no stable public API for all plans; the endpoint is often d
 # Requires the same minimal token stored as CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_API_TOKEN="..."  # from 1Password / gh secret
 export CLOUDFLARE_ACCOUNT_ID="d65fe47d4d3b4f2725e87b91c772cbc3"
-bash scripts/ci/disable-cf-builds.sh
+bash scripts/ci/release.sh disable-cf-builds
 ```
 
 The script tries known endpoints (`/workers/scripts/gaia`, `/workers/services/gaia`, etc.) and reports whether a Git connection is visible. If it reports a connected repo, perform the manual step above.

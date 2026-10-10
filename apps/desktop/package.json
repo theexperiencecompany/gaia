@@ -1,7 +1,7 @@
 {
   "name": "@gaia/desktop",
   "description": "GAIA Desktop - Your Personal AI Assistant",
-  "version": "0.5.0",
+  "version": "0.7.1",
   "private": true,
   "main": "./out/main/index.mjs",
   "scripts": {
@@ -19,19 +19,24 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "electron-liquid-glass": "^1.1.1",
     "electron-updater": "^6.8.9",
     "v8-compile-cache": "^2.4.0",
-    "wait-on": "^8.0.5"
+    "wait-on": "^8.0.5",
+    "ws": "^8.21.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
+    "@electron/notarize": "^3.0.1",
     "@gaia/shared": "workspace:*",
     "@types/node": "^24.13.3",
+    "@types/ws": "^8.18.1",
     "electron": "^39.8.10",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.7",
     "electron-vite": "^5.0.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",

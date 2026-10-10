@@ -1,13 +1,20 @@
 appId: io.heygaia.desktop
 productName: GAIA
+# The Linux binary name would otherwise be derived from the scoped package
+# name (@gaia/desktop -> @gaiadesktop), which electron-builder 26 rejects for
+# AppImage ("executableName contains characters that cannot be safely used in
+# file paths") and killed the desktop-v0.7.0 Linux build. macOS (GAIA.app) and
+# Windows (GAIA.exe) already resolve to this via productName, so pinning it is
+# a no-op there and a fix on Linux.
+executableName: GAIA
 copyright: Copyright © 2024 The Experience Company
-# Must match the electron devDependency in package.json. In a pnpm hoisted
-# monorepo electron-builder's auto-detection is unreliable (it has resolved a
-# stale 33.2.1 from cached metadata even with 39.8.10 installed), so pin the
-# packaged runtime explicitly. Bump both together on every Electron upgrade.
+# Must match the electron devDependency in package.json. In a pnpm workspace
+# electron-builder's auto-detection is unreliable (it has resolved a stale
+# 33.2.1 from cached metadata even with 39.8.10 installed), so pin the packaged
+# runtime explicitly. Bump both together on every Electron upgrade.
 electronVersion: 39.8.10
-# In pnpm hoisted monorepos, electron-builder's dependency reinstall step can
-# mutate workspace node_modules during packaging and break artifact generation.
+# In a pnpm workspace, electron-builder's dependency reinstall step can mutate
+# workspace node_modules during packaging and break artifact generation.
 npmRebuild: false
 
 # Strip Chromium locale packs (~45MB) — the UI is web-rendered and ships its
@@ -19,9 +26,10 @@ directories:
   output: release/${version}
   buildResources: resources
 
-# Ad-hoc signs macOS builds when real signing is disabled — an unsigned
-# bundle seal gets the app killed by RunningBoard on macOS 26 (see script).
-afterSign: scripts/adhoc-sign.cjs
+# macOS afterSign: ad-hoc signs when real signing is disabled (an unsigned
+# bundle seal gets the app killed by RunningBoard on macOS 26), else notarizes
+# the Developer-ID-signed app when Apple credentials are present (see script).
+afterSign: scripts/mac-sign.cjs
 
 files:
   - out/**/*
@@ -43,12 +51,22 @@ extraResources:
   # Experience Company logo for splash screen
   - from: resources/the_experience_company_white.webp
     to: the_experience_company_white.webp
-  # Use .next-server-prepared which has dereferenced symlinks (created by scripts/prepare-next-server.sh)
+  # Use .next-server-prepared (built by scripts/prepare-next-server.mjs).
   - from: .next-server-prepared
     to: next-server
     filter:
       - "**/*"
       - "!**/node_modules/.cache/**/*"
+  # electron-builder's extraResources matcher special-cases a top-level
+  # `node_modules` and skips it from the directory copy above, so the pnpm store
+  # (`node_modules/.pnpm/**`) that the standalone server resolves through never
+  # lands in the app — the embedded server then dies on boot with
+  # MODULE_NOT_FOUND. Copy it explicitly by naming node_modules as its own root.
+  - from: .next-server-prepared/node_modules
+    to: next-server/node_modules
+    filter:
+      - "**/*"
+      - "!**/.cache/**/*"
 
   # Window icon accessible at runtime via process.resourcesPath
   - from: resources/icons/256x256.png
@@ -85,6 +103,14 @@ mac:
           - gaia
     NSMicrophoneUsageDescription: 'GAIA listens for the "Hey GAIA" wake word so you can talk to your assistant hands-free.'
     NSAppleEventsUsageDescription: "GAIA opens apps and lists your windows when you ask it to use your computer."
+    # Per-folder usage strings for the shell commands the device bridge runs on
+    # this Mac (run_on_device). macOS shows these in the TCC prompt / Full Disk
+    # Access pane; the grant is then inherited by the shells the app spawns.
+    NSDocumentsFolderUsageDescription: "GAIA runs commands you ask for on this Mac, which may read or write files in your Documents folder."
+    NSDesktopFolderUsageDescription: "GAIA runs commands you ask for on this Mac, which may read or write files on your Desktop."
+    NSDownloadsFolderUsageDescription: "GAIA runs commands you ask for on this Mac, which may read or write files in your Downloads folder."
+    NSRemovableVolumesUsageDescription: "GAIA runs commands you ask for on this Mac, which may read or write files on removable volumes."
+    NSNetworkVolumesUsageDescription: "GAIA runs commands you ask for on this Mac, which may read or write files on network volumes."
 
 dmg:
   # Bands-gradient brand wallpaper; background@2x.png alongside it is
@@ -148,8 +174,11 @@ linux:
   # Custom protocol for OAuth deep linking
   mimeTypes:
     - x-scheme-handler/gaia
+  # electron-builder 26 nests .desktop entries under `entry:`; the flat map
+  # here was the v25 shape and is rejected by the v26 schema.
   desktop:
-    MimeType: x-scheme-handler/gaia
+    entry:
+      MimeType: x-scheme-handler/gaia
 
 publish:
   provider: github

@@ -1,3 +1,8 @@
+import {
+  bucketDate,
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@gaia/shared";
 import { Button } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
@@ -45,68 +50,7 @@ interface CalendarOptionsCardProps {
   onAddAll?: (events: CalendarOption[]) => Promise<void>;
 }
 
-// -- Date formatting ----------------------------------------------------------
-
-function formatDateWithRelative(dateString: string): string {
-  const date = new Date(dateString);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-
-  const fullDate = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
-  if (compareDate.getTime() === today.getTime()) return `${fullDate} (Today)`;
-  if (compareDate.getTime() === tomorrow.getTime())
-    return `${fullDate} (Tomorrow)`;
-  if (compareDate.getTime() === yesterday.getTime())
-    return `${fullDate} (Yesterday)`;
-  return fullDate;
-}
-
-function formatTimeRange(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return startTime;
-  }
-
-  const formatTimeString = (date: Date): string => {
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const hour12 = hours % 12 || 12;
-    const minuteStr = minutes.toString().padStart(2, "0");
-    if (minutes === 0) return `${hour12} ${ampm}`;
-    return `${hour12}:${minuteStr} ${ampm}`;
-  };
-
-  const startStr = formatTimeString(start);
-  const endStr = formatTimeString(end);
-
-  if (start.getHours() < 12 && end.getHours() >= 12) {
-    return `${startStr} – ${endStr}`;
-  }
-  if (start.getHours() >= 12 && end.getHours() >= 12) {
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
-  }
-  if (start.getHours() < 12 && end.getHours() < 12) {
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
-  }
-  return `${startStr} – ${endStr}`;
-}
+// -- Event-time helpers -------------------------------------------------------
 
 function formatSingleTime(value: string): string {
   const date = new Date(value);
@@ -118,7 +62,7 @@ function formatSingleTime(value: string): string {
   });
 }
 
-// -- Event-time helpers -------------------------------------------------------
+// -- Display-time helpers -----------------------------------------------------
 
 function getOptionDisplayTime(option: CalendarOption): string {
   if (option.start && option.end) {
@@ -154,12 +98,6 @@ function getSameDaySortKey(event: SameDayEvent): number {
   if (!raw) return 0;
   const t = new Date(raw).getTime();
   return Number.isNaN(t) ? 0 : t;
-}
-
-function bucketDate(input: string): string {
-  const t = new Date(input);
-  if (Number.isNaN(t.getTime())) return new Date().toISOString().slice(0, 10);
-  return t.toISOString().slice(0, 10);
 }
 
 // -- Grouping -----------------------------------------------------------------

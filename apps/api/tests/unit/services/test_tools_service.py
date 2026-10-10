@@ -89,20 +89,11 @@ class TestGetAvailableTools:
             assert result == fake_response
 
 
-# ---------------------------------------------------------------------------
-# Workspace scoping via get_user_integration_records
-# (replaces the old _fetch_user_mcp_integrations tests)
-# ---------------------------------------------------------------------------
-
-
 class TestWorkspaceScoping:
-    """_build_tools_response scopes all MCP tool visibility to the user's
-    workspace using get_user_integration_records. These tests verify that
-    scoping contract at the _build_tools_response boundary."""
+    """_build_tools_response scopes all MCP tool visibility via get_user_integration_records (replaces _fetch_user_mcp_integrations)."""
 
     async def test_no_user_means_no_mcp_tools(self):
-        """Anonymous call: get_user_integration_records is never called;
-        `added` stays empty so all MCP tools are filtered out."""
+        """Anonymous call: get_user_integration_records is never called; all MCP tools are filtered out."""
         global_mcp = {"my_mcp": {"name": "X", "icon_url": None, "tools": [{"name": "t"}]}}
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
@@ -195,8 +186,7 @@ class TestWorkspaceScoping:
 
 
 class TestBuildToolsResponse:
-    """Tests for the unified _build_tools_response which handles both registry tools
-    and MCP tools, scoped to the user's workspace via get_user_integration_records."""
+    """Tests the unified _build_tools_response, which handles both registry and MCP tools scoped to the user's workspace."""
 
     def _patch_deps(
         self,
@@ -382,7 +372,7 @@ class TestBuildToolsResponse:
         assert "unique_tool" in names
 
     async def test_added_but_not_connected_is_locked(self):
-        """Tools for integrations in `added` but not `connected` are marked locked=True."""
+        """Tools for integrations in added but not connected are marked locked=True."""
         global_mcp = {
             "my_mcp": {
                 "name": "My MCP",
@@ -467,16 +457,8 @@ class TestGetToolCategories:
         assert result == {"c1": 2, "c2": 1}
 
 
-# ---------------------------------------------------------------------------
-# Locked state and workspace filtering
-# (replaces the old get_user_mcp_tools and merge_tools_responses tests)
-# ---------------------------------------------------------------------------
-
-
 class TestLockedAndFilteredTools:
-    """Verifies workspace-scoping and locked/unlocked state in _build_tools_response.
-    This replaces the old get_user_mcp_tools / merge_tools_responses test classes;
-    that merging is now handled inside _build_tools_response."""
+    """Verifies workspace-scoping and locked/unlocked state in _build_tools_response (replaces get_user_mcp_tools / merge_tools_responses)."""
 
     async def _build(self, user_records: list, global_mcp: dict) -> ToolsListResponse:
         mock_registry = AsyncMock()

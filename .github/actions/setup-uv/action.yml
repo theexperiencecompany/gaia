@@ -1,0 +1,44 @@
+name: Setup uv (runner-aware cache)
+description: >
+  Install uv with the right cache strategy for the runner. GitHub-hosted
+  runners restore/save the uv cache through actions/cache (ephemeral disk).
+  Self-hosted runners keep ~/.cache/uv on the box and must NOT round-trip it
+  through GitHub's cache service: with enable-cache true every Code Quality
+  job spent 170-260 s restoring and saving a multi-GB cache over the box's
+  uplink (run 33189680013, vs 26-32 s on GitHub) — Code Quality took 11.6 min
+  on the box against 6.6 min on GitHub. Same split as
+  setup-python-test-env, shared here so every workflow uses one rule.
+inputs:
+  version:
+    description: uv version to install (pin; bump with uv.lock)
+    required: false
+    # Same uv as the api/voice-agent Dockerfiles. 0.8.x cannot read a lock
+    # that records `exclude-newer-span` (uv.lock is written by >= 0.10).
+    default: "0.10.6"
+runs:
+  using: composite
+  steps:
+    - name: Resolve the persistent uv cache path (self-hosted)
+      if: runner.environment == 'self-hosted'
+      id: uvcache
+      shell: bash
+      run: |
+        set -euo pipefail
+        UV_DIR="$HOME/.cache/uv"
+        mkdir -p "$UV_DIR"
+        echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
+        echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"
+    - name: Setup uv (self-hosted — persistent local cache)
+      if: runner.environment == 'self-hosted'
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version: ${{ inputs.version }}
+        enable-cache: false
+        cache-local-path: ${{ steps.uvcache.outputs.path }}
+    - name: Setup uv (GitHub-hosted — cache via actions/cache)
+      if: runner.environment != 'self-hosted'
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version: ${{ inputs.version }}
+        enable-cache: true
+        prune-cache: true

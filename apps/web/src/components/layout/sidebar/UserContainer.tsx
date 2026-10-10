@@ -1,17 +1,19 @@
 import { Button } from "@heroui/button";
+import { Skeleton } from "@heroui/skeleton";
 import Image from "next/image";
 import React from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "@/components/shared/icons";
-import { useUser } from "@/features/auth/hooks/useUser";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { paywallCopyFor } from "@/features/pricing/constants";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
-  const user = useUser();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const user = useCurrentUser();
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const { data: setupStatus } = useSetupStatus();
   // Self-host instances have no billing — the plan chip makes no sense there.
   const billingHidden = setupStatus?.billing_enabled === false;
@@ -51,11 +53,16 @@ export default function UserContainer() {
           </Avatar>
           <div className="flex flex-col items-start -space-y-0.5">
             <span className="text-sm">{user?.name}</span>
-            {!billingHidden && (
-              <span className="text-[11px] text-foreground-400">
-                {subscriptionStatus?.is_subscribed ? "GAIA Pro" : "GAIA Free"}
-              </span>
-            )}
+            {!billingHidden &&
+              (isUnknown ? (
+                <Skeleton className="h-2.5 w-12 rounded-full" />
+              ) : (
+                <span className="text-[11px] text-foreground-400">
+                  {isPaid
+                    ? "GAIA Pro"
+                    : paywallCopyFor(hasEverSubscribed).planLabel}
+                </span>
+              ))}
           </div>
         </div>
       </Button>

@@ -76,7 +76,8 @@ async def create_reminder_tool(
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
-        user_id = agent_configurable(config).get("user_id")
+        configurable = agent_configurable(config)
+        user_id = configurable.get("user_id")
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
 
@@ -95,12 +96,13 @@ async def create_reminder_tool(
             # the agent config), so "daily at 9am" fires at 9am home wherever they
             # are; relative delays are computed from the server's current instant.
             home_timezone=home_timezone_from_config(config).value,
+            # The chat this reminder was created in — delivered back into it when
+            # it fires. None for a non-chat root (e.g. a REST/UI-created reminder).
+            source_conversation_id=configurable.get("conversation_id"),
         )
 
-        # Convert to the service request model
         request_model = tool_request.to_create_reminder_request()
 
-        # Create the reminder
         await reminder_scheduler.create_reminder(request_model, user_id=user_id)
 
         return "Reminder created successfully"
@@ -220,10 +222,9 @@ async def update_reminder_tool(
         if not user_id:
             return {"error": "User ID is required to update reminder"}
 
-        # Assigned field-by-field rather than passed to the constructor: only the
-        # fields the caller actually touched land in ``model_fields_set``, which is
-        # what the repository's ``exclude_unset`` $set relies on to avoid nulling
-        # the fields this update never mentions.
+        # Assigned field-by-field rather than via the constructor: only touched
+        # fields land in model_fields_set, which exclude_unset relies on to
+        # avoid nulling fields this update never mentions.
         update = ReminderUpdate()
         if repeat is not None:
             update.repeat = repeat

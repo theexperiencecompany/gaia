@@ -8,7 +8,7 @@
  * stitches the pre-link history, and the failure fallback.
  */
 
-import { BaseBotAdapter } from "@gaia/shared";
+import { BaseBotAdapter } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const PLATFORM_USER_ID = "123456789";
@@ -39,6 +39,9 @@ class TestAdapter extends BaseBotAdapter {
   }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
+  }
+  protected async sendOutboundFile(): Promise<void> {
+    /* no file delivery under test */
   }
   buildContext() {
     return {} as never;

@@ -1,16 +1,20 @@
 """Tavily AI search (https://tavily.com) — booster (1k req/mo free).
 
-Uniquely returns an LLM-ready ``answer`` and inline images alongside results.
+Uniquely returns an LLM-ready answer and inline images alongside results.
 """
 
 import asyncio
 import importlib
 from typing import TYPE_CHECKING, cast
 
+from pydantic import BaseModel, ConfigDict, Field
 from tavily import TavilyClient
 
-from app.agents.llm.client import runtime_provider_config
 from app.config.settings import settings
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolved_config,
+)
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 
@@ -20,14 +24,39 @@ if TYPE_CHECKING:
     from app.services.providers.provider_credentials_service import ProviderConfig
 
 
-class TavilyProvider(SearchProvider):
-    """Tavily AI search — booster with an LLM-ready answer + images (1k req/mo).
+class _TavilyResult(BaseModel):
+    """One Tavily result.
 
-    The active API key follows the runtime credential service (store entry →
-    ``TAVILY_API_KEY`` env fallback), so a key saved in Settings takes effect
-    without a restart. Availability additionally reads the runtime snapshot the
-    LLM refresh keeps warm — ``is_configured`` must stay synchronous, and env
-    alone answers before the first refresh.
+    A result without a url is skipped rather than failing the whole page.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    url: str | None = None
+    title: str | None = None
+    content: str | None = None
+    score: float | None = None
+    favicon: str | None = None
+
+
+class _TavilyPayload(BaseModel):
+    """TavilyClient.search response.
+
+    Images are plain URLs because the request never asks for image descriptions.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    results: list[_TavilyResult] = Field(default_factory=list)
+    answer: str | None = None
+    images: list[str] = Field(default_factory=list)
+
+
+class TavilyProvider(SearchProvider):
+    """Tavily AI search booster with an LLM-ready answer and images.
+
+    The key resolves store-first with env fallback so a saved key applies
+    without a restart; availability reads the cached snapshot synchronously.
     """
 
     name = "tavily"
@@ -38,19 +67,30 @@ class TavilyProvider(SearchProvider):
         self._client_api_key: str | None = None
 
     def is_configured(self) -> bool:
-        """True when a Tavily API key is configured (env or credential store)."""
+        """Report whether a Tavily API key is configured (env or credential store).
+
+        The store leg matters: on a self-host instance the key is saved through
+        Settings, so an env-only check reports the engine unconfigured and the
+        whole search chain silently skips it.
+        """
         if settings.TAVILY_API_KEY:
             return True
-        config = runtime_provider_config(self.name)
+        # resolved_config, not the LLM client's alias of it: app.utils must
+        # never import app.agents (model-stack layer contract) — and both read
+        # the same snapshot dict.
+        config: ProviderConfig | None = resolved_config(self.name)
         return bool(config and config.get("api_key"))
 
     async def _active_api_key(self) -> str | None:
-        """The key this search should run with, resolved fresh (the service's
-        60s TTL keeps this off Mongo in steady state). Lazily imported through
-        the module to match the LLM client's cycle-avoidance pattern."""
+        """Return the key this search should run with, resolved fresh.
+
+        The service's 60s TTL keeps this off Mongo in steady state. Lazily
+        imported through the module to match the LLM client's cycle-avoidance
+        pattern.
+        """
         service = importlib.import_module("app.services.providers.provider_credentials_service")
         resolve = cast("Callable[[str], Awaitable[ProviderConfig | None]]", service.resolve)
-        config = await resolve(self.name)
+        config: ProviderConfig | None = await resolve(self.name)
         return config.get("api_key") if config else None
 
     def _get_client(self, api_key: str) -> TavilyClient:
@@ -68,28 +108,30 @@ class TavilyProvider(SearchProvider):
             # request.
             raise RuntimeError("Tavily API key not configured. Set it in Settings → AI Providers.")
         # tavily-python is synchronous; off-load it so the event loop keeps moving.
-        payload = await asyncio.to_thread(
-            self._get_client(api_key).search,
-            query=query,
-            max_results=count,
-            topic="general",
-            include_images=True,
-            include_favicon=True,
+        payload = _TavilyPayload.model_validate(
+            await asyncio.to_thread(
+                self._get_client(api_key).search,
+                query=query,
+                max_results=count,
+                topic="general",
+                include_images=True,
+                include_favicon=True,
+            )
         )
         results = [
             SearchResultItem(
-                url=item["url"],
-                title=item.get("title") or "",
-                content=item.get("content") or "",
-                score=item["score"] if item.get("score") is not None else 0.5,
-                favicon=item.get("favicon") or "",
+                url=item.url,
+                title=item.title or "",
+                content=item.content or "",
+                score=item.score if item.score is not None else 0.5,
+                favicon=item.favicon or "",
             )
-            for item in payload.get("results", [])
-            if item.get("url")
+            for item in payload.results
+            if item.url
         ]
         return SearchResponse(
             results=results,
-            answer=payload.get("answer") or "",
-            images=[str(image) for image in payload.get("images", [])],
+            answer=payload.answer or "",
+            images=payload.images,
             provider=self.name,
         )

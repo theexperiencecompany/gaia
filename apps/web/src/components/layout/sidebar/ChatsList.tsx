@@ -65,9 +65,9 @@ export default function ChatsList() {
       userId: conv.user_id,
       starred: conv.starred ?? false,
       isSystemGenerated: conv.is_system_generated ?? false,
-      isOnboardingConversation: conv.is_onboarding_conversation ?? false,
       systemPurpose: conv.system_purpose ?? null,
       isUnread: conv.is_unread ?? false,
+      hasLiveApproval: conv.has_live_approval ?? false,
       createdAt: new Date(conv.createdAt),
       updatedAt: conv.updatedAt
         ? new Date(conv.updatedAt)
@@ -116,8 +116,11 @@ export default function ChatsList() {
   // Show loading only when there are no cached conversations and hydration hasn't completed
   const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
-  // Calculate which accordions should be open - controlled state
-  const getAccordionValues = () => {
+  // Use controlled state for accordion values that updates with conversations
+  const [openAccordions, setOpenAccordions] = useState<string[]>([]);
+
+  // Update open accordions whenever conversations change
+  useEffect(() => {
     const values: string[] = [];
 
     // Add system conversations if they exist
@@ -136,20 +139,8 @@ export default function ChatsList() {
     );
     values.push(...timeFrameValues);
 
-    return values;
-  };
-
-  // Use controlled state for accordion values that updates with conversations
-  const [openAccordions, setOpenAccordions] = useState<string[]>([]);
-
-  // Update open accordions whenever conversations change
-  useEffect(() => {
-    setOpenAccordions(getAccordionValues());
-  }, [
-    systemConversations.length,
-    starredConversations.length,
-    sortedTimeFrames.length,
-  ]);
+    setOpenAccordions(values);
+  }, [systemConversations, starredConversations, sortedTimeFrames]);
 
   // Direct scroll listener for infinite scroll - throttled with requestAnimationFrame
   useEffect(() => {
@@ -246,6 +237,9 @@ export default function ChatsList() {
                             conversation.systemPurpose ?? undefined
                           }
                           isUnread={conversation.isUnread ?? false}
+                          hasPendingApproval={
+                            conversation.hasLiveApproval ?? false
+                          }
                         />
                       ))}
                   </div>
@@ -276,6 +270,9 @@ export default function ChatsList() {
                         name={conversation.title || "New chat"}
                         starred={conversation.starred ?? false}
                         isUnread={conversation.isUnread ?? false}
+                        hasPendingApproval={
+                          conversation.hasLiveApproval ?? false
+                        }
                       />
                     ))}
                   </div>
@@ -312,6 +309,9 @@ export default function ChatsList() {
                           name={conversation.title || "New chat"}
                           starred={conversation.starred ?? false}
                           isUnread={conversation.isUnread ?? false}
+                          hasPendingApproval={
+                            conversation.hasLiveApproval ?? false
+                          }
                         />
                       ))}
                   </div>

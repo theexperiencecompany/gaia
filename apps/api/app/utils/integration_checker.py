@@ -6,94 +6,122 @@ also produce the card. Splitting them is what left users chasing a button that
 was never rendered.
 
 The wording depends on the client: UI clients render a connect card, so the
-agent text must stay URL-free; text-only clients (bots, background runs) need
-the link inline because there is no card to click.
+agent text stays URL-free; bots need the link inline. A background run has no
+user present, so it is told to record the gap and carry on.
 
 It also depends on whether the user *had* this connected and the grant died,
 versus never connected it at all — "sign in again" and "connect this" are
-different asks. Only the stored record tells the two apart, so this module reads
-it rather than taking it as an argument; a caller that has to remember to pass it
-is a caller that will eventually forget.
+different asks. Only the stored record tells the two apart, so this module
+reads it rather than taking it as an argument.
 """
-
-from typing import cast
 
 from langgraph.config import get_config, get_stream_writer
 
 from app.config.settings import settings
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurableView, read_agent_configurable
 from app.models.chat_models import SourceCategory
 from app.services.connect_link_service import build_connect_link_url
 
 
-def _current_source_category() -> str | None:
-    """Read the generalized source category (ui/bot/bg) from the active graph run.
+def _current_run() -> AgentConfigurableView | None:
+    """Read the active graph run's configurable (source category, execution mode).
 
-    Uses LangGraph's ambient config (same mechanism as ``get_stream_writer``), so
+    Uses LangGraph's ambient config (same mechanism as get_stream_writer), so
     no config threading is needed. Returns None outside a runnable context.
     """
     try:
         config = get_config()
     except RuntimeError:
         return None
-    return cast(str | None, agent_configurable(config).get("source_category"))
+    return read_agent_configurable(config)
 
 
 async def request_integration_connection(
-    integration_id: str, integration_name: str, user_id: str
+    integration_id: str,
+    integration_name: str,
+    user_id: str,
+    *,
+    force_reconnect: bool = False,
 ) -> str:
-    """Show the (re)connect card for an unusable integration and return the agent's instruction.
+    """Show the reconnect card for an unusable integration and return the agent instruction.
 
-    The single source of both. On UI clients the card carries the connect flow, so
-    the returned text stays URL-free. On bot/background (text-only) clients there is
-    no UI, so the agent relays the single-use login-free link (valid for 1 hour)
-    directly; when no link could be minted (Redis down) the user is pointed at the
-    integrations page, which requires a normal GAIA login.
+    UI clients get a URL-free text; text-only clients relay the single-use
+    link (valid 1 hour) or the integrations page. A background run gets the
+    integrations page, read after any single-use link has died, and carries on.
+    force_reconnect presents reauthorization even when stored status is connected.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
     expired = await user_integration_repository.is_expired(user_id, integration_id)
-    source_category = _current_source_category()
+    reconnect = expired or force_reconnect
+    run = _current_run()
+    source_category = run.source_category if run is not None else None
 
     # None means no runnable context at all (e.g. the dev direct-invocation
     # endpoints), so there is no stream for a card to travel on.
     if source_category is not None:
-        card_message = (
-            f"Your {integration_name} connection expired. Sign in again to keep using it."
-            if expired
-            else f"To use {integration_name} features, please connect your account first."
-        )
+        if force_reconnect and not expired:
+            card_message = (
+                f"Your {integration_name} connection needs fresh authorization. "
+                "Reauthorize to keep using it."
+            )
+        elif expired:
+            card_message = (
+                f"Your {integration_name} connection expired. Sign in again to keep using it."
+            )
+        else:
+            card_message = f"To use {integration_name} features, please connect your account first."
         get_stream_writer()(
             {
                 "integration_connection_required": {
                     "integration_id": integration_id,
-                    "expired": expired,
+                    "integration_name": integration_name,
+                    "expired": reconnect,
                     "message": card_message,
                 }
             }
         )
 
-    if expired:
+    if force_reconnect and not expired:
         lead = (
-            f"The user's {integration_name} connection EXPIRED — they had it connected and the "
+            f"The user's {integration_name} connection needs fresh authorization; they need to "
+            "reconnect to refresh access."
+        )
+        verb = "reconnect"
+        gap = f"the {integration_name} connection needs a refresh"
+    elif expired:
+        lead = (
+            f"The user's {integration_name} connection EXPIRED. They had it connected and the "
             f"access has since died, so they must sign in again. Do NOT tell them to connect "
             f"{integration_name} for the first time."
         )
         verb = "reconnect"
+        gap = f"the {integration_name} connection expired"
     else:
         lead = f"{integration_name} needs to be connected."
         verb = "connect"
+        gap = f"{integration_name} is not connected"
+
+    # Login-required but permanent: the fallback when no single-use link applies.
+    integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
+
+    if run is not None and run.execution_mode == "background":
+        return (
+            f"{lead} This is a background run and no user is present to {verb} it, so "
+            f"retrying {integration_name} this run cannot succeed. Record in your result that "
+            f"{gap} (the user can {verb} it at {integrations_url}), then carry on with the rest "
+            "of the task."
+        )
 
     if source_category == SourceCategory.UI.value:
         return (
-            f"{lead} A {verb} button has been shown to the user — do NOT include any URL in "
+            f"{lead} A {verb} button has been shown to the user, so do NOT include any URL in "
             f"your reply, the UI card handles it. Ask the user to click it, then try again."
         )
 
     connect_url = await build_connect_link_url(user_id, integration_id)
     if not connect_url:
-        integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
         return (
             f"{lead} The user is on a text-only platform (no UI). Ask them to open "
             f"{integrations_url} and {verb} {integration_name} there."

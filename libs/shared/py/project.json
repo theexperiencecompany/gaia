@@ -9,7 +9,7 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff check .",
+        "command": "uvx ruff@0.14.13 check .",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -22,7 +22,7 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff format .",
+        "command": "uvx ruff@0.14.13 format .",
         "cwd": "{projectRoot}"
       }
     }

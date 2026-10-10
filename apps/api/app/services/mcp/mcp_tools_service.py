@@ -1,7 +1,7 @@
 """Global MCP tool metadata: Redis-cached roll-up over the integrations repository.
 
 The repository owns the Mongo access (typed); this service adds the aggregate cache
-(``MCP_TOOLS_CACHE_KEY``) and the dict-shaped views its callers consume. Writes bust
+(MCP_TOOLS_CACHE_KEY) and the dict-shaped views its callers consume. Writes bust
 the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
@@ -12,24 +12,25 @@ from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
-from app.models.integration_models import IntegrationTool
+from app.models.integration_models import StoredIntegrationTool
 from shared.py.wide_events import log, spawn_logged_task
 
-# One raw tool entry as the callers build it — ``{"name": ..., "description": ...}``
-# assembled from LangChain/Composio tool objects. It stays a mapping rather than a
-# model because ``_format_tools`` is the validation boundary (Type Safety item 8):
-# it drops nameless entries and returns real ``IntegrationTool`` models.
+# One raw tool entry as callers build it — a mapping rather than a model because
+# _format_tools is the validation boundary: it drops nameless entries and
+# returns real StoredIntegrationTool models.
 RawToolMetadata = Mapping[str, Any]
 
 
-def _format_tools(tools: Sequence[RawToolMetadata]) -> list[IntegrationTool]:
+def _format_tools(tools: Sequence[RawToolMetadata]) -> list[StoredIntegrationTool]:
     """Normalize raw tool dicts: strip whitespace, drop entries without a name."""
-    formatted: list[IntegrationTool] = []
+    formatted: list[StoredIntegrationTool] = []
     for tool in tools:
         name = tool.get("name", "").strip()
         if name:
             formatted.append(
-                IntegrationTool(name=name, description=(tool.get("description") or "").strip())
+                StoredIntegrationTool(
+                    name=name, description=(tool.get("description") or "").strip()
+                )
             )
     return formatted
 
@@ -90,7 +91,7 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
 
 
 async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
-    """Stored tools for an integration as plain dicts (frontend/display consumers)."""
+    """Return stored tools for an integration as plain dicts (frontend/display consumers)."""
     try:
         tools = await integration_repository.get_tools(integration_id)
         return [t.model_dump() for t in tools]

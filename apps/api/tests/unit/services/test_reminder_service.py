@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 import pytest
+import time_machine
 
 from app.models.reminder_models import (
     AgentType,
@@ -32,9 +33,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 @pytest.fixture
 def mock_repo():
-    """Patch the reminder_repository seam the scheduler delegates to. Mongo shape,
-    ObjectId codec and $set/filter details are the repository's contract (proven in
-    tests/contracts/test_reminders_repository.py); here we assert delegation."""
+    """Patch the reminder_repository seam; Mongo shape and $set/filter details are proven in tests/contracts/test_reminders_repository.py."""
     with (
         patch(
             "app.services.reminder_service.reminder_repository.create", new_callable=AsyncMock
@@ -170,8 +169,7 @@ class TestCreateReminder:
     async def test_recurring_reminder_persists_timezone(
         self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
     ):
-        """A recurring reminder persists its schedule timezone so the re-arm path
-        (handle_recurring_task) computes the next occurrence in that zone, not UTC."""
+        """The schedule timezone is persisted so handle_recurring_task computes the next occurrence in that zone, not UTC."""
         mock_repo.create.return_value = _reminder_document()
         request = CreateReminderRequest(
             agent=AgentType.STATIC,
@@ -203,6 +201,46 @@ class TestCreateReminder:
 
         persisted = mock_repo.create.call_args.args[0]
         assert persisted.timezone is None
+
+    async def test_reminder_without_stop_after_is_scheduled_and_stored_with_six_month_cutoff(
+        self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
+    ):
+        """Regression: model_dump() carried stop_after=None onto the document, so the declared six-month default never applied."""
+        m_schedule, _ = mock_scheduler_base
+        mock_repo.create.return_value = _reminder_document()
+        now = datetime.now(UTC)
+
+        with time_machine.travel(now, tick=False):
+            request = CreateReminderRequest(
+                agent=AgentType.STATIC,
+                payload=sample_payload,
+                scheduled_at=future_time,
+                repeat="0 9 * * *",
+            )
+            await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        cutoff = now + timedelta(days=180)
+        assert mock_repo.create.call_args.args[0].stop_after == cutoff
+        assert m_schedule.call_args.args[1].stop_after == cutoff
+
+    async def test_explicit_stop_after_is_kept(
+        self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
+    ):
+        m_schedule, _ = mock_scheduler_base
+        mock_repo.create.return_value = _reminder_document()
+        stop_after = future_time + timedelta(days=3)
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC,
+            payload=sample_payload,
+            scheduled_at=future_time,
+            repeat="0 9 * * *",
+            stop_after=stop_after,
+        )
+
+        await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        assert mock_repo.create.call_args.args[0].stop_after == stop_after
+        assert m_schedule.call_args.args[1].stop_after == stop_after
 
     async def test_raises_when_no_scheduled_at_and_no_repeat(
         self, scheduler, mock_repo, mock_scheduler_base, sample_payload
@@ -491,10 +529,7 @@ class TestUpdateTaskStatus:
 
 
 class TestGetPendingTask:
-    """The due-scan (and its ObjectId->string mapping) now lives on
-    ``reminder_repository.find_pending_before`` — contract-tested against real Mongo
-    in tests/contracts/test_reminders_repository.py. Here we verify the scheduler
-    delegates to it and passes the scan time through."""
+    """The due-scan lives on reminder_repository.find_pending_before (contract-tested); here we verify delegation and the scan time."""
 
     async def test_returns_pending_reminders(self, scheduler, future_time, sample_payload):
         reminder = ReminderModel(

@@ -48,6 +48,12 @@ interface DownloadSectionLayoutProps {
   extraContent?: ReactNode;
 }
 
+const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
+  left: "md:items-start md:text-left",
+  right: "md:items-end md:text-right",
+  center: "md:items-center md:text-center",
+};
+
 function DownloadSectionLayout({
   webpSrc,
   pngSrc,
@@ -61,12 +67,6 @@ function DownloadSectionLayout({
   actions,
   extraContent,
 }: DownloadSectionLayoutProps) {
-  const contentAlignmentClasses = {
-    left: "md:items-start md:text-left",
-    right: "md:items-end md:text-right",
-    center: "md:items-center md:text-center",
-  };
-
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
@@ -84,9 +84,9 @@ function DownloadSectionLayout({
 
         {/* Content */}
         <div
-          className={`flex flex-col items-center gap-6 text-center ${contentAlignmentClasses[contentAlignment]}`}
+          className={`flex flex-col items-center gap-6 text-center ${CONTENT_ALIGNMENT_CLASSES[contentAlignment]}`}
         >
-          {chip && chip}
+          {chip}
           <div className="flex flex-col gap-2">
             <h2 className="text-5xl font-medium text-white font-serif">
               {title}
@@ -103,10 +103,9 @@ function DownloadSectionLayout({
   );
 }
 
-// One download control for a desktop OS. Renders an arch chooser (x64 / ARM)
-// when more than one binary is published, a single button when only one is, a
-// loading state while the release resolves, and a releases-page fallback if the
-// lookup failed entirely — so a click always does something sensible.
+// One download control for a desktop OS: an arch chooser (x64/ARM) when more
+// than one binary is published, a single button when only one is, a loading
+// state while resolving, and a releases-page fallback if the lookup fails.
 function DesktopDownloadButton({
   os,
   isPrimary = false,
@@ -130,6 +129,7 @@ function DesktopDownloadButton({
         src={meta.icon}
         alt={meta.name}
         fill
+        sizes="16px"
         className={
           invertIcon ? "object-contain filter invert" : "object-contain"
         }
@@ -332,6 +332,7 @@ function MobileSection() {
                     src="/images/icons/apple.svg"
                     alt="iOS"
                     fill
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>
@@ -348,6 +349,7 @@ function MobileSection() {
                     src="/images/icons/google_play.svg"
                     alt="Android"
                     fill
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>

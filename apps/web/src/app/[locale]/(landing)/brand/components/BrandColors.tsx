@@ -8,6 +8,26 @@ interface ColorCardProps {
   hex: string;
 }
 
+interface BrandColor {
+  name: string;
+  hex: string;
+}
+
+const BRAND_COLORS: BrandColor[] = [
+  {
+    name: "Primary Blue",
+    hex: "#00BBFF",
+  },
+  {
+    name: "Black",
+    hex: "#000000",
+  },
+  {
+    name: "White",
+    hex: "#FFFFFF",
+  },
+];
+
 function ColorCard({ name, hex }: ColorCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -48,21 +68,6 @@ function ColorCard({ name, hex }: ColorCardProps) {
 }
 
 export function BrandColors() {
-  const colors = [
-    {
-      name: "Primary Blue",
-      hex: "#00BBFF",
-    },
-    {
-      name: "Black",
-      hex: "#000000",
-    },
-    {
-      name: "White",
-      hex: "#FFFFFF",
-    },
-  ];
-
   return (
     <div>
       <div className="mb-8">
@@ -73,7 +78,7 @@ export function BrandColors() {
         </p>
       </div>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {colors.map((color) => (
+        {BRAND_COLORS.map((color) => (
           <ColorCard key={color.name} {...color} />
         ))}
       </div>

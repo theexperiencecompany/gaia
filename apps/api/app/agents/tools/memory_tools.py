@@ -28,7 +28,7 @@ contract (the tool cards mirror them):
 ``app.models.memory_models.MemoryEntry`` (``model_dump(mode="json")``,
 snake_case keys), with ``content`` capped at MEMORY_TOOL_CONTENT_MAX_CHARS.
 Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
-is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
+is a ``MemoryDocType`` value (``user_md`` ... ``people_md``).
 """
 
 from datetime import date as date_type
@@ -53,6 +53,7 @@ from app.decorators.rate_limiting import build_rate_limit_card
 from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
+from app.memory.user_time import local_today
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
@@ -71,12 +72,9 @@ from shared.py.wide_events import MemoryContext, UserContext, log
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
-# ---------------------------------------------------------------------------
-# The ``memory_data`` payload vocabulary — the frontend contract described in
-# the module docstring, as a union discriminated on ``action``. Plain
-# TypedDicts: these are built here and handed straight to the stream writer,
-# so there is nothing to validate or coerce at runtime.
-# ---------------------------------------------------------------------------
+# The memory_data payload vocabulary from the module docstring, as a union
+# discriminated on action. Plain TypedDicts: built here and handed straight to
+# the stream writer, with nothing to validate or coerce at runtime.
 
 # A ``MemoryEntry``/``MemoryEpisodeEntry`` serialized with ``model_dump(mode="json")``
 # — an arbitrary JSON object by the time it reaches the payload.
@@ -355,7 +353,7 @@ async def add_memory(
         "new": f"Memory stored under '{entry.category_path}'",
         "updated": f"Updated an existing memory under '{entry.category_path}'",
         "extended": f"Stored under '{entry.category_path}', extending a related memory",
-        "duplicate": f"Already known — matched an existing memory under '{entry.category_path}'",
+        "duplicate": f"Already known: matched an existing memory under '{entry.category_path}'",
     }
     message = messages[outcome]
     _stream_memory_data(
@@ -442,6 +440,9 @@ async def update_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
+    # A bad id RAISES (MemoryNotFoundError) instead of returning an error string:
+    # the string version read back to the model as success on a typo'd id. A
+    # superseded id is not a failure — the engine resolves it to the live head.
     try:
         entry = await memory_engine.update_memory(user_id, memory_id, new_content)
     except Exception as e:
@@ -453,13 +454,6 @@ async def update_memory(
         )
         log.set(memory=MemoryContext(operation="update", success=False))
         raise
-
-    if entry is None:
-        log.warning("memory_tool_memory_not_found", operation="update", memory_id=memory_id)
-        return (
-            f"Error: memory {memory_id} not found or already superseded — "
-            "search_memory for the current version and use its ID."
-        )
 
     log.set(
         user=UserContext(id=user_id),
@@ -566,8 +560,8 @@ async def search_conversations(
     """Search raw past-conversation transcripts for verbatim details.
 
     Use when the user references something specific from an earlier chat that
-    memory search does not surface — "that list you gave me", "the exact move
-    you suggested", "what did we say about X" — and quote the matching passage.
+    memory search does not surface, such as "that list you gave me", "the exact move
+    you suggested", or "what did we say about X", and quote the matching passage.
     """
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -607,17 +601,23 @@ async def search_conversations(
 @with_doc(GET_JOURNAL)
 async def get_journal(
     config: RunnableConfig,
-    date: Annotated[str, "The day to read, as YYYY-MM-DD"],
+    date: Annotated[str, "The day to read, as YYYY-MM-DD; omit for the user's local today"] = "",
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
         return _ERR_NO_USER_ID
 
-    try:
-        day = date_type.fromisoformat(date)
-    except ValueError:
-        log.warning("memory_tool_invalid_date", operation="episodes", start=date)
-        return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
+    if date:
+        try:
+            day = date_type.fromisoformat(date)
+        except ValueError:
+            log.warning("memory_tool_invalid_date", operation="episodes", start=date)
+            return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
+    else:
+        # Journal days bucket on the user's wall clock: at 2am IST "today" is
+        # still UTC's yesterday, so the default must be the LOCAL day.
+        day = await local_today(user_id)
+        date = day.isoformat()
 
     try:
         response = await memory_engine.get_episodes(user_id, day, day)
@@ -711,7 +711,7 @@ async def read_memory_document(
     )
     if document is None or not document.content.strip():
         return (
-            f"The '{doc_type}' document is empty — nothing has been written to it yet. "
+            f"The '{doc_type}' document is empty: nothing has been written to it yet. "
             "It fills in automatically as memory accumulates."
         )
 

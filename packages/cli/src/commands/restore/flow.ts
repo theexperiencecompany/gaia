@@ -71,10 +71,8 @@ export function getRestoreCommands(
   if (chromaFile) {
     const dir = path.dirname(chromaFile);
     const base = path.basename(chromaFile);
-    // Atomic restore: extract to temp first, only wipe /data after tar succeeds.
-    // The previous `rm -rf /data/* && tar xzf` left the volume empty if tar failed
-    // or the process was interrupted. The temp-dir dance keeps the existing data
-    // intact until the new archive is verified.
+    // Atomic restore: extract to temp first, wipe /data only after tar succeeds
+    // so a failed/interrupted restore keeps the existing data intact.
     cmds.push(
       `docker run --rm -v gaia-selfhost_chroma_data:/data -v ${dir}:/backups alpine sh -c "mkdir -p /tmp/restore && tar xzf /backups/${base} -C /tmp/restore && { rm -rf /data/* 2>/dev/null; rm -rf /data/.[!.]* 2>/dev/null || true; } && cp -a /tmp/restore/. /data/ && rm -rf /tmp/restore"`,
     );

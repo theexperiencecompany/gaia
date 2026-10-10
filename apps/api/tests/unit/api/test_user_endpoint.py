@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
+from app.api.v1.endpoints.user import get_me
 from app.models.user_models import (
+    AuthenticatedUser,
     AuthenticatedUserResponse,
     OnboardingPreferences,
     OnboardingStatusResponse,
@@ -19,6 +21,7 @@ from app.services.analytics_service import AnalyticsEvents
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 
 USER_BASE = "/api/v1/user"
+FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 FAKE_USER_UPDATE = {
     "user_id": "507f1f77bcf86cd799439011",
@@ -27,6 +30,14 @@ FAKE_USER_UPDATE = {
     "picture": None,
 }
 
+ONBOARDING_STATUS = OnboardingStatusResponse(
+    completed=True,
+    completed_at=None,
+    phase=None,
+    preferences=OnboardingPreferences(),
+    first_message_conversation_id=None,
+)
+
 
 # ---------------------------------------------------------------------------
 # GET /user/me
@@ -34,17 +45,16 @@ FAKE_USER_UPDATE = {
 
 
 class TestGetMe:
-    """GET /api/v1/user/me"""
+    """GET /api/v1/user/me."""
 
     @patch(
         "app.api.v1.endpoints.user.get_user_onboarding_status",
         new_callable=AsyncMock,
     )
     async def test_get_me_success(self, mock_onboarding: AsyncMock, client: AsyncClient):
-        # Must be the real return type, not a dict: get_user_onboarding_status was
-        # typed to return OnboardingStatusResponse while this mock still handed back
-        # the pre-refactor dict, so the endpoint 500'd in production on every page
-        # load while this test stayed green.
+        # Must be the real return type, not a dict: a mock returning the
+        # pre-refactor dict shape let this stay green while the endpoint
+        # 500'd in production.
         mock_onboarding.return_value = OnboardingStatusResponse(
             completed=True,
             completed_at=None,
@@ -58,18 +68,78 @@ class TestGetMe:
         assert data["message"] == "User retrieved successfully"
         assert data["user_id"] == "507f1f77bcf86cd799439011"
         assert data["onboarding"]["completed"] is True
+        mock_onboarding.assert_awaited_once_with(FAKE_USER_ID)
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_a_plain_session_sends_no_auth_path_flags(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        response = await client.get(f"{USER_BASE}/me")
+        assert response.status_code == 200
+        assert {"impersonated", "bot_authenticated", "dev_bypass"}.isdisjoint(response.json())
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_unset_profile_fields_are_omitted_not_null(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        # response_model_exclude_none is the only thing keeping nulls off the
+        # wire, and clients have always read a missing key as "not set".
+        response = await client.get(f"{USER_BASE}/me")
+        body = response.json()
+        assert "picture" not in body
+        assert "created_at" not in body
+        assert [key for key, value in body.items() if value is None] == []
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_set_auth_path_flags_are_returned_as_true(self, mock_onboarding: AsyncMock):
+        user = AuthenticatedUser(
+            user_id=FAKE_USER_ID,
+            auth_provider="workos",
+            impersonated=True,
+            bot_authenticated=True,
+            dev_bypass=True,
+        )
+        with patch("app.api.v1.endpoints.user.log"):
+            response = await get_me(user=user)
+        assert response.impersonated is True
+        assert response.bot_authenticated is True
+        assert response.dev_bypass is True
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_get_me_stamps_the_caller_on_the_wide_event(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.get(f"{USER_BASE}/me")
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID, "email": "test@example.com"}, operation="get_me"
+        )
 
     async def test_get_me_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(f"{USER_BASE}/me")
         assert response.status_code == 401
 
     def test_onboarding_field_type_tracks_the_service_return_type(self) -> None:
-        # The 500 above was a *drift* bug: get_user_onboarding_status was retyped to
-        # return OnboardingStatusResponse while this field stayed dict[str, Any].
-        # test_get_me_success can't catch a repeat on its own — it asserts against a
-        # hand-written mock, so correcting the mock is what makes it pass. This
-        # compares the declared field against the real annotation, with no mock in
-        # between, so retyping the service without updating the response fails here.
+        # test_get_me_success can't catch a repeat of the drift bug above on
+        # its own since it asserts against a hand-written mock; this compares
+        # the declared field against the real annotation, with no mock.
         service_returns = get_type_hints(get_user_onboarding_status)["return"]
         field_type = AuthenticatedUserResponse.model_fields["onboarding"].annotation
         assert field_type is service_returns, (
@@ -84,7 +154,7 @@ class TestGetMe:
 
 
 class TestUpdateMe:
-    """PATCH /api/v1/user/me"""
+    """PATCH /api/v1/user/me."""
 
     @patch(
         "app.api.v1.endpoints.user.update_user_profile",
@@ -103,6 +173,26 @@ class TestUpdateMe:
         mock_capture.assert_called_once_with(
             AnalyticsEvents.PROFILE_UPDATED,
             {"changed_field_count": 1, "has_picture_upload": False},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.user.update_user_profile",
+        new_callable=AsyncMock,
+        return_value=FAKE_USER_UPDATE,
+    )
+    async def test_update_me_stamps_the_caller_on_the_wide_event(
+        self, mock_update: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch("app.api.v1.endpoints.user.capture_context_event"),
+            patch("app.api.v1.endpoints.user.log") as mock_log,
+        ):
+            response = await client.patch(f"{USER_BASE}/me", data={"name": "Updated User"})
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID, "email": "test@example.com"},
+            operation="update_me",
+            has_picture_upload=False,
         )
 
     @patch(
@@ -143,7 +233,7 @@ class TestUpdateMe:
 
 
 class TestUpdateUserName:
-    """PATCH /api/v1/user/name"""
+    """PATCH /api/v1/user/name."""
 
     @patch(
         "app.api.v1.endpoints.user.update_user_profile",
@@ -185,12 +275,15 @@ class TestUpdateUserName:
 
 
 class TestUpdateTimezone:
-    """PATCH /api/v1/user/timezone"""
+    """PATCH /api/v1/user/timezone."""
 
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
-        with patch("app.api.v1.endpoints.user.capture_context_event") as mock_capture:
+        with (
+            patch("app.api.v1.endpoints.user.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.user.schedule_account_sync") as mock_schedule_sync,
+        ):
             response = await client.patch(
                 f"{USER_BASE}/timezone",
                 data={"timezone": "America/New_York"},
@@ -199,6 +292,7 @@ class TestUpdateTimezone:
         data = response.json()
         assert data["success"] is True
         assert data["timezone"] == "America/New_York"
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
         mock_capture.assert_called_once_with(
             AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1}
         )
@@ -250,7 +344,7 @@ class TestUpdateTimezone:
 
 
 class TestGetPublicHoloCard:
-    """GET /api/v1/user/holo-card/{card_id}"""
+    """GET /api/v1/user/holo-card/{card_id}."""
 
     @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
     async def test_holo_card_success(self, mock_get: AsyncMock, client: AsyncClient):
@@ -300,7 +394,7 @@ class TestGetPublicHoloCard:
 
 
 class TestUpdateHoloCardColors:
-    """PATCH /api/v1/user/holo-card/colors"""
+    """PATCH /api/v1/user/holo-card/colors."""
 
     @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
     async def test_update_colors_success(self, mock_set: AsyncMock, client: AsyncClient):
@@ -354,7 +448,7 @@ class TestUpdateHoloCardColors:
 
 
 class TestLogout:
-    """POST /api/v1/user/logout"""
+    """POST /api/v1/user/logout."""
 
     @patch("app.api.v1.endpoints.user._workos_client", create=True)
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
@@ -365,8 +459,7 @@ class TestLogout:
         with patch("app.api.v1.endpoints.user.track_logout") as mock_track:
             response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 200
-        data = response.json()
-        assert "logout_url" in data
+        assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_track.assert_called_once_with(user_id="507f1f77bcf86cd799439011")
 
     @patch("app.api.v1.endpoints.user._workos_client", create=True)
@@ -374,8 +467,7 @@ class TestLogout:
     async def test_logout_track_failure_is_logged_not_fatal(
         self, mock_track: MagicMock, mock_workos: MagicMock, client: AsyncClient
     ):
-        """A PostHog tracking failure must not break the logout flow — it is
-        logged and the redirect still happens."""
+        """A PostHog tracking failure must not break the logout flow — it is logged and the redirect still happens."""
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.user_management.load_sealed_session.return_value = session
