@@ -28,6 +28,11 @@ class UserId:
         return self.value
 
 
+def is_user_id(distinct_id: str) -> bool:
+    """Whether a PostHog distinct_id is a GAIA user id, not an anonymous, platform or email one."""
+    return _OBJECT_ID.fullmatch(distinct_id) is not None
+
+
 @dataclass(frozen=True, slots=True)
 class PlatformIdentity:
     """A bot user who has not linked a GAIA account yet; linking aliases it into the UserId."""
@@ -50,4 +55,4 @@ class PlatformIdentity:
 
 AnalyticsId = UserId | PlatformIdentity
 
-__all__ = ["AnalyticsId", "PlatformIdentity", "UserId"]
+__all__ = ["AnalyticsId", "PlatformIdentity", "UserId", "is_user_id"]

@@ -609,6 +609,13 @@ class PostHog:
         """Fetch every non-deleted action."""
         return self._all("actions/")
 
+    def hogql(
+        self, query: str, values: Mapping[str, JsonValue] | None = None
+    ) -> list[list[JsonValue]]:
+        """Run a HogQL query with {placeholder} values and return its rows."""
+        node: JsonObject = {"kind": "HogQLQuery", "query": query, "values": dict(values or {})}
+        return self._request("POST", f"{self.base}/query/", {"query": node})["results"]
+
     def probe(self, filter_test_accounts: bool) -> int:
         """Count the probe event over the probe window, with the test-account filter on or off."""
         # The same query node a dashboard trends tile runs, so the filter is applied exactly as it is there.
@@ -634,20 +641,23 @@ class PostHog:
 # Subcommands
 
 
-def _client(scopes: Sequence[str]) -> PostHog | None:
-    key = os.environ.get(KEY_ENV, "")
-    project = _read_json(PROJECT_JSON)
+def client_from_env(
+    scopes: Sequence[str], *, key_env: str = KEY_ENV, project_json: Path = PROJECT_JSON
+) -> PostHog | None:
+    """Return a client for the project in project_json, or print how to make the missing key."""
+    key = os.environ.get(key_env, "")
+    project = _read_json(project_json)
     if key:
         return PostHog(project["host"], project["project_id"], key)
     print(
-        f"{KEY_ENV} is not set. Create a personal API key at {project['host']}/settings/user-api-keys "
+        f"{key_env} is not set. Create a personal API key at {project['host']}/settings/user-api-keys "
         f"scoped to project {project['project_id']} with {', '.join(scopes)}, then export it "
-        f"(CI reads it from the repository secret {KEY_ENV}).",
+        f"(CI reads it from the repository secret {key_env}).",
         file=sys.stderr,
     )
     if os.environ.get("GITHUB_ACTIONS"):
         print(
-            f"::error title=analytics check::{KEY_ENV} secret is missing; nothing was checked",
+            f"::error title=analytics check::{key_env} secret is missing; nothing was checked",
             file=sys.stderr,
         )
     return None
@@ -689,7 +699,7 @@ def _insight_failures(client: PostHog, catalog: Catalog) -> list[str]:
 
 def cmd_check(_args: list[str]) -> int:
     """Run the four checks and exit non-zero on any failure."""
-    client = _client(READ_SCOPES)
+    client = client_from_env(READ_SCOPES)
     if client is None:
         return 1
     catalog = Catalog.load()
@@ -729,7 +739,7 @@ def cmd_sync_actions(args: list[str]) -> int:
         "--apply", action="store_true", help="perform the plan instead of printing it"
     )
     opts = parser.parse_args(args)
-    client = _client((*READ_SCOPES, WRITE_SCOPE) if opts.apply else READ_SCOPES)
+    client = client_from_env((*READ_SCOPES, WRITE_SCOPE) if opts.apply else READ_SCOPES)
     if client is None:
         return 1
     expected = _read_json(ACTIONS_JSON)

@@ -499,7 +499,7 @@ def _sync(
         scopes_asked.append(tuple(scopes))
         return project
 
-    monkeypatch.setattr(analytics, "_client", client)
+    monkeypatch.setattr(analytics, "client_from_env", client)
     return analytics.main(["sync-actions", *args]), scopes_asked
 
 
@@ -583,7 +583,7 @@ def test_with_a_key_the_client_targets_the_checked_in_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("POSTHOG_PERSONAL_API_KEY", "phx_test")
-    client = analytics._client(analytics.READ_SCOPES)
+    client = analytics.client_from_env(analytics.READ_SCOPES)
     project = json.loads(analytics.PROJECT_JSON.read_text())
     assert client is not None
     assert (client.netloc, client.base, client.key) == (

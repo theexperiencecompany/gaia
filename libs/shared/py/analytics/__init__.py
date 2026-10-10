@@ -11,7 +11,7 @@ from shared.py.analytics.client import (
     check_capture,
     prepare_capture,
 )
-from shared.py.analytics.identity import AnalyticsId, PlatformIdentity, UserId
+from shared.py.analytics.identity import AnalyticsId, PlatformIdentity, UserId, is_user_id
 
 __all__ = [
     "AnalyticsId",
@@ -20,6 +20,7 @@ __all__ = [
     "PostHogAnalytics",
     "PostHogCapture",
     "UserId",
+    "is_user_id",
     "check_capture",
     "prepare_capture",
 ]

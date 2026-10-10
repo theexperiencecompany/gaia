@@ -23,6 +23,8 @@ class UserSignedUp(ServerEvent):
 
     # WorkOS's authentication_method (GoogleOAuth, MagicAuth, ...); absent when WorkOS reports none.
     signup_method: Identifier | None = None
+    # True on an event a backfill sent at its record's own time; new-signup tiles exclude it.
+    backfilled: bool | None = None
 
 
 class UserLoggedIn(ServerEvent):

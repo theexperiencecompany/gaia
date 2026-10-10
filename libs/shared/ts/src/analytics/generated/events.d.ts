@@ -1292,6 +1292,7 @@ export interface EventProperties {
     "amount"?: number;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
+    "backfilled"?: boolean;
   };
   "subscription:cancellation_requested": {
     "actor": "user" | "agent";
@@ -1493,6 +1494,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "signup_method"?: string;
+    "backfilled"?: boolean;
   };
   "voice:mode_started": {
     "conversation_id"?: string;
