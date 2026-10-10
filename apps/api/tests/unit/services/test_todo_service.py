@@ -21,6 +21,7 @@ import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -49,7 +50,6 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -74,9 +74,17 @@ from app.services.todos.todo_service import (
     update_project,
 )
 from app.services.triggers.subscription_service import SubscriptionError
+from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.utils.todo_vector_utils import TodoSearchFilters
-from tests.helpers import captured_wide_event
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    TodosCreated,
+    TodosDeleted,
+    TodosToggled,
+    TodosUpdated,
+)
+from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, users_get
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
@@ -91,14 +99,21 @@ _CHILD = str(ObjectId())
 def _no_analytics():
     """Neutralize analytics captures for tests not asserting on them.
 
-    capture_event resolves the PostHog provider at call time, which is not
+    capture resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
     with (
-        patch("app.services.todos.todo_service.capture_event"),
-        patch("app.services.todos.todo_bulk_service.capture_event"),
+        patch("app.services.todos.todo_service.capture"),
+        patch("app.services.todos.todo_bulk_service.capture"),
     ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
         yield
 
 
@@ -321,6 +336,17 @@ class TestCreateTodo:
         assert isinstance(result, TodoResponse)
         assert result.sub_todo_count == 0
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("owner", [SYSTEM_USER_ID, UNKNOWN_USER_ID])
+    async def test_an_owner_that_is_not_a_user_is_refused_before_the_write(
+        self, owner, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: create_todo saved whatever owner it was handed, "system" included."""
+        with pytest.raises(auth_utils.OwnerNotFoundError):
+            await TodoService.create_todo(TodoModel(title="Buy milk"), owner)
+
+        mock_todo_repo.create.assert_not_awaited()
+
     async def test_validates_explicit_project(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
@@ -440,24 +466,23 @@ class TestCreateTodo:
             subtasks=[{"id": "s1", "title": "sub", "completed": False}],
         )
         mock_todo_repo.create = AsyncMock(return_value=created)
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.create_todo(
                 TodoModel(title="Buy milk", priority=Priority.HIGH), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID,
-            AnalyticsEvents.TODO_CREATED,
-            {
-                "priority": "high",
-                "has_due_date": False,
-                "has_description": True,
-                "labels_count": 2,
-                "subtasks_count": 1,
+            UserId(FAKE_USER_ID),
+            TodosCreated(
+                priority="high",
+                has_due_date=False,
+                has_description=True,
+                labels_count=2,
+                subtasks_count=1,
                 # No project on the request — the Inbox default must not read as
                 # the user having chosen one.
-                "has_project": False,
-                "is_sub_todo": False,
-            },
+                has_project=False,
+                is_sub_todo=False,
+            ),
         )
 
     async def test_captures_todo_created_with_chosen_project(
@@ -467,11 +492,11 @@ class TestCreateTodo:
             return_value=_make_project_doc(project_id=FAKE_PROJECT_ID, name="Work")
         )
         mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_PROJECT_ID))
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.create_todo(
                 TodoModel(title="Buy milk", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
             )
-        assert mock_capture.call_args.args[2]["has_project"] is True
+        assert mock_capture.call_args.args[1].has_project is True
 
 
 _THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
@@ -580,12 +605,12 @@ class TestCreateSubTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(parent_todo_id=_PARENT))
-        with patch("app.services.todos.todo_service.capture_event") as capture:
+        with patch("app.services.todos.todo_service.capture") as capture:
             await TodoService.create_todo(
                 TodoModel(title="Reply"), FAKE_USER_ID, parent_todo_id=_PARENT
             )
 
-        assert capture.call_args.args[2]["is_sub_todo"] is True
+        assert capture.call_args.args[1].is_sub_todo is True
 
 
 class TestSubTodoCounts:
@@ -905,6 +930,58 @@ class TestUpdateTodo:
                 FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
 
+    async def test_a_plain_todos_display_recurrence_is_stored_exactly_as_sent(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Mobile sends an RRULE for a plain todo; nothing runs it, so it is stored verbatim."""
+        rrule = "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE"
+        plain = _make_todo_doc(todo_id=FAKE_TODO_ID)
+        mock_todo_repo.get = AsyncMock(return_value=plain)
+        mock_todo_repo.update = AsyncMock(return_value=plain)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(recurrence=rrule), FAKE_USER_ID
+        )
+
+        assert mock_todo_repo.update.await_args.kwargs["update"].recurrence == rrule
+
+    @pytest.mark.parametrize(
+        ("recurrence", "message"),
+        [
+            ("* * * * *", "Schedules can repeat at most once an hour."),
+            ("FREQ=DAILY", "Use 5 fields: minute hour day month weekday."),
+        ],
+    )
+    async def test_a_tracked_todos_recurrence_is_a_run_schedule_and_is_held_to_the_rule(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, recurrence, message
+    ):
+        tracked = _make_todo_doc(
+            todo_id=FAKE_TODO_ID, labels=[GAIA_TRACKED_LABEL], vfs_path="/workspace/t"
+        )
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+
+        with pytest.raises(AppError) as refused:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(recurrence=recurrence), FAKE_USER_ID
+            )
+
+        assert refused.value.status_code == 422
+        assert refused.value.message == message
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_tracked_todo_accepts_an_hourly_or_shortcut_schedule(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, labels=[GAIA_TRACKED_LABEL])
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+        mock_todo_repo.update = AsyncMock(return_value=tracked)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(recurrence="every_1h"), FAKE_USER_ID
+        )
+
+        assert mock_todo_repo.update.await_args.kwargs["update"].recurrence == "every_1h"
+
     async def test_updates_and_returns(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -931,21 +1008,20 @@ class TestUpdateTodo:
                 subtasks=[{"id": "s1", "title": "sub", "completed": False}],
             )
         )
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(title="new"), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID,
-            AnalyticsEvents.TODO_UPDATED,
-            {
-                "changed_field_count": 1,
-                "changed_fields": ["title"],
-                "todo_id": FAKE_TODO_ID,
-                "priority": "high",
-                "has_due_date": False,
-                "has_subtasks": True,
-            },
+            UserId(FAKE_USER_ID),
+            TodosUpdated(
+                changed_field_count=1,
+                changed_fields=["title"],
+                todo_id=FAKE_TODO_ID,
+                priority="high",
+                has_due_date=False,
+                has_subtasks=True,
+            ),
         )
 
     async def test_captures_completed_toggle(
@@ -954,19 +1030,18 @@ class TestUpdateTodo:
         mock_todo_repo.update = AsyncMock(
             return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, completed=True, priority="medium")
         )
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID,
-            AnalyticsEvents.TODO_TOGGLED,
-            {
-                "completed": True,
-                "todo_id": FAKE_TODO_ID,
-                "priority": "medium",
-                "has_due_date": False,
-            },
+            UserId(FAKE_USER_ID),
+            TodosToggled(
+                completed=True,
+                todo_id=FAKE_TODO_ID,
+                priority="medium",
+                has_due_date=False,
+            ),
         )
 
     async def test_completing_tracked_routes_through_service(
@@ -1002,10 +1077,10 @@ class TestDeleteTodo:
     ):
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
         mock_todo_repo.delete = AsyncMock(return_value=True)
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_DELETED, {"todo_id": FAKE_TODO_ID}
+            UserId(FAKE_USER_ID), TodosDeleted(todo_id=FAKE_TODO_ID)
         )
 
     async def test_a_subscribed_todo_unregisters_before_the_document_goes(
@@ -1347,6 +1422,35 @@ class TestBulkOps:
         await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert mock_todo_repo.bulk_update.await_args.args[2].labels == labels
 
+    async def test_bulk_update_holds_a_selected_tracked_todos_schedule_to_the_rule(
+        self, mock_todo_repo, mock_project_repo
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _make_todo_doc(todo_id="a"),
+                _make_todo_doc(todo_id="b", labels=[GAIA_TRACKED_LABEL]),
+            ]
+        )
+        req = BulkUpdateRequest(
+            todo_ids=["a", "b"], updates=TodoUpdateRequest(recurrence="* * * * *")
+        )
+        with pytest.raises(AppError) as refused:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert refused.value.status_code == 422
+        assert refused.value.message == "Schedules can repeat at most once an hour."
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
+        mock_todo_repo.bulk_update.assert_not_called()
+
+    async def test_bulk_update_stores_plain_todos_display_recurrence_as_sent(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        rrule = "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE"
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(recurrence=rrule))
+        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert mock_todo_repo.bulk_update.await_args.args[2].recurrence == rrule
+
     async def test_bulk_update_may_set_other_labels(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1372,11 +1476,9 @@ class TestBulkOps:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.bulk_delete = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await TodoService.bulk_delete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_DELETED, {"count": 2}
-        )
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosDeleted(count=2))
 
     async def test_bulk_move_validates_project(self, mock_todo_repo, mock_project_repo):
         mock_project_repo.get = AsyncMock(return_value=None)
@@ -1574,11 +1676,9 @@ class TestBulkServiceComplete:
             return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
         )
         todo_repo.bulk_update = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_bulk_service.capture") as mock_capture:
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"count": 2}
-        )
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
 
     async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
         """Tracked todos count through their completion lifecycle — the reported count is modified + tracked, not a plain update count."""
@@ -1591,16 +1691,14 @@ class TestBulkServiceComplete:
         )
         todo_repo.bulk_update = AsyncMock(return_value=1)
         with (
-            patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture,
+            patch("app.services.todos.todo_bulk_service.capture") as mock_capture,
             patch(_COMPLETE_TRACKED, new_callable=AsyncMock) as mock_tracked,
         ):
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
         mock_tracked.assert_awaited_once_with(
             "b", FAKE_USER_ID, summary="Completed via bulk operation"
         )
-        mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"count": 2}
-        )
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
@@ -1641,11 +1739,9 @@ class TestBulkServiceDelete:
             return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
         )
         todo_repo.bulk_delete = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_DELETED, {"count": 2}
-        )
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosDeleted(count=2))
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos

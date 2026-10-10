@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 from livekit.agents.llm import ChatContext
 
+from shared.py.analytics import UserId
 from shared.py.wide_events import log
 from src.constants import (
     DIRECTIVE_PREFIX_RE,
@@ -119,21 +120,16 @@ def build_messages_from_ctx(chat_ctx: ChatContext) -> list[dict[str, str]]:
     return messages
 
 
-def user_id_from_room(room_name: str) -> str | None:
-    """Recover the user id from a voice room name.
+def user_id_from_room(room_name: str) -> UserId:
+    """Recover the user from a voice room name; ValueError for a room /token did not mint.
 
-    Rooms are named voice_session_{user_id}_{uuid_hex} by the /token
-    endpoint. The user id itself may contain underscores, so strip the fixed
-    prefix and split off the trailing uuid segment.
+    Rooms are named voice_session_{user_id}_{uuid_hex} by the /token endpoint.
     """
     prefix = "voice_session_"
-    if not room_name.startswith(prefix):
-        return None
-    rest = room_name[len(prefix) :]
-    user_id, _, suffix = rest.rpartition("_")
-    if not user_id or not suffix:
-        return None
-    return user_id
+    user_id, _, suffix = room_name.removeprefix(prefix).rpartition("_")
+    if not room_name.startswith(prefix) or not suffix:
+        raise ValueError(f"Room {room_name!r} is not a voice_session_{{user_id}}_{{uuid}} room")
+    return UserId(user_id)
 
 
 def ms_since(t0: float) -> float:

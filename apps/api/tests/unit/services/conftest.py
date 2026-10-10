@@ -8,6 +8,7 @@ neither file re-declares them.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -159,10 +160,11 @@ def mock_webhook_subscription_repository():
     By default the subscription already exists as an active row with no
     billing dates recorded (SAMPLE_SUBSCRIPTION), which is what every
     lifecycle event needs to find; a test about activation creating the row
-    sets get_by_dodo_id to return None.
+    sets get_by_dodo_id to return None. The user has no other active subscription.
     """
     mock_repo = MagicMock()
     mock_repo.get_by_dodo_id = AsyncMock(return_value=SAMPLE_SUBSCRIPTION)
+    mock_repo.get_active_for_user = AsyncMock(return_value=None)
     mock_repo.create = AsyncMock()
     mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
     with patch("app.services.payments.subscription_events.subscription_repository", mock_repo):
@@ -188,8 +190,8 @@ def mock_processed_webhook_repository():
 
 
 @pytest.fixture
-def mock_track_payment():
-    with patch("app.services.payments.payment_webhook_service.track_payment_event") as mock_fn:
+def mock_payment_capture():
+    with patch("app.services.payments.payment_webhook_service.capture") as mock_fn:
         yield mock_fn
 
 
@@ -241,6 +243,24 @@ def mock_activation_workflow_reactivation():
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
+
+
+@pytest.fixture
+def mock_paywall_resume():
+    """Patch both resumes of paywall-paused automation (reminders, tracked todos); opted into like mock_activation_workflow_reactivation."""
+    with (
+        patch(
+            "app.services.reminder_service.reminder_scheduler.resume_paused_for",
+            new_callable=AsyncMock,
+        ) as reminders,
+        patch(
+            "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",
+            new_callable=AsyncMock,
+        ) as todos,
+    ):
+        reminders.return_value = 0
+        todos.return_value = 0
+        yield SimpleNamespace(reminders=reminders, todos=todos)
 
 
 @pytest.fixture

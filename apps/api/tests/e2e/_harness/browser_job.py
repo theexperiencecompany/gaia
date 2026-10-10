@@ -500,7 +500,7 @@ async def browser_job_world(
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
         patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
-        patch("app.services.browser.job_runner.capture_event", MagicMock()),
+        patch("app.services.browser.job_runner.capture", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
         patch(
             "app.services.browser.runner.publish_step_screenshot",

@@ -13,11 +13,13 @@ from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.browser.handoff import bot_chat_address
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import log
 
 # Constants
@@ -234,7 +236,7 @@ async def build_bot_message_request(
     )
 
 
-async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
+async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:
     """Charge quota/budget for one bot turn and record its submission event.
 
     Mirrors what the web chat endpoint charges via @tiered_rate_limit, done
@@ -251,13 +253,15 @@ async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
     # Captured past every gate, like the web endpoint: a refusal never reached
     # the agent, so counting it here would inflate volume by exactly the users
     # who hit walls most. A refusal is its own event.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
+    capture(
+        UserId(user_id),
+        ChatMessageSubmitted(
             # `source` is the canonical key: a ConversationSource value, the same
             # key every other chat event reports its surface under.
-            "source": body.platform,
-            "has_files": bool(body.file_ids or body.file_data),
-        },
+            source=body.platform,
+            has_files=bool(body.file_ids or body.file_data),
+            stream_id=stream_id,
+            # Bots have no retry action: a resend is a new message.
+            is_retry=False,
+        ),
     )

@@ -12,6 +12,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
@@ -23,7 +24,12 @@ from app.models.payment_models import (
     ProCheckout,
     SubscriptionDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    PaymentCheckoutStarted,
+    SubscriptionCancellationRequested,
+)
+from tests.conftest import FAKE_USER
 from tests.unit.services.conftest import SUBSCRIPTION_DATA_PAYLOAD, _make_webhook_event
 
 PLANS_URL = "/api/v1/payments/plans"
@@ -33,6 +39,7 @@ SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
+DISCOUNT_CODES_URL = "/api/v1/payments/discount-codes"
 
 
 def _make_plan(**overrides) -> dict:
@@ -40,6 +47,7 @@ def _make_plan(**overrides) -> dict:
         "id": "plan_123",
         "dodo_product_id": "prod_abc",
         "name": "Pro Monthly",
+        "plan_type": "pro",
         "description": "Pro plan billed monthly",
         "amount": 999,
         "currency": "USD",
@@ -122,6 +130,40 @@ class TestGetPlans:
         assert response.json() == []
 
 
+class TestGetDiscountCodes:
+    """The founder letter advertises whatever coupon the server is configured with."""
+
+    async def test_returns_the_configured_founder_letter_code(self, client: AsyncClient):
+        with patch("app.services.payments.discount_codes.settings") as settings:
+            settings.FOUNDER_LETTER_DISCOUNT_CODE = "THANKYOU40"
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {"founder_letter": "THANKYOU40"}
+
+    async def test_wide_event_names_the_caller_and_the_operation(self, client: AsyncClient):
+        with patch("app.api.v1.endpoints.payments.log") as mock_log:
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": "507f1f77bcf86cd799439011"},
+            payment={"operation": "get_discount_codes"},
+        )
+
+    async def test_an_unset_code_is_null(self, client: AsyncClient):
+        with patch("app.services.payments.discount_codes.settings") as settings:
+            settings.FOUNDER_LETTER_DISCOUNT_CODE = None
+            response = await client.get(DISCOUNT_CODES_URL)
+
+        assert response.json() == {"founder_letter": None}
+
+    async def test_requires_authentication(self, unauthed_client: AsyncClient):
+        response = await unauthed_client.get(DISCOUNT_CODES_URL)
+
+        assert response.status_code in (401, 403)
+
+
 # ---------------------------------------------------------------------------
 # POST /subscriptions
 # ---------------------------------------------------------------------------
@@ -154,6 +196,7 @@ class TestCreateSubscription:
             "status": "payment_link_created",
         }
 
+    @pytest.mark.regression
     async def test_create_subscription_default_quantity(self, client: AsyncClient):
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
@@ -164,7 +207,7 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ) as mock_create:
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 await client.post(
                     SUBSCRIPTIONS_URL,
                     json={"product_id": "prod_abc"},
@@ -174,14 +217,17 @@ class TestCreateSubscription:
         # A bundle deployed before `source` existed still checks out; the event
         # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": 1, "source": None, "surface": "redirect"},
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(
+                quantity=1, source=None, checkout_flow="redirect", plan_id="prod_abc"
+            ),
         )
 
+    @pytest.mark.regression
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
         self, client: AsyncClient
     ):
-        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/surface split."""
+        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/checkout_flow split."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -191,7 +237,7 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ):
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 response = await client.post(
                     SUBSCRIPTIONS_URL,
                     json={"product_id": "prod_abc", "source": "payment_retry"},
@@ -199,8 +245,10 @@ class TestCreateSubscription:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": 1, "source": "payment_retry", "surface": "redirect"},
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(
+                quantity=1, source="payment_retry", checkout_flow="redirect", plan_id="prod_abc"
+            ),
         )
 
     async def test_create_subscription_rejects_an_unknown_source(self, client: AsyncClient):
@@ -296,6 +344,7 @@ class TestCreateCheckoutSession:
             "507f1f77bcf86cd799439011", PlanDuration.YEARLY, CheckoutSource.PRICING_CARD
         )
 
+    @pytest.mark.regression
     async def test_attributes_the_overlay_checkout_to_its_source(self, client: AsyncClient):
         """The server is the single emitter of payment:checkout_started, so the funnel's attribution has to arrive on this call."""
         with patch(
@@ -310,19 +359,20 @@ class TestCreateCheckoutSession:
                 ),
             ),
         ):
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+            with patch("app.api.v1.endpoints.payments.capture") as mock_capture:
                 await client.post(
                     CHECKOUT_SESSION_URL,
                     json={"billing_cycle": "monthly", "source": "paywall_modal"},
                 )
 
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {
-                "billing_cycle": PlanDuration.MONTHLY,
-                "source": "paywall_modal",
-                "surface": "overlay",
-            },
+            UserId(FAKE_USER.user_id),
+            PaymentCheckoutStarted(
+                billing_cycle=PlanDuration.MONTHLY,
+                source="paywall_modal",
+                checkout_flow="overlay",
+                plan_id="prod_abc",
+            ),
         )
 
     async def test_rejects_a_checkout_with_no_source(self, client: AsyncClient):
@@ -460,13 +510,15 @@ class TestCancelSubscription:
                 new_callable=AsyncMock,
                 return_value=mock_status,
             ) as mock_cancel,
-            patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.payments.capture") as mock_capture,
             patch("app.api.v1.endpoints.payments.log") as mock_log,
         ):
             response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id), SubscriptionCancellationRequested()
+        )
         mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
         mock_log.set.assert_any_call(payment={"subscription_id": "sub_xyz789", "status": "active"})
 
@@ -652,6 +704,7 @@ class TestDodoWebhook:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
         ):
             response = await client.post(
                 WEBHOOK_URL,
@@ -668,6 +721,7 @@ class TestDodoWebhook:
         data = response.json()
         assert data["status"] == "success"
         assert data["event_type"] == "subscription.created"
+        mock_log.set_ns.assert_any_call("payment", event_type="subscription.created")
 
     async def test_a_failed_result_asks_dodo_to_retry_instead_of_acknowledging(
         self, client: AsyncClient

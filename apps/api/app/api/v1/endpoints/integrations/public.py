@@ -32,7 +32,7 @@ from app.schemas.integrations.responses import (
     SearchIntegrationItem,
     SearchIntegrationsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
@@ -40,6 +40,8 @@ from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
 from app.services.workflow.service import ensure_public_workflow_slug
 from app.utils.creator import format_creator
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -205,9 +207,9 @@ async def add_public_integration(
         log.set(integration_name=integration_name)
         log.set(outcome="success")
         if connect_result.status == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": integration_id, "source": "marketplace"},
+            capture(
+                UserId(user_id),
+                IntegrationConnected(integration_id=integration_id, source="marketplace"),
             )
         return AddIntegrationResponse(
             integration_id=integration_id,

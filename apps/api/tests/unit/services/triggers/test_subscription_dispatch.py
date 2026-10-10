@@ -32,12 +32,22 @@ from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
 )
 from app.services.triggers.todo_trigger_window import TODO_TRIGGER_WINDOW_CLAIMED
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 from tests.helpers import captured_wide_event
+
+_DISPATCH = "app.services.triggers.subscription_dispatch"
 
 pytestmark = pytest.mark.unit
 
 _MOD = "app.services.triggers.subscription_dispatch"
-USER_ID = "user-1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 TODO_ID = "todo-1"
 GMAIL = "gmail_new_message"
 SLACK = "slack_new_message"
@@ -76,7 +86,7 @@ def deps():
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
-        patch(f"{_MOD}.capture_event") as capture,
+        patch(f"{_MOD}.capture") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
         patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
     ):
@@ -597,8 +607,8 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         deps.capture.assert_called_once()
-        assert deps.capture.call_args.args[0] == USER_ID
-        assert deps.capture.call_args.args[1] == "todos:trigger_fired"
+        assert deps.capture.call_args.args[0] == UserId(USER_ID)
+        assert isinstance(deps.capture.call_args.args[1], TodosTriggerFired)
 
     async def test_the_event_carries_shape_not_content(self, deps) -> None:
         # Counts and enums only: no subject lines, no addresses, no payload.
@@ -608,14 +618,13 @@ class TestAnalytics:
             GMAIL, None, USER_ID, {"subject": "Invoice 4021", "sender": "a@b.c"}
         )
 
-        props = deps.capture.call_args.args[2]
-        assert props == {
-            "trigger_name": GMAIL,
-            "action": "execute",
-            "resolution": "account",
-            "condition_count": 0,
-            "coalesced": False,
-        }
+        assert deps.capture.call_args.args[1] == TodosTriggerFired(
+            trigger_name=GMAIL,
+            action="execute",
+            resolution="account",
+            condition_count=0,
+            coalesced=False,
+        )
 
     async def test_a_suppressed_fire_is_not_counted(self, deps) -> None:
         # Counting arrivals rather than actions would make every funnel read high.
@@ -635,7 +644,7 @@ class TestAnalytics:
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
-        assert deps.capture.call_args.args[2]["coalesced"] is False
+        assert deps.capture.call_args.args[1].coalesced is False
 
     async def test_a_held_execute_fire_is_counted_as_coalesced(self, deps) -> None:
         # It will run, with the todo's next run, so it is a fire, marked as held.
@@ -644,7 +653,7 @@ class TestAnalytics:
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
-        assert deps.capture.call_args.args[2]["coalesced"] is True
+        assert deps.capture.call_args.args[1].coalesced is True
 
     async def test_a_non_matching_event_is_not_counted(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
@@ -666,3 +675,18 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-2"})
 
         deps.capture.assert_not_called()
+
+
+class TestDispatchAttribution:
+    async def test_the_fan_out_is_integration_triggered_agent_work(self) -> None:
+        """Whatever request delivered the webhook, the todos it wakes are the trigger's."""
+        seen: list[AnalyticsContext] = []
+
+        async def _record(*_args: object) -> list[TodoDocument]:
+            seen.append(current_analytics_context())
+            return []
+
+        with patch(f"{_DISPATCH}._resolve_subscribers", _record):
+            await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]

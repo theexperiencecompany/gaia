@@ -12,6 +12,7 @@ from app.schemas.integrations.responses import (
     MyIntegrationItem,
     MyIntegrationsResponse,
 )
+from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -147,7 +148,7 @@ class TestUserIntegrationEndpoints:
     async def test_add_integration_returns_200(self, mock_add, test_client):
         """POST to add integration should return 200 with correct response."""
         mock_add.return_value = UserIntegration(
-            user_id="integration-test-user-1",
+            user_id=FAKE_USER.user_id,
             integration_id="gmail",
             status="created",
             created_at=datetime.now(UTC),
@@ -228,7 +229,7 @@ class TestUserIntegrationEndpoints:
     async def test_add_integration_status_connected(self, mock_add, test_client):
         """POST should return connectionStatus='connected' for non-auth integrations."""
         mock_add.return_value = UserIntegration(
-            user_id="integration-test-user-1",
+            user_id=FAKE_USER.user_id,
             integration_id="gcal",
             status="connected",
             created_at=datetime.now(UTC),

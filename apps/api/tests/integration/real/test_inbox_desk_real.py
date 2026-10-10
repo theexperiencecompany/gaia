@@ -5,12 +5,11 @@ seams; the run is enqueued on a fakeredis ArqRedis so no real worker picks it up
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq.connections import ArqRedis
-from bson import ObjectId
 import fakeredis.aioredis
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
@@ -24,7 +23,6 @@ from app.constants.todos import (
     INBOX_DESK_WATCH_WINDOW_SECONDS,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.models.todo_models import TodoDocument
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
 from app.utils.redis_utils import RedisPoolManager
@@ -41,7 +39,7 @@ def _offline_seams() -> Iterator[MagicMock]:
             "app.services.todos.inbox_desk.get_connected_integration_ids",
             AsyncMock(return_value={GMAIL_INTEGRATION_ID}),
         ),
-        patch("app.services.todos.inbox_desk.capture_event") as capture,
+        patch("app.services.todos.inbox_desk.capture") as capture,
         patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.schedule_user_todos_sync"),
         patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),
@@ -49,17 +47,6 @@ def _offline_seams() -> Iterator[MagicMock]:
         patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)),
     ):
         yield capture
-
-
-@pytest.fixture
-async def user_id(mongo_db: AsyncIOMotorDatabase, real_redis: object) -> AsyncIterator[str]:
-    await mongo_db["todos"].create_index(
-        TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
-    )
-    owner = str(ObjectId())
-    yield owner
-    await mongo_db["todos"].delete_many({"user_id": owner})
-    await mongo_db["projects"].delete_many({"user_id": owner})
 
 
 async def _desks(mongo_db: AsyncIOMotorDatabase, user_id: str) -> list[TodoDocument]:

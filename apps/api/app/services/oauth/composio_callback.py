@@ -12,9 +12,13 @@ from fastapi import BackgroundTasks
 from app.config.oauth_config import get_integration_by_config
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.models.oauth_models import OAuthStateData
+from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
+from app.services.integrations.user_integration_status import reconnect_or_unknown
 from app.services.oauth.oauth_service import handle_oauth_connection
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 
@@ -30,7 +34,7 @@ class ConnectionRejected:
     reason: Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
 
 
-async def stored_connected_account_id(state_data: dict[str, str]) -> str | None:
+async def stored_connected_account_id(state_data: OAuthStateData) -> str | None:
     """Return the id minted at initiate time — the source of truth for the callback.
 
     Composio's hosted Connect Link redirects back without the connectedAccountId
@@ -100,22 +104,23 @@ async def complete_composio_connection(
         )
         return ConnectionRejected(reason="user_mismatch")
 
+    is_reconnect = await reconnect_or_unknown(
+        user_integration_repository.has_connected_before(str(user_id), integration_config.id),
+        integration_config.id,
+    )
     await handle_oauth_connection(
         user_id=str(user_id),
         integration_config=integration_config,
         background_tasks=background_tasks,
         connected_account_id=connected_account_id,
     )
-    # capture_event, not capture_context_event: Composio redirects here without
-    # a WorkOS session, so pass the user id explicitly or the event lands on
-    # an anonymous profile.
-    capture_event(
-        str(user_id),
-        AnalyticsEvents.INTEGRATION_CONNECTED,
-        {
-            "integration_id": integration_config.id,
-            "provider": integration_config.provider,
-        },
+    capture(
+        UserId(str(user_id)),
+        IntegrationConnected(
+            integration_id=integration_config.id,
+            provider=integration_config.provider,
+            is_reconnect=is_reconnect,
+        ),
     )
     log.info(
         f"{LogTag.OAUTH} Composio connection successful",

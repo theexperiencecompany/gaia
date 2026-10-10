@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). ci_job = the code-quality.yml job that runs the lane; `verdict.py reuse-plan` unions a job's scopes to decide whether its last pass on a PR still holds, so a lane missing here makes its job always run, and a job whose real inputs a scope misses could be wrongly reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). ci_job = the code-quality.yml job that runs the lane; `verdict.py reuse-plan` unions a job's scopes to decide whether its last pass on a PR still holds, so a lane missing here makes its job always run, and a job whose real inputs a scope misses could be wrongly reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -56,6 +56,25 @@
       "timeout_s": 300,
       "require_cmd": ["uv", "node"],
       "command": "node scripts/ci/checks.mjs api-schema"
+    },
+    {
+      "name": "analytics-catalog",
+      "ci_job": "api-schema",
+      "scope": "^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\\.lock$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs analytics-catalog"
+    },
+    {
+      "name": "analytics-check",
+      "ci_job": "analytics-check",
+      "scope": "^libs/shared/py/analytics/catalog/|^libs/shared/ts/src/analytics/generated/|^config/posthog/|^scripts/ci/analytics\\.py$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": ["python3"],
+      "require_env": ["POSTHOG_PERSONAL_API_KEY"],
+      "command": "python3 scripts/ci/analytics.py check"
     },
     {
       "name": "doc-comments",

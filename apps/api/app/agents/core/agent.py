@@ -65,6 +65,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
 
 
@@ -274,21 +275,18 @@ async def _core_agent_logic(
     return graph, initial_state, config
 
 
-def _run_properties(
+def _run_started(
     conversation_id: str, mode: Literal["interactive", "background"], options: AgentRunOptions
-) -> dict[str, object]:
-    """Build a comms run's lifecycle props, naming the caller that fired it when known."""
-    properties: dict[str, object] = {
-        "agent": "comms",
-        "mode": mode,
-        "conversation_id": conversation_id,
-    }
-    trigger_type = _AgentTriggerContext.model_validate(options.trigger_context or {}).trigger_type
-    if trigger_type:
-        properties["trigger_type"] = trigger_type
-    if options.source:
-        properties["source"] = options.source
-    return properties
+) -> AgentRunStarted:
+    """Build a comms run's start event, naming the caller that fired it when known."""
+    return AgentRunStarted(
+        agent="comms",
+        mode=mode,
+        conversation_id=conversation_id,
+        trigger_type=_AgentTriggerContext.model_validate(options.trigger_context or {}).trigger_type
+        or None,
+        source=options.source or None,
+    )
 
 
 async def call_agent(
@@ -307,7 +305,7 @@ async def call_agent(
     options = options or AgentRunOptions()
     ids = ids or StreamMessageIds()
     with agent_run_lifecycle(
-        user.user_id, _run_properties(conversation_id, "interactive", options)
+        user.user_id, _run_started(conversation_id, "interactive", options)
     ) as run:
         try:
             graph, initial_state, config = await _core_agent_logic(
@@ -373,7 +371,7 @@ async def call_agent_silent(
     stream_id = str(uuid4())
     try:
         with agent_run_lifecycle(
-            user.user_id, _run_properties(conversation_id, "background", options)
+            user.user_id, _run_started(conversation_id, "background", options)
         ):
             graph, initial_state, config = await _core_agent_logic(
                 request,

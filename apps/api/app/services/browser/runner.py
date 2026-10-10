@@ -60,7 +60,7 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser.agent_run import AgentRunSetup, BrowserAgentRun
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
@@ -87,6 +87,8 @@ from app.services.browser.session import (
 from app.services.cost_budget import get_budget_stop_reason
 from app.services.llm_metering import LLMCallContext, TokenUsage, record_llm_call
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserEngineSwitched
 from shared.py.wide_events import log
 
 # How often the stall watcher looks; a fraction of the note delay, not a knob.
@@ -364,10 +366,11 @@ class BrowserTaskRunner:
         log.info(f"{LogTag.BROWSER} Browser agent moved the run to the full browser")
         if self._user_id:
             # The host alone: which sites the fast engine falls short on, never what the user opened.
-            capture_event(
-                self._user_id,
-                AnalyticsEvents.BROWSER_ENGINE_SWITCHED,
-                {"reason": reason.value, "host": host or "", "engine": self._session.engine.value},
+            capture(
+                UserId(self._user_id),
+                BrowserEngineSwitched(
+                    reason=reason.value, host=host, engine=self._session.engine.value
+                ),
             )
         return BROWSER_ENGINE_SWITCH_ACK
 

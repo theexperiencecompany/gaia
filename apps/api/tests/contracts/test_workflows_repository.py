@@ -17,14 +17,16 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.workflows import WorkflowsRepository
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+)
+from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
-    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
 )
@@ -263,7 +265,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowRearm(scheduled_at=new_fire, next_run=new_fire),
+                rearm=TaskRearm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -341,7 +343,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            rearm=WorkflowRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
+            rearm=TaskRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -360,7 +362,7 @@ class TestWorkflowsScheduler:
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowRearm(scheduled_at=None)
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=TaskRearm(scheduled_at=None)
             )
             is True
         )
@@ -380,7 +382,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowRearm(scheduled_at=run_at, repeat="0 9 * * *"),
+                rearm=TaskRearm(scheduled_at=run_at, repeat="0 9 * * *"),
             )
             is True
         )

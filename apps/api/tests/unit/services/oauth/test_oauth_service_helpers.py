@@ -92,7 +92,7 @@ class TestRunSignupSideEffects:
         """In-process delivery was undrained on shutdown, so a restart mid-send lost both emails."""
         user_id = str(ObjectId())
 
-        await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+        await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         # Not assert_awaited_once_with: enqueue_worker_job also attaches the
         # caller's trace id, which is not this test's subject.
@@ -115,7 +115,7 @@ class TestRunSignupSideEffects:
         mock_redis_pool_manager.enqueue_job.side_effect = RuntimeError("Redis down")
 
         async with captured_wide_event() as event:
-            await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+            await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert event["errors"] == [
             {
@@ -143,7 +143,7 @@ class TestRunSignupSideEffects:
 
         with patch("app.services.oauth.oauth_service.SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS", 0.01):
             async with captured_wide_event() as event, asyncio.timeout(5):
-                await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+                await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert [e["error_type"] for e in event["errors"]] == ["TimeoutError"]
         assert event["errors"][0]["msg"] == f"{LogTag.OAUTH} Failed to queue signup email delivery"
@@ -159,7 +159,7 @@ class TestRunSignupSideEffects:
         mock_track_signup.side_effect = RuntimeError("PostHog unavailable")
 
         async with captured_wide_event() as event:
-            await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+            await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert event["errors"] == [
             {

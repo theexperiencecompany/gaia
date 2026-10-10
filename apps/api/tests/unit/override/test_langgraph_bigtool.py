@@ -9,16 +9,19 @@ from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
+from pydantic import SecretStr
 import pytest
 
 from app.agents.llm import lane as lane_module
+from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
@@ -960,22 +963,19 @@ class TestBindSessionId:
         llm.bind.assert_not_called()
         assert bound is llm
 
-    @pytest.mark.parametrize(
-        ("provider", "binds"),
-        [(LLMProviderName.OPENROUTER, True), (LLMProviderName.CUSTOM, False)],
-    )
-    def test_only_openrouter_gets_the_sticky_key(
-        self, provider: LLMProviderName, binds: bool
-    ) -> None:
-        # session_id is an OpenRouter-only routing hint; CUSTOM runs ChatOpenAI where
-        # it is unsupported, so it never binds even on an OpenRouter-wire runnable.
-        llm = _openrouter_wire_runnable()
-        _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
+    def test_only_an_openrouter_client_gets_the_sticky_key(self, provider: LLMProviderName) -> None:
+        """session_id is unsupported on ChatOpenAI's AsyncCompletions.create, whatever lane name the run carries."""
+        openrouter = _openrouter_wire_runnable()
+        _bind_session_id(openrouter, {"provider": provider, "session_id": "conv-1"})
+        openai_compatible = ChatOpenAI(
+            model="m", api_key=SecretStr("sk-test"), base_url="https://inference.example/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(openai_compatible, {"provider": provider, "session_id": "conv-1"})
 
-        if binds:
-            llm.bind.assert_called_once_with(session_id="conv-1")
-        else:
-            llm.bind.assert_not_called()
+        openrouter.bind.assert_called_once_with(session_id="conv-1")
+        assert isinstance(bound, RunnableBinding)
+        assert "session_id" not in bound.kwargs
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("agent", ["comms_agent", "executor_agent"])
@@ -1070,13 +1070,50 @@ class TestBindSessionId:
 
     def test_openai_gets_the_agent_key_as_its_prompt_cache_key(self) -> None:
         """OpenAI keeps a chain's cached prefix on one machine via prompt_cache_key; session_id is not its field."""
-        llm = MagicMock()
+        llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
         bound = _bind_session_id(
             llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
         )
 
-        llm.bind.assert_called_once_with(prompt_cache_key="conv-1-comms_agent")
-        assert bound is llm.bind.return_value
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
+        assert "session_id" not in bound.kwargs
+
+    def test_a_custom_lane_aimed_at_openai_gets_the_prompt_cache_key(self) -> None:
+        """DEV_LLM_* may point the custom lane at OpenAI's own API; the client, not the provider name, decides."""
+        llm = ChatOpenAI(
+            model="gpt-x", api_key=SecretStr("sk-test"), base_url="https://api.openai.com/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.CUSTOM, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
+        assert "session_id" not in bound.kwargs
+
+    def test_a_custom_lane_on_another_endpoint_gets_no_key(self) -> None:
+        llm = ChatOpenAI(
+            model="m", api_key=SecretStr("sk-test"), base_url="https://inference.example/v1"
+        ).bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.CUSTOM, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert "prompt_cache_key" not in bound.kwargs
+        assert "session_id" not in bound.kwargs
+
+    def test_the_sim_stub_serving_the_openai_lane_gets_no_prompt_cache_key(self) -> None:
+        """Under GAIA_SIM_MODE the openai lane is the OpenRouter-SDK stub client, whose send_async rejects the kwarg."""
+        llm = _sim_llm().bind_tools([])
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        assert isinstance(bound, RunnableBinding)
+        assert "prompt_cache_key" not in bound.kwargs
+        assert "session_id" not in bound.kwargs
 
     def test_openai_without_a_session_id_binds_no_cache_key(self) -> None:
         llm = MagicMock()
@@ -1221,12 +1258,13 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         assert _agent_sticky_key(configurable, "comms_agent") == "conv-1-comms_agent"
         assert _agent_sticky_key(configurable, None) == "conv-1"
 
-    def test_a_non_sticky_provider_has_no_key_to_carry(self) -> None:
+    def test_a_gemini_primary_still_hands_its_fallback_the_agent_key(self) -> None:
+        """Gemini binds nothing itself, but its OpenRouter fallback must not drop back to the bare, shared session."""
         gemini = cast(
             AgentConfigurable, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"}
         )
 
-        assert _agent_sticky_key(gemini, "comms_agent") is None
+        assert _agent_sticky_key(gemini, "comms_agent") == "conv-1-comms_agent"
 
     @pytest.mark.asyncio
     async def test_the_model_node_hands_that_key_to_the_fallback(self) -> None:
@@ -1291,6 +1329,8 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         assert rebound["configurable"]["user_id"] == "u1"
         # The dead lane's pins are cleared, not merged forward.
         assert "provider_pin" not in rebound["configurable"]
+        # Named so the reply is priced as the model that served it, not the one that failed.
+        assert options.fallback_model == "gemini-x"
 
     @pytest.mark.asyncio
     async def test_the_async_node_runs_the_fallback_under_the_fallback_lane(self) -> None:
@@ -1500,13 +1540,16 @@ class TestToolsToBindOrdering:
 
 class TestLogMessagePreviewDirect:
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_long_content_is_truncated_with_an_ellipsis(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("x" * 500)]))
+    def test_entries_carry_the_role_and_length_and_never_the_words(
+        self, mock_log: MagicMock
+    ) -> None:
+        _log_message_preview(_make_state(messages=[HumanMessage("my divorce papers")]))
 
         (msg,), kwargs = mock_log.info.call_args
-        entry = kwargs["preview"][0]
-        assert len(entry["content"]) == 200
-        assert entry["content"].endswith("...")
+        assert msg == "acall_model message preview"
+        assert kwargs["preview"] == [
+            {"role": "HumanMessage", "content_length": len("my divorce papers")}
+        ]
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_a_failing_message_is_swallowed_into_debug(self, mock_log: MagicMock) -> None:
@@ -1522,42 +1565,19 @@ class TestLogMessagePreviewDirect:
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_only_the_last_six_messages_are_previewed(self, mock_log: MagicMock) -> None:
-        messages = [HumanMessage(f"m{i}") for i in range(7)]
+        messages = [HumanMessage("m" * i) for i in range(7)]
 
         _log_message_preview(_make_state(messages=messages))
 
         preview = mock_log.info.call_args.kwargs["preview"]
-        assert [entry["content"] for entry in preview] == [f"m{i}" for i in range(1, 7)]
+        assert [entry["content_length"] for entry in preview] == [1, 2, 3, 4, 5, 6]
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_entries_carry_exactly_role_and_content(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("hello")]))
-
-        (msg,), kwargs = mock_log.info.call_args
-        assert msg == "acall_model message preview"
-        assert kwargs["preview"] == [{"role": "HumanMessage", "content": "hello"}]
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_a_message_without_content_attr_logs_empty_content(self, mock_log: MagicMock) -> None:
+    def test_a_message_without_content_attr_logs_zero_length(self, mock_log: MagicMock) -> None:
         _log_message_preview(_make_state(messages=[object()]))
 
         entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["role"] == "object"
-        assert entry["content"] == ""
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_content_of_exactly_200_chars_is_not_truncated(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("y" * 200)]))
-
-        entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["content"] == "y" * 200
-
-    @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_content_of_201_chars_is_truncated_to_200(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[HumanMessage("z" * 201)]))
-
-        entry = mock_log.info.call_args.kwargs["preview"][0]
-        assert entry["content"] == "z" * 197 + "..."
+        assert entry == {"role": "object", "content_length": 0}
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_a_state_without_messages_previews_an_empty_list(self, mock_log: MagicMock) -> None:

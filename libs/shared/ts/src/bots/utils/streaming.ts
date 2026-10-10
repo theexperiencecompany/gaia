@@ -19,7 +19,6 @@
  *     STREAMING_DEFAULTS.discord);
  */
 import type { AnalyticsContext } from "../../analytics";
-import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
@@ -570,12 +569,12 @@ async function runStreamingChat(
     | ReturnType<typeof reactionDeliveredProperties>
     | undefined;
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+  analytics?.client.capture(analytics.distinctId, "bot:message_received", {
     interaction_type: "chat",
     message_length: request.message.length,
   });
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
+  analytics?.client.capture(analytics.distinctId, "bot:chat_started", {
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
@@ -606,7 +605,7 @@ async function runStreamingChat(
     });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
+    analytics?.client.capture(analytics.distinctId, "bot:error", {
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
@@ -669,7 +668,7 @@ async function runStreamingChat(
         );
         analytics?.client.capture(
           analytics.distinctId,
-          BOT_EVENTS.REACTION_DELIVERED,
+          "bot:reaction_delivered",
           reactionDelivered,
         );
         return outcome;
@@ -700,15 +699,11 @@ async function runStreamingChat(
       reaction_reason: reactionDelivered?.reason,
     });
     if (!hadError) {
-      analytics?.client.capture(
-        analytics.distinctId,
-        BOT_EVENTS.CHAT_COMPLETED,
-        {
-          duration_ms: Date.now() - startMs,
-          response_length: responseLength,
-          streaming_enabled: options.streaming,
-        },
-      );
+      analytics?.client.capture(analytics.distinctId, "bot:chat_completed", {
+        duration_ms: Date.now() - startMs,
+        response_length: responseLength,
+        streaming_enabled: options.streaming,
+      });
     }
   }
 }

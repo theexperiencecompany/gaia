@@ -1,15 +1,27 @@
 """Unit tests for reminder_tasks ARQ worker."""
 
+import asyncio
+import contextvars
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.services.analytics_service import capture
+from app.workers.queue import enqueue_worker_job
+from app.workers.task_envelope import arq_task
 from app.workers.tasks.reminder_tasks import (
     cleanup_expired_reminders,
     process_reminder,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.reminders import ReminderCompleted
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 from tests.helpers import captured_wide_event
+
+REMINDER_ID = "688f55d2263a1ab3d79db728"
+REMINDER_OWNER = UserId("6812f0b3c9a14e2b7d5a91cc")
 
 
 class TestProcessReminder:
@@ -151,3 +163,42 @@ class TestCleanupExpiredReminders:
         ):
             with pytest.raises(Exception, match="MongoDB unavailable"):
                 await cleanup_expired_reminders(ctx)
+
+
+class TestScheduledFireAttribution:
+    """A fire is the schedule's work, even when a user's request armed it."""
+
+    async def test_an_event_in_the_fired_job_is_the_agent_on_the_schedule(self, posthog_events):
+        users_request = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            ),
+            posthog_session_id="sess-1",
+        )
+        pool = AsyncMock()
+        with analytics_context(users_request):
+            await enqueue_worker_job(pool, "process_reminder", REMINDER_ID)
+        job_kwargs = {
+            key: value
+            for key, value in pool.enqueue_job.call_args.kwargs.items()
+            # ARQ consumes its own _-prefixed controls; the task sees the rest.
+            if key.startswith("_gaia_") or not key.startswith("_")
+        }
+
+        async def _remind(task_id: str, occurrence: object) -> None:
+            capture(REMINDER_OWNER, ReminderCompleted(reminder_id=task_id, agent="static"))
+
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as scheduler:
+            scheduler.process_task_execution = AsyncMock(side_effect=_remind)
+            # A fresh context, as in the worker: only the job payload carries attribution.
+            await contextvars.Context().run(
+                asyncio.create_task, arq_task(process_reminder)({}, REMINDER_ID, **job_kwargs)
+            )
+
+        [event] = posthog_events
+        props = event["properties"]
+        assert (props["actor"], props["trigger"], props["surface"]) == (
+            "agent",
+            "schedule",
+            "worker",
+        )

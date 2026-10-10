@@ -97,7 +97,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1", "sender": "a@acme.com"}
                 )
@@ -120,7 +120,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-999"}
                 )
@@ -139,7 +139,7 @@ class TestTriggerDispatchAgainstRealInfra:
         reply = {"thread_id": "t-1", "recipients": "alice@acme.com, bob@acme.com"}
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(GMAIL_SENT, None, _new_user, reply)
 
         assert fired == 1
@@ -158,7 +158,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL_SENT, None, _new_user, {"thread_id": "t-2"}
                 )
@@ -181,7 +181,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     SLACK, trigger_id, None, {"channel": "C1"}
                 )
@@ -201,7 +201,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"sender": "ap@northwind.com"}
                 )
@@ -221,7 +221,7 @@ class TestTriggerDispatchAgainstRealInfra:
         with (
             patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
             patch(f"{_BATCHING}.enqueue_worker_job", new_callable=AsyncMock) as drain,
-            patch(f"{_MOD}.capture_event"),
+            patch(f"{_MOD}.capture"),
         ):
             first = await dispatch_to_subscribed_todos(
                 GMAIL, None, _new_user, {"thread_id": "t-1", "message_id": "m-1"}
@@ -248,7 +248,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -268,7 +268,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -296,7 +296,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1"}
                 )

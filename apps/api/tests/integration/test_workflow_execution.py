@@ -51,7 +51,9 @@ from app.services.workflow.service import (
 )
 from app.services.workflow.validators import WorkflowValidator
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import get_trace_id, wide_task
+from tests.helpers import users_get
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -70,6 +72,13 @@ _EXEC_REPO = "app.services.workflow.execution_service.workflow_executions_reposi
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        yield
 
 
 def _make_trigger_config(trigger_type: str = "manual", **kwargs) -> TriggerConfig:
@@ -813,7 +822,14 @@ class TestQueueService:
             "generate_workflow_steps",
             FAKE_WORKFLOW_ID,
             FAKE_USER_ID,
+            _job_id=None,
+            _queue_name=None,
+            _defer_until=None,
+            _defer_by=None,
+            _expires=None,
+            _job_try=None,
             _gaia_trace_id=trace_id,
+            _gaia_analytics_context=current_analytics_context().model_dump(mode="json"),
         )
 
     async def test_queue_workflow_execution(self):

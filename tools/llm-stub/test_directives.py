@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 import pytest
 
@@ -19,6 +20,7 @@ from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     SCRIPTED_CRITERIA,
+    VERBATIM_REQUEST_HEADER,
     DirectiveError,
     SayDirective,
     SayResponse,
@@ -30,15 +32,18 @@ from directives import (
 )
 from wire import build_chat_completion, stream_chunks
 
+#: One chat-completions message, as the stub reads it off the wire.
+Message = dict[str, Any]
+
 EXECUTOR_TOOLS = frozenset({"create_reminder", "web_search"})
 COMMS_TOOLS = frozenset({CALL_EXECUTOR_TOOL, "add_memory", "search_memory"})
 
 
-def _user(text: str) -> dict:
+def _user(text: str) -> Message:
     return {"role": "user", "content": text}
 
 
-def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
+def _assistant_tool_call(name: str, args: dict[str, Any] | None = None) -> Message:
     return {
         "role": "assistant",
         "content": None,
@@ -52,7 +57,7 @@ def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
     }
 
 
-def _tool_result(name: str) -> dict:
+def _tool_result(name: str) -> Message:
     return {"role": "tool", "tool_call_id": f"call_{name}", "content": "ok"}
 
 
@@ -127,7 +132,7 @@ def test_parse_tool_missing_name_raises():
 # --------------------------------------------------------------------------- #
 
 
-def _tool_directive(name: str, args: dict) -> str:
+def _tool_directive(name: str, args: dict[str, Any]) -> str:
     """Render a directive the way a test author would: JSON-encoded args."""
     return f"[[tool:{name} {json.dumps(args)}]]"
 
@@ -396,7 +401,7 @@ def test_message_text_flattens_content_blocks():
 
 def test_build_chat_completion_tool_call_shape():
     payload = build_chat_completion(
-        "m", ToolCallResponse(name="create_reminder", args={"title": "x"})
+        "m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50
     )
     assert payload["object"] == "chat.completion"
     assert "system_fingerprint" in payload
@@ -409,36 +414,52 @@ def test_build_chat_completion_tool_call_shape():
 
 
 def test_build_chat_completion_say_shape():
-    payload = build_chat_completion("m", SayResponse(text="hi"))
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
     choice = payload["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["message"]["content"] == "hi"
 
 
 def test_stream_chunks_tool_call_assembly():
-    chunks = list(stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"})))
+    chunks = list(
+        stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50)
+    )
     assert all(c["object"] == "chat.completion.chunk" for c in chunks)
     assert chunks[0]["choices"][0]["delta"] == {"role": "assistant"}
     # Reassemble tool call from the streamed deltas.
     name = None
     args = ""
-    for c in chunks:
+    choice_chunks = [c for c in chunks if c["choices"]]
+    for c in choice_chunks:
         for call in c["choices"][0]["delta"].get("tool_calls", []):
             fn = call.get("function", {})
             name = fn.get("name") or name
             args += fn.get("arguments", "")
     assert name == "create_reminder"
     assert json.loads(args) == {"title": "x"}
-    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_stream_chunks_content_assembly():
-    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!")))
-    text = "".join(c["choices"][0]["delta"].get("content", "") for c in chunks)
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    choice_chunks = [c for c in chunks if c["choices"]]
+    text = "".join(c["choices"][0]["delta"].get("content", "") for c in choice_chunks)
     assert text == "Reminder set successfully!"
-    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
-    assert all("finish_reason" in c["choices"][0] for c in chunks)
+    assert all("finish_reason" in c["choices"][0] for c in choice_chunks)
+
+
+def test_a_streamed_reply_ends_with_the_usage_a_real_provider_reports():
+    """GAIA refuses a success with no usage, so a zero-usage stub would make every sim call a metering error."""
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    assert chunks[-1]["choices"] == []
+    assert chunks[-1]["usage"] == {"prompt_tokens": 50, "completion_tokens": 6, "total_tokens": 56}
+
+
+def test_a_non_streamed_reply_reports_non_zero_usage():
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
+    assert payload["usage"] == {"prompt_tokens": 50, "completion_tokens": 1, "total_tokens": 51}
 
 
 # --------------------------------------------------------------------------- #
@@ -451,11 +472,11 @@ def test_stream_chunks_content_assembly():
 WORK_TOOLS = frozenset({"create_todo"})
 
 
-def _interjection(text: str) -> dict:
+def _interjection(text: str) -> Message:
     return {"role": "user", "content": f"<user_interjection>\n{text}\n</user_interjection>"}
 
 
-def _cancelled_record(quoted_task: str) -> dict:
+def _cancelled_record(quoted_task: str) -> Message:
     return {
         "role": "user",
         "content": (
@@ -624,3 +645,78 @@ def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
 def test_a_malformed_directive_still_fails_loud():
     with pytest.raises(DirectiveError):
         parse_directives("[[tool:create_todo {bad}]]")
+
+
+# --------------------------------------------------------------------------- #
+# The executor brief quotes the user's request ahead of the task
+# (compose_executor_brief). That quote is an echo of the script the task already
+# carries, so its directives must not run a second time.
+# --------------------------------------------------------------------------- #
+
+
+def _executor_brief(request: str, task: str) -> str:
+    return (
+        f"{VERBATIM_REQUEST_HEADER}\n{request}\n\n{task}\n\n"
+        "Definition of done (every item must be true before you finish):\n"
+        "- scripted directives executed"
+    )
+
+
+def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
+    script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "stretch"}
+    )
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
+    script = '[[tool:web_search {"q": "x"}]]\n\n[[tool:create_reminder {"title": "y"}]] [[say:ok]]'
+    brief = _user(_executor_brief(script, script))
+    emitted = [
+        brief,
+        _assistant_tool_call("web_search"),
+        _tool_result("web_search"),
+        _assistant_tool_call("create_reminder"),
+        _tool_result("create_reminder"),
+    ]
+
+    assert resolve_response(emitted, EXECUTOR_TOOLS) == SayResponse(text="ok")
+
+
+def _after(brief: Message, *names: str) -> list[Message]:
+    turns: list[Message] = [brief]
+    for name in names:
+        turns += [_assistant_tool_call(name), _tool_result(name)]
+    return turns
+
+
+_TWICE = '[[tool:create_reminder {"title": "a"}]]\n\n[[tool:create_reminder {"title": "a"}]]'
+
+
+def test_a_request_repeating_a_paragraph_under_a_different_task_keeps_both() -> None:
+    """A repeated paragraph inside the request is not the task restating it."""
+    task = '[[tool:web_search {"q": "x"}]] [[say:done]]'
+    brief = _user(_executor_brief(_TWICE, task))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == ToolCallResponse(name="web_search", args={"q": "x"})
+
+
+def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
+    script = _TWICE + " [[say:done]]"
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == SayResponse(text="done")

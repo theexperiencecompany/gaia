@@ -29,7 +29,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_activity import record_field_changes
@@ -42,6 +42,8 @@ from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosInboxDeskProvisioned
 from shared.py.wide_events import log
 
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
@@ -134,7 +136,7 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
         )
     except ExternalRefTakenError as taken:
         return taken.existing
-    capture_event(user_id, AnalyticsEvents.INBOX_DESK_PROVISIONED)
+    capture(UserId(user_id), TodosInboxDeskProvisioned())
     desk = await todo_repository.get(created.id, user_id=user_id)
     if desk is None:
         raise LookupError(f"Inbox desk {created.id} vanished right after it was created")

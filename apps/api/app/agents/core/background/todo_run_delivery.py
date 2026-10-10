@@ -43,13 +43,15 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_run_finished, run_finished_marker
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
@@ -205,16 +207,15 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
-    capture_event(
-        todo.user_id,
-        AnalyticsEvents.TODO_RUN_RESULT_DELIVERED,
-        {
-            "outcome": resolution.outcome.value,
-            "delivered": resolution.outcome is TodoRunDeliveryOutcome.DELIVERED,
-            "platform": resolution.platform.value if resolution.platform else None,
-            "trigger_type": finished.trigger_type.value,
-            "recurring": bool(todo.recurrence),
-        },
+    capture(
+        UserId(todo.user_id),
+        TodosRunResultDelivered(
+            outcome=resolution.outcome.value,
+            delivered=resolution.outcome is TodoRunDeliveryOutcome.DELIVERED,
+            platform=resolution.platform.value if resolution.platform else None,
+            trigger_type=finished.trigger_type.value,
+            recurring=bool(todo.recurrence),
+        ),
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
     return f"{resolution.note} (summary={summary!r})", todo.user_id

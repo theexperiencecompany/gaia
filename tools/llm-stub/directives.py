@@ -85,11 +85,44 @@ USER_INTERJECTION_TAG = "user_interjection"
 _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
 
 
+# compose_executor_brief lays the brief out as sections joined by a blank line:
+# the user's request under this header, the task, then the definition of done.
+# The front door forwards that request as the task word for word, so a quote the
+# task restates is a second copy of the script the task already carries.
+VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+DONE_SECTION_HEAD = "Definition of done"
+_SECTION_BREAK = "\n\n"
+
+
 def _strip_echoed_payloads(text: str) -> str:
-    """Remove every internal-tag block except ``<user_interjection>``."""
-    return _ECHO_BLOCK_RE.sub(
+    """Remove every internal-tag block except ``<user_interjection>``, and a restated request quote."""
+    stripped = _ECHO_BLOCK_RE.sub(
         lambda m: m.group(0) if m.group(1) == USER_INTERJECTION_TAG else "", text
     )
+    return _strip_restated_request(stripped)
+
+
+def _strip_restated_request(text: str) -> str:
+    """Drop the brief's request quote when the task section is that same request.
+
+    Quote and task fill the span from the header to the definition of done (the
+    last_run and playbook sections are tag blocks, gone before this runs), so the
+    quote is restated only when that span is one text twice.
+    """
+    header_at = text.find(VERBATIM_REQUEST_HEADER)
+    if header_at < 0:
+        return text
+    span_at = header_at + len(VERBATIM_REQUEST_HEADER)
+    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
+    span_end = len(text) if done_at < 0 else done_at
+    span = text[span_at:span_end]
+    cut = span.find(_SECTION_BREAK)
+    while cut >= 0:
+        quote, task = span[:cut].strip(), span[cut:].strip()
+        if quote and quote == task:
+            return text[:header_at] + text[span_at + cut :].lstrip()
+        cut = span.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
+    return text
 
 
 def _is_interjection(text: str) -> bool:
@@ -102,12 +135,16 @@ class DirectiveError(ValueError):
 
 @dataclass(frozen=True)
 class ToolDirective:
+    """One scripted [[tool:...]] call: the tool to emit and its arguments."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayDirective:
+    """The script's terminal [[say:...]] reply."""
+
     text: str
 
 
@@ -116,12 +153,16 @@ Directive = ToolDirective | SayDirective
 
 @dataclass(frozen=True)
 class ToolCallResponse:
+    """A tool call as the answer to one invocation."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayResponse:
+    """Plain assistant text as the answer to one invocation."""
+
     text: str
 
 
@@ -453,6 +494,7 @@ class ChatRequest:
 
 
 def parse_request(body: dict[str, Any]) -> ChatRequest:
+    """Read the model, messages, stream flag and bound tool names off a chat-completions body."""
     tool_names = {
         (tool.get("function") or {}).get("name")
         for tool in body.get("tools") or []

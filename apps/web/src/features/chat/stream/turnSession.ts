@@ -197,6 +197,7 @@ export class TurnSession {
         selectedCalendarEvent: this.args.options.selectedCalendarEvent,
         replyToMessage: this.args.options.replyToMessage,
         isOnboardingDemo: this.args.options.isOnboardingDemo,
+        isRetry: this.args.options.isRetry,
       });
     } catch (error) {
       // fetchEventSource rejects on abort and on fatal errors; both paths have

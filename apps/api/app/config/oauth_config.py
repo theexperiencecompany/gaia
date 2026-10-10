@@ -165,8 +165,6 @@ from app.constants.triggers import (
     GMAIL_EMAIL_SENT_TRIGGER_NAME,
     GMAIL_NEW_MESSAGE_TRIGGER_NAME,
 )
-from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
-from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
 from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
@@ -568,13 +566,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
-            # A large inbox scan offloads to a JSONL file; bind the sandbox-free
-            # miners into the agent AND its spawned chunk-readers so triage mines
-            # the offload with query_json/grep instead of read-whole-file + bash.
             extra_initial_tools=["query_json", "grep"],
-            # GMAIL_FETCH_MESSAGES/THREAD replace the fixed-page-size, unshaped
-            # stock tools. exclude_tools only gates agent retrieval; the REST
-            # mail layer still invokes the stock tools by name.
             exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
@@ -993,7 +985,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="managing repositories, creating issues, handling pull requests, managing branches, reviewing code, managing collaborators, and automating development workflows",
             use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
-            specific_tools=GITHUB_TOOLS,
             auto_bind_tools=[
                 "GITHUB_CUSTOM_GATHER_CONTEXT",
                 "GITHUB_CREATE_AN_ISSUE",
@@ -1287,7 +1278,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
-            specific_tools=SLACK_TOOLS,
             auto_bind_tools=[
                 "SLACK_CUSTOM_GATHER_CONTEXT",
                 "SLACK_SEND_MESSAGE",

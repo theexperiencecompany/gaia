@@ -15,6 +15,7 @@ comes back quoted, so the run that wrote it reads its own lock as FOREIGN.
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
@@ -56,6 +57,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
+from shared.py.analytics import Dedupe
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
@@ -451,6 +453,35 @@ class TestPrepareRunFromItem:
         assert await redis.get(BUSY_KEY) == build_lock_value(run.stream_id, "task-7")
         assert await get_lock_state(CONVERSATION, run.stream_id, run.task_id) is LockState.OURS
         assert await redis.ttl(BUSY_KEY) == EXECUTOR_BUSY_TTL
+
+    async def test_a_rebuilt_run_is_the_same_analytics_fact_as_the_one_stored(
+        self, redis, stream_side
+    ) -> None:
+        """A queue pop or HIL resume re-sends the run's lifecycle events as the same PostHog rows."""
+        dispatched_at = datetime(2026, 10, 8, 6, 30, tzinfo=UTC)
+
+        prepared = await prepare_run_from_item(
+            CONVERSATION,
+            _item(identity=_identity(dispatched_at=dispatched_at)),
+            claim=LockClaim.SEIZE,
+        )
+
+        assert prepared is not None
+        assert prepared.run.analytics_dedupe == Dedupe(key="task-7", occurred_at=dispatched_at)
+
+    async def test_an_item_stored_before_dispatch_times_is_dispatched_now_in_utc(
+        self, redis, stream_side
+    ) -> None:
+        """A naive time would be read in the worker's own zone, and Dedupe refuses one."""
+        item = _item()
+        del item["dispatched_at"]
+        before = datetime.now(UTC)
+
+        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.SEIZE)
+
+        assert prepared is not None
+        assert prepared.run.dispatched_at.tzinfo is UTC
+        assert prepared.run.dispatched_at >= before
 
     async def test_acquire_refuses_a_conversation_someone_else_holds(
         self, redis, stream_side

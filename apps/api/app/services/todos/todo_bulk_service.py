@@ -13,8 +13,10 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.todos.todo_service import TodoService
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosToggled
 from shared.py.wide_events import log
 
 
@@ -49,7 +51,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> BulkCompleti
             f"{LogTag.TODO} Bulk completed todos", todo_count=len(result.success), user_id=user_id
         )
         if result.success:
-            capture_event(user_id, AnalyticsEvents.TODO_TOGGLED, {"count": len(result.success)})
+            capture(UserId(user_id), TodosToggled(count=len(result.success)))
         return BulkCompletion(
             todos=[TodoResponse.from_document(todo) for todo in updated], failed=result.failed
         )

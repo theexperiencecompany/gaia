@@ -1860,6 +1860,7 @@
           "source_browser": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3082,6 +3083,26 @@
         "title": "ConditionOperator",
         "type": "string"
       },
+      "ConfirmedSocialProfile": {
+        "description": "A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "url"
+        ],
+        "title": "ConfirmedSocialProfile",
+        "type": "object"
+      },
       "ConnectIntegrationRequest": {
         "description": "Request to connect an integration.",
         "properties": {
@@ -4177,6 +4198,7 @@
           },
           "product_id": {
             "description": "Product ID to subscribe to",
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
@@ -4428,7 +4450,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why the expression could not be evaluated, if it raised",
+            "description": "Why the expression is not an acceptable schedule",
             "title": "Error"
           },
           "expression": {
@@ -4444,8 +4466,19 @@
             "title": "Next Runs",
             "type": "array"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleRejection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine-readable reason the expression was refused"
+          },
           "valid": {
-            "description": "Whether the expression parses as a valid cron",
+            "description": "Whether the expression is an acceptable recurring schedule",
             "title": "Valid",
             "type": "boolean"
           }
@@ -4510,12 +4543,14 @@
         "type": "object"
       },
       "DeactivationReason": {
-        "description": "Why a workflow was deactivated by the system, so an automatic resume can tell\nits own pauses apart from a workflow the user deliberately switched off. A\nuser-initiated deactivation records no reason at all.",
+        "description": "Why the system paused a reminder or deactivated a workflow.\n\nAn automatic resume only touches tasks carrying the reason it owns, so a task\nthe user switched off themselves (no reason) is never silently re-enabled.",
         "enum": [
           "user_dormant",
           "integration_expired",
           "subscription_lapsed",
-          "integration_never_connected"
+          "integration_never_connected",
+          "invalid_schedule",
+          "owner_not_found"
         ],
         "title": "DeactivationReason",
         "type": "string"
@@ -4996,6 +5031,28 @@
           "platform"
         ],
         "title": "DisconnectPlatformResponse",
+        "type": "object"
+      },
+      "DiscountCodesResponse": {
+        "description": "Coupon codes the clients advertise, each a Dodo discount code or null when unset.",
+        "properties": {
+          "founder_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Code the founder's letter offers",
+            "title": "Founder Letter"
+          }
+        },
+        "required": [
+          "founder_letter"
+        ],
+        "title": "DiscountCodesResponse",
         "type": "object"
       },
       "DiscoverSkillsResponse": {
@@ -8547,6 +8604,7 @@
             "type": "string"
           },
           "tool_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -10195,6 +10253,11 @@
             "title": "Is Onboarding Demo",
             "type": "boolean"
           },
+          "is_retry": {
+            "default": false,
+            "title": "Is Retry",
+            "type": "boolean"
+          },
           "message": {
             "maxLength": 50000,
             "title": "Message",
@@ -10241,6 +10304,7 @@
           "selectedTool": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -10262,6 +10326,7 @@
           "toolCategory": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -12505,6 +12570,10 @@
             "title": "Name",
             "type": "string"
           },
+          "plan_type": {
+            "$ref": "#/components/schemas/PlanTier",
+            "description": "Tier this plan sells"
+          },
           "updated_at": {
             "description": "Update timestamp",
             "format": "date-time",
@@ -12516,6 +12585,7 @@
           "id",
           "dodo_product_id",
           "name",
+          "plan_type",
           "description",
           "amount",
           "currency",
@@ -12528,6 +12598,16 @@
         ],
         "title": "PlanResponse",
         "type": "object"
+      },
+      "PlanTier": {
+        "description": "What a catalogue row sells.\n\nNot PlanType, which is a user's entitlement: Enterprise is quoted by the team,\nnever an entitlement a request is gated on. Written by scripts/payment_setup.py.",
+        "enum": [
+          "free",
+          "pro",
+          "enterprise"
+        ],
+        "title": "PlanTier",
+        "type": "string"
       },
       "PlanType": {
         "description": "Subscription plan types.",
@@ -14046,7 +14126,7 @@
             "type": "object"
           },
           "tool_name": {
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -14134,6 +14214,17 @@
         ],
         "title": "SaveWritingStyleResponse",
         "type": "object"
+      },
+      "ScheduleRejection": {
+        "description": "Why a recurring schedule was refused; the value is the machine-readable reason code.",
+        "enum": [
+          "wrong_field_count",
+          "unparseable",
+          "too_frequent",
+          "never_fires"
+        ],
+        "title": "ScheduleRejection",
+        "type": "string"
       },
       "ScheduledTaskStatus": {
         "description": "Base status enum for scheduled tasks.",
@@ -14396,6 +14487,7 @@
             "type": "string"
           },
           "id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -14439,6 +14531,7 @@
             "type": "string"
           },
           "id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -14480,6 +14573,7 @@
           "client": {
             "maxLength": 20,
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
@@ -14505,6 +14599,7 @@
           "platform": {
             "maxLength": 60,
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -15210,7 +15305,7 @@
         "properties": {
           "profiles": {
             "items": {
-              "$ref": "#/components/schemas/SocialProfile"
+              "$ref": "#/components/schemas/ConfirmedSocialProfile"
             },
             "title": "Profiles",
             "type": "array"
@@ -16433,7 +16528,7 @@
                 "type": "null"
               }
             ],
-            "description": "Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+            "description": "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.",
             "title": "Recurrence"
           },
           "references": {
@@ -16663,7 +16758,7 @@
                 "type": "null"
               }
             ],
-            "description": "Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+            "description": "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.",
             "title": "Recurrence"
           },
           "references": {
@@ -18581,7 +18676,7 @@
         "properties": {
           "voice_id": {
             "description": "Catalog voice id to use for voice mode",
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Voice Id",
             "type": "string"
           }
@@ -20527,6 +20622,7 @@
             "name": "tool_name",
             "required": true,
             "schema": {
+              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
               "title": "Tool Name",
               "type": "string"
             }
@@ -32569,6 +32665,58 @@
         ]
       }
     },
+    "/api/v1/payments/discount-codes": {
+      "get": {
+        "description": "Get the discount codes the clients advertise.",
+        "operationId": "payments_get_discount_codes_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountCodesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Discount Codes Endpoint",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
     "/api/v1/payments/plans": {
       "get": {
         "description": "Get all available subscription plans.",
@@ -33869,7 +34017,7 @@
     },
     "/api/v1/reminders/cron/validate": {
       "get": {
-        "description": "Validate a cron expression and preview its next few run times.",
+        "description": "Check a cron expression against the recurring-schedule rule and preview its next runs.",
         "operationId": "reminders_validate_cron_endpoint",
         "parameters": [
           {
@@ -38945,6 +39093,7 @@
             "name": "voice_id",
             "required": true,
             "schema": {
+              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
               "title": "Voice Id",
               "type": "string"
             }

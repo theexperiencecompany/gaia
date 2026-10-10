@@ -104,6 +104,9 @@ vi.mock("@gaia/shared/bots", async () => {
     await vi.importActual<typeof import("@gaia/shared/bots")>(
       "@gaia/shared/bots",
     );
+  const { platformIdentity } = await vi.importActual<
+    typeof import("@gaia/shared/analytics")
+  >("@gaia/shared/analytics");
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
@@ -120,8 +123,8 @@ vi.mock("@gaia/shared/bots", async () => {
     }
 
     /** Unlinked-user path — these tests assert routing, not identity. */
-    protected async resolveDistinctId(platformUserId: string): Promise<string> {
-      return `${this.platform}:${platformUserId}`;
+    protected async resolveDistinctId(platformUserId: string) {
+      return platformIdentity(this.platform, platformUserId);
     }
 
     protected async dispatchCommand(

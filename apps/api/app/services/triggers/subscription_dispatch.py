@@ -31,7 +31,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
@@ -44,6 +44,10 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
 COOLDOWN_KEY = "todo_subscription_cooldown:{subscription_id}"
@@ -55,7 +59,17 @@ async def dispatch_to_subscribed_todos(
     user_id: str | None,
     payload: dict[str, object],
 ) -> int:
-    """Run every matching subscription's action. Returns how many fired."""
+    """Run every matching subscription's action, as integration-triggered work. Returns how many fired."""
+    with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
+        return await _dispatch(trigger_name, trigger_id, user_id, payload)
+
+
+async def _dispatch(
+    trigger_name: str,
+    trigger_id: str | None,
+    user_id: str | None,
+    payload: dict[str, object],
+) -> int:
     todos = await _resolve_subscribers(trigger_name, trigger_id, user_id)
     if not todos:
         return 0
@@ -148,16 +162,15 @@ async def _fire_if_matching(
     # After the action, not on arrival: an event that was filtered out or
     # suppressed by cooldown is not a fire, and counting it as one would make
     # every funnel off this event read high.
-    capture_event(
-        todo.user_id,
-        AnalyticsEvents.TODO_TRIGGER_FIRED,
-        {
-            "trigger_name": trigger_name,
-            "action": subscription.action.value,
-            "resolution": subscription.resolution.value,
-            "condition_count": len(subscription.conditions),
-            "coalesced": coalesced,
-        },
+    capture(
+        UserId(todo.user_id),
+        TodosTriggerFired(
+            trigger_name=trigger_name,
+            action=subscription.action.value,
+            resolution=subscription.resolution.value,
+            condition_count=len(subscription.conditions),
+            coalesced=coalesced,
+        ),
     )
     return True
 

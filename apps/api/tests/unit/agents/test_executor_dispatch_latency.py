@@ -28,9 +28,12 @@ from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = pytest.mark.usefixtures("fake_redis")
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _count(name: str, labels: dict[str, str]) -> float:
@@ -46,7 +49,7 @@ def _configurable(stream_id: str) -> dict[str, Any]:
         "stream_id": stream_id,
         "user_message_id": "umsg-1",
         "bot_message_id": "bmsg-1",
-        "user_id": "user-1",
+        "user_id": USER_ID,
         "thread_id": "conv-1",
     }
 
@@ -55,7 +58,7 @@ def _run(stream_id: str, **overrides: Any) -> ExecutorRun:
     kwargs: dict[str, Any] = {
         "stream_id": stream_id,
         "conversation_id": "conv-1",
-        "user": AuthenticatedUser(user_id="user-1"),
+        "user": AuthenticatedUser(user_id=USER_ID),
         "kind": RunKind.LIVE,
         "task_id": "task-1",
         "user_message_id": "umsg-1",
@@ -219,7 +222,7 @@ class TestExecutorRunLatency:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch("app.services.analytics_service.capture_event") as mock_capture,
+            patch("app.services.analytics_service.capture") as mock_capture,
         ):
             await run_executor_background(
                 run=run, task="do the thing", configurable={"conversation_source": "web"}
@@ -240,7 +243,7 @@ class TestExecutorRunLatency:
 
         assert _count("executor_active_seconds", {"status": "error"}) == error_before + 1
         assert _count("executor_active_seconds", {"status": "paused"}) == paused_before
-        failed = [c for c in mock_capture.call_args_list if c.args[1] == "agent:run_failed"]
+        failed = [c for c in mock_capture.call_args_list if isinstance(c.args[1], AgentRunFailed)]
         assert len(failed) == 1
 
     async def test_a_pause_records_the_runs_resume_context_on_its_approvals(self) -> None:
@@ -289,8 +292,9 @@ class TestExecutorRunLatency:
             record_pause=AsyncMock(side_effect=_slow_pause_record),
         )
 
-        failed = [c for c in mock_capture.call_args_list if c.args[1] == "agent:run_failed"]
-        active_ms = failed[0].args[2]["executor_active_ms"]
+        failed = [c for c in mock_capture.call_args_list if isinstance(c.args[1], AgentRunFailed)]
+        active_ms = failed[0].args[1].executor_active_ms
+        assert active_ms is not None
         observed_s = (
             REGISTRY.get_sample_value("executor_active_seconds_sum", {"status": "error"})
             - sum_before
@@ -355,14 +359,19 @@ class TestExecutorRunLatency:
             == e2e_before + 1
         )
         completed = [
-            call for call in mock_capture.call_args_list if call.args[1] == "agent:run_completed"
+            call
+            for call in mock_capture.call_args_list
+            if isinstance(call.args[1], AgentRunCompleted)
         ]
         assert len(completed) == 1
-        props = completed[0].args[2]
-        assert props["queued"] is False
-        assert props["queue_wait_ms"] >= 0.0
-        assert props["executor_ttft_ms"] >= 400.0
-        assert props["executor_active_ms"] >= 0.0
+        event = completed[0].args[1]
+        assert event.queued is False
+        assert event.queue_wait_ms is not None
+        assert event.queue_wait_ms >= 0.0
+        assert event.executor_ttft_ms is not None
+        assert event.executor_ttft_ms >= 400.0
+        assert event.executor_active_ms is not None
+        assert event.executor_active_ms >= 0.0
 
     async def test_run_without_dispatch_stamp_omits_queue_wait(self) -> None:
         """Runs predating the stamp degrade to missing timings, never zero-filled."""
@@ -370,12 +379,14 @@ class TestExecutorRunLatency:
         run = _run(stream_id)
         mock_capture = await self._background(run)
         completed = [
-            call for call in mock_capture.call_args_list if call.args[1] == "agent:run_completed"
+            call
+            for call in mock_capture.call_args_list
+            if isinstance(call.args[1], AgentRunCompleted)
         ]
         assert len(completed) == 1
-        props = completed[0].args[2]
-        assert "queue_wait_ms" not in props
-        assert "executor_ttft_ms" not in props
+        event = completed[0].args[1]
+        assert event.queue_wait_ms is None
+        assert event.executor_ttft_ms is None
 
     async def test_mixed_epoch_dispatch_stamp_measures_nothing(self) -> None:
         """A stamp from another monotonic epoch yields garbage deltas that must not be reported."""
@@ -387,10 +398,12 @@ class TestExecutorRunLatency:
             _count("executor_e2e_seconds", {"status": "success", "queued": "false"}) == e2e_before
         )
         completed = [
-            call for call in mock_capture.call_args_list if call.args[1] == "agent:run_completed"
+            call
+            for call in mock_capture.call_args_list
+            if isinstance(call.args[1], AgentRunCompleted)
         ]
         assert len(completed) == 1
-        assert "queue_wait_ms" not in completed[0].args[2]
+        assert completed[0].args[1].queue_wait_ms is None
 
 
 class TestQueueWaitMeasurement:
@@ -535,7 +548,7 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch("app.services.analytics_service.capture_event", MagicMock()),
+            patch("app.services.analytics_service.capture", MagicMock()),
             patch.object(er.StreamManager, "is_cancelled", is_cancelled_mock),
             patch.object(er.time, "perf_counter", side_effect=list(perf_values)),
         ):
@@ -578,7 +591,7 @@ class TestBackgroundRunExactWiring:
             patch.object(eq, "hold_run_alive", _hold),
             patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         assert set(held) == {("conv-1", lock_value)}
         [beat] = beats_while_running
@@ -591,7 +604,7 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
             patch.object(er, "_executor_ttft_ms", ttft),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         ttft.assert_called_once_with(run, 1000.0)
 
@@ -609,7 +622,7 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.123456]),
             patch.object(er, "log", mock_log),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         assert _count("executor_ttft_seconds", {"queued": "true"}) == true_before + 1
         assert (
@@ -631,7 +644,7 @@ class TestBackgroundRunExactWiring:
         sum_before = _sum("executor_active_seconds", {"status": "success"})
 
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.123456]):
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         assert _count("executor_active_seconds", {"status": "success"}) == before + 1
         assert (
@@ -645,7 +658,7 @@ class TestBackgroundRunExactWiring:
         sum_before = _sum("executor_active_seconds", {"status": "cancelled"})
 
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.123456], is_cancelled=True) as env:
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         env.is_cancelled.assert_awaited_once_with("exec-cancelled")
         assert _count("executor_active_seconds", {"status": "cancelled"}) == before + 1
@@ -660,7 +673,7 @@ class TestBackgroundRunExactWiring:
         captured: dict[str, Any] = {}
         real_run_props = er._run_props
 
-        def _probe(target: ExecutorRun) -> dict[str, Any]:
+        def _probe(target: ExecutorRun) -> AgentRunStarted:
             frame = sys._getframe(1)
             captured["ttft_ms"] = frame.f_locals.get("ttft_ms")
             captured["active_ms"] = frame.f_locals.get("active_ms")
@@ -670,7 +683,7 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
             patch.object(er, "_run_props", _probe),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
 
         assert captured["ttft_ms"] is None
         assert captured["active_ms"] is None
@@ -697,7 +710,7 @@ class TestResumeForwarding:
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
             patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
-            patch("app.services.analytics_service.capture_event"),
+            patch("app.services.analytics_service.capture"),
         ):
             await run_executor_background(
                 run=run,
@@ -719,7 +732,7 @@ class TestResumeForwarding:
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
             patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
-            patch("app.services.analytics_service.capture_event"),
+            patch("app.services.analytics_service.capture"),
         ):
             await run_executor_background(
                 run=_run("exec-fresh"), task="do the thing", configurable={}

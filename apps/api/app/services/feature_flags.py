@@ -44,8 +44,14 @@ from app.constants.feature_flags import (
 from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
 from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
-from app.services.analytics_service import AnalyticsEvents, capture_event, identify_user
+from app.services.analytics_service import analytics_day_start, capture, identify_user
 from app.utils.errors import AppError
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.settings import (
+    FeatureFlagEvaluated,
+    FeatureToggled,
+    FlagFallbackReason,
+)
 from shared.py.wide_events import log
 
 
@@ -177,35 +183,23 @@ async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | Non
 
 
 def _track_evaluation(
-    user_id: str, flag: FeatureFlag, enabled: bool, fallback_reason: str | None
+    user_id: str, flag: FeatureFlag, enabled: bool, fallback_reason: FlagFallbackReason
 ) -> None:
-    """Emit one event per user/flag/reason/day, for paths the SDK never sees.
+    """Emit one event per user, flag and reason a day, for paths the SDK never sees.
 
-    Best-effort and enqueue-only so telemetry never breaks or slows a turn; the
-    per-day dedupe key collapses repeats, and carries the reason so a kill
-    engaged mid-day still shows up the same day.
+    Enqueue-only, and capture logs its own delivery failures; the at-most-once
+    gate keeps one per day, and the reason is in its key so a kill engaged
+    mid-day still shows up the same day.
     """
-    try:
-        capture_event(
-            user_id,
-            AnalyticsEvents.FEATURE_FLAG_EVALUATED,
-            {
-                "flag": flag.value,
-                "enabled": enabled,
-                **({"fallback_reason": fallback_reason} if fallback_reason else {}),
-            },
-            dedupe_key=(
-                f"feature-flag-evaluated:{flag.value}:{user_id}:{fallback_reason}:"
-                f"{datetime.now(UTC).date().isoformat()}"
-            ),
-        )
-    except Exception as e:
-        log.debug(
-            "Feature flag evaluation event skipped",
-            flag=flag.value,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    today = analytics_day_start(datetime.now(UTC))
+    capture(
+        UserId(user_id),
+        FeatureFlagEvaluated(flag=flag.value, enabled=enabled, fallback_reason=fallback_reason),
+        dedupe=Dedupe(
+            key=f"{flag.value}:{fallback_reason}:{today.date().isoformat()}",
+            occurred_at=today,
+        ),
+    )
 
 
 def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:
@@ -275,11 +269,10 @@ async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFla
             status_code=404,
             meta={"user_id": user_id},
         )
-    capture_event(
-        user_id, AnalyticsEvents.FEATURE_TOGGLED, {"flag": flag.value, "enabled": enabled}
-    )
+    analytics_user = UserId(user_id)
+    capture(analytics_user, FeatureToggled(flag=flag.value, enabled=enabled))
     identify_user(
-        user_id, {f"{FEATURE_CHOICE_PERSON_PROPERTY_PREFIX}{flag.value.lower()}": enabled}
+        analytics_user, {f"{FEATURE_CHOICE_PERSON_PROPERTY_PREFIX}{flag.value.lower()}": enabled}
     )
     return _feature_response(flag, toggle, _Resolution(enabled=enabled))
 

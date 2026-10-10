@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { PackageOpenIcon } from "@icons";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
 import { formatReleaseDate } from "../utils/formatReleaseDate";
@@ -22,7 +22,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
   const visible = releases.slice(0, VISIBLE_COUNT);
 
   const handleItemClick = (idx: number) => {
-    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_CARD_CLICKED, {
+    track("whats_new:card_clicked", {
       releaseId: visible[idx]?.id,
       index: idx,
       source: "settings_menu",
@@ -32,7 +32,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
   };
 
   const handleViewAll = () => {
-    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_CARD_CLICKED, {
+    track("whats_new:card_clicked", {
       source: "settings_menu_view_all",
     });
     openModal(0);

@@ -39,6 +39,7 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
     LLMInvokeOptions,
+    _is_openai_wire,
     _is_openrouter_wire,
     ainvoke_llm,
     invoke_llm,
@@ -62,10 +63,8 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
-    PROMPT_CACHE_KEY_PROVIDERS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
-    STICKY_ROUTING_PROVIDERS,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -168,12 +167,12 @@ def _bind_session_id(
     byte-identical resend of comms' own request still hit 99.9% seconds later.
     """
     # Must run AFTER bind_tools, which rebuilds the runnable and drops outer bindings.
-    # session_id is an OpenRouter-only routing hint; sending it to Gemini or another
-    # OpenAI-compatible endpoint is an unsupported argument that fails the call.
+    # Each key goes only to the client that speaks it, judged by the real client rather
+    # than the configured provider: any other endpoint rejects it and fails the call.
     key = _agent_sticky_key(model_configurations, agent_name)
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
-    if key and model_configurations.get("provider") in PROMPT_CACHE_KEY_PROVIDERS:
+    if key and _is_openai_wire(llm_with_tools):
         return llm_with_tools.bind(prompt_cache_key=key)
     return llm_with_tools
 
@@ -184,14 +183,9 @@ def _agent_sticky_key(
     """Compute this agent's sticky-routing key, shared by the primary bind and the fallback.
 
     Deriving it separately used to leave the fallback on the bare session id,
-    dropping every agent back into one shared chain. None when the provider
-    has no stickiness to pin (Gemini) or no session_id is configured.
+    dropping every agent back into one shared chain. None when no session_id is
+    configured; whether a client may receive it is judged by its wire, not here.
     """
-    if (
-        model_configurations.get("provider")
-        not in STICKY_ROUTING_PROVIDERS | PROMPT_CACHE_KEY_PROVIDERS
-    ):
-        return None
     session_id = model_configurations.get("session_id")
     if not session_id:
         return None
@@ -309,12 +303,9 @@ def _log_message_preview(state: State) -> None:
         preview = []
         for msg in recent_messages:
             role = msg.__class__.__name__
-            # extract_text_content, not the raw content: a tool result carrying
-            # inline media holds megabytes of base64 that must never reach a log.
+            # The text's length, not the raw content's: inline media is megabytes of base64.
             content = extract_text_content(getattr(msg, "content", ""))
-            if len(content) > 200:
-                content = content[:197] + "..."
-            preview.append({"role": role, "content": content})
+            preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
         log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
@@ -368,6 +359,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             options=LLMInvokeOptions(
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
@@ -411,6 +403,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             options=LLMInvokeOptions(
                 meter_auxiliary=False,
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )

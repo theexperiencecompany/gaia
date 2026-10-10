@@ -18,7 +18,7 @@ import {
 import { WhatsNewCard } from "@/features/whats-new/components/WhatsNewCard";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
 interface SidebarLayoutProps {
@@ -37,11 +37,7 @@ export const CustomSidebarTrigger = ({
   const { isMac } = usePlatform();
 
   const handleToggle = () => {
-    trackEvent(
-      open
-        ? ANALYTICS_EVENTS.UI_SIDEBAR_COLLAPSED
-        : ANALYTICS_EVENTS.UI_SIDEBAR_EXPANDED,
-    );
+    track(open ? "ui:sidebar_collapsed" : "ui:sidebar_expanded", {});
     toggleSidebar();
   };
 

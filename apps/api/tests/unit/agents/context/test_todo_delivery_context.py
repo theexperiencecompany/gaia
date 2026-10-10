@@ -26,7 +26,7 @@ from app.services.tracked_todo_service import starting_canvas
 
 pytestmark = pytest.mark.unit
 
-USER = AuthenticatedUser(user_id="user-alpha")
+USER = AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91ce")
 DESK = TodoDocument(
     id="66f838cc8829054e5f10e401",
     user_id=USER.user_id,
@@ -55,7 +55,7 @@ async def _delivered_request() -> HumanMessage:
     with (
         patch.object(todo_run_delivery, "todo_repository", repo),
         patch.object(todo_run_delivery, "record_run_finished", AsyncMock(return_value=True)),
-        patch.object(todo_run_delivery, "capture_event", MagicMock()),
+        patch.object(todo_run_delivery, "capture", MagicMock()),
         patch.object(comms_narrator.GraphManager, "get_graph", AsyncMock()),
         patch.object(
             comms_narrator, "build_agent_config", AsyncMock(return_value={"configurable": {}})

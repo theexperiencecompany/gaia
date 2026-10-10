@@ -36,6 +36,8 @@ from app.services.chat.stream import (
     _TurnContext,
 )
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
 
 def _ready_session_with_cards(stream_id: str) -> None:
     """Create a live session whose executor finished after producing one tool card."""
@@ -68,13 +70,13 @@ class TestAttachExecutorToolData:
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", state
+                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", state
             )
 
         repo.append_message_tool_data.assert_awaited_once()
         kwargs = repo.append_message_tool_data.await_args.kwargs
         assert repo.append_message_tool_data.await_args.args[0] == "conv-1"
-        assert kwargs["user_id"] == "u1"
+        assert kwargs["user_id"] == USER_ID
         assert kwargs["message_id"] == state.bot_message_id
         assert kwargs["entries"][0]["tool_name"] == "tool_calls_data"
 
@@ -88,7 +90,7 @@ class TestAttachExecutorToolData:
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         repo.append_message_tool_data.assert_not_awaited()
@@ -102,7 +104,7 @@ class TestAttachExecutorToolData:
             repo.append_message_tool_data = AsyncMock(side_effect=RuntimeError("mongo down"))
             # best-effort: must not raise into the stream orchestrator
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=True)
+                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=True)
             )
 
     async def test_a_write_that_matched_no_message_is_reported(self) -> None:
@@ -117,7 +119,7 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=False)
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         assert log.error.called, "a silently dropped tool_data write was never reported"
@@ -134,7 +136,7 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=True)
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id="u1"), "conv-1", _state(cancelled=False)
+                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         assert not log.error.called
@@ -151,7 +153,7 @@ class TestFinalizeStreamBackstop:
             repo.append_message_tool_data = AsyncMock()
             sm.cleanup = AsyncMock()
             await _finalize_stream(
-                "s1", MagicMock(), AuthenticatedUser(user_id="u1"), "conv-1", state, None
+                "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
         return persist, repo
 
@@ -183,7 +185,7 @@ class TestFinalizeStreamBackstop:
         ):
             sm.cleanup = AsyncMock()
             await _finalize_stream(
-                "s1", MagicMock(), AuthenticatedUser(user_id="u1"), "conv-1", state, None
+                "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
 
         assert log.set.call_args.kwargs["tool_types"] == ["search"]
@@ -234,7 +236,7 @@ class TestRecentHistory:
 class TestSetStreamLogContext:
     def _user_message_length(self, body: MessageRequestWithHistory) -> object:
         with patch.object(chat_stream, "log") as log:
-            _set_stream_log_context(body, "u1", "conv-1", "stream-1", False)
+            _set_stream_log_context(body, USER_ID, "conv-1", "stream-1", False)
         return log.set.call_args.kwargs["user_message_length"]
 
     def test_the_last_turns_length_is_recorded(self) -> None:
@@ -270,7 +272,7 @@ class TestResolvePendingApprovalTurnApproves:
             sm.complete_stream = AsyncMock()
             result = await _resolve_pending_approval_turn(
                 body,
-                AuthenticatedUser(user_id="u1"),
+                AuthenticatedUser(user_id=USER_ID),
                 "conv-1",
                 "stream-1",
                 _StreamState(),
@@ -279,7 +281,7 @@ class TestResolvePendingApprovalTurnApproves:
 
         assert result is True
         classifier.assert_awaited_once_with(
-            "conv-1", "u1", "yes", [{"role": "assistant", "content": "Send the email?"}]
+            "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
         )
 
 
@@ -301,7 +303,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
         ):
             result = await _resolve_pending_approval_turn(
                 self._bot_reply_body(),
-                AuthenticatedUser(user_id="u1"),
+                AuthenticatedUser(user_id=USER_ID),
                 "conv-1",
                 "stream-1",
                 _StreamState(),
@@ -324,7 +326,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
             sm.publish_chunk = AsyncMock()
             await _resolve_pending_approval_turn(
                 self._bot_reply_body(),
-                AuthenticatedUser(user_id="u1"),
+                AuthenticatedUser(user_id=USER_ID),
                 "conv-1",
                 "stream-1",
                 _StreamState(),
@@ -364,7 +366,7 @@ class TestConsumeAgentStreamCallsTheAgent:
             return _no_chunks()
 
         body = MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
-        user = AuthenticatedUser(user_id="u1")
+        user = AuthenticatedUser(user_id=USER_ID)
         state = _StreamState(turn_id="turn-1")
         usage_callback = UsageMetadataCallbackHandler()
         turn = _TurnContext(
@@ -423,7 +425,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
         ):
             await _consume_agent_stream(
                 MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1"),
-                AuthenticatedUser(user_id="u1"),
+                AuthenticatedUser(user_id=USER_ID),
                 turn,
                 None,
                 state,
@@ -495,14 +497,14 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "_persist_turn", AsyncMock()),
             patch.object(chat_stream, "_attach_executor_tool_data", AsyncMock()),
             patch.object(chat_stream, "_finalize_description", AsyncMock()),
-            patch.object(chat_stream, "capture_event"),
+            patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
             sm.is_cancelled = AsyncMock(return_value=False)
             await chat_stream._run_chat_stream(
-                "stream-1", body, AuthenticatedUser(user_id="u1"), "conv-1", "whatsapp"
+                "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp"
             )
 
         return seen

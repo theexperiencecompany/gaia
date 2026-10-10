@@ -41,11 +41,21 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _make_request(**overrides) -> MessageRequestWithHistory:
@@ -66,7 +76,7 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
 
 def _make_user(**overrides) -> AuthenticatedUser:
     defaults: dict[str, object] = {
-        "user_id": "user-123",
+        "user_id": USER_ID,
         "email": "test@example.com",
         "name": "Test User",
     }
@@ -83,7 +93,7 @@ FAKE_STATE = {"messages": FAKE_HISTORY, "query": "Hello agent"}
 FAKE_CONFIG = {
     "configurable": {
         "thread_id": "conv-1",
-        "user_id": "user-123",
+        "user_id": USER_ID,
         # The lane's expanded binding key — `model_name` is no longer part of the
         # configurable contract.
         "model": "gpt-4o",
@@ -99,7 +109,7 @@ FAKE_CONFIG = {
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: agent lifecycle events are asserted through this mock and never reach a real PostHog client."""
-    with patch("app.services.analytics_service.capture_event") as mock_capture:
+    with patch("app.services.analytics_service.capture") as mock_capture:
         yield mock_capture
 
 
@@ -369,7 +379,7 @@ class TestCallAgent:
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
-                        "user_id": "user-123",
+                        "user_id": USER_ID,
                         "model_name": "gpt-4o",
                     }
                 },
@@ -409,7 +419,7 @@ class TestCallAgent:
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
-                        "user_id": "user-123",
+                        "user_id": USER_ID,
                         "model_name": "gpt-4o",
                     }
                 },
@@ -449,7 +459,7 @@ class TestCallAgent:
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
-                        "user_id": "user-123",
+                        "user_id": USER_ID,
                         "model_name": "gpt-4o",
                     }
                 },
@@ -523,7 +533,7 @@ class TestCallAgent:
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
-                        "user_id": "user-123",
+                        "user_id": USER_ID,
                         "model_name": "gpt-4o",
                     }
                 },
@@ -637,25 +647,19 @@ class TestCallAgent:
 
         assert len(chunks) == 2
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        events = [type(c.args[1]) for c in _no_real_analytics.call_args_list]
         assert events == [
-            AnalyticsEvents.AGENT_RUN_STARTED,
-            AnalyticsEvents.AGENT_RUN_COMPLETED,
+            AgentRunStarted,
+            AgentRunCompleted,
         ]
-        started = _no_real_analytics.call_args_list[0]
-        assert started.args[0] == "user-123"
-        assert started.args[2] == {
-            "agent": "comms",
-            "mode": "interactive",
-            "conversation_id": "conv-1",
-        }
-        completed = _no_real_analytics.call_args_list[1]
-        assert completed.args[0] == "user-123"
-        assert completed.args[2] == {
-            "agent": "comms",
-            "mode": "interactive",
-            "conversation_id": "conv-1",
-        }
+        assert _no_real_analytics.call_args_list[0].args == (
+            UserId(USER_ID),
+            AgentRunStarted(agent="comms", mode="interactive", conversation_id="conv-1"),
+        )
+        assert _no_real_analytics.call_args_list[1].args == (
+            UserId(USER_ID),
+            AgentRunCompleted(agent="comms", mode="interactive", conversation_id="conv-1"),
+        )
         assert all(arg is not None for arg in mock_stream.call_args.args)
 
     @pytest.mark.asyncio
@@ -687,16 +691,14 @@ class TestCallAgent:
                 )
             )
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
-        failed = _no_real_analytics.call_args_list[1]
-        assert failed.args[0] == "user-123"
-        assert failed.args[2] == {
-            "agent": "comms",
-            "mode": "interactive",
-            "conversation_id": "conv-1",
-            "reason": "RuntimeError",
-        }
+        events = [type(c.args[1]) for c in _no_real_analytics.call_args_list]
+        assert events == [AgentRunStarted, AgentRunFailed]
+        assert _no_real_analytics.call_args_list[1].args == (
+            UserId(USER_ID),
+            AgentRunFailed(
+                agent="comms", mode="interactive", conversation_id="conv-1", reason="RuntimeError"
+            ),
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.regression
@@ -723,20 +725,56 @@ class TestCallAgent:
             )
         assert len(chunks) == 2
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
-        failed = _no_real_analytics.call_args_list[1]
-        assert failed.args[0] == "user-123"
-        assert failed.args[2] == {
-            "agent": "comms",
-            "mode": "interactive",
-            "conversation_id": "conv-1",
-            "reason": "RuntimeError",
-        }
+        events = [type(c.args[1]) for c in _no_real_analytics.call_args_list]
+        assert events == [AgentRunStarted, AgentRunFailed]
+        assert _no_real_analytics.call_args_list[1].args == (
+            UserId(USER_ID),
+            AgentRunFailed(
+                agent="comms", mode="interactive", conversation_id="conv-1", reason="RuntimeError"
+            ),
+        )
         mock_log.error.assert_called_once()
         assert "Error when calling agent" in mock_log.error.call_args.args[0]
         assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
         assert mock_log.error.call_args.kwargs["error"] == "boom"
+
+    @pytest.mark.asyncio
+    async def test_a_users_turn_records_the_comms_run_as_agent_work(self, _no_real_analytics):
+        """Greptile #1337: the run events took the request's actor=user, so agent work read as human activity."""
+
+        async def _failing_stream(*args, **kwargs):
+            yield "data: {}\n\n"
+            raise RuntimeError("graph exploded")
+
+        actors: list[Actor] = []
+        _no_real_analytics.side_effect = lambda *_, **__: actors.append(
+            current_analytics_context().attribution.actor
+        )
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+        patches = _common_patches()
+        with (
+            analytics_context(users_turn),
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_failing_stream(),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="graph exploded"):
+                await _drain(
+                    call_agent(request=_make_request(), conversation_id="conv-1", user=_make_user())
+                )
+            assert current_analytics_context() == users_turn
+
+        assert actors == [Actor.AGENT, Actor.AGENT]
 
     @pytest.mark.asyncio
     async def test_missing_user_id_skips_events(self, _no_real_analytics):
@@ -1074,8 +1112,6 @@ class TestCallAgentSilent:
                 ),
             )
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
         run_props = {
             "agent": "comms",
             "mode": "background",
@@ -1083,8 +1119,10 @@ class TestCallAgentSilent:
             "trigger_type": "maintenance_health_check",
             "source": "system",
         }
-        assert _no_real_analytics.call_args_list[0].args[2] == run_props
-        assert _no_real_analytics.call_args_list[1].args[2] == {**run_props, "reason": "ValueError"}
+        assert [c.args for c in _no_real_analytics.call_args_list] == [
+            (UserId(USER_ID), AgentRunStarted(**run_props)),
+            (UserId(USER_ID), AgentRunFailed(**run_props, reason="ValueError")),
+        ]
 
     @pytest.mark.asyncio
     async def test_run_lifecycle_events_captured(self, _no_real_analytics):
@@ -1108,25 +1146,19 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        events = [type(c.args[1]) for c in _no_real_analytics.call_args_list]
         assert events == [
-            AnalyticsEvents.AGENT_RUN_STARTED,
-            AnalyticsEvents.AGENT_RUN_COMPLETED,
+            AgentRunStarted,
+            AgentRunCompleted,
         ]
-        started = _no_real_analytics.call_args_list[0]
-        assert started.args[0] == "user-123"
-        assert started.args[2] == {
-            "agent": "comms",
-            "mode": "background",
-            "conversation_id": "conv-1",
-        }
-        completed = _no_real_analytics.call_args_list[1]
-        assert completed.args[0] == "user-123"
-        assert completed.args[2] == {
-            "agent": "comms",
-            "mode": "background",
-            "conversation_id": "conv-1",
-        }
+        assert _no_real_analytics.call_args_list[0].args == (
+            UserId(USER_ID),
+            AgentRunStarted(agent="comms", mode="background", conversation_id="conv-1"),
+        )
+        assert _no_real_analytics.call_args_list[1].args == (
+            UserId(USER_ID),
+            AgentRunCompleted(agent="comms", mode="background", conversation_id="conv-1"),
+        )
 
     @pytest.mark.asyncio
     async def test_execute_failure_captures_failed(self, _no_real_analytics):
@@ -1152,16 +1184,14 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        events = [c.args[1] for c in _no_real_analytics.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
-        failed = _no_real_analytics.call_args_list[1]
-        assert failed.args[0] == "user-123"
-        assert failed.args[2] == {
-            "agent": "comms",
-            "mode": "background",
-            "conversation_id": "conv-1",
-            "reason": "RuntimeError",
-        }
+        events = [type(c.args[1]) for c in _no_real_analytics.call_args_list]
+        assert events == [AgentRunStarted, AgentRunFailed]
+        assert _no_real_analytics.call_args_list[1].args == (
+            UserId(USER_ID),
+            AgentRunFailed(
+                agent="comms", mode="background", conversation_id="conv-1", reason="RuntimeError"
+            ),
+        )
         mock_log.error.assert_called_once()
         assert "Error when calling silent agent" in mock_log.error.call_args.args[0]
         assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
@@ -1205,7 +1235,7 @@ def _fresh_config() -> dict:
     module-level FAKE_CONFIG cannot be used by anything that asserts on those
     writes — one test would see the previous test's key.
     """
-    return {"configurable": {"thread_id": "conv-1", "user_id": "user-123", "model": "gpt-4o"}}
+    return {"configurable": {"thread_id": "conv-1", "user_id": USER_ID, "model": "gpt-4o"}}
 
 
 class TestTheLaneTheRunResolves:
@@ -1537,7 +1567,7 @@ class TestTheWorkflowKeysTheRunStashes:
         configurable.pop("dev_executor_model", None)
         assert configurable == {
             "thread_id": "conv-1",
-            "user_id": "user-123",
+            "user_id": USER_ID,
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
@@ -1579,7 +1609,7 @@ class TestTheWorkflowKeysTheRunStashes:
         configurable.pop("dev_executor_model", None)
         assert configurable == {
             "thread_id": "conv-1",
-            "user_id": "user-123",
+            "user_id": USER_ID,
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "",
@@ -1616,7 +1646,7 @@ class TestTheWorkflowKeysTheRunStashes:
 
         configurable = dict(config["configurable"])
         configurable.pop("dev_executor_model", None)
-        assert configurable == {"thread_id": "conv-1", "user_id": "user-123", "model": "gpt-4o"}
+        assert configurable == {"thread_id": "conv-1", "user_id": USER_ID, "model": "gpt-4o"}
 
 
 class TestTheOptionsEachEntryPointDerives:

@@ -39,21 +39,25 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
+    validate_todo_recurrence,
 )
 from app.models.trigger_subscription_models import TriggerSubscription
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     SubTodoParentError,
     TrackedLabelChangeError,
+    TrackedTodoScheduleError,
     TrackedTodoWorkflowError,
 )
 from app.services.todos.external_ref_watch import release_watches, watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
+from app.utils.auth_utils import require_owner
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.errors import AppError
+from app.utils.schedule import InvalidScheduleError
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
     delete_todo_embedding,
@@ -61,6 +65,13 @@ from app.utils.todo_vector_utils import (
     semantic_search_todos as vector_search,
     store_todo_embedding,
     update_todo_embedding,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    TodosCreated,
+    TodosDeleted,
+    TodosToggled,
+    TodosUpdated,
 )
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -154,15 +165,16 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
     return update
 
 
-async def _refuse_a_tracked_todo_with_a_workflow(
+async def _refuse_what_a_tracked_todo_cannot_take(
     todo_id: str, user_id: str, updates: TodoUpdateRequest
 ) -> None:
-    """Refuse, before any write, an update that changes tracked status or links a tracked todo.
+    """Refuse, before any write, a tracked-status change, a workflow link, or a bad run schedule.
 
     A tracked todo created before workflows were removed may still hold a
-    workflow_id nothing reads; editing it is not refused.
+    workflow_id nothing reads; editing it is not refused. Only a tracked todo's
+    recurrence schedules runs, so a plain todo's display recurrence is never checked.
     """
-    if updates.workflow_id is None and updates.labels is None:
+    if updates.workflow_id is None and updates.labels is None and not updates.recurrence:
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
@@ -172,6 +184,16 @@ async def _refuse_a_tracked_todo_with_a_workflow(
         raise TrackedLabelChangeError()
     if updates.workflow_id and tracked:
         raise TrackedTodoWorkflowError()
+    if updates.recurrence and tracked:
+        _refuse_a_bad_run_schedule(updates.recurrence)
+
+
+def _refuse_a_bad_run_schedule(recurrence: str) -> None:
+    """Hold a tracked todo's recurrence, which schedules its runs, to the recurring-schedule rule."""
+    try:
+        validate_todo_recurrence(recurrence)
+    except InvalidScheduleError as e:
+        raise TrackedTodoScheduleError(e) from e
 
 
 async def _refuse_a_bulk_tracked_label_change(
@@ -182,6 +204,15 @@ async def _refuse_a_bulk_tracked_label_change(
     todos = await todo_repository.find_by_ids(user_id, todo_ids)
     if any((GAIA_TRACKED_LABEL in todo.labels) != tracking for todo in todos):
         raise TrackedLabelChangeError()
+
+
+async def _refuse_a_bulk_bad_run_schedule(
+    user_id: str, todo_ids: list[str], recurrence: str
+) -> None:
+    """Refuse a bulk recurrence write that would give a selected tracked todo a bad run schedule."""
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
+    if any(GAIA_TRACKED_LABEL in todo.labels for todo in todos):
+        _refuse_a_bad_run_schedule(recurrence)
 
 
 async def _raise_ref_taken(
@@ -302,6 +333,8 @@ async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> Non
         )
     if request.updates.labels is not None:
         await _refuse_a_bulk_tracked_label_change(user_id, request.todo_ids, request.updates.labels)
+    if request.updates.recurrence:
+        await _refuse_a_bulk_bad_run_schedule(user_id, request.todo_ids, request.updates.recurrence)
     project_id = request.updates.project_id
     if project_id is not None and not await project_repository.get(project_id, user_id=user_id):
         raise ValueError(f"Project {project_id} not found")
@@ -418,6 +451,8 @@ class TodoService:
         )
         if GAIA_TRACKED_LABEL in todo.labels and todo.workflow_id:
             raise TrackedTodoWorkflowError()
+        # Every creator (route, tool, worker) lands here, so none can save a todo for a non-user.
+        await require_owner(user_id)
         # Whether the caller filed the todo into a project themselves — read
         # before the Inbox default below makes project_id unconditionally set.
         project_chosen = todo.project_id is not None
@@ -464,18 +499,17 @@ class TodoService:
             log.warning("todo.index_failed", error=str(e))
 
         schedule_user_todos_sync(user_id)
-        capture_event(
-            user_id,
-            AnalyticsEvents.TODO_CREATED,
-            {
-                "priority": created.priority.value,
-                "has_due_date": created.due_date is not None,
-                "has_description": bool(created.description),
-                "labels_count": len(created.labels),
-                "subtasks_count": len(created.subtasks),
-                "has_project": project_chosen,
-                "is_sub_todo": created.parent_todo_id is not None,
-            },
+        capture(
+            UserId(user_id),
+            TodosCreated(
+                priority=created.priority.value,
+                has_due_date=created.due_date is not None,
+                has_description=bool(created.description),
+                labels_count=len(created.labels),
+                subtasks_count=len(created.subtasks),
+                has_project=project_chosen,
+                is_sub_todo=created.parent_todo_id is not None,
+            ),
         )
         return TodoResponse.from_document(created)
 
@@ -568,7 +602,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
-        await _refuse_a_tracked_todo_with_a_workflow(todo_id, user_id, updates)
+        await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
             project = await project_repository.get(update.project_id, user_id=user_id)
@@ -614,28 +648,26 @@ class TodoService:
         if updates.completed is not None:
             # Toggle semantics: fires for both completing and un-completing,
             # tracked or plain.
-            capture_event(
-                user_id,
-                AnalyticsEvents.TODO_TOGGLED,
-                {
-                    "completed": updates.completed,
-                    "todo_id": todo_id,
-                    "priority": updated.priority.value,
-                    "has_due_date": updated.due_date is not None,
-                },
+            capture(
+                UserId(user_id),
+                TodosToggled(
+                    completed=updates.completed,
+                    todo_id=todo_id,
+                    priority=updated.priority.value,
+                    has_due_date=updated.due_date is not None,
+                ),
             )
         elif update.model_fields_set:
-            capture_event(
-                user_id,
-                AnalyticsEvents.TODO_UPDATED,
-                {
-                    "changed_field_count": len(update.model_fields_set),
-                    "changed_fields": sorted(update.model_fields_set),
-                    "todo_id": todo_id,
-                    "priority": updated.priority.value,
-                    "has_due_date": updated.due_date is not None,
-                    "has_subtasks": bool(updated.subtasks),
-                },
+            capture(
+                UserId(user_id),
+                TodosUpdated(
+                    changed_field_count=len(update.model_fields_set),
+                    changed_fields=sorted(update.model_fields_set),
+                    todo_id=todo_id,
+                    priority=updated.priority.value,
+                    has_due_date=updated.due_date is not None,
+                    has_subtasks=bool(updated.subtasks),
+                ),
             )
         (response,) = await todo_responses(user_id, [updated])
         return response
@@ -673,7 +705,7 @@ class TodoService:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
-        capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"todo_id": todo_id})
+        capture(UserId(user_id), TodosDeleted(todo_id=todo_id))
 
     # Bulk Operations
     @classmethod
@@ -752,7 +784,7 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
             schedule_user_todos_sync(user_id)
-            capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"count": deleted})
+            capture(UserId(user_id), TodosDeleted(count=deleted))
 
         return BulkOperationResponse(
             success=todo_ids[:deleted],

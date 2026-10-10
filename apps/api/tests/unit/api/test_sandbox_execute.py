@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
@@ -32,6 +33,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.api.v1.endpoints.sandbox_execute"
 DISPATCH = "app.agents.tools.execute.dispatch"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 
@@ -54,15 +56,19 @@ class TestSandboxExecuteRoute:
         assert err.value.status_code == 401
         dispatch.assert_not_awaited()
 
+    def test_a_tool_name_analytics_cannot_carry_is_refused_at_the_request(self) -> None:
+        with pytest.raises(ValidationError):
+            SandboxExecuteRequest(tool_name="send an email")
+
     async def test_tampered_token_is_401(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch:
             with pytest.raises(AppError):
                 await sandbox_execute(_payload(), authorization=f"Bearer {token}x")
         dispatch.assert_not_awaited()
 
     async def test_valid_token_dispatches_as_the_token_user(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(
             ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[{"id": "m1"}]
         )
@@ -74,14 +80,14 @@ class TestSandboxExecuteRoute:
         assert response.ok is True
         assert response.output == [{"id": "m1"}]
         kwargs = dispatch.await_args.kwargs
-        assert kwargs["user_id"] == "u1"
+        assert kwargs["user_id"] == USER_ID
         assert kwargs["tool_name"] == "GMAIL_FETCH_EMAILS"
-        assert kwargs["config"]["configurable"]["user_id"] == "u1"
+        assert kwargs["config"]["configurable"]["user_id"] == USER_ID
 
     async def test_a_scoped_token_cannot_reach_another_agents_tools(self) -> None:
         """The bypass this closes: a subagent refused SLACK_SEND_MESSAGE by its own execute ran it from a sandbox script instead, because the route dispatched every token as if it were the executor's."""
         token = mint_execute_token(
-            "u1", "run-1", scoped_tool_names=["GMAIL_SEND_EMAIL"], ttl_seconds=60
+            USER_ID, "run-1", scoped_tool_names=["GMAIL_SEND_EMAIL"], ttl_seconds=60
         )
         slack = MagicMock()
         slack.name = "SLACK_SEND_MESSAGE"
@@ -91,7 +97,7 @@ class TestSandboxExecuteRoute:
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
-            patch(f"{DISPATCH}.capture_event"),
+            patch(f"{DISPATCH}.capture"),
         ):
             response = await sandbox_execute(
                 SandboxExecuteRequest(tool_name="SLACK_SEND_MESSAGE"),
@@ -111,7 +117,7 @@ class TestSandboxExecuteRoute:
         assert err.value.status_code == 401
         info.assert_not_awaited()
 
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=10_000, rate=1)),
             patch(f"{MODULE}.full_tool_info", new=AsyncMock()) as info,
@@ -125,7 +131,7 @@ class TestSandboxExecuteRoute:
         info.assert_not_awaited()
 
     async def test_tool_schema_returns_the_full_contract_for_the_token_user(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         contract = ToolContract(
             tool_name="GMAIL_FETCH_EMAILS",
             description="Fetch emails.",
@@ -142,10 +148,10 @@ class TestSandboxExecuteRoute:
                 authorization=f"Bearer {token}",
             )
         assert response is contract
-        info.assert_awaited_once_with("u1", "GMAIL_FETCH_EMAILS")
+        info.assert_awaited_once_with(USER_ID, "GMAIL_FETCH_EMAILS")
 
     async def test_tool_schema_unknown_tool_is_404(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=None)),
@@ -157,7 +163,7 @@ class TestSandboxExecuteRoute:
         assert err.value.status_code == 404
 
     async def test_dispatch_failure_shape_passes_through(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(
             ok=False,
             resolved_name="GMAIL_FETCH_EMAILS",
@@ -187,7 +193,7 @@ class TestSandboxExecuteBudget:
     """The wall a runaway or injected script hits — no approval gate exists here."""
 
     async def test_within_budget_dispatches(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=2, rate=2)),
@@ -197,7 +203,7 @@ class TestSandboxExecuteBudget:
         assert response.ok is True
 
     async def test_token_budget_exhaustion_is_429_and_never_dispatches(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=301, rate=1)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
@@ -208,7 +214,7 @@ class TestSandboxExecuteBudget:
         dispatch.assert_not_awaited()
 
     async def test_per_minute_rate_limit_is_429_and_never_dispatches(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=5, rate=61)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
@@ -219,7 +225,7 @@ class TestSandboxExecuteBudget:
         dispatch.assert_not_awaited()
 
     async def test_every_dispatched_call_is_audited(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
         with (
             patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
@@ -228,7 +234,7 @@ class TestSandboxExecuteBudget:
         ):
             await sandbox_execute(_payload(), authorization=f"Bearer {token}")
         audit_kwargs = mocked_log.audit.call_args.kwargs
-        assert audit_kwargs["actor"] == "u1"
+        assert audit_kwargs["actor"] == USER_ID
         assert audit_kwargs["tool"] == "GMAIL_FETCH_EMAILS"
         assert audit_kwargs["run_id"] == "run-1"
 
@@ -248,7 +254,7 @@ def _frozen_minute(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _bearer(sandbox_id: str | None = None, run_id: str = "run-1") -> str:
     token = mint_execute_token(
-        "u1", run_id, sandbox_id=sandbox_id, scoped_tool_names=None, ttl_seconds=60
+        USER_ID, run_id, sandbox_id=sandbox_id, scoped_tool_names=None, ttl_seconds=60
     )
     return f"Bearer {token}"
 
@@ -372,7 +378,7 @@ class TestSandboxExecuteAuthorizationHeader:
         }
 
     async def test_a_valid_token_under_another_scheme_is_refused(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
 
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch:
             with pytest.raises(AppError) as err:
@@ -384,7 +390,7 @@ class TestSandboxExecuteAuthorizationHeader:
     async def test_the_scheme_is_matched_case_insensitively(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
 
         with patch(f"{MODULE}.dispatch_tool", new=_ok_dispatch()):
             response = await sandbox_execute(_payload(), authorization=f"bEaReR {token}")
@@ -392,7 +398,7 @@ class TestSandboxExecuteAuthorizationHeader:
         assert response.ok is True
 
     async def test_everything_after_the_first_space_is_judged_as_the_token(self) -> None:
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=60)
+        token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
 
         with pytest.raises(AppError) as err:
             await sandbox_execute(_payload(), authorization=f"Bearer  {token}")
@@ -423,14 +429,14 @@ class TestSandboxExecuteRecord:
         assert event["audit"] == [
             {
                 "msg": "sandbox_execute call",
-                "actor": "u1",
+                "actor": USER_ID,
                 "tool": "GMAIL_FETCH_EMAILS",
                 "run_id": "run-1",
                 "sandbox_id": "sbx-9",
                 "ok": True,
             }
         ]
-        assert event["user"] == {"id": "u1"}
+        assert event["user"] == {"id": USER_ID}
         assert event["sandbox_execute"] == {
             "tool_name": "GMAIL_FETCH_EMAILS",
             "run_id": "run-1",
@@ -451,7 +457,7 @@ class TestSandboxExecuteRecord:
                     authorization=_bearer(),
                 )
 
-        assert event["user"] == {"id": "u1"}
+        assert event["user"] == {"id": USER_ID}
         assert event["sandbox_tool_schema"] == {
             "tool_name": "gmail_fetch_emails",
             "run_id": "run-1",

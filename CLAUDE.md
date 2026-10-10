@@ -181,22 +181,27 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Every user-facing feature ships an event.** A feature nobody can measure is a feature nobody can tell is working — treat a missing capture the same as a missing log line, not as a nice-to-have. Add it in the same change as the feature.
 
-**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: add it to the event enum for your surface, which is the single source of truth and what keeps the four surfaces from drifting.
+**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: every event is one Pydantic model in the **event catalog**, `libs/shared/py/analytics/catalog/` (one module per domain). The model names the event, its owning surface (`ServerEvent` / `WebEvent` / `BotEvent` / `VoiceEvent`) and its properties; a free-text `str` property cannot be defined. `mise analytics:types` generates the TypeScript names and props (`libs/shared/ts/src/analytics/generated/`), and CI fails on drift. Only the owning surface's capture accepts an event, so one action has one emitter by construction.
 
-| Surface | Helper | Event names |
-|---|---|---|
-| API (Python) | `capture_event(user_id, ...)` / `capture_context_event(...)` — `app/services/analytics_service.py` | `AnalyticsEvents` (same file) |
-| Web (React) | `trackEvent(...)` — `apps/web/src/lib/analytics.ts` | `ANALYTICS_EVENTS` (same file) |
-| Bots (Node) | `Analytics` — `libs/shared/ts/src/analytics/` | `BOT_EVENTS` (`analytics/events/bots.ts`) |
-| Voice / other Python services | `PostHogAnalytics` — `libs/shared/py/analytics.py` | `VoiceAnalyticsEvents` (same file) |
+| Surface | Capture |
+|---|---|
+| API (Python) | `capture(UserId(...), CatalogEvent(...))` — `app/services/analytics_service.py` |
+| Web (React) | `track("domain:action", { ...props })` — `apps/web/src/lib/analytics.ts` |
+| Bots (Node) | `Analytics.capture(analyticsId, "bot:...", { ...props })` — `libs/shared/ts/src/analytics/` |
+| Voice / other Python services | `PostHogAnalytics.capture(UserId(...), CatalogEvent(...))` — `libs/shared/py/analytics/` |
 
 ### Identity — one person, one profile
 
 `distinct_id` is **always GAIA's stable user id** (the Mongo user id). Never an email, never a platform handle, never a WorkOS id. Any other key creates a second profile for the same human, and cross-surface funnels silently stop joining — the failure is invisible in code review and only shows up as wrong numbers.
 
-- Authenticated API requests get this for free: `PostHogRequestContextMiddleware` identifies the context, and `capture_context_event` inherits it.
-- **A route excluded from auth MUST pass the id explicitly with `capture_event(user_id, ...)`.** OAuth callbacks, platform-link callbacks, bot routes and webhooks all resolve their user from state or a link record rather than a session cookie, so the request context has nobody to attribute to and the event lands on an anonymous profile. This is a real bug that shipped — see `oauth.py::composio_callback` and `platform_auth.py`.
+- Every capture takes an `AnalyticsId`: a `UserId` (constructible only from a valid Mongo ObjectId) or a `PlatformIdentity` (`<platform>:<id>`, unlinked bot users only). A raw string, an email or `"system"` fails at type-check and at runtime. There is no context-inherited capture: OAuth callbacks, bot routes, webhooks and ARQ jobs once landed on anonymous profiles that way.
 - Bots resolve the linked GAIA id via `BaseBotAdapter.resolveDistinctId` and fall back to `"<platform>:<platformUserId>"` only while the account is unlinked; linking emits an `alias` so the pre-link history merges rather than stranding a ghost profile.
+
+### Attribution, dedupe and active users
+
+- **Every server and voice event carries `actor` (`user`/`agent`), `trigger` (`interactive`/`schedule`/`integration_trigger`/`webhook`/`system`) and `surface` (`web`/`desktop`/`bot`/`voice`/`worker`).** Capture stamps them from the `AnalyticsContext` contextvar (`libs/shared/py/analytics/context.py`) and raises when none is bound. Emitters never pass them. The context is bound once per entry point: the HTTP middleware, the ARQ envelope (jobs carry it in their payload), the scheduler and trigger dispatch, the workflow fire, the agent run tree (stamped on the configurable) and the voice worker. A new entry point binds its own.
+- **A re-sendable fact takes a `Dedupe(key, occurred_at)`**: PostHog merges rows only when uuid, event, timestamp and distinct_id all match, so both come from the fact, never `now()`. An event whose catalog model sets `at_most_once_ttl` goes through a Redis `SET NX` gate.
+- **`user:active` is the one active-user signal.** Capture emits it on a user's first `actor=user` event of the IST day; never emit it by hand.
 
 ### Properties — no PII
 
@@ -211,6 +216,16 @@ Capture **after the operation succeeds**, not before it starts — an event emit
 This was learned the expensive way. Twenty-four event names were being emitted from both the web app and the API at once, so twenty-four metrics read roughly double, and nothing failed to make that visible. `chat:message_sent` was the same mistake with a second name on it: every field it carried — tool, workflow, calendar event, reply, file count — already arrives in the request the server handles, so it was one message counted twice.
 
 The client only emits what the server genuinely cannot see: UI interactions that never reach the backend at all. When you find yourself wanting a client event for something the server also handles, add the property to the server's event instead.
+
+### Verifying — three commands, three questions
+
+| Command | Answers | Needs |
+|---|---|---|
+| `mise analytics:check` | Do the live dashboards, project filters and actions still match the catalog and `config/posthog/`? (CI lane) | `POSTHOG_PERSONAL_API_KEY` |
+| `mise analytics:e2e` | Does each journey (onboarding, paywall, signed Dodo webhook, web chat, workflow, gaia-sim bot message) emit exactly its events, once, on the Mongo id, with valid properties, attribution and `$session_id`? Boots a sim stack against the **gaia-test** project (`config/posthog/e2e.json`), never prod | `POSTHOG_E2E_PROJECT_TOKEN`, `POSTHOG_E2E_PERSONAL_API_KEY` |
+| `mise analytics:reconcile` | Do prod numbers match Mongo (signups, messages per source, billing transitions, support requests, LLM cost, active subscribers)? | `POSTHOG_PERSONAL_API_KEY`, read-only `ANALYTICS_MONGO_URI` |
+
+A new user-facing event gets an `Expect` in its journey in `apps/api/scripts/analytics_ops/e2e.py`. Backfills (`mise analytics:backfill <command>`) are dry runs unless `--apply`; `merge-email-persons` is irreversible, so it runs `--pilot 5` before `--apply`.
 
 ## Design System
 

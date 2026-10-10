@@ -32,9 +32,11 @@ from app.constants.execute import (
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
 from shared.py.wide_events import log, spawn_logged_task
 
 # Health metric of the proxy migration: invalid_args/ok is the
@@ -257,11 +259,7 @@ async def dispatch_tool(
         # The one TOOL_USED per proxied run, attributed to the real tool with
         # via="execute" (the middleware emitter skips calls named execute for
         # this reason: one action, one event, one emitter).
-        capture_event(
-            user_id,
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": resolved_name, "via": "execute"},
-        )
+        capture(UserId(user_id), ToolUsed(tool_name=resolved_name, via="execute"))
 
     return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output)
 
@@ -335,11 +333,7 @@ def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolE
     _EXECUTE_DISPATCH_TOTAL.labels(outcome=str(error.kind)).inc()
     log.set_ns("execute", tool=tool_name, outcome=str(error.kind))
     if user_id:
-        capture_event(
-            user_id,
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": tool_name, "reason": str(error.kind)},
-        )
+        capture(UserId(user_id), ToolExecuteFailed(tool_name=tool_name, reason=str(error.kind)))
     return ToolExecutionResult(ok=False, resolved_name=tool_name, error=error)
 
 

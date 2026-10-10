@@ -67,6 +67,7 @@ export const useRetryMessage = () => {
           selectedWorkflow: userMessage.selectedWorkflow,
           selectedCalendarEvent: userMessage.selectedCalendarEvent,
           replyToMessage: userMessage.replyToMessageData,
+          isRetry: true,
         });
       } catch (error) {
         console.error("[useRetryMessage] Error retrying message:", error);

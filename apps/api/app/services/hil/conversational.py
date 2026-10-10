@@ -381,7 +381,7 @@ async def _safe_resolve_ledger(
     result: LedgerDecision | None = None
     with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
         result = await decide_ledger(
-            approval_id, user_id=user_id, kind=decision, feedback=feedback, v=None
+            approval_id, user_id=user_id, kind=decision, feedback=feedback, v=None, via="chat"
         )
     if result is not None and not result.committed:
         log.warning(
@@ -400,7 +400,12 @@ async def _abandon_ledger_approvals(conversation_id: str, user_id: str) -> None:
     for row in await _list_pending_ledger(conversation_id):
         with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             await decide_ledger(
-                row.approval_id, user_id=user_id, kind="deny", feedback=UNRELATED_FEEDBACK, v=None
+                row.approval_id,
+                user_id=user_id,
+                kind="deny",
+                feedback=UNRELATED_FEEDBACK,
+                v=None,
+                via="chat",
             )
 
 

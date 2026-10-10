@@ -53,7 +53,8 @@ export const useBackgroundSync = () => {
         setIsSyncing(true);
         setError(null);
         setSyncError(null);
-        await batchSyncConversations();
+        // Mount, the interval, focus and reconnect all fire with no user action.
+        await batchSyncConversations({ background: true });
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to sync conversations";

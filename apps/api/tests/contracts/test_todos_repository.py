@@ -20,6 +20,7 @@ from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     Priority,
     SearchMode,
@@ -517,6 +518,31 @@ class TestTodosRepository(UserScopedRepositoryContract):
         due = await repo.find_due_tracked_all_users(now=now, max_retries=3, limit=100)
         assert len(due) == 1
         assert due[0].user_id == "u2"
+
+    async def test_a_paused_tracked_todo_is_never_due_and_is_found_by_its_reason(
+        self, repo, make_doc
+    ):
+        now = datetime.now(UTC)
+        created = await repo.create(
+            make_doc(
+                user_id="u-paused",
+                labels=[GAIA_TRACKED_LABEL],
+                scheduled_at=now - timedelta(minutes=5),
+                gaia_retry_count=0,
+            )
+        )
+        await repo.update(
+            created.id,
+            user_id="u-paused",
+            update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+        )
+
+        due = await repo.find_due_tracked_all_users(now=now, max_retries=3, limit=100)
+        assert created.id not in [t.id for t in due]
+        paused = await repo.find_paused_for_reason(
+            "u-paused", DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        assert [t.id for t in paused] == [created.id]
 
     # ---- trigger-subscription finders --------------------------------------
 

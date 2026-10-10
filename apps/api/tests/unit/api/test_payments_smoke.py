@@ -17,6 +17,7 @@ from httpx import AsyncClient
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
+    PlanTier,
 )
 from tests.conftest import FAKE_USER
 
@@ -36,6 +37,7 @@ class TestGetPlans:
             id="plan_1",
             dodo_product_id="dodo_1",
             name="Pro",
+            plan_type=PlanTier.PRO,
             amount=1999,
             currency="USD",
             duration="monthly",

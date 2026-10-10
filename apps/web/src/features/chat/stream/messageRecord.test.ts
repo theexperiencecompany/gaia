@@ -17,6 +17,7 @@ const meta = {
     replyToMessage: null,
     conversationId: "conv-1",
     isOnboardingDemo: false,
+    isRetry: false,
   },
 };
 

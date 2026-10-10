@@ -4,7 +4,6 @@ Single service approach - simple and maintainable.
 """
 
 import json
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -15,15 +14,26 @@ from app.models.payment_models import (
     CreateCheckoutSessionRequest,
     CreateSubscriptionRequest,
     CreateSubscriptionResponse,
+    DiscountCodesResponse,
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
     VerifyPaymentRequest,
 )
-from app.models.webhook_models import DodoWebhookAckResponse, WebhookProcessingStatus
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.models.webhook_models import (
+    DodoWebhookAckResponse,
+    DodoWebhookPayload,
+    WebhookProcessingStatus,
+)
+from app.services.analytics_service import capture
+from app.services.payments.discount_codes import get_discount_codes
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    PaymentCheckoutStarted,
+    SubscriptionCancellationRequested,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -44,6 +54,18 @@ async def get_plans_endpoint(request: Request, active_only: bool = True) -> list
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to get plans") from e
+
+
+@router.get("/discount-codes")
+@limiter.limit("60/minute")
+# evlog-map-disable-next-line audit -- read-only settings lookup, no state change to audit
+async def get_discount_codes_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    user_id: str = Depends(get_user_id),
+) -> DiscountCodesResponse:
+    """Get the discount codes the clients advertise."""
+    log.set(user={"id": user_id}, payment={"operation": "get_discount_codes"})
+    return get_discount_codes()
 
 
 @router.post("/subscriptions")
@@ -76,13 +98,14 @@ async def create_subscription_endpoint(
             resource=str(subscription_data.product_id) if subscription_data.product_id else None,
             provider="dodo",
         )
-        capture_context_event(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {
-                "quantity": subscription_data.quantity,
-                "source": subscription_data.source,
-                "surface": "redirect",
-            },
+        capture(
+            UserId(user_id),
+            PaymentCheckoutStarted(
+                quantity=subscription_data.quantity,
+                source=subscription_data.source,
+                checkout_flow="redirect",
+                plan_id=subscription_data.product_id,
+            ),
         )
         return result
     except HTTPException:
@@ -128,13 +151,14 @@ async def create_checkout_session_endpoint(
         resource=pro_checkout.plan.dodo_product_id,
         provider="dodo",
     )
-    capture_context_event(
-        AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-        {
-            "billing_cycle": payload.billing_cycle,
-            "source": payload.source,
-            "surface": "overlay",
-        },
+    capture(
+        UserId(user_id),
+        PaymentCheckoutStarted(
+            billing_cycle=payload.billing_cycle,
+            source=payload.source,
+            checkout_flow="overlay",
+            plan_id=pro_checkout.plan.dodo_product_id,
+        ),
     )
     return pro_checkout.checkout
 
@@ -165,7 +189,7 @@ async def cancel_subscription_endpoint(
             actor=user_id,
             provider="dodo",
         )
-        capture_context_event(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
+        capture(UserId(user_id), SubscriptionCancellationRequested())
         return result
     except HTTPException:
         raise
@@ -263,12 +287,11 @@ async def handle_dodo_webhook(
         # Raw provider payload: process_webhook validates it into DodoWebhookEvent
         # and answers with a processing result rather than raising, so the reply
         # below is driven by what GAIA managed to do with the event.
-        webhook_data: dict[str, Any] = json.loads(payload)
-
-        log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
+        webhook_data: DodoWebhookPayload = json.loads(payload)
 
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
+        log.set_ns("payment", event_type=result.event_type)
 
         log.audit(
             "payment webhook processed",
