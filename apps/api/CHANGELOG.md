@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.25.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.24.0...api-v0.25.0) (2026-10-10)
+
+
+### Features
+
+* activation-mode executor, HIL approval ledger, native reactions ([#1252](https://github.com/theexperiencecompany/gaia/issues/1252)) ([e183f36](https://github.com/theexperiencecompany/gaia/commit/e183f365bf341d5b17df06e4d164ef4756da6cba))
+* **analytics:** attribute every server event, make dedupe real, add user:active ([#1337](https://github.com/theexperiencecompany/gaia/issues/1337)) ([701ef79](https://github.com/theexperiencecompany/gaia/commit/701ef7992a961db4201ec68733f5c0ebad5124a4))
+* **analytics:** attribute LLM spend to feature, surface and workflow ([#1194](https://github.com/theexperiencecompany/gaia/issues/1194)) ([a60de06](https://github.com/theexperiencecompany/gaia/commit/a60de060f4e293aa1b9afe214b9f2b4b0b583ed2))
+* **analytics:** live e2e against a test project, Mongo reconciliation, and history backfills ([#1340](https://github.com/theexperiencecompany/gaia/issues/1340)) ([993dbd4](https://github.com/theexperiencecompany/gaia/commit/993dbd47f98a9741951c088f3d3e8fe89771756f))
+* **analytics:** one typed event catalog behind every PostHog capture ([#1334](https://github.com/theexperiencecompany/gaia/issues/1334)) ([22015dc](https://github.com/theexperiencecompany/gaia/commit/22015dc67ad68ed43fc6be5803a46d9e9888e002))
+* **api:** benchmark end-to-end chat turn latency ([#1229](https://github.com/theexperiencecompany/gaia/issues/1229)) ([dd8637b](https://github.com/theexperiencecompany/gaia/commit/dd8637b6ace24760873cd11177cd95b922bb8a13))
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **api:** paid-only entitlement gate, server side ([#1241](https://github.com/theexperiencecompany/gaia/issues/1241)) ([dea3d78](https://github.com/theexperiencecompany/gaia/commit/dea3d788ef3332c39841a29e4dc7f59eb7f3e67b))
+* bring back the non-browser work cut from [#876](https://github.com/theexperiencecompany/gaia/issues/876) ([#1296](https://github.com/theexperiencecompany/gaia/issues/1296)) ([3c63e24](https://github.com/theexperiencecompany/gaia/commit/3c63e24e33fa93d102a3fc24b3f3c9d01a5dba71))
+* **browser:** agentic web browsing with Jev and Browser-Use, Chrome by default and Obscura opt-in ([#876](https://github.com/theexperiencecompany/gaia/issues/876)) ([97d85d3](https://github.com/theexperiencecompany/gaia/commit/97d85d326c2732a629a65852781512d9baa0c106))
+* **comms:** a texting voice with reactions, silence and working OpenUI, on gpt-5.6-luna ([#1279](https://github.com/theexperiencecompany/gaia/issues/1279)) ([8fcba16](https://github.com/theexperiencecompany/gaia/commit/8fcba1684b31dc696d42432e63bdb68cb9122e0d))
+* **comms:** write the silence and reaction directives as tags ([#1274](https://github.com/theexperiencecompany/gaia/issues/1274)) ([c45349b](https://github.com/theexperiencecompany/gaia/commit/c45349baf5e0b700d9f1bbdc3457349bc5474815))
+* **email:** inbox desk, thread todos, standing rules and sub-todos (combined stack) ([#1341](https://github.com/theexperiencecompany/gaia/issues/1341)) ([16c9682](https://github.com/theexperiencecompany/gaia/commit/16c9682af1909f510e2cb36f76e96452b66d5776))
+* **execute:** compact tool docs with return shapes; hooked Composio tools keep the envelope ([#1278](https://github.com/theexperiencecompany/gaia/issues/1278)) ([6f45902](https://github.com/theexperiencecompany/gaia/commit/6f459022f4a5746e264a7d55b7ff83630da61b9f))
+* **hil:** classify bot users' approval replies with JEV ([#1267](https://github.com/theexperiencecompany/gaia/issues/1267)) ([50df55d](https://github.com/theexperiencecompany/gaia/commit/50df55d3df51b1cc73489f39675b50932f31864b))
+* **hil:** classify supported GitHub and Slack tools ([#1346](https://github.com/theexperiencecompany/gaia/issues/1346)) ([3e8c3eb](https://github.com/theexperiencecompany/gaia/commit/3e8c3eb36be0a5ea06f5d086b65a0adbef19c269))
+* **integrations:** add Cal.com, Calendly, Outlook, Jira, Dropbox; quiet expected MCP OAuth + boundary Sentry noise ([#1313](https://github.com/theexperiencecompany/gaia/issues/1313)) ([4e454ab](https://github.com/theexperiencecompany/gaia/commit/4e454ab812401d6475a6320a28183e69e9b79ad2))
+* **onboarding:** first-steps activation checklist, derived from real signals ([#1202](https://github.com/theexperiencecompany/gaia/issues/1202)) ([ac5741a](https://github.com/theexperiencecompany/gaia/commit/ac5741a2f7ec90e1cb3a27fe31de206a5821d01c))
+* **pricing:** quote GAIA's price and discount code from the catalogue and server settings ([#1342](https://github.com/theexperiencecompany/gaia/issues/1342)) ([26424cb](https://github.com/theexperiencecompany/gaia/commit/26424cbe6f64ee46542e454278a118c5620fde61))
+* **todos:** activity.md is the todo's timeline, and canvas.md keeps its shape ([#1275](https://github.com/theexperiencecompany/gaia/issues/1275)) ([e0c90a0](https://github.com/theexperiencecompany/gaia/commit/e0c90a0d98e8d8f986799b1c76da749532214fa5))
+* **todos:** deliver a tracked todo's run result to the user's chat app ([#1250](https://github.com/theexperiencecompany/gaia/issues/1250)) ([ce61978](https://github.com/theexperiencecompany/gaia/commit/ce6197811130d43bab9d6cc9991f32c212adfd3c))
+* **todos:** tracked todos always run on the agent; HIL ledger and code mode on by default ([#1269](https://github.com/theexperiencecompany/gaia/issues/1269)) ([08688d9](https://github.com/theexperiencecompany/gaia/commit/08688d9491f44aee0e4ef934955d54dd88cf8359))
+* **web:** receipt-printer celebration for post-payment success ([#1079](https://github.com/theexperiencecompany/gaia/issues/1079)) ([3ccb4df](https://github.com/theexperiencecompany/gaia/commit/3ccb4df36cb9f4abe253e7205ecb05636208f183))
+
+
+### Bug Fixes
+
+* **agent:** one source for the user's turn, one owner for run lifecycle analytics ([#1317](https://github.com/theexperiencecompany/gaia/issues/1317)) ([788d675](https://github.com/theexperiencecompany/gaia/commit/788d675a1b1593ca4eb6d08c196444fc063ef564))
+* **agents:** stop a task's subagents with it, and keep MCP tools GAIA's names shadow reachable ([#1270](https://github.com/theexperiencecompany/gaia/issues/1270)) ([6c9a104](https://github.com/theexperiencecompany/gaia/commit/6c9a104a34ea186503916600beed7ee693c77cbc))
+* **analytics:** count real failures and opens, and carry turn, decision and paid-state properties ([#1339](https://github.com/theexperiencecompany/gaia/issues/1339)) ([d512320](https://github.com/theexperiencecompany/gaia/commit/d51232044c37e200f07b599451ae786f3310559c))
+* **analytics:** one PostHog identity per person and no silent analytics outages ([#1319](https://github.com/theexperiencecompany/gaia/issues/1319)) ([152f790](https://github.com/theexperiencecompany/gaia/commit/152f7902a0f0d54ed457497ca3a00661589e146e))
+* **analytics:** revenue events carry pre-tax local and USD amounts, renewals included ([#1332](https://github.com/theexperiencecompany/gaia/issues/1332)) ([58715a3](https://github.com/theexperiencecompany/gaia/commit/58715a3620adf5d23c09379e301988b5339d6dc6))
+* **api:** evict per-loop Chroma state for closed event loops ([#1243](https://github.com/theexperiencecompany/gaia/issues/1243)) ([c159f03](https://github.com/theexperiencecompany/gaia/commit/c159f03e7c575251badb113106c8e086ac3228df))
+* **api:** no agent runs as, and no record is owned by, a non-user ([#1320](https://github.com/theexperiencecompany/gaia/issues/1320)) ([b82d723](https://github.com/theexperiencecompany/gaia/commit/b82d723db4114ea4fcd16eb31ea4c2cfb070d9f5))
+* bot connect links survive link previews; comms resumes unblocked work and acks with reactions ([#1307](https://github.com/theexperiencecompany/gaia/issues/1307)) ([69ed85d](https://github.com/theexperiencecompany/gaia/commit/69ed85dd753da48e96bee55b75e26ee1ae10f4ff))
+* **chat:** a single dollar sign is currency, not math ([#1277](https://github.com/theexperiencecompany/gaia/issues/1277)) ([6d8270d](https://github.com/theexperiencecompany/gaia/commit/6d8270d46b5ef4272851d69649cae870b7e08375))
+* **chat:** accept a turn that carries only uploaded files ([#1326](https://github.com/theexperiencecompany/gaia/issues/1326)) ([550bb13](https://github.com/theexperiencecompany/gaia/commit/550bb13dd46b5bceb030ed247ddcdc9272846202))
+* **ci:** make local gates match CI so lint stops failing on the runner ([#1308](https://github.com/theexperiencecompany/gaia/issues/1308)) ([3bf2898](https://github.com/theexperiencecompany/gaia/commit/3bf2898a65de1577e29a983d21ac2aaf628f88e8))
+* clear SonarCloud quality-gate bugs, vulnerabilities and hotspots ([#1266](https://github.com/theexperiencecompany/gaia/issues/1266)) ([318ec5e](https://github.com/theexperiencecompany/gaia/commit/318ec5ea6c1334a2bb333a459707be4a8080136e))
+* **executor:** end the unconnected-integration retrieval loop ([#1289](https://github.com/theexperiencecompany/gaia/issues/1289)) ([2385e20](https://github.com/theexperiencecompany/gaia/commit/2385e2079a03f8d4e2ea6189ca66504a5d337eb9))
+* **integrations:** batch MCP credential checks, read-only status overlay ([#1306](https://github.com/theexperiencecompany/gaia/issues/1306)) ([4e254e4](https://github.com/theexperiencecompany/gaia/commit/4e254e423924a1088b34f6c2c731118818601d7c))
+* **llm-cost:** make the llm_calls ledger the single source of LLM cost in PostHog ([#1323](https://github.com/theexperiencecompany/gaia/issues/1323)) ([c7196d2](https://github.com/theexperiencecompany/gaia/commit/c7196d29e48c8249f2f24e279f0a0f53debb05cc))
+* **llm:** bind prompt_cache_key only onto a real OpenAI client ([#1322](https://github.com/theexperiencecompany/gaia/issues/1322)) ([3a2ffe6](https://github.com/theexperiencecompany/gaia/commit/3a2ffe6fa4e98faac3e48736b00ef0439fa6ee88))
+* **logging:** record the shape of user queries and messages, never their text ([#1324](https://github.com/theexperiencecompany/gaia/issues/1324)) ([1e25a66](https://github.com/theexperiencecompany/gaia/commit/1e25a667227e2e319e435d64207fac871b604764))
+* **mcp:** a server tool's underscored arguments reach it under their own names ([#1272](https://github.com/theexperiencecompany/gaia/issues/1272)) ([be2df72](https://github.com/theexperiencecompany/gaia/commit/be2df72e26f3fb1c1249d4e5982af22cdb939a72))
+* **oauth:** stop signup blocking on outbound email, and send both in parallel ([#1175](https://github.com/theexperiencecompany/gaia/issues/1175)) ([e32aa7e](https://github.com/theexperiencecompany/gaia/commit/e32aa7ee32c165738360d70740301192ec4d3c7f))
+* **schedules:** one recurring-schedule rule, and blocked jobs pause instead of re-arming ([#1318](https://github.com/theexperiencecompany/gaia/issues/1318)) ([d74df65](https://github.com/theexperiencecompany/gaia/commit/d74df65db670e2ece174054c0c669034e314f2e9))
+* **security:** fail closed when a tool-call middleware raises before the tool runs ([#1338](https://github.com/theexperiencecompany/gaia/issues/1338)) ([e4ed606](https://github.com/theexperiencecompany/gaia/commit/e4ed606f3cb2f7d02bf20d1b9cf49cd1fc9e644f))
+* **todos:** run tracked todos on the executor and deliver the result once ([#1273](https://github.com/theexperiencecompany/gaia/issues/1273)) ([7d1249c](https://github.com/theexperiencecompany/gaia/commit/7d1249cc0be74629f4607c4bab6850fed88e1fde))
+* **todos:** slow list page and blank first load; auto-complete tracked todos when resolved ([#1303](https://github.com/theexperiencecompany/gaia/issues/1303)) ([d5e66ef](https://github.com/theexperiencecompany/gaia/commit/d5e66efb0ffbb52907d8b3335cd380515b5dfcf3))
+* **triggers:** let tracked todos watch per-resource triggers, with scope validation ([#1249](https://github.com/theexperiencecompany/gaia/issues/1249)) ([7c76f1b](https://github.com/theexperiencecompany/gaia/commit/7c76f1bbb23ae23b9589a41ca3a33d9018126bcc))
+
+
+### Performance Improvements
+
+* **api:** cache the mid-tier context reads that gate chat TTFT ([#1240](https://github.com/theexperiencecompany/gaia/issues/1240)) ([7c0f7ae](https://github.com/theexperiencecompany/gaia/commit/7c0f7ae8436242d3e94794912f73921227e456e1))
+* **memory:** fail-fast interactive recall to the embedding sidecar ([#1239](https://github.com/theexperiencecompany/gaia/issues/1239)) ([1360d7d](https://github.com/theexperiencecompany/gaia/commit/1360d7d7bac05f6934ded01f1734961ffc523940))
+* **memory:** trim rerank pool to 16, fetch recall entries in one round ([#1245](https://github.com/theexperiencecompany/gaia/issues/1245)) ([bbc9bf3](https://github.com/theexperiencecompany/gaia/commit/bbc9bf3ef9737df056c90aa35f032645eecf5107))
+
+
+### Documentation
+
+* compress every docstring and comment to its contract ([#1223](https://github.com/theexperiencecompany/gaia/issues/1223)) ([c0ad39a](https://github.com/theexperiencecompany/gaia/commit/c0ad39a815ca8ab80a4e3f3c565b1c9e4f66eec2))
+
 ## [0.24.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.23.0...api-v0.24.0) (2026-09-14)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.8.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.7.0...bots-v1.8.0) (2026-10-10)
+
+
+### Features
+
+* activation-mode executor, HIL approval ledger, native reactions ([#1252](https://github.com/theexperiencecompany/gaia/issues/1252)) ([e183f36](https://github.com/theexperiencecompany/gaia/commit/e183f365bf341d5b17df06e4d164ef4756da6cba))
+* **analytics:** one typed event catalog behind every PostHog capture ([#1334](https://github.com/theexperiencecompany/gaia/issues/1334)) ([22015dc](https://github.com/theexperiencecompany/gaia/commit/22015dc67ad68ed43fc6be5803a46d9e9888e002))
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **api:** paid-only entitlement gate, server side ([#1241](https://github.com/theexperiencecompany/gaia/issues/1241)) ([dea3d78](https://github.com/theexperiencecompany/gaia/commit/dea3d788ef3332c39841a29e4dc7f59eb7f3e67b))
+* bring back the non-browser work cut from [#876](https://github.com/theexperiencecompany/gaia/issues/876) ([#1296](https://github.com/theexperiencecompany/gaia/issues/1296)) ([3c63e24](https://github.com/theexperiencecompany/gaia/commit/3c63e24e33fa93d102a3fc24b3f3c9d01a5dba71))
+* **browser:** agentic web browsing with Jev and Browser-Use, Chrome by default and Obscura opt-in ([#876](https://github.com/theexperiencecompany/gaia/issues/876)) ([97d85d3](https://github.com/theexperiencecompany/gaia/commit/97d85d326c2732a629a65852781512d9baa0c106))
+* **comms:** a texting voice with reactions, silence and working OpenUI, on gpt-5.6-luna ([#1279](https://github.com/theexperiencecompany/gaia/issues/1279)) ([8fcba16](https://github.com/theexperiencecompany/gaia/commit/8fcba1684b31dc696d42432e63bdb68cb9122e0d))
+* **comms:** write the silence and reaction directives as tags ([#1274](https://github.com/theexperiencecompany/gaia/issues/1274)) ([c45349b](https://github.com/theexperiencecompany/gaia/commit/c45349baf5e0b700d9f1bbdc3457349bc5474815))
+
+
+### Bug Fixes
+
+* **analytics:** one PostHog identity per person and no silent analytics outages ([#1319](https://github.com/theexperiencecompany/gaia/issues/1319)) ([152f790](https://github.com/theexperiencecompany/gaia/commit/152f7902a0f0d54ed457497ca3a00661589e146e))
+
 ## [1.7.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.6.0...bots-v1.7.0) (2026-09-13)
 
 

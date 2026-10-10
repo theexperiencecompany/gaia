@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.1...mobile-v0.9.0) (2026-10-10)
+
+
+### Features
+
+* activation-mode executor, HIL approval ledger, native reactions ([#1252](https://github.com/theexperiencecompany/gaia/issues/1252)) ([e183f36](https://github.com/theexperiencecompany/gaia/commit/e183f365bf341d5b17df06e4d164ef4756da6cba))
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **comms:** write the silence and reaction directives as tags ([#1274](https://github.com/theexperiencecompany/gaia/issues/1274)) ([c45349b](https://github.com/theexperiencecompany/gaia/commit/c45349baf5e0b700d9f1bbdc3457349bc5474815))
+* **email:** inbox desk, thread todos, standing rules and sub-todos (combined stack) ([#1341](https://github.com/theexperiencecompany/gaia/issues/1341)) ([16c9682](https://github.com/theexperiencecompany/gaia/commit/16c9682af1909f510e2cb36f76e96452b66d5776))
+* paid-only GAIA — subscription gate, pay-first onboarding, one-tap bot linking ([#1161](https://github.com/theexperiencecompany/gaia/issues/1161)) ([6f1a7a7](https://github.com/theexperiencecompany/gaia/commit/6f1a7a71429a7287a0422b9dcee2d84ef0456376))
+* **todos:** tracked todos always run on the agent; HIL ledger and code mode on by default ([#1269](https://github.com/theexperiencecompany/gaia/issues/1269)) ([08688d9](https://github.com/theexperiencecompany/gaia/commit/08688d9491f44aee0e4ef934955d54dd88cf8359))
+
+
+### Bug Fixes
+
+* **chat:** a single dollar sign is currency, not math ([#1277](https://github.com/theexperiencecompany/gaia/issues/1277)) ([6d8270d](https://github.com/theexperiencecompany/gaia/commit/6d8270d46b5ef4272851d69649cae870b7e08375))
+* clear SonarCloud quality-gate bugs, vulnerabilities and hotspots ([#1266](https://github.com/theexperiencecompany/gaia/issues/1266)) ([318ec5e](https://github.com/theexperiencecompany/gaia/commit/318ec5ea6c1334a2bb333a459707be4a8080136e))
+* **integrations:** batch MCP credential checks, read-only status overlay ([#1306](https://github.com/theexperiencecompany/gaia/issues/1306)) ([4e254e4](https://github.com/theexperiencecompany/gaia/commit/4e254e423924a1088b34f6c2c731118818601d7c))
+
 ## [0.8.1](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.0...mobile-v0.8.1) (2026-09-13)
 
 
