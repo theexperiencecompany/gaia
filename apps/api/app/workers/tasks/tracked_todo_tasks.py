@@ -46,7 +46,7 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
-from app.decorators.entitlements import is_paid
+from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -58,7 +58,6 @@ from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
@@ -83,9 +82,7 @@ from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
-from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
-from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
@@ -425,7 +422,7 @@ async def _pause_unpaid(
 ) -> str:
     """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
     log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
-    capture(UserId(doc.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_TRACKED_TODO))
+    capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
     await todo_repository.update(
         doc.id,
         user_id=doc.user_id,

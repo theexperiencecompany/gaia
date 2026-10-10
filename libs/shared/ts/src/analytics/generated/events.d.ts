@@ -122,6 +122,7 @@ export type ServerEventName =
   | "subscription:cancellation_requested"
   | "subscription:cancelled"
   | "subscription:expired"
+  | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
   | "todos:created"
@@ -188,7 +189,6 @@ export type WebEventName =
   | "onboarding:started"
   | "paywall:modal_viewed"
   | "pin:viewed"
-  | "pricing:plan_selected"
   | "profile:link_copied"
   | "reddit:post_viewed"
   | "search:global_opened"
@@ -531,6 +531,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "stream_id": string;
     "conversation_id": string;
     "voice_mode": boolean;
     "is_new_conversation": boolean;
@@ -545,6 +546,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "stream_id": string;
     "conversation_id": string;
     "voice_mode": boolean;
     "is_new_conversation": boolean;
@@ -573,6 +575,8 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "source": string;
     "has_files": boolean;
+    "stream_id": string;
+    "is_retry": boolean;
     "is_new_conversation"?: boolean;
     "message_count"?: number;
     "file_count"?: number;
@@ -829,9 +833,11 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "approval_id": string;
-    "decision": string;
-    "ledger_version": number;
+    "decision": "approved" | "denied";
+    "tool_name": string;
+    "via": "card" | "batch" | "chat" | "auto";
+    "approval_id"?: string;
+    "ledger_version"?: number;
     "card_age_seconds"?: number;
   };
   "hil:resumed": {
@@ -879,26 +885,31 @@ export interface EventProperties {
     "connection_method"?: "oauth";
     "provider"?: string;
     "is_new_link"?: boolean;
+    "is_reconnect"?: boolean;
   };
   "integration:custom_deleted": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
   };
   "integration:custom_published": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
   };
   "integration:custom_unpublished": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
   };
   "integration:custom_updated": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
   };
   "integration:disconnected": {
     "actor": "user" | "agent";
@@ -915,6 +926,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
   };
   "mcp:connection_tested": {
     "actor": "user" | "agent";
@@ -1076,6 +1088,7 @@ export interface EventProperties {
     "quantity"?: number;
     "source"?: string;
     "billing_cycle"?: string;
+    "plan_id"?: string;
   };
   "payment:failed": {
     "actor": "user" | "agent";
@@ -1113,15 +1126,6 @@ export interface EventProperties {
   "pin:viewed": {
     "conversation_id": string;
     "message_id"?: string;
-  };
-  "pricing:plan_selected": {
-    "price": number;
-    "is_monthly": boolean;
-    "is_current_plan": boolean;
-    "has_active_subscription": boolean;
-    "is_free_plan": boolean;
-    "plan_tier": "free" | "pro";
-    "plan_id"?: string;
   };
   "profile:link_copied": {
     "holo_card_id": string;
@@ -1312,6 +1316,13 @@ export interface EventProperties {
     "source": "onboarding" | "payment_success_page";
     "reason": "declined" | "confirmation_timeout" | "verification_error";
   };
+  "subscription:lapsed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "subscription_id": string;
+    "status": "failed" | "on_hold";
+  };
   "subscription:page_viewed": {
     "source": "landing_pricing";
   };
@@ -1466,7 +1477,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "login_method": string;
+    "login_method"?: string;
   };
   "user:logged_out": {
     "actor": "user" | "agent";
@@ -1481,7 +1492,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "signup_method": string;
+    "signup_method"?: string;
   };
   "voice:mode_started": {
     "conversation_id"?: string;

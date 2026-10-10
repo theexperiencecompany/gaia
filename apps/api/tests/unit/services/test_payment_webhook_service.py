@@ -939,7 +939,9 @@ class TestHandleSubscriptionRenewed:
 
         # WHICH subscription was read: the owner comes off that row, so a lost
         # id would attribute the renewal to whatever a None lookup returns.
-        mock_webhook_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_xyz789")
+        assert {
+            c.args for c in mock_webhook_subscription_repository.get_by_dodo_id.await_args_list
+        } == {("sub_xyz789",)}
         mock_track_subscription.assert_called_once()
         user_id, event = mock_track_subscription.call_args.args
         assert user_id == UserId(FAKE_USER_ID)
@@ -1012,7 +1014,9 @@ class TestHandleSubscriptionCancelled:
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_004")
 
-        mock_webhook_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_xyz789")
+        assert {
+            c.args for c in mock_webhook_subscription_repository.get_by_dodo_id.await_args_list
+        } == {("sub_xyz789",)}
         mock_track_subscription.assert_called_once()
         mock_track_subscription.assert_called_once_with(
             UserId(FAKE_USER_ID),
@@ -1147,7 +1151,9 @@ class TestHandleSubscriptionExpired:
         event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_expire_002")
 
-        mock_webhook_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_xyz789")
+        assert {
+            c.args for c in mock_webhook_subscription_repository.get_by_dodo_id.await_args_list
+        } == {("sub_xyz789",)}
         mock_track_subscription.assert_called_once()
         mock_track_subscription.assert_called_once_with(
             UserId(FAKE_USER_ID), SubscriptionExpired(subscription_id="sub_xyz789")

@@ -22,6 +22,7 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
+from app.services.hil import ledger_decide
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -91,7 +92,9 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         assert outcome.prior_state == LedgerState.PENDING
@@ -121,7 +124,9 @@ class TestDecideLedger:
             ),
             patch.object(ledger_decide, "_wake_agent", new=AsyncMock()) as wake,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         wake.assert_awaited_once_with(repo.get_by_approval_id.return_value, "APPROVED", None)
@@ -135,7 +140,9 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is False
         assert outcome.state == LedgerState.APPROVED
@@ -153,7 +160,7 @@ class TestDecideLedger:
             patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3, via="card"
             )
 
         assert outcome.committed is True
@@ -176,7 +183,9 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         assert outcome.queued is True
@@ -191,7 +200,9 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is False
         assert outcome.stale is True
@@ -205,7 +216,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.approval_ledger_repository", new=_repo(None)),
             pytest.raises(ApprovalRequestNotFoundError),
         ):
-            await decide_ledger("ap_nope", user_id=USER_ID, kind="approve", v=None)
+            await decide_ledger("ap_nope", user_id=USER_ID, kind="approve", v=None, via="card")
 
 
 @pytest.mark.unit
@@ -222,7 +233,9 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         capture.assert_called_once()
@@ -235,6 +248,33 @@ class TestDecisionSubmittedEvent:
         assert event.card_age_seconds is not None
         assert event.card_age_seconds < 60
 
+    @pytest.mark.regression
+    async def test_the_decision_names_its_tool_and_where_it_was_made(self) -> None:
+        with (
+            patch.object(ledger_decide, "approval_ledger_repository", new=_repo(_row())),
+            patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
+            patch.object(ledger_decide, "capture") as capture,
+        ):
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3, via="chat")
+
+        event = capture.call_args.args[1]
+        assert (event.tool_name, event.via) == ("GMAIL_SEND_EMAIL", "chat")
+
+    @pytest.mark.regression
+    async def test_a_batch_review_decision_is_marked_as_the_batch(self) -> None:
+        with (
+            patch.object(ledger_decide, "approval_ledger_repository", new=_repo(_row())),
+            patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
+            patch.object(ledger_decide, "capture") as capture,
+        ):
+            await decide_ledger_batch(
+                USER_ID, [BatchDecisionItem(approval_id="ap_abc", decision="approve", v=3)]
+            )
+
+        assert capture.call_args.args[1].via == "batch"
+
     async def test_deny_emits_deny_decision(self) -> None:
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
@@ -246,7 +286,7 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
-            await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", v=3, via="card")
 
         assert isinstance(capture.call_args.args[1], HilDecisionSubmitted)
         assert capture.call_args.args[1].decision == "denied"
@@ -263,7 +303,9 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=99)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=99, via="card"
+            )
 
         assert outcome.committed is False
         capture.assert_not_called()
@@ -276,7 +318,9 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is False
         capture.assert_not_called()
@@ -296,7 +340,7 @@ class TestConversationFlagSync:
             patch.object(ledger_decide, "capture"),
             patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
         ):
-            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3, via="card")
 
         sync.assert_awaited_once_with("conv-1", USER_ID)
 
@@ -353,7 +397,7 @@ class TestDecideHardening:
             patch(f"{MODULE}.approval_ledger_repository", new=repo),
             pytest.raises(ApprovalRequestForbiddenError),
         ):
-            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=None)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=None, via="card")
 
         repo.transition.assert_not_awaited()
 
@@ -370,7 +414,7 @@ class TestDecideHardening:
             patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3, via="card"
             )
 
         assert outcome.committed is True
@@ -404,7 +448,9 @@ class TestDecideHardening:
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
             patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.queued is True
         deliver.assert_not_awaited()
@@ -791,7 +837,9 @@ class TestApproveDeliversToExecutor:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
@@ -814,7 +862,9 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         resume.assert_awaited_once_with(row)
@@ -830,7 +880,7 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
-            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3, via="card")
 
         # Dispatch is unconditional; the no-owner row returns before any claim.
         resume.assert_awaited_once()
@@ -848,7 +898,7 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "record_owner_deny", new=AsyncMock()) as record,
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3, via="card"
             )
 
         assert outcome.committed is True
@@ -975,7 +1025,7 @@ class TestConditionalApproveBecomesDeny:
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()) as verdict,
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="approve", feedback="cc finance", v=3
+                "ap_abc", user_id=USER_ID, kind="approve", feedback="cc finance", v=3, via="card"
             )
 
         assert outcome.committed is True
@@ -1000,7 +1050,9 @@ class TestConditionalApproveBecomesDeny:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         assert outcome.state == LedgerState.APPROVED
@@ -1022,7 +1074,9 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
@@ -1046,7 +1100,9 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="approve", v=3, via="card"
+            )
 
         assert outcome.committed is True
 
@@ -1065,7 +1121,7 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3, via="card"
             )
 
         assert outcome.committed is True
@@ -1353,7 +1409,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_stale_version_refreshes_without_writing(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(state=LedgerState.PENDING, v=4)
 
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", v=3)
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", v=3, via="card")
 
         assert outcome == LedgerDecision(
             committed=False,
@@ -1383,7 +1439,7 @@ class TestDecideLedgerOutcomes:
 
         seams.repo.transition.side_effect = _lose
 
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         assert outcome == LedgerDecision(
             committed=False, approval_id="ap_1", prior_state=LedgerState.PENDING, state=state
@@ -1393,14 +1449,18 @@ class TestDecideLedgerOutcomes:
     async def test_whitespace_feedback_is_no_condition(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", feedback="   ")
+        outcome = await decide_ledger(
+            "ap_1", user_id=USER_ID, kind="approve", feedback="   ", via="card"
+        )
 
         assert outcome.state is LedgerState.APPROVED
 
     async def test_a_conditional_approve_is_recorded_as_a_deny(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", feedback="cc finance")
+        await decide_ledger(
+            "ap_1", user_id=USER_ID, kind="approve", feedback="cc finance", via="card"
+        )
 
         seams.log.set.assert_any_call(
             hil={"approval_id": "ap_1", "decision": "deny", "tool": "GMAIL_SEND_EMAIL"}
@@ -1409,7 +1469,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_committed_approve_is_one_exact_decision(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
 
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         assert outcome == LedgerDecision(
             committed=True,
@@ -1431,7 +1491,7 @@ class TestDecideLedgerOutcomes:
     async def test_the_ticket_names_its_age_and_the_redeem_call(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=datetime.now(UTC) - timedelta(hours=2, minutes=5))
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         seams.deliver.assert_awaited_once_with(
             "conv-1",
@@ -1444,7 +1504,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_ticket_with_no_birth_time_says_so(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         assert "Send it (unknown age)." in seams.deliver.await_args.args[2]
 
@@ -1454,7 +1514,7 @@ class TestDecideLedgerOutcomes:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         errors = _warned(seams.log.error)
         assert errors[
@@ -1473,7 +1533,7 @@ class TestDecideLedgerOutcomes:
         row = _doc()
         seams.rows["ap_1"] = row
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope", via="card")
 
         seams.deliver.assert_awaited_once_with(
             "conv-1",
@@ -1489,14 +1549,14 @@ class TestDecideLedgerOutcomes:
     async def test_a_bare_deny_carries_no_preview(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="deny")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", via="card")
 
         assert seams.deliver.await_args.args[2] == f"DECISION ap_1=DENIED Send it{_DENY_TAIL}"
 
     async def test_a_long_deny_reason_is_clipped_for_the_agent(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="n" * 600)
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="n" * 600, via="card")
 
         assert seams.deliver.await_args.args[2] == (
             f"DECISION ap_1=DENIED Send it :: {'n' * 500}{_DENY_TAIL}"
@@ -1508,7 +1568,7 @@ class TestDecideLedgerOutcomes:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope", via="card")
 
         errors = _warned(seams.log.error)
         assert errors[
@@ -1527,7 +1587,7 @@ class TestDecideLedgerOutcomes:
     ) -> None:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a", "ap_b"])
 
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         assert outcome.queued is True
         assert _inbox_lines(seams) == [
@@ -1651,7 +1711,7 @@ class TestTheInboxWake:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
         seams.redis.client = None
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         seams.inbox.assert_not_called()
         errors = _warned(seams.log.error)
@@ -1663,7 +1723,7 @@ class TestTheInboxWake:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
         seams.inbox.return_value.append.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         errors = _warned(seams.log.error)
         assert errors[f"{LogTag.HIL} Ledger wake failed; outcome lives on the row only"] == {
@@ -1675,7 +1735,7 @@ class TestTheInboxWake:
     async def test_a_long_result_is_clipped_in_the_wake(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(blocked_by=["x" * 600])
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
         text = _inbox_lines(seams)[0][1]
         assert text == f"DECISIONS: ap_1=QUEUED Send it :: {('waiting on ' + 'x' * 600)[:500]}"
@@ -1706,7 +1766,13 @@ class TestDecideLedgerBatchOutcomes:
 
         assert [c.args for c in decide.await_args_list] == [(f"ap_{i}",) for i in range(1, 7)]
         assert [c.kwargs for c in decide.await_args_list] == [
-            {"user_id": USER_ID, "kind": item.decision, "feedback": item.feedback, "v": item.v}
+            {
+                "user_id": USER_ID,
+                "kind": item.decision,
+                "feedback": item.feedback,
+                "v": item.v,
+                "via": "batch",
+            }
             for item in items
         ]
         assert outcomes == [

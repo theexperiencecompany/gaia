@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 from fastapi import BackgroundTasks
+from pymongo.errors import PyMongoError
 import pytest
 from tests.factories import make_integration_config
 
@@ -33,10 +34,11 @@ def mock_log():
         yield log
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_repo():
     with patch(f"{MODULE}.user_integration_repository") as repo:
         repo.get_for_user = AsyncMock(return_value=None)
+        repo.has_connected_before = AsyncMock(return_value=False)
         yield repo
 
 
@@ -225,7 +227,8 @@ class TestCompleteComposioConnectionSuccess:
             connected_account_id="acc1",
         )
         mock_capture.assert_called_once_with(
-            UserId(USER_ID), IntegrationConnected(integration_id="gmail", provider="google")
+            UserId(USER_ID),
+            IntegrationConnected(integration_id="gmail", provider="google", is_reconnect=False),
         )
         mock_log.set.assert_called_once_with(user={"id": USER_ID})
         mock_log.set_ns.assert_called_once_with("oauth", provider="google", integration_id="gmail")
@@ -236,6 +239,50 @@ class TestCompleteComposioConnectionSuccess:
             connected_account_id="acc1",
         )
         mock_log.error.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_a_reconnect_of_an_integration_connected_before_is_marked(
+        self, mock_composio, mock_config, mock_handle, mock_capture, mock_repo, background_tasks
+    ):
+        mock_composio.get_connected_account_by_id.return_value = _account(
+            user_id=USER_ID, config_id="config1"
+        )
+        mock_config.return_value = _integration()
+        mock_repo.has_connected_before.side_effect = lambda user_id, integration_id: (
+            (user_id, integration_id) == (USER_ID, "gmail")
+        )
+
+        await complete_composio_connection(
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
+        )
+
+        assert mock_capture.call_args.args[1].is_reconnect is True
+
+    async def test_an_unreadable_connection_history_does_not_fail_the_connect(
+        self, mock_composio, mock_config, mock_handle, mock_capture, mock_repo, background_tasks
+    ):
+        """Whether it is a reconnect is analytics; the user's connect must not hinge on it."""
+        mock_composio.get_connected_account_by_id.return_value = _account(
+            user_id=USER_ID, config_id="config1"
+        )
+        mock_config.return_value = _integration()
+        mock_repo.has_connected_before.side_effect = PyMongoError("mongo down")
+
+        with patch("app.services.integrations.user_integration_status.log") as status_log:
+            outcome = await complete_composio_connection(
+                "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
+            )
+
+        assert status_log.warning.call_args.kwargs["integration_id"] == "gmail"
+
+        assert outcome == ConnectionCompleted(
+            user_id=USER_ID, integration_id="gmail", provider="google"
+        )
+        mock_handle.assert_awaited_once()
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID),
+            IntegrationConnected(integration_id="gmail", provider="google", is_reconnect=None),
+        )
 
     async def test_a_non_string_account_user_id_is_matched_as_a_string(
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
@@ -259,5 +306,6 @@ class TestCompleteComposioConnectionSuccess:
             connected_account_id="acc1",
         )
         mock_capture.assert_called_once_with(
-            UserId(USER_ID), IntegrationConnected(integration_id="gmail", provider="google")
+            UserId(USER_ID),
+            IntegrationConnected(integration_id="gmail", provider="google", is_reconnect=False),
         )

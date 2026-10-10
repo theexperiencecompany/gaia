@@ -207,6 +207,8 @@ async def chat_stream_endpoint(
             has_selected_calendar_event=bool(body.selectedCalendarEvent),
             is_reply=bool(body.replyToMessage),
             source=request_client_source(request).value,
+            stream_id=stream_id,
+            is_retry=body.is_retry,
         ),
     )
 

@@ -29,7 +29,7 @@ from app.models.reminder_models import AgentType, ReminderModel, StaticReminderP
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
 from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
-from shared.py.analytics.catalog.billing import PaywallBlocked
+from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER
 
 pytestmark = pytest.mark.e2e
 
@@ -199,6 +199,7 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
                 )
             )
             capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
+            paywall_block = stack.enter_context(patch(f"{REMINDER_TASKS}.capture_paywall_block"))
             rearm = stack.enter_context(
                 patch.object(ReminderScheduler, "reschedule_task", new_callable=AsyncMock)
             )
@@ -221,10 +222,9 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
         conv_m.assert_not_awaited()
         plat_m.assert_not_awaited()
         assert store.statuses == [ScheduledTaskStatus.PAUSED]
-        paywall_events = [
-            c for c in capture.call_args_list if isinstance(c.args[1], PaywallBlocked)
-        ]
-        assert len(paywall_events) == 1
+        # The blocked fire is one paywall block, never a completed reminder.
+        paywall_block.assert_called_once_with(reminder.user_id, PAYWALL_FEATURE_REMINDER)
+        capture.assert_not_called()
         # Activation put it back on its own schedule, in its own zone.
         assert store.reminder.status is ScheduledTaskStatus.SCHEDULED
         assert store.reminder.pause_reason is None

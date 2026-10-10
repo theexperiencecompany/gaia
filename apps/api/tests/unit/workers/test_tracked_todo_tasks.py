@@ -112,9 +112,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
-from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
-from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.analytics.context import (
     AnalyticsContext,
     current_analytics_context,
@@ -2195,7 +2193,7 @@ class TestOneRunPerOccurrence:
 
         with (
             self._worker(row) as run,
-            patch(f"{MODULE}.capture"),
+            patch(f"{MODULE}.capture_paywall_block"),
             patch("app.services.tracked_todo_service.todo_repository", row),
         ):
             assert await _fire(queue, blocked) == "paused:todo-1 (subscription required)"
@@ -3301,7 +3299,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
             patch(f"{MODULE}._execute_on_executor", execute),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
-            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as capture,
             _serving(_pool()),
         ):
             first = await _execute_todo_with_retry("todo-1")
@@ -3314,9 +3312,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         assert first.startswith("paused:") and second.startswith("paused:")
         assert _updates(repo) == [{"pause_reason": "subscription_lapsed"}]
         repo.update_if_scheduled_at.assert_not_awaited()
-        assert [c.args[1] for c in capture.call_args_list] == [
-            PaywallBlocked(feature=PAYWALL_FEATURE_TRACKED_TODO)
-        ]
+        capture.assert_called_once_with(OWNER_ID, PAYWALL_FEATURE_TRACKED_TODO)
 
     async def test_the_pause_is_recorded_against_the_owner_and_the_todo(
         self, account: SimpleNamespace
@@ -3329,7 +3325,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.record_activity", record),
-            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as capture,
             patch(f"{MODULE}.log") as log,
             _serving(_pool()),
         ):
@@ -3340,9 +3336,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         log.warning.assert_called_once_with(
             "tracked_todo.paused_subscription_required", todo_id="todo-1", user_id=OWNER_ID
         )
-        capture.assert_called_once_with(
-            UserId(OWNER_ID), PaywallBlocked(feature=PAYWALL_FEATURE_TRACKED_TODO)
-        )
+        capture.assert_called_once_with(OWNER_ID, PAYWALL_FEATURE_TRACKED_TODO)
         assert [(c.args, c.kwargs["user_id"]) for c in repo.update.call_args_list] == [
             (("todo-1",), OWNER_ID)
         ]
@@ -3364,7 +3358,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         repo.update_if_scheduled_at = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.capture"),
+            patch(f"{MODULE}.capture_paywall_block"),
             _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")
@@ -3386,7 +3380,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
-            patch(f"{MODULE}.capture"),
+            patch(f"{MODULE}.capture_paywall_block"),
             patch(
                 f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
             ) as hold,
@@ -3409,7 +3403,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
-            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as capture,
             patch(
                 f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
             ) as hold,

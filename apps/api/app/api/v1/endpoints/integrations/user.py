@@ -227,7 +227,7 @@ async def update_integration_instructions(
         raise HTTPException(
             status_code=500, detail="Failed to update integration instructions"
         ) from e
-    capture(UserId(user_id), IntegrationInstructionsUpdated())
+    capture(UserId(user_id), IntegrationInstructionsUpdated(integration_id=integration_id))
     return IntegrationInstructionsResponse(
         integration_id=record.integration_id,
         content=record.content,

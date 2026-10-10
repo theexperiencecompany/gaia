@@ -415,7 +415,12 @@ async def _run_chat_stream(
             capture(
                 UserId(user_id),
                 _turn_ended_event(
-                    body, state, conversation_id, source, is_new_conversation=is_new_conversation
+                    body,
+                    state,
+                    stream_id,
+                    conversation_id,
+                    source,
+                    is_new_conversation=is_new_conversation,
                 ),
             )
 
@@ -435,6 +440,7 @@ async def _run_chat_stream(
 def _turn_ended_event(
     body: MessageRequestWithHistory,
     state: _StreamState,
+    stream_id: str,
     conversation_id: str,
     source: str | None,
     *,
@@ -443,6 +449,7 @@ def _turn_ended_event(
     """Build the turn's terminal analytics event, cancelled or completed; timings only once measured."""
     event_type = ChatMessageCancelled if state.is_cancelled else ChatMessageCompleted
     return event_type(
+        stream_id=stream_id,
         conversation_id=conversation_id,
         voice_mode=body.voice_mode,
         is_new_conversation=is_new_conversation,

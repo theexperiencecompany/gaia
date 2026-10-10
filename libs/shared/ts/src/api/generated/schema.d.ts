@@ -10515,6 +10515,11 @@ export interface components {
              * @default false
              */
             is_onboarding_demo?: boolean;
+            /**
+             * Is Retry
+             * @default false
+             */
+            is_retry?: boolean;
             /** Message */
             message: string;
             /** Messages */

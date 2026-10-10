@@ -236,7 +236,7 @@ async def build_bot_message_request(
     )
 
 
-async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
+async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:
     """Charge quota/budget for one bot turn and record its submission event.
 
     Mirrors what the web chat endpoint charges via @tiered_rate_limit, done
@@ -260,5 +260,8 @@ async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
             # key every other chat event reports its surface under.
             source=body.platform,
             has_files=bool(body.file_ids or body.file_data),
+            stream_id=stream_id,
+            # Bots have no retry action: a resend is a new message.
+            is_retry=False,
         ),
     )

@@ -110,6 +110,8 @@ export interface ChatStreamRequest {
     role: "user" | "assistant";
   } | null;
   isOnboardingDemo: boolean;
+  /** The user resent an earlier message from its retry action. */
+  isRetry: boolean;
 }
 
 /** The API's enum; the members are the ones the web reads by name. */
@@ -298,6 +300,7 @@ export const chatApi = {
       selectedCalendarEvent,
       replyToMessage,
       isOnboardingDemo,
+      isRetry,
     } = request;
 
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
@@ -373,6 +376,7 @@ export const chatApi = {
         selectedCalendarEvent,
         replyToMessage,
         is_onboarding_demo: isOnboardingDemo,
+        is_retry: isRetry,
         use_default_models: useDefaultModels,
         comms_model: useDefaultModels ? null : commsModel,
         executor_model: useDefaultModels ? null : executorModel,

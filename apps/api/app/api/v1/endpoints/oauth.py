@@ -248,7 +248,9 @@ async def workos_mobile_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in DB
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",
@@ -355,7 +357,9 @@ async def workos_desktop_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",
@@ -450,7 +454,9 @@ async def workos_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",

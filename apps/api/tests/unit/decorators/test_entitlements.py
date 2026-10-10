@@ -5,9 +5,11 @@ with none at all, rather than capping usage. The 402 wire shape is fixed (the
 frontend is built against it), so the contract tests assert the exact body.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import time_machine
 
 from app.decorators.entitlements import (
     PAYWALL_MESSAGE,
@@ -17,7 +19,9 @@ from app.decorators.entitlements import (
 )
 from app.models.payment_models import PlanType
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog import billing
 from shared.py.analytics.catalog.billing import PaywallBlocked
+from tests import helpers
 
 pytestmark = pytest.mark.unit
 
@@ -175,28 +179,110 @@ class TestRequireActiveSubscription:
         assert exc_info.value.detail["discount_code"] == "SAVE20"
         assert exc_info.value.detail["checkout_url"] is None
 
-    async def test_block_is_captured_against_the_blocked_users_own_profile(self) -> None:
+    async def test_block_is_captured_against_the_blocked_users_own_profile(
+        self, fake_redis
+    ) -> None:
         """The paywall event must carry the blocked user's id, not an anonymous one — bot and worker paths have no request context."""
+        client = MagicMock()
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.FREE),
             ),
-            patch(f"{ENT}.capture") as mock_capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
         ):
             with pytest.raises(SubscriptionRequiredException):
                 await require_active_subscription(USER_ID, feature="get_token")
+            await helpers.drain_at_most_once_sends()
 
-        mock_capture.assert_called_once_with(UserId(USER_ID), PaywallBlocked(feature="get_token"))
+        sent = client.capture.call_args.kwargs
+        assert (sent["distinct_id"], sent["event"]) == (
+            UserId(USER_ID).distinct_id,
+            PaywallBlocked.event,
+        )
+        assert sent["properties"]["feature"] == "get_token"
 
-    async def test_pro_user_is_never_captured_as_blocked(self) -> None:
+    async def test_pro_user_is_never_captured_as_blocked(self, fake_redis) -> None:
+        client = MagicMock()
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.PRO),
             ),
-            patch(f"{ENT}.capture") as mock_capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
         ):
             await require_active_subscription(USER_ID, feature="get_token")
 
-        mock_capture.assert_not_called()
+        client.capture.assert_not_called()
+
+
+class TestOneBlockIsCountedPerRouteWindow:
+    """A page load hits ~5 gated routes and a reload repeats them; each must not be a new block."""
+
+    @pytest.mark.regression
+    async def test_repeated_blocks_on_one_route_are_captured_once(self, fake_redis) -> None:
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            for _ in range(5):
+                with pytest.raises(SubscriptionRequiredException):
+                    await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
+
+        assert [c.kwargs["event"] for c in client.capture.call_args_list] == ["paywall:blocked"]
+
+    async def test_another_route_is_its_own_block(self, fake_redis) -> None:
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            for feature in ("/api/v1/conversations", "/api/v1/notifications"):
+                with pytest.raises(SubscriptionRequiredException):
+                    await require_active_subscription(USER_ID, feature=feature)
+            await helpers.drain_at_most_once_sends()
+
+        assert [c.kwargs["properties"]["feature"] for c in client.capture.call_args_list] == [
+            "/api/v1/conversations",
+            "/api/v1/notifications",
+        ]
+
+    async def test_a_blocks_dedupe_key_expires_with_its_window(self, fake_redis) -> None:
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=MagicMock()),
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
+
+        [key] = await fake_redis.keys("*")
+        assert await fake_redis.ttl(key) == billing.PAYWALL_BLOCKED_WINDOW.total_seconds()
+
+    @time_machine.travel(datetime(2026, 10, 8, 10, 37, 12, tzinfo=UTC), tick=False)
+    async def test_a_block_is_stamped_at_the_start_of_its_window(self, fake_redis) -> None:
+        """Every repeat inside the hour must share one timestamp, or PostHog keeps each as a row."""
+        client = MagicMock()
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch("app.services.analytics_service._get_posthog_client", return_value=client),
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await require_active_subscription(USER_ID, feature="/api/v1/conversations")
+            await helpers.drain_at_most_once_sends()
+
+        assert client.capture.call_args.kwargs["timestamp"] == datetime(2026, 10, 8, 10, tzinfo=UTC)

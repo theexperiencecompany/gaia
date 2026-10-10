@@ -21,8 +21,6 @@ from app.models.payment_models import PlanType
 from app.models.reminder_models import ReminderModel, ReminderStatus, StaticReminderPayload
 from app.services.reminder_service import reminder_scheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER, execute_reminder_by_agent
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 
 pytestmark = pytest.mark.unit
@@ -76,13 +74,11 @@ async def test_the_block_reaches_the_funnel_under_the_blocked_users_own_id() -> 
     with (
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture") as capture,
+        patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
 
-    capture.assert_called_once_with(
-        UserId(USER_ID), PaywallBlocked(feature=PAYWALL_FEATURE_REMINDER)
-    )
+    block.assert_called_once_with(USER_ID, PAYWALL_FEATURE_REMINDER)
 
 
 async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
@@ -90,12 +86,11 @@ async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
         patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)),
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture") as capture,
+        patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
 
-    captured = [type(call.args[1]) for call in capture.call_args_list]
-    assert PaywallBlocked not in captured
+    block.assert_not_called()
 
 
 @pytest.mark.usefixtures("lapsed_user")
@@ -165,7 +160,7 @@ async def test_a_blocked_recurring_reminder_runs_one_tick_then_pauses() -> None:
         patch(f"{SCHEDULER}.reminder_repository.claim_for_execution", AsyncMock(return_value=True)),
         patch(f"{SCHEDULER}.reminder_repository.set_status", set_status),
         patch.object(reminder_scheduler, "reschedule_task", AsyncMock()) as rearm,
-        patch(f"{MODULE}.capture") as capture,
+        patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await reminder_scheduler.process_task_execution(REMINDER_ID)
 
@@ -173,8 +168,7 @@ async def test_a_blocked_recurring_reminder_runs_one_tick_then_pauses() -> None:
     assert last.args[1] is ReminderStatus.PAUSED
     assert last.kwargs["pause_reason"] == "subscription_lapsed"
     rearm.assert_not_awaited()
-    blocked = [c for c in capture.call_args_list if isinstance(c.args[1], PaywallBlocked)]
-    assert len(blocked) == 1
+    block.assert_called_once_with(USER_ID, PAYWALL_FEATURE_REMINDER)
 
 
 @pytest.mark.usefixtures("lapsed_user")

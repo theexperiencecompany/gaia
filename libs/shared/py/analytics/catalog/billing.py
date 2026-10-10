@@ -1,5 +1,6 @@
 """Billing events: checkout, payments, subscriptions, paywalls, rate limits, pricing and usage."""
 
+from datetime import timedelta
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
@@ -13,13 +14,13 @@ __all__ = [
     "PaywallBlocked",
     "PaywallModalViewed",
     "PaywallSource",
-    "PricingPlanSelected",
     "RateLimitHit",
     "SubscriptionActivated",
     "SubscriptionCancellationRequested",
     "SubscriptionCancelled",
     "SubscriptionExpired",
     "SubscriptionFailed",
+    "SubscriptionLapsed",
     "SubscriptionPageViewed",
     "SubscriptionPlanViewed",
     "SubscriptionRenewed",
@@ -61,6 +62,8 @@ class PaymentCheckoutStarted(ServerEvent):
     quantity: int | None = None
     source: Identifier | None = None
     billing_cycle: Identifier | None = None
+    # The Dodo product id of the plan being bought; replaces the client's pricing:plan_selected.
+    plan_id: Identifier | None = None
 
 
 class PaymentSucceeded(ServerEvent):
@@ -150,6 +153,16 @@ class SubscriptionExpired(ServerEvent):
     subscription_id: Identifier
 
 
+class SubscriptionLapsed(ServerEvent):
+    """A subscription's renewal failed or Dodo put it on hold, so the user lost Pro."""
+
+    event: ClassVar[str] = "subscription:lapsed"
+    budget_per_user_day: ClassVar[int] = 50
+
+    subscription_id: Identifier
+    status: Literal["failed", "on_hold"]
+
+
 class SubscriptionPageViewed(WebEvent):
     """The landing pricing page was viewed."""
 
@@ -181,10 +194,15 @@ class SubscriptionFailed(WebEvent):
     reason: CheckoutFailureReason
 
 
+#: One paywall:blocked per user and feature per window: a page load hits ~5 gated routes and a reload repeats them.
+PAYWALL_BLOCKED_WINDOW = timedelta(hours=1)
+
+
 class PaywallBlocked(ServerEvent):
-    """A non-PRO caller was turned away from a paid-only surface."""
+    """A non-PRO caller was turned away from a paid-only surface, once per feature per window."""
 
     event: ClassVar[str] = "paywall:blocked"
+    at_most_once_ttl: ClassVar[timedelta | None] = PAYWALL_BLOCKED_WINDOW
     budget_per_user_day: ClassVar[int] = 500
 
     feature: UrlPath | Identifier
@@ -211,21 +229,6 @@ class RateLimitHit(ServerEvent):
     feature: Identifier
     plan: Identifier
     origin: Identifier | None = None
-
-
-class PricingPlanSelected(WebEvent):
-    """A user clicked a pricing card's call to action."""
-
-    event: ClassVar[str] = "pricing:plan_selected"
-    budget_per_user_day: ClassVar[int] = 20
-
-    price: float
-    is_monthly: bool
-    is_current_plan: bool
-    has_active_subscription: bool
-    is_free_plan: bool
-    plan_tier: Literal["free", "pro"]
-    plan_id: Identifier | None = None
 
 
 class UsageQueried(ServerEvent):

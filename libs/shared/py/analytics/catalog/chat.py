@@ -42,6 +42,10 @@ class ChatMessageSubmitted(ServerEvent):
 
     source: Identifier
     has_files: bool
+    # The turn's stream; chat:message_completed and chat:message_cancelled carry the same id.
+    stream_id: Identifier
+    # The user resent an earlier message from its retry action.
+    is_retry: bool
     is_new_conversation: bool | None = None
     message_count: int | None = None
     file_count: int | None = None
@@ -67,6 +71,7 @@ class ChatMessageRefused(ServerEvent):
 class _ChatTurnEnded(ServerEvent):
     """The properties shared by a turn's two terminal events, completed and cancelled."""
 
+    stream_id: Identifier
     conversation_id: Identifier
     voice_mode: bool
     is_new_conversation: bool

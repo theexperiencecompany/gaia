@@ -421,6 +421,7 @@ _DESKTOP_TURN = {
         "end": {"dateTime": "2026-06-01T09:15:00Z"},
     },
     "replyToMessage": {"id": "msg-1", "content": "hello", "role": "assistant"},
+    "is_retry": True,
 }
 
 
@@ -470,6 +471,8 @@ class TestChatMessageSubmitted:
                 has_selected_calendar_event=True,
                 is_reply=True,
                 source="desktop",
+                stream_id=response.headers["X-Stream-Id"],
+                is_retry=True,
             ),
         )
 
@@ -497,6 +500,8 @@ class TestChatMessageSubmitted:
                 has_selected_calendar_event=False,
                 is_reply=False,
                 source="web",
+                stream_id=response.headers["X-Stream-Id"],
+                is_retry=False,
             ),
         )
 

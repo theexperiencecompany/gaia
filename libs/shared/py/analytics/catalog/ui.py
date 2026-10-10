@@ -70,7 +70,7 @@ class ApiRequestFailed(WebEvent):
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
     status: int
     url: UrlPath
-    # The API envelope's machine code (NOT_AUTHENTICATED, subscription_required); absent on a transport failure.
+    # The API envelope's machine code; on a transport failure (status 0) network, timeout, aborted or unknown.
     error_code: Identifier | None = None
 
 

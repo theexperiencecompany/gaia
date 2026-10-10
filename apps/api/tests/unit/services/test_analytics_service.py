@@ -13,10 +13,8 @@ import time_machine
 from app.constants.analytics import (
     ANALYTICS_DAY_TIMEZONE,
     AT_MOST_ONCE_KEY_PREFIX,
-    AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
-from app.models.payment_models import PlanType, SubscriptionStatus
 from app.services.analytics_service import (
     _get_posthog_client,
     agent_run_lifecycle,
@@ -34,8 +32,6 @@ from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
     SubscriptionActivated,
     SubscriptionCancelled,
-    SubscriptionExpired,
-    SubscriptionRenewed,
 )
 from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked
 from shared.py.analytics.catalog.memory import MemoryCleared
@@ -45,7 +41,7 @@ from shared.py.analytics.context import (
     analytics_context,
     worker_context,
 )
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, drain_at_most_once_sends
 
 USER_1 = UserId("6812f0b3c9a14e2b7d5a91cc")
 USER_2 = UserId("6812f0b3c9a14e2b7d5a91dd")
@@ -330,13 +326,6 @@ class TestAttribution:
             contextvars.Context().run(capture, USER_1, MemoryCleared(deleted_count=1))
 
 
-async def _drain_at_most_once_sends() -> None:
-    """Wait for the gated sends capture spawned, so their outcome is observable."""
-    await asyncio.gather(
-        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
-    )
-
-
 def _user_context(surface: EntrySurface) -> AnalyticsContext:
     return AnalyticsContext(
         attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
@@ -374,7 +363,7 @@ class TestUserActive:
                 capture(USER_1, MemoryCleared(deleted_count=2))
             with analytics_context(_user_context(EntrySurface.VOICE)):
                 capture(USER_1, MemoryCleared(deleted_count=3))
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         [mark] = self._active_marks(posthog_events)
         assert mark["distinct_id"] == USER_1.value
@@ -386,10 +375,10 @@ class TestUserActive:
         with analytics_context(_user_context(EntrySurface.WEB)):
             with time_machine.travel(LATE_EVENING_IST, tick=False):
                 capture(USER_1, MemoryCleared(deleted_count=1))
-                await _drain_at_most_once_sends()
+                await drain_at_most_once_sends()
             with time_machine.travel(LATE_EVENING_IST + timedelta(hours=2), tick=False):
                 capture(USER_1, MemoryCleared(deleted_count=1))
-                await _drain_at_most_once_sends()
+                await drain_at_most_once_sends()
 
         assert len(self._active_marks(posthog_events)) == 2
 
@@ -397,7 +386,7 @@ class TestUserActive:
         with analytics_context(_user_context(EntrySurface.WEB)):
             capture(USER_1, MemoryCleared(deleted_count=1))
             capture(USER_2, MemoryCleared(deleted_count=1))
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         assert {mark["distinct_id"] for mark in self._active_marks(posthog_events)} == {
             USER_1.value,
@@ -410,14 +399,14 @@ class TestUserActive:
             capture(USER_1, MemoryCleared(deleted_count=1))
         with analytics_context(_user_context(EntrySurface.WEB).acting_as(Actor.AGENT)):
             capture(USER_1, MemoryCleared(deleted_count=1))
-        await _drain_at_most_once_sends()
+        await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
 
     async def test_the_gate_outlives_the_day_it_keys(self, posthog_events, fake_redis):
         with analytics_context(_user_context(EntrySurface.WEB)):
             capture(USER_1, MemoryCleared(deleted_count=1))
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         [key] = await fake_redis.keys(f"{AT_MOST_ONCE_KEY_PREFIX}*")
         ttl = UserActive.at_most_once_ttl
@@ -428,7 +417,7 @@ class TestUserActive:
         """Only a GAIA user has a day to be active on; the platform id merges in on linking."""
         with analytics_context(_user_context(EntrySurface.BOT)):
             capture(PlatformIdentity("telegram", "42"), UserLoggedOut())
-            await _drain_at_most_once_sends()
+            await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
 
@@ -513,7 +502,7 @@ class TestAgentRunLifecycle:
             agent_run_lifecycle(USER_1.value, COMMS_RUN),
         ):
             pass
-        await _drain_at_most_once_sends()
+        await drain_at_most_once_sends()
 
         assert [(e["event"], e["properties"]["actor"]) for e in posthog_events] == [
             ("agent:run_started", "agent"),
@@ -528,7 +517,7 @@ class TestAgentRunLifecycle:
 
 class TestTrackSignup:
     def test_calls_identify_and_capture(self, mock_posthog):
-        track_signup(USER_1, "user@example.com", name="Alice")
+        track_signup(USER_1, "user@example.com", name="Alice", signup_method="GoogleOAuth")
         assert mock_posthog.set.call_count == 1
         assert mock_posthog.set_once.call_count == 1
         assert mock_posthog.capture.call_count == 1
@@ -536,26 +525,20 @@ class TestTrackSignup:
         set_props = mock_posthog.set.call_args.kwargs.get("properties")
         assert set_props["email"] == "user@example.com"
         assert set_props["name"] == "Alice"
-        assert set_props["signup_method"] == "workos"
+        assert set_props["signup_method"] == "GoogleOAuth"
 
         capture_kwargs = mock_posthog.capture.call_args.kwargs
         assert capture_kwargs.get("event") == "user:signed_up"
-        assert capture_kwargs["properties"]["signup_method"] == "workos"
+        assert capture_kwargs["properties"]["signup_method"] == "GoogleOAuth"
 
-    def test_default_signup_method(self, mock_posthog):
-        track_signup(USER_1, "user@example.com")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "workos"
+    def test_a_method_workos_did_not_report_is_left_out(self, mock_posthog):
+        track_signup(USER_1, "user@example.com", signup_method=None)
 
-    def test_custom_signup_method(self, mock_posthog):
-        track_signup(USER_1, "user@example.com", signup_method="google")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "google"
-        assert mock_posthog.capture.call_args.kwargs["properties"]["signup_method"] == "google"
+        assert "signup_method" not in mock_posthog.capture.call_args.kwargs["properties"]
 
     def test_skips_when_no_client(self, mock_posthog_none):
         # Should not raise
-        track_signup(USER_1, "user@example.com")
+        track_signup(USER_1, "user@example.com", signup_method="GoogleOAuth")
 
 
 # ---------------------------------------------------------------------------
@@ -596,50 +579,6 @@ class TestTrackSubscriptionEvent:
         assert "amount" not in props
         assert "currency" not in props
         assert props["product_id"] == "prod_1"
-
-    def test_activated_event_updates_user_properties(self, mock_posthog):
-        track_subscription_event(USER_1, ACTIVATED)
-
-        assert mock_posthog.set.call_count >= 1
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["plan"] == "pro"
-        assert set_props["is_subscribed"] is True
-        assert set_props["subscription_status"] == "active"
-
-    def test_cancelled_event_updates_subscription_status(self, mock_posthog):
-        track_subscription_event(USER_1, CANCELLED)
-
-        mock_posthog.set.assert_called_once_with(
-            distinct_id=USER_1.value,
-            properties={"subscription_status": SubscriptionStatus.CANCELLED},
-        )
-
-    def test_an_expiry_drops_the_user_back_to_free(self, mock_posthog):
-        track_subscription_event(USER_1, SubscriptionExpired(subscription_id="sub123"))
-
-        mock_posthog.set.assert_called_once_with(
-            distinct_id=USER_1.value,
-            properties={
-                "plan": PlanType.FREE,
-                "is_subscribed": False,
-                "subscription_status": SubscriptionStatus.EXPIRED,
-            },
-        )
-
-    def test_renewed_event_keeps_the_user_subscribed(self, mock_posthog):
-        track_subscription_event(
-            USER_1, SubscriptionRenewed(subscription_id="sub123", currency="USD")
-        )
-
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["is_subscribed"] is True
-        assert set_props["subscription_status"] == SubscriptionStatus.ACTIVE
-
-    def test_identify_error_handled(self, mock_posthog):
-        mock_posthog.set.side_effect = Exception("PostHog error")
-
-        # Should not raise despite set failure
-        track_subscription_event(USER_1, ACTIVATED)
 
     def test_skips_when_no_client(self, mock_posthog_none):
         # Should not raise

@@ -33,11 +33,6 @@ DEV_USER_HEADER = "X-Dev-User"
 # "mint it via ..." phrasing is the actionable fix — keep it in the message.
 DEV_USER_MISSING_HINT = "mint it via POST /api/v1/dev/users"
 
-# OAuth login/signup method identifiers
-LOGIN_METHOD_WORKOS = "workos"
-LOGIN_METHOD_GOOGLE = "google"
-LOGIN_METHOD_EMAIL = "email"
-
 # log.audit() actors for credential routes with no user session to name; never
 # the credential itself. Self-authenticates with the pairing / refresh credential.
 AUDIT_ACTOR_DEVICE_DAEMON = "device-daemon"

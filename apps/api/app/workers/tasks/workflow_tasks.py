@@ -48,7 +48,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_daily_cost_budget
-from app.decorators.entitlements import is_paid
+from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
@@ -128,7 +128,6 @@ from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Trigger
-from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -1448,7 +1447,7 @@ async def _skip_unpaid_fire(
     # Same event every HTTP/bot paywall block fires; skips rather than
     # raising via require_active_subscription, so the funnel can see it.
     # Explicit id: a worker has no request context for an implicit one.
-    capture(UserId(workflow.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_WORKFLOW))
+    capture_paywall_block(workflow.user_id, PAYWALL_FEATURE_WORKFLOW)
     # A stale job of a workflow already switched off must not overwrite why it is off:
     # SUBSCRIPTION_LAPSED would let the next activation turn it back on.
     if workflow.activated:

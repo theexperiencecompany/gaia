@@ -645,7 +645,8 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
         return refusal
 
-    await charge_bot_turn(user_id, body)
+    stream_id = str(uuid4())
+    await charge_bot_turn(user_id, body, stream_id)
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
@@ -661,8 +662,6 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         expires_minutes=15,
     )
 
-    # Generate stream ID and start background streaming
-    stream_id = str(uuid4())
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
     # Same request-accepted clock as the web endpoint, so bot turns share
     # the web turns' TTFT/E2E definition.

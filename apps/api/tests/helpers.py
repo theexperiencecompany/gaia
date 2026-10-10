@@ -29,6 +29,7 @@ from starlette.types import ASGIApp
 import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.models.user_models import AuthenticatedUser, UserDocument
 from shared.py.wide_events import log, log_context
@@ -522,3 +523,10 @@ async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
     finally:
         server.should_exit = True
         await task
+
+
+async def drain_at_most_once_sends() -> None:
+    """Wait for the gated sends capture spawned, so their outcome is observable."""
+    await asyncio.gather(
+        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )

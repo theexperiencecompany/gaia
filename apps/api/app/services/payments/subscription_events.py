@@ -21,17 +21,24 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 
+from pymongo.errors import PyMongoError
+
 from app.constants.log_tags import LogTag
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
+from app.constants.payments import (
+    PAID_PERSON_SYNC_TASK,
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+    SubscriptionWorkflowSync,
+)
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    PlanType,
     SubscriptionDocument,
     SubscriptionStatus,
     SubscriptionUpdate,
 )
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import track_subscription_event
+from app.services.analytics_service import identify_user, track_subscription_event
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.payments.revenue_properties import subscription_revenue_properties
@@ -44,6 +51,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
     SubscriptionCancelled,
     SubscriptionExpired,
+    SubscriptionLapsed,
     SubscriptionRenewed,
 )
 from shared.py.wide_events import log
@@ -104,30 +112,37 @@ class SubscriptionEventResult:
     user_id: str | None
 
 
-async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
-    """Hand an unfinished workflow move to the worker, which owns the retries.
+async def _queue_retry(task: str, *args: str, **context: str) -> None:
+    """Hand a post-write step that did not finish to the worker, which owns the retries.
 
-    Dodo's own retry cannot recover this: the row above already carries the
-    reported status, so a redelivery reduces to UNCHANGED and never reaches
-    the workflows again. The job id is per user and direction, so a second
-    billing event for the same move collapses onto the one already queued.
+    Dodo's own retry cannot recover it: the row already carries the reported
+    status, so a redelivery reduces to UNCHANGED and never reaches the step
+    again. The job id is the task and its arguments, so a second billing event
+    owing the same step collapses onto the one already queued.
     """
-    job_id = f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{user_id}:{sync.value}"
     try:
         pool = await RedisPoolManager.get_pool()
-        await enqueue_worker_job(
-            pool, SUBSCRIPTION_WORKFLOW_SYNC_TASK, user_id, sync.value, _job_id=job_id
-        )
+        await enqueue_worker_job(pool, task, *args, _job_id=":".join((task, *args)))
     except Exception as e:
         # Nothing is left to fall back on, so this line is the only trace the
-        # stranded workflows leave.
+        # unfinished step leaves.
         log.error(
-            f"{LogTag.PAYMENT} Workflow subscription sync could not be queued",
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=task,
             error=str(e),
             error_type=type(e).__name__,
-            user_id=user_id,
-            workflow_sync=sync.value,
+            **context,
         )
+
+
+async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
+    await _queue_retry(
+        SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+        user_id,
+        sync.value,
+        user_id=user_id,
+        workflow_sync=sync.value,
+    )
 
 
 async def queue_inbox_desk_safely(user_id: str) -> None:
@@ -383,6 +398,79 @@ def _capture_transition(
             track_subscription_event(
                 UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
             )
+        case SubscriptionEventKind.FAILED | SubscriptionEventKind.ON_HOLD if (
+            "status" in changes.model_fields_set
+        ):
+            track_subscription_event(
+                UserId(user_id),
+                SubscriptionLapsed(
+                    subscription_id=data.subscription_id,
+                    status="failed" if event.kind is SubscriptionEventKind.FAILED else "on_hold",
+                ),
+            )
+
+
+def _set_paid_person_properties(
+    user_id: str, status: SubscriptionStatus, *, cancel_at_period_end: bool
+) -> None:
+    """Mirror the row's paid state onto the person; a $0 discount-code subscription is a subscriber."""
+    is_subscribed = status is SubscriptionStatus.ACTIVE
+    identify_user(
+        UserId(user_id),
+        {
+            "plan": (PlanType.PRO if is_subscribed else PlanType.FREE).value,
+            "is_subscribed": is_subscribed,
+            "subscription_status": status.value,
+            "subscription_cancel_at_period_end": cancel_at_period_end,
+        },
+    )
+
+
+async def sync_paid_person_properties(user_id: str, dodo_subscription_id: str) -> None:
+    """Set the person's paid state as it stands now: the user's active subscription, else the changed row.
+
+    The person is the user, so another subscription still active outranks the
+    one this change lapsed. Raises PyMongoError when a read fails, for the
+    caller to retry; a changed row that is gone is logged, since no retry brings it back.
+    """
+    current = await subscription_repository.get_active_for_user(
+        user_id
+    ) or await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    if current is None:
+        log.error(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
+            subscription_id=dodo_subscription_id,
+            user_id=user_id,
+        )
+        return
+    _set_paid_person_properties(
+        user_id,
+        SubscriptionStatus(current.status),
+        cancel_at_period_end=bool(current.cancel_at_next_billing_date),
+    )
+
+
+async def _sync_paid_person_properties(
+    user_id: str, dodo_subscription_id: str, changes: SubscriptionUpdate
+) -> None:
+    """Re-set the person's paid state when the write moved it, from the row as it stands now.
+
+    Read after the write rather than taken from this event's snapshot: a newer
+    delivery may have landed meanwhile, and its state is the one to keep. The
+    billing write already committed, so a failed read becomes worker retries.
+    """
+    if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
+        return
+    try:
+        await sync_paid_person_properties(user_id, dodo_subscription_id)
+    except PyMongoError:
+        await _queue_retry(
+            PAID_PERSON_SYNC_TASK,
+            user_id,
+            dodo_subscription_id,
+            user_id=user_id,
+            subscription_id=dodo_subscription_id,
+        )
 
 
 async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
@@ -424,6 +512,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     )
 
     _capture_transition(event, user_id, SubscriptionUpdate(status=SubscriptionStatus.ACTIVE.value))
+    _set_paid_person_properties(user_id, SubscriptionStatus.ACTIVE, cancel_at_period_end=False)
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
@@ -500,6 +589,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         await queue_inbox_desk_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
+    await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)
 
     log.info(
         f"{LogTag.PAYMENT} Subscription event applied",

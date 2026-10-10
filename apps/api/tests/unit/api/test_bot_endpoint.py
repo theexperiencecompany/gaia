@@ -632,7 +632,13 @@ class TestBotChatStream:
         await response.aread()
 
         mock_capture.assert_called_once_with(
-            UserId(USER_ID), ChatMessageSubmitted(source="discord", has_files=False)
+            UserId(USER_ID),
+            ChatMessageSubmitted(
+                source="discord",
+                has_files=False,
+                stream_id=mock_sm.start_stream.await_args.args[0],
+                is_retry=False,
+            ),
         )
 
     # The four the body never touches are patched with `new=`, which injects no
@@ -690,7 +696,13 @@ class TestBotChatStream:
         await response.aread()
 
         mock_capture.assert_called_once_with(
-            UserId(USER_ID), ChatMessageSubmitted(source="discord", has_files=True)
+            UserId(USER_ID),
+            ChatMessageSubmitted(
+                source="discord",
+                has_files=True,
+                stream_id=mock_sm.start_stream.await_args.args[0],
+                is_retry=False,
+            ),
         )
 
     @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)

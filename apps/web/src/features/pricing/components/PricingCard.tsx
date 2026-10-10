@@ -96,7 +96,6 @@ export function PricingCard({
       )}
       <PricingCardPrice list={list} offer={offer} currency={currency} />
       <PricingCardCta
-        planTier={isPro ? "pro" : "free"}
         price={price}
         durationIsMonth={durationIsMonth}
         planId={planId}

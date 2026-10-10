@@ -38,6 +38,8 @@ class IntegrationConnected(ServerEvent):
     connection_method: Literal["oauth"] | None = None
     provider: Identifier | None = None
     is_new_link: bool | None = None
+    # An OAuth callback for an integration this user had connected before (an expiry or re-auth).
+    is_reconnect: bool | None = None
 
 
 class IntegrationConnectInitiated(ServerEvent):
@@ -67,12 +69,16 @@ class IntegrationInstructionsUpdated(ServerEvent):
     event: ClassVar[str] = "integration:instructions_updated"
     budget_per_user_day: ClassVar[int] = 10
 
+    integration_id: Identifier
+
 
 class IntegrationCustomUpdated(ServerEvent):
     """A user edited a custom integration."""
 
     event: ClassVar[str] = "integration:custom_updated"
     budget_per_user_day: ClassVar[int] = 50
+
+    integration_id: Identifier
 
 
 class IntegrationCustomDeleted(ServerEvent):
@@ -81,6 +87,8 @@ class IntegrationCustomDeleted(ServerEvent):
     event: ClassVar[str] = "integration:custom_deleted"
     budget_per_user_day: ClassVar[int] = 50
 
+    integration_id: Identifier
+
 
 class IntegrationCustomPublished(ServerEvent):
     """A user published a custom integration to the marketplace."""
@@ -88,12 +96,16 @@ class IntegrationCustomPublished(ServerEvent):
     event: ClassVar[str] = "integration:custom_published"
     budget_per_user_day: ClassVar[int] = 50
 
+    integration_id: Identifier
+
 
 class IntegrationCustomUnpublished(ServerEvent):
     """A user unpublished a custom integration."""
 
     event: ClassVar[str] = "integration:custom_unpublished"
     budget_per_user_day: ClassVar[int] = 50
+
+    integration_id: Identifier
 
 
 class IntegrationError(WebEvent):

@@ -143,6 +143,7 @@ class TestWorkflowNewEvents:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowDeactivated())
 
+    @pytest.mark.regression
     async def test_update_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
@@ -153,6 +154,7 @@ class TestWorkflowNewEvents:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
 
+    @pytest.mark.regression
     async def test_delete_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{_WF_SERVICE}.delete_workflow", new_callable=AsyncMock) as mock_svc,
@@ -163,6 +165,7 @@ class TestWorkflowNewEvents:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowDeleted())
 
+    @pytest.mark.regression
     async def test_unpublish_captures(self, client: AsyncClient) -> None:
         from app.models.workflow_models import WorkflowDocument
 
@@ -993,6 +996,16 @@ class TestLedgerApprovalEvents:
         assert resp.json()["success"] is True
         mock_capture.assert_not_called()
 
+    @pytest.mark.regression
+    async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
+        with patch(
+            "app.api.v1.endpoints.approvals.decide_ledger",
+            new=AsyncMock(return_value=_ledger_decision(committed=True)),
+        ) as decide:
+            await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
+
+        assert decide.await_args.kwargs["via"] == "card"
+
     async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
             patch(
@@ -1439,7 +1452,9 @@ class TestCustomIntegrationNewEvents:
             m.return_value = _custom_integration()
             resp = await client.patch("/api/v1/integrations/custom/i1", json={"name": "R"})
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), IntegrationCustomUpdated())
+        mock_capture.assert_called_once_with(
+            UserId(UID), IntegrationCustomUpdated(integration_id="i1")
+        )
 
     async def test_delete_captures(self, client: AsyncClient) -> None:
         with (
@@ -1448,8 +1463,11 @@ class TestCustomIntegrationNewEvents:
         ):
             resp = await client.delete("/api/v1/integrations/custom/i1")
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), IntegrationCustomDeleted())
+        mock_capture.assert_called_once_with(
+            UserId(UID), IntegrationCustomDeleted(integration_id="i1")
+        )
 
+    @pytest.mark.regression
     async def test_publish_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{CUSTOM}.publish_custom_integration", new_callable=AsyncMock) as m,
@@ -1458,7 +1476,9 @@ class TestCustomIntegrationNewEvents:
             m.return_value = "https://x/y"
             resp = await client.post("/api/v1/integrations/custom/i1/publish")
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), IntegrationCustomPublished())
+        mock_capture.assert_called_once_with(
+            UserId(UID), IntegrationCustomPublished(integration_id="i1")
+        )
 
     async def test_unpublish_captures(self, client: AsyncClient) -> None:
         with (
@@ -1468,10 +1488,13 @@ class TestCustomIntegrationNewEvents:
             m.return_value = None
             resp = await client.post("/api/v1/integrations/custom/i1/unpublish")
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), IntegrationCustomUnpublished())
+        mock_capture.assert_called_once_with(
+            UserId(UID), IntegrationCustomUnpublished(integration_id="i1")
+        )
 
 
 class TestInstructionsUpdate:
+    @pytest.mark.regression
     async def test_instructions_update_captures(self, client: AsyncClient) -> None:
         with (
             patch(
@@ -1499,7 +1522,9 @@ class TestInstructionsUpdate:
             "updatedBy": "user",
             "updatedAt": "2025-01-01T00:00:00Z",
         }
-        mock_capture.assert_called_once_with(UserId(UID), IntegrationInstructionsUpdated())
+        mock_capture.assert_called_once_with(
+            UserId(UID), IntegrationInstructionsUpdated(integration_id="gmail")
+        )
 
 
 class TestPostHogIdentityBinding:

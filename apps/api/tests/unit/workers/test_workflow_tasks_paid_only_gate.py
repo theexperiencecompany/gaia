@@ -18,8 +18,6 @@ from app.decorators import entitlements
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import PAYWALL_FEATURE_WORKFLOW, execute_workflow_by_id
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import PaywallBlocked
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -155,14 +153,11 @@ class TestTheBlockReachesTheFunnel:
         with (
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as block,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        capture.assert_called_once_with(
-            UserId("6812f0b3c9a14e2b7d5a9104"),
-            PaywallBlocked(feature=PAYWALL_FEATURE_WORKFLOW),
-        )
+        block.assert_called_once_with("6812f0b3c9a14e2b7d5a9104", PAYWALL_FEATURE_WORKFLOW)
 
     async def test_a_run_that_clears_the_gate_is_never_captured_as_blocked(self) -> None:
         """A stale cached FREE that the fresh read overturns is not a block."""
@@ -178,12 +173,11 @@ class TestTheBlockReachesTheFunnel:
                 f"{MODULE}._drain_trigger_events",
                 AsyncMock(return_value=({"trigger_type": "schedule"}, "drained-for-test")),
             ),
-            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as block,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        captured = [type(call.args[1]) for call in capture.call_args_list]
-        assert PaywallBlocked not in captured
+        block.assert_not_called()
 
 
 class TestTheGateReadsTheRowWhenTheCacheSaysFree:

@@ -7,8 +7,10 @@
  */
 
 import { ApiError, REQUEST_ID_HEADER } from "@shared/api";
-import axios from "axios";
+import { SUBSCRIPTION_REQUIRED_CODE } from "@shared/types/subscription";
+import axios, { AxiosError } from "axios";
 import { track } from "@/lib/analytics";
+import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { toast } from "@/lib/toast";
 
 export interface ApiOptions {
@@ -37,6 +39,21 @@ const DEFAULT_ERROR_MESSAGES: Record<HttpMethod, string> = {
 const TRANSPORT_FAILURE_STATUS = 0;
 
 export const HTTP_UNAUTHORIZED = 401;
+const HTTP_PAYMENT_REQUIRED = 402;
+
+/** One api:request_failed per method, url, status and code per tab in this window: a retry loop is a rate, not a flood. */
+const REQUEST_FAILED_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+
+/** The fixed codes a transport failure is reported under; its message is free text and never leaves the browser. */
+const TRANSPORT_FAILURE_CODES: Readonly<Record<string, string>> = {
+  [AxiosError.ERR_NETWORK]: "network",
+  [AxiosError.ECONNABORTED]: "timeout",
+  [AxiosError.ETIMEDOUT]: "timeout",
+  [AxiosError.ERR_CANCELED]: "aborted",
+};
+const UNKNOWN_TRANSPORT_FAILURE_CODE = "unknown";
+
+const lastRequestFailureAt = new Map<string, number>();
 
 /**
  * Whether the app-shell error handler already showed UI for this failure.
@@ -68,6 +85,59 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError(message, TRANSPORT_FAILURE_STATUS, { cause: error });
 }
 
+/**
+ * The states the app expects rather than suffers: a logged-out visitor's 401
+ * (the same check the interceptor uses to open the login modal) and the
+ * paywall's 402, which the server already records as paywall:blocked.
+ */
+const isExpectedState = (error: ApiError): boolean =>
+  (error.status === HTTP_UNAUTHORIZED &&
+    error.code === API_ERROR_CODES.NOT_AUTHENTICATED) ||
+  (error.status === HTTP_PAYMENT_REQUIRED &&
+    error.code === SUBSCRIPTION_REQUIRED_CODE);
+
+/** The envelope's machine code, or for a request that got no response, a fixed transport code. */
+const failureCode = (error: ApiError): string | undefined => {
+  if (error.status !== TRANSPORT_FAILURE_STATUS) return error.code;
+  const axiosCode =
+    error.cause instanceof AxiosError ? error.cause.code : undefined;
+  return (
+    (axiosCode && TRANSPORT_FAILURE_CODES[axiosCode]) ??
+    UNKNOWN_TRANSPORT_FAILURE_CODE
+  );
+};
+
+function trackRequestFailure(
+  method: HttpMethod,
+  url: string,
+  error: ApiError,
+): void {
+  if (isExpectedState(error)) return;
+  // No PII to PostHog: the query string can carry search terms or tokens, and
+  // the envelope's message can echo user input; the machine code cannot.
+  const path = url.split("?")[0];
+  const code = failureCode(error);
+  const key = `${method} ${path} ${error.status} ${code}`;
+  const now = Date.now();
+  const last = lastRequestFailureAt.get(key);
+  if (last !== undefined && now - last < REQUEST_FAILED_DEDUPE_WINDOW_MS) {
+    return;
+  }
+  // Forget the keys whose window has passed, so a long-lived tab holds only live windows.
+  for (const [seenKey, seenAt] of lastRequestFailureAt) {
+    if (now - seenAt >= REQUEST_FAILED_DEDUPE_WINDOW_MS) {
+      lastRequestFailureAt.delete(seenKey);
+    }
+  }
+  lastRequestFailureAt.set(key, now);
+  track("api:request_failed", {
+    method,
+    url: path,
+    status: error.status,
+    error_code: code,
+  });
+}
+
 export function announceSuccess(options: ApiOptions): void {
   if (options.successMessage && !options.silent) {
     toast.success(options.successMessage);
@@ -92,14 +162,7 @@ export function reportFailure(
 
   // Track failed requests in PostHog (client-only; analytics.ts is "use client").
   if (globalThis.window !== undefined) {
-    track("api:request_failed", {
-      method,
-      // No PII to PostHog: the query string can carry search terms or tokens, and
-      // the envelope's message can echo user input; the machine code cannot.
-      url: url.split("?")[0],
-      status: error.status,
-      error_code: error.code ?? undefined,
-    });
+    trackRequestFailure(method, url, error);
   }
 
   if (!options.silent && !handled && error.status !== HTTP_UNAUTHORIZED) {

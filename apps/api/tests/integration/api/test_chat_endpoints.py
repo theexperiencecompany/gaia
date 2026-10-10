@@ -485,6 +485,60 @@ class TestChatStreamSelectionIsValidatedBeforeTheTurnStarts:
         spawn.assert_called_once()
 
 
+class TestTheSubmittedEventKeysTheTurn:
+    """chat:message_submitted carries the turn's stream id, so a funnel can join it to its completion."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    @pytest.fixture
+    def submitted(self):
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache") as cache,
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_make_subscription_mock(),
+            ),
+            patch("app.api.v1.endpoints.chat.capture") as capture,
+        ):
+            cache.redis = MagicMock()
+            yield capture
+
+    @pytest.mark.regression
+    async def test_the_event_names_the_stream_the_response_serves(self, submitted, test_client):
+        response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        event = submitted.call_args.args[1]
+        assert (event.event, event.stream_id) == (
+            "chat:message_submitted",
+            response.headers["X-Stream-Id"],
+        )
+        assert event.is_retry is False
+
+    @pytest.mark.regression
+    async def test_a_retried_send_is_marked_as_a_retry(self, submitted, test_client):
+        await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, "is_retry": True})
+
+        assert submitted.call_args.args[1].is_retry is True
+
+
 @pytest.mark.integration
 class TestChatStreamPaywall:
     """GAIA is paid-only: a FREE-plan user must 402 before any stream work starts."""
