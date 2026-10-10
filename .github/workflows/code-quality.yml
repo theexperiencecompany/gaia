@@ -2027,7 +2027,8 @@ jobs:
   analytics-check:
     name: PostHog analytics contract
     needs: [select-runner, changes]
-    if: ${{ !cancelled() && needs.changes.outputs.has_analytics == 'true' }}
+    # A fork's pull_request run gets no secrets, so it skips rather than failing every outside PR.
+    if: ${{ !cancelled() && needs.changes.outputs.has_analytics == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     env:
       GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
