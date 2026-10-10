@@ -23,11 +23,13 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 import pytest
 import sentry_sdk
+from sentry_sdk.consts import OP
+from sentry_sdk.integrations.langchain import LangchainIntegration
 from sentry_sdk.types import Event
 
 from app.config.loggers import REQUEST_LOGGER_NAME
-from app.config.sentry import _make_sentry_loguru_sink
-from shared.py.logging import _InterceptHandler
+from app.config.sentry import _drop_llm_attempt_errors, _make_sentry_loguru_sink
+from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
     BOUNDARY_FAILURE_MESSAGE,
@@ -248,3 +250,26 @@ def test_an_exception_outside_an_llm_call_still_reaches_sentry(sentry_events: li
         sentry_sdk.capture_exception(_ProviderRateLimitedError("Provider returned error"))
 
     assert len(sentry_events) == 1
+
+
+def test_a_sentry_event_names_the_service_that_sent_it(sentry_events: list[Event]) -> None:
+    """The API and the ARQ worker share one Sentry project; only this tag tells them apart."""
+    log.error("executor run failed", error_type="RuntimeError")
+
+    assert [event["tags"]["service"] for event in sentry_events] == [env_context().service]
+
+
+@pytest.mark.parametrize(
+    ("origin", "op", "dropped"),
+    [
+        (LangchainIntegration.origin, OP.GEN_AI_CHAT, True),
+        (LangchainIntegration.origin, OP.GEN_AI_EXECUTE_TOOL, False),
+        ("manual", OP.GEN_AI_CHAT, False),
+    ],
+)
+def test_only_an_error_captured_inside_a_langchain_model_call_is_dropped(
+    origin: str, op: str, dropped: bool
+) -> None:
+    event: Event = {"contexts": {"trace": {"origin": origin, "op": op}}}
+
+    assert (_drop_llm_attempt_errors(event, {}) is None) is dropped

@@ -70,6 +70,39 @@ async def test_a_client_app_error_is_a_warning_naming_the_failure() -> None:
     )
 
 
+async def test_a_500_app_error_is_an_error_carrying_its_exception() -> None:
+    exc = create_error(message="Store down", status_code=500, code="store_down")
+
+    with patch(HANDLERS_LOG) as mock_log:
+        response = await app_error_handler(_request(), exc)
+
+    assert response.status_code == 500
+    mock_log.warning.assert_not_called()
+    mock_log.error.assert_called_once_with(
+        "app_error",
+        exc_info=exc,
+        error={"message": "Store down", "code": "store_down"},
+        status_code=500,
+        path="/api/v1/todos",
+        method="POST",
+    )
+
+
+async def test_a_client_disconnect_is_a_warning_naming_the_request() -> None:
+    with patch(HANDLERS_LOG) as mock_log:
+        response = await client_disconnect_handler(
+            _request(method="PUT", path="/api/v1/webhook"), ClientDisconnect()
+        )
+
+    assert response.status_code == 499
+    mock_log.warning.assert_called_once_with(
+        "client_disconnected",
+        error_type="ClientDisconnect",
+        path="/api/v1/webhook",
+        method="PUT",
+    )
+
+
 async def test_an_error_that_names_no_code_ships_none() -> None:
     """Clients narrow on code; inventing one routes them down a branch never chosen."""
     with patch(HANDLERS_LOG):

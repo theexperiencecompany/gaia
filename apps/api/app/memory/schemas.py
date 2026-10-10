@@ -203,8 +203,8 @@ class ExtractedMemoryBatch(BaseModel):
             except ValidationError as error:
                 details: list[ErrorDetails] = error.errors()
                 for detail in details:
-                    location = ".".join(map(str, detail["loc"][1:]))
-                    reasons.append(f"facts.{index}.{location}: {detail['msg']}")
+                    location = ".".join(map(str, ("facts", index, *detail["loc"][1:])))
+                    reasons.append(f"{location}: {detail['msg']}")
         if reasons:
             log.warning(
                 "memory_facts_rejected",

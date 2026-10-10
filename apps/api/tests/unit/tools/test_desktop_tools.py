@@ -244,10 +244,15 @@ class TestTakeScreenshot:
         codec.assert_awaited_once_with("cG5n")
         save.assert_awaited_once()
         # The thumbnail card was streamed for the UI.
-        streamed = [c.args[0] for c in writer.call_args_list]
-        assert any(
-            "screenshot_data" in e.get("tool_data", {}).get("tool_name", "") for e in streamed
-        )
+        streamed = [
+            c.args[0]["tool_data"] for c in writer.call_args_list if "tool_data" in c.args[0]
+        ]
+        assert [(e["tool_name"], e["data"]) for e in streamed] == [
+            (
+                "screenshot_data",
+                {"thumbnail": "data:image/jpeg;base64,dGh1bWI=", "width": 800, "height": 600},
+            )
+        ]
 
     async def test_a_screenshot_that_could_not_be_saved_says_answer_from_it_now(self) -> None:
         """A screenshot that never reached the workspace can't be re-read, so the note must tell the model to answer from the pixels in front of it."""

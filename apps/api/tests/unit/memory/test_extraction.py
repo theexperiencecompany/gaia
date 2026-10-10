@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
+from pydantic import ValidationError
 import pytest
 
 from app.constants.memory import MemoryKind, MemoryShelfLife
@@ -92,7 +93,7 @@ async def test_a_rejected_fact_is_counted_on_the_wide_event_with_its_reason() ->
     (warning,) = event["warnings"]
     assert warning["msg"] == "memory_facts_rejected"
     assert (warning["rejected_count"], warning["kept_count"]) == (1, 0)
-    assert warning["reasons"][0].startswith("facts.0.kind:")
+    assert warning["reasons"] == ["facts.0.kind: Input should be 'fact' or 'experience'"]
 
 
 async def test_a_batch_with_only_valid_facts_rejects_nothing() -> None:
@@ -116,4 +117,34 @@ async def test_a_malformed_batch_outside_the_facts_still_fails_the_extraction() 
     assert [error["msg"] for error in event["errors"]] == [
         "memory_llm_failed",
         "memory_extraction_failed",
+    ]
+
+
+def test_a_non_list_facts_value_is_validated_as_a_whole() -> None:
+    fact = _fact("Sam lives in Berlin.", kind="fact", shelf_life="durable")
+
+    assert ExtractedMemoryBatch.model_validate({"facts": (fact,)}).facts[0].content == (
+        "Sam lives in Berlin."
+    )
+    with pytest.raises(ValidationError) as error:
+        ExtractedMemoryBatch.model_validate({"facts": "Sam lives in Berlin."})
+    assert [detail["loc"] for detail in error.value.errors()] == [("facts",)]
+
+
+async def test_a_mixed_batch_counts_the_rejected_and_kept_facts_apart() -> None:
+    async with captured_wide_event() as event:
+        batch = await _extract_from_reply(
+            {
+                "facts": [
+                    _fact("Sam lives in Berlin.", kind="fact", shelf_life="durable"),
+                    "Sam must book the venue by Friday.",
+                ]
+            }
+        )
+
+    assert [fact.content for fact in batch.facts] == ["Sam lives in Berlin."]
+    (warning,) = event["warnings"]
+    assert (warning["rejected_count"], warning["kept_count"]) == (1, 1)
+    assert warning["reasons"] == [
+        "facts.1: Input should be a valid dictionary or instance of ExtractedFact"
     ]

@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from prometheus_client import REGISTRY
 import pytest
 
@@ -221,7 +221,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(
                     return_value={"tool_names": ["xyztest_invoice_tool", "xyztest_sms_tool"]}
                 ),
-            ),
+            ) as capabilities,
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
                 new=capture_invoke,
@@ -230,6 +230,7 @@ class TestFollowUpActionsNode:
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
+        capabilities.assert_awaited_once_with("user-123")
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
@@ -418,3 +419,51 @@ class TestFollowUpActionsNode:
         assert result is state
         # State messages should be unchanged — actions go only through the writer
         assert result["messages"] == original_messages
+
+
+def _ai_calling(name: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": f"call-{name}"}])
+
+
+class TestExecutorDelegationSkip:
+    """A turn handed to the executor gets its follow-ups from the executor, not from comms."""
+
+    @staticmethod
+    async def _run(messages: list) -> tuple[list, AsyncMock]:
+        written: list = []
+        generate = AsyncMock(return_value=["Next step"])
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(side_effect=written.append),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.generate_follow_up_actions",
+                new=generate,
+            ),
+        ):
+            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
+        return written, generate
+
+    @pytest.mark.asyncio
+    async def test_an_executor_call_after_tool_traffic_skips_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [
+                HumanMessage(content="Book my flight"),
+                _ai_calling("search_flights"),
+                ToolMessage(content="3 flights", tool_call_id="call-search_flights"),
+                _ai_calling("call_executor"),
+            ]
+        )
+
+        assert written == [{"main_response_complete": True}]
+        generate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_turn_calling_other_tools_still_gets_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [HumanMessage(content="Weather?"), _ai_calling("get_weather")]
+        )
+
+        assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
+        generate.assert_awaited_once()

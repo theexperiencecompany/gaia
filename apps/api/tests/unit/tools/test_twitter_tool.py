@@ -265,15 +265,18 @@ class TestCreateThread:
             "tweet_count": 2,
             "thread_url": "https://twitter.com/ada/status/tw1",
         }
-        writer.assert_any_call(
+        assert [c.args[0] for c in writer.call_args_list] == [
+            {"progress": "Creating thread with 2 tweets..."},
+            {"progress": "Posted tweet 1/2..."},
+            {"progress": "Posted tweet 2/2..."},
             {
                 "twitter_thread_created": {
                     "thread_id": "tw1",
                     "tweet_count": 2,
                     "url": "https://twitter.com/ada/status/tw1",
                 }
-            }
-        )
+            },
+        ]
 
     def test_username_lookup_failure_falls_back_to_i(self, tools, writer) -> None:
         with (

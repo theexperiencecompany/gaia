@@ -867,9 +867,7 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({"draft_id": "d123"})
         result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "progress" in payload
+        writer.assert_called_once_with({"progress": "Sending draft..."})
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
@@ -880,8 +878,7 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "Moving to trash" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Moving to trash..."})
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_trash_before_hook_untrash_action(self, mock_writer: MagicMock) -> None:
@@ -891,8 +888,7 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_trash_before_hook("GMAIL_UNTRASH_MESSAGE", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "Restoring from trash" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Restoring from trash..."})
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_label_before_hook_create(self, mock_writer: MagicMock) -> None:
@@ -1005,17 +1001,18 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "draft details" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching draft details..."})
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_before_hook_sets_page_size_default(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
 
-        mock_writer.return_value = _noop_writer()
+        writer = _noop_writer()
+        mock_writer.return_value = writer
         params = _make_params({})
         result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
         assert result["arguments"]["page_size"] == 50
+        writer.assert_called_once_with({"progress": "Fetching contacts..."})
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_before_hook_respects_explicit_page_size(
@@ -2095,8 +2092,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({"subreddit": "python"})
         reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "r/python" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Creating post in r/python..."})
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_before_hook_post_comment(self, mock_writer: MagicMock) -> None:
@@ -2106,8 +2102,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_content_before_hook("REDDIT_POST_REDDIT_COMMENT", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Posting comment" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Posting comment..."})
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_before_hook_edit(self, mock_writer: MagicMock) -> None:
@@ -2117,8 +2112,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_content_before_hook("REDDIT_EDIT_REDDIT_COMMENT_OR_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Editing content" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Editing content..."})
 
     def test_content_before_hook_no_writer(self) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
@@ -2135,8 +2129,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_delete_before_hook("REDDIT_DELETE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "post" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Deleting post..."})
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_delete_before_hook_comment(self, mock_writer: MagicMock) -> None:
@@ -2146,8 +2139,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_delete_before_hook("REDDIT_DELETE_REDDIT_COMMENT", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "comment" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Deleting comment..."})
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_retrieve_before_hook_post(self, mock_writer: MagicMock) -> None:
@@ -2157,8 +2149,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_retrieve_before_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Fetching post details" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching post details..."})
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_retrieve_before_hook_comments(self, mock_writer: MagicMock) -> None:
@@ -2168,8 +2159,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_retrieve_before_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "comments" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching post comments..."})
 
 
 # ============================================================================

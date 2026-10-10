@@ -10,8 +10,11 @@ from app.agents.tools import notification_tool as notification_tool_module
 from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
 from app.models.agent_models import RunUserMissingError
 from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
     NotificationContentView,
     NotificationListFilters,
+    NotificationRecord,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
@@ -468,6 +471,52 @@ class TestSendNotificationChannels:
         assert unknown == "Unknown channel(s): pager, fax."
         assert valid == f"{', '.join(NOTIFICATION_CHANNEL_TYPES)}."
         mock_service.create_notification.assert_not_called()
+
+
+@patch(f"{MODULE}.current_stream_writer")
+@patch(f"{MODULE}.notification_service")
+async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
+    mock_service: MagicMock, mock_writer_factory: MagicMock
+) -> None:
+    async def deliver(request: NotificationRequest) -> NotificationRecord:
+        return NotificationRecord(
+            id="notif-9",
+            user_id=FAKE_USER_ID,
+            status=NotificationStatus.DELIVERED,
+            created_at="2026-01-01T00:00:00+00:00",
+            channels=[
+                ChannelDeliveryStatus(channel_type="inapp", status=NotificationStatus.DELIVERED),
+                ChannelDeliveryStatus(
+                    channel_type="telegram", status=NotificationStatus.DELIVERED, skipped=True
+                ),
+            ],
+            original_request=request,
+        )
+
+    writer = _writer_mock()
+    mock_writer_factory.return_value = writer
+    mock_service.create_notification = AsyncMock(side_effect=deliver)
+
+    from app.agents.tools.notification_tool import send_notification
+
+    result = await send_notification.coroutine(
+        config=_make_config(),
+        message=" Build done ",
+        title=" Build ",
+        channels=["inapp", "telegram"],
+    )
+
+    # The rate-limiting decorator adds its own _rate_limit_info key.
+    assert {k: v for k, v in result.items() if k != "_rate_limit_info"} == {
+        "success": True,
+        "notification_id": "notif-9",
+        "title": "Build",
+        "message": "Build done",
+        "notification_type": NotificationType.INFO.value,
+        "status": NotificationStatus.DELIVERED.value,
+        "delivered_channels": ["inapp"],
+    }
+    writer.assert_called_once_with({"send_notification_data": result})
 
 
 @patch(f"{MODULE}.fetch_channel_preferences", new_callable=AsyncMock)
