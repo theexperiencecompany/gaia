@@ -34,9 +34,14 @@ async def legacy_user(pg_engine: AsyncEngine) -> AsyncGenerator[str, None]:
         await session.commit()
 
 
-async def test_applying_drops_the_retired_row_and_the_overview_reads_again(
-    legacy_user: str,
-) -> None:
+async def test_a_dry_run_keeps_the_retired_row_and_applying_drops_it(legacy_user: str) -> None:
+    """One test, not two: an apply on another xdist worker would delete a dry run's seeded row."""
+    planned = await drop_retired_documents(apply=False)
+
+    assert [row.doc_type for row in planned if row.user_id == legacy_user] == [_LEGACY_INSIGHTS]
+    remaining = await pg_store.get_documents(legacy_user)
+    assert sorted(row.doc_type for row in remaining) == [_LEGACY_INSIGHTS, MemoryDocType.USER_MD]
+
     dropped = await drop_retired_documents(apply=True)
 
     assert [(row.user_id, row.doc_type) for row in dropped if row.user_id == legacy_user] == [
@@ -44,11 +49,3 @@ async def test_applying_drops_the_retired_row_and_the_overview_reads_again(
     ]
     overview = await management.get_overview(legacy_user)
     assert [preview.doc_type for preview in overview.documents] == [MemoryDocType.USER_MD]
-
-
-async def test_a_dry_run_reports_the_retired_row_and_deletes_nothing(legacy_user: str) -> None:
-    planned = await drop_retired_documents(apply=False)
-
-    assert [row.doc_type for row in planned if row.user_id == legacy_user] == [_LEGACY_INSIGHTS]
-    remaining = await pg_store.get_documents(legacy_user)
-    assert sorted(row.doc_type for row in remaining) == [_LEGACY_INSIGHTS, MemoryDocType.USER_MD]
