@@ -18,6 +18,7 @@ class NotificationRead(ServerEvent):
     """A user marked a notification read."""
 
     event: ClassVar[str] = "notification:read"
+    previous_names: ClassVar[tuple[str, ...]] = ("notification:dismissed",)
     budget_per_user_day: ClassVar[int] = 10
 
     count: int

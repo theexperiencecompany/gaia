@@ -1,0 +1,23 @@
+{
+  "$comment": "The PostHog project settings every dashboard depends on. `mise analytics:check` fails when the live project differs from `settings`; change the project here first, then in PostHog. Each test-account rule is a null-safe exclusion: PostHog ANDs them into every filtered query, so a rule that is NULL or true for a real event drops it.",
+  "host": "https://us.posthog.com",
+  "project_id": 201142,
+  "settings": {
+    "test_account_filters": [
+      {
+        "key": "properties.$host IS NULL OR NOT match(properties.$host, '^(localhost|127\\\\.0\\\\.0\\\\.1)($|:)')",
+        "type": "hogql"
+      },
+      {
+        "key": "NOT ifNull(properties.$device_type = 'Desktop' AND properties.$os = 'Linux' AND properties.$browser = 'Chrome' AND properties.$referring_domain ILIKE '%google.com%' AND properties.$geoip_country_code = 'US' AND (properties.$geoip_city_name IS NULL OR properties.$geoip_city_name = ''), false)",
+        "type": "hogql"
+      },
+      {
+        "key": "NOT ifNull(lower(properties.$raw_user_agent) ILIKE '%googlebot%' OR lower(properties.$raw_user_agent) ILIKE '%bingbot%' OR lower(properties.$raw_user_agent) ILIKE '%duckduckbot%' OR lower(properties.$raw_user_agent) ILIKE '%slurp%' OR lower(properties.$raw_user_agent) ILIKE '%crawler%', false)",
+        "type": "hogql"
+      }
+    ],
+    "test_account_filters_default_checked": true,
+    "primary_dashboard": 2184030
+  }
+}
