@@ -56,7 +56,11 @@ def external_ref_guidance(doc: TodoDocument, context: TodoRunContext) -> str | N
     if context.ref_account_gone:
         parts.append(GMAIL_THREAD_ACCOUNT_GONE)
     elif context.ref_account:
-        parts.append(GMAIL_THREAD_ACCOUNT_LINE.format(account=context.ref_account))
+        parts.append(
+            GMAIL_THREAD_ACCOUNT_LINE.format(
+                account=context.ref_account, account_id=doc.external_ref.account
+            )
+        )
     return "\n".join(parts)
 
 

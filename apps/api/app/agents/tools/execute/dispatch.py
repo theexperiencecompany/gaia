@@ -166,7 +166,7 @@ async def _choose_account(
             toolkit=composio_config.toolkit, connected_account_id=chosen.connected_account_id
         ),
         display_name=chosen.display_name,
-        is_primary=chosen.connected_account_id == record.primary_account_id,
+        is_primary=chosen.id == record.primary_account_id,
         account_count=len(record.accounts),
     )
 

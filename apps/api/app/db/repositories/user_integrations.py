@@ -5,9 +5,12 @@ addressed by the business integration_id within a user. Tracks which
 integrations a user has added and whether they are connected.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from app.db.repositories.base import UserScopedRepository
+from app.constants.cache import USER_INTEGRATION_CACHE_PREFIX
+from app.db.repositories.base import UserScopedRepository, cached_query
+from app.db.repositories.cache import CachePolicy
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
@@ -24,12 +27,26 @@ class UserIntegrationsRepository(
     update_model = UserIntegrationUpdate
     uses_object_id = True
     identity_field = "integration_id"
-    cache_policy = None
+    # Read on every tool call and trigger event (which account a call or event is);
+    # every write here goes through the base, which bumps the user's generation.
+    cache_policy = CachePolicy(prefix=USER_INTEGRATION_CACHE_PREFIX)
 
+    @cached_query(UserIntegrationDocument)
     async def get_for_user(
         self, user_id: str, integration_id: str
     ) -> UserIntegrationDocument | None:
         return await self._find_one({"user_id": user_id, "integration_id": integration_id})
+
+    @cached_query(list[UserIntegrationDocument])
+    async def list_for_user(
+        self,
+        user_id: str,
+        *,
+        sort: Sequence[tuple[str, int]] | None = None,
+        limit: int = 0,
+        skip: int = 0,
+    ) -> list[UserIntegrationDocument]:
+        return await super().list_for_user(user_id, sort=sort, limit=limit, skip=skip)
 
     async def exists(self, user_id: str, integration_id: str) -> bool:
         return await self.get_for_user(user_id, integration_id) is not None
@@ -131,18 +148,41 @@ class UserIntegrationsRepository(
         return doc
 
     async def set_account_nickname(
-        self, user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+        self, user_id: str, integration_id: str, account_id: str, nickname: str | None
     ) -> UserIntegrationDocument | None:
         """Name one account in place, so concurrent writes to other accounts survive; None when absent."""
         return await self._apply_raw_update(
             {
                 "user_id": user_id,
                 "integration_id": integration_id,
-                "accounts.connected_account_id": connected_account_id,
+                "accounts.id": account_id,
             },
             {"$set": {"accounts.$[account].nickname": nickname}},
             scope=user_id,
-            array_filters=[{"account.connected_account_id": connected_account_id}],
+            array_filters=[{"account.id": account_id}],
+        )
+
+    async def replace_legacy_account(
+        self,
+        user_id: str,
+        integration_id: str,
+        *,
+        accounts: list[IntegrationAccount],
+        primary_account_id: str | None,
+        status: UserIntegrationStatus,
+    ) -> UserIntegrationDocument | None:
+        """Move a pre-multi-account record onto its account list, dropping its single account id."""
+        return await self._apply_raw_update(
+            {"user_id": user_id, "integration_id": integration_id},
+            {
+                "$set": {
+                    "accounts": [a.model_dump() for a in accounts],
+                    "primary_account_id": primary_account_id,
+                    "status": status,
+                },
+                "$unset": {"connected_account_id": ""},
+            },
+            scope=user_id,
         )
 
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:

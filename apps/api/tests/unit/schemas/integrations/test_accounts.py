@@ -22,9 +22,13 @@ def _record() -> UserIntegrationDocument:
         status="connected",
         accounts=[
             IntegrationAccount(
-                connected_account_id="ca_work", label="work@acme.com", connected_at=CONNECTED_AT
+                id="ca_work",
+                connected_account_id="ca_work",
+                label="work@acme.com",
+                connected_at=CONNECTED_AT,
             ),
             IntegrationAccount(
+                id="ca_home",
                 connected_account_id="ca_home",
                 label="me@gmail.com",
                 nickname="Personal",

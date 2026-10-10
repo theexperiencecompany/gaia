@@ -29,6 +29,7 @@ from app.agents.tools.tracked_todo_formatting import (
     parse_match,
     render_catalog,
 )
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
@@ -57,6 +58,7 @@ from app.services.todos.errors import (
     UnwatchedTodoKeptError,
 )
 from app.services.tracked_todo_service import require_sub_todo_parent, tracked_todo_service
+from app.services.triggers.registry import get_handler_by_name
 from app.services.triggers.subscription_service import (
     DEFAULT_COOLDOWN_SECONDS,
     SubscriptionError,
@@ -138,8 +140,17 @@ async def _owned_gmail_thread_ref(
     return ExternalRef(
         source=ExternalRefSource.GMAIL_THREAD,
         id=gmail_thread_id,
-        account=account.connected_account_id if account else None,
+        account=account.id if account else None,
     )
+
+
+async def _watched_account_id(user_id: str, trigger_name: str, account: str) -> str | None:
+    """GAIA's id for the account a watch names, on the trigger's own integration; None if unknown."""
+    handler = get_handler_by_name(trigger_name)
+    integration = get_integration_by_tool_slug(next(iter(handler.event_types))) if handler else None
+    record = await get_account_record(user_id, integration.id) if integration else None
+    target = match_account(record, account) if record else None
+    return target.id if target else None
 
 
 async def _references_refusal(
@@ -699,6 +710,11 @@ async def subscribe_todo_to_trigger(
         "not fire without it. Call list_trigger_fields to see which scope a "
         "trigger needs.",
     ] = None,
+    account: Annotated[
+        str | None,
+        "Only events on this one connected account, by its listed name or id (e.g. the "
+        "user's work inbox). Omit to watch every account on the integration.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -739,6 +755,9 @@ async def subscribe_todo_to_trigger(
         return f"Error: {' '.join(scope_errors)}\n\n{render_catalog(trigger_name)}"
 
     trigger_data = scope or None
+    account_id = await _watched_account_id(user_id, trigger_name, account) if account else None
+    if account and account_id is None:
+        return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
         subscription, outcome, _created = await register_subscription(
@@ -750,6 +769,7 @@ async def subscribe_todo_to_trigger(
             match=parsed_match,
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
+            account_id=account_id,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.

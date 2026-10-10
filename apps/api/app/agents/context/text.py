@@ -114,7 +114,7 @@ MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
     "Keep every account in mind for the whole task, not just the first call: an answer, a "
     "summary or anything you set up to track covers all of them unless the user narrowed "
     "it. Tools act as the primary account unless you pass `account` to execute with one of "
-    "those names. When the user names an account (an address, a workspace, 'my work email') "
+    "those accounts, by its id (stable) or a name. When the user names an account (an address, a workspace, 'my work email') "
     "or the conversation makes clear which one they mean, use only that one. Otherwise be "
     "information complete: with several accounts a read could be in any of them ('my latest "
     "email', 'what is on today'), so call the tool for every connected account at once, as "

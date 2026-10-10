@@ -1026,7 +1026,8 @@ class TestInitializeChromaToolsStore:
         assert seed_lock_keys == ["lock:chroma:tools-seed:builtin"]
         assert event["vector"] == {
             "operation": "upsert",
-            "collection": "langgraph_tools_store",
+            # The runner suffixes collections (GAIA_CHROMA_COLLECTION_SUFFIX), so name it by the constant.
+            "collection": CHROMA_TOOLS_STORE_COLLECTION,
             "embedded_count": 1,
         }
 

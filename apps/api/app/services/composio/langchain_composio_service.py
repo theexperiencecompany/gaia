@@ -96,7 +96,7 @@ async def _expire_and_request_reconnect(
     dead = None
     if record is not None:
         dead = (
-            record.find_account(connected_account_id)
+            record.find_provider_account(connected_account_id)
             if connected_account_id
             else primary_account(record)
         )

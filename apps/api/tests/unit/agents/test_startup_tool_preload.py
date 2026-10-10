@@ -497,10 +497,16 @@ def _gmail_record_for(user_id: str, integration_id: str) -> UserIntegrationDocum
         status="connected",
         accounts=[
             IntegrationAccount(
-                connected_account_id="ca_work", label="work", identity={"username": "work-me"}
+                id="ca_work",
+                connected_account_id="ca_work",
+                label="work",
+                identity={"username": "work-me"},
             ),
             IntegrationAccount(
-                connected_account_id="ca_home", label="home", identity={"username": "home-me"}
+                id="ca_home",
+                connected_account_id="ca_home",
+                label="home",
+                identity={"username": "home-me"},
             ),
         ],
         primary_account_id="ca_home",

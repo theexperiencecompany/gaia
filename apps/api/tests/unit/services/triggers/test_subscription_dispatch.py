@@ -277,6 +277,33 @@ class TestGating:
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 0
 
+    @pytest.mark.parametrize(
+        ("event_account", "fired"),
+        [("acct_work", 1), ("acct_home", 0), (None, 0)],
+        ids=["its_account", "another_account", "no_account"],
+    )
+    async def test_a_watch_on_one_account_fires_only_for_that_accounts_events(
+        self, deps, event_account: str | None, fired: int
+    ) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(action=SubscriptionAction.NOTIFY, account_id="acct_work")
+                ]
+            )
+        ]
+        payload = {"gaia_account_id": event_account} if event_account else {}
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == fired
+
+    async def test_a_watch_on_every_account_fires_for_any_of_them(self, deps) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+        ]
+
+        payload = {"gaia_account_id": "acct_home"}
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == 1
+
     async def test_failing_conditions_do_not_fire(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(

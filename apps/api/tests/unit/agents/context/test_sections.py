@@ -380,7 +380,8 @@ class TestIntegrationsManifest:
             rendered = await section("integrations_manifest").fetch(ctx(tier))
 
         assert rendered.endswith(
-            '- Gmail (gmail) [accounts: "work@acme.com" (primary), "me@gmail.com"]\n' + guidance
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, primary), "me@gmail.com" (id ca_2)]\n'
+            + guidance
         )
         connected.assert_awaited_once_with("user1")
         multi_account.assert_awaited_once_with("user1")
@@ -409,7 +410,7 @@ class TestIntegrationsManifest:
             rendered = await section("integrations_manifest").fetch(ctx(tier))
 
         assert rendered.endswith(
-            '- Gmail (gmail) [accounts: "work@acme.com" (primary)]\n' + guidance
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, primary)]\n' + guidance
         )
         assert guidance.startswith("GAIA supports several connected accounts per integration")
 
@@ -457,9 +458,9 @@ class TestProviderMetadata:
 
         assert rendered == (
             "USER'S GMAIL ACCOUNTS:\n"
-            '- "work@acme.com"\n'
-            '- "Personal" or "me@gmail.com" (primary)\n'
-            '- "old@acme.com" (expired)\n' + MULTI_ACCOUNT_INSTRUCTION
+            '- "work@acme.com" (id ca_1)\n'
+            '- "Personal" or "me@gmail.com" (id ca_2, primary)\n'
+            '- "old@acme.com" (id ca_3, expired)\n' + MULTI_ACCOUNT_INSTRUCTION
         )
 
     async def test_it_asks_about_this_user_on_this_integration(self) -> None:

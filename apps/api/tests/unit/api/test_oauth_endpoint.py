@@ -67,8 +67,7 @@ def _mock_auth_response(
 
 # What recording a first-time account returns: a new connect, not a reconnect.
 NEW_ACCOUNT = AccountConnected(
-    account=IntegrationAccount(connected_account_id="acc1", label="me@gmail.com"),
-    replaced_account_id=None,
+    account=IntegrationAccount(id="acc1", connected_account_id="acc1", label="me@gmail.com"),
     primary_changed=True,
     outcome=AccountConnectOutcome.ADDED,
 )

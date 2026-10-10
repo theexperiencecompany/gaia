@@ -6,6 +6,7 @@ call (identity) is the only seam mocked; the grouping and choices are real.
 
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
+import itertools
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
@@ -15,6 +16,7 @@ from app.config.oauth_config import get_integration_by_id
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
 from app.scripts.migrate_integration_accounts import (
+    _Plan,
     _plan,
     connect_args_with_mode,
     migrate_connect_approvals,
@@ -54,6 +56,21 @@ def identity() -> Iterator[AsyncMock]:
         yield fetch
 
 
+@pytest.fixture(autouse=True)
+def gaia_ids() -> Iterator[None]:
+    """Mint GAIA account ids in order (acct_1, acct_2, ...) so a plan reads deterministically."""
+    minted = (f"acct_{n}" for n in itertools.count(1))
+    with patch(
+        "app.scripts.migrate_integration_accounts.new_account_id", side_effect=lambda: next(minted)
+    ):
+        yield
+
+
+def _primary_provider_id(plan: _Plan) -> str | None:
+    """Return the Composio account behind the plan's primary, which GAIA names by its own id."""
+    return next((a.connected_account_id for a in plan.keep if a.id == plan.primary), None)
+
+
 def _gmail() -> OAuthIntegration:
     gmail = get_integration_by_id("gmail")
     assert gmail is not None
@@ -71,7 +88,7 @@ async def test_reconnect_leftovers_of_one_identity_collapse_to_the_stored_accoun
 
     assert [a.connected_account_id for a in plan.keep] == ["ca_old"]
     assert plan.revoke == ["ca_new"]
-    assert plan.primary == "ca_old"
+    assert _primary_provider_id(plan) == "ca_old"
 
 
 async def test_two_real_mailboxes_both_survive_with_the_stored_one_primary() -> None:
@@ -88,7 +105,7 @@ async def test_two_real_mailboxes_both_survive_with_the_stored_one_primary() -> 
         ("ca_work", "work@acme.com"),
     ]
     assert plan.revoke == []
-    assert plan.primary == "ca_work"
+    assert _primary_provider_id(plan) == "ca_work"
 
 
 async def test_dead_and_abandoned_accounts_are_revoked_but_a_disabled_one_is_left_alone() -> None:
@@ -120,7 +137,7 @@ async def test_without_the_stored_account_the_newest_of_an_identity_is_kept() ->
 
     assert [a.connected_account_id for a in plan.keep] == ["ca_new"]
     assert plan.revoke == ["ca_old"]
-    assert plan.primary == "ca_new"
+    assert _primary_provider_id(plan) == "ca_new"
 
 
 async def test_an_expired_integration_keeps_its_dead_account_so_reconnect_is_offered() -> None:
@@ -140,7 +157,7 @@ async def test_an_expired_integration_keeps_its_dead_account_so_reconnect_is_off
     assert kept.expired_at is not None
     assert before <= kept.expired_at <= after
     assert plan.revoke == []
-    assert plan.primary == "ca_dead"
+    assert _primary_provider_id(plan) == "ca_dead"
 
 
 async def test_the_kept_account_carries_the_identity_read_as_the_record_owner(
@@ -162,6 +179,7 @@ async def test_the_kept_account_carries_the_identity_read_as_the_record_owner(
     assert identity.await_args_list == [call("u1", gmail, "ca_old"), call("u1", gmail, "ca_new")]
     assert plan.keep == [
         IntegrationAccount(
+            id="acct_1",
             connected_account_id="ca_old",
             identity={"email": "me@gmail.com"},
             label="me@gmail.com",
@@ -229,7 +247,7 @@ async def test_an_expired_integration_with_a_live_account_left_revokes_its_dead_
 
     assert [(a.connected_account_id, a.status) for a in plan.keep] == [("ca_new", "connected")]
     assert plan.revoke == ["ca_dead"]
-    assert plan.primary == "ca_new"
+    assert _primary_provider_id(plan) == "ca_new"
 
 
 async def test_an_expired_integration_whose_account_composio_dropped_keeps_nothing() -> None:

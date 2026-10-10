@@ -81,10 +81,13 @@ def _gmail_accounts(
 
 
 WORK = IntegrationAccount(
-    connected_account_id="ca_work", label="work@acme.com", identity={"email": "work@acme.com"}
+    id="ca_work",
+    connected_account_id="ca_work",
+    label="work@acme.com",
+    identity={"email": "work@acme.com"},
 )
 PERSONAL = IntegrationAccount(
-    connected_account_id="ca_personal", label="me@gmail.com", nickname="Personal"
+    id="ca_personal", connected_account_id="ca_personal", label="me@gmail.com", nickname="Personal"
 )
 
 

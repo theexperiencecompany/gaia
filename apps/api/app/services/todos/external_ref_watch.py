@@ -29,6 +29,8 @@ class _RefWatch(NamedTuple):
     conditions: tuple[SubscriptionCondition, ...]
     trigger_names: tuple[str, ...]
     window_seconds: int
+    # The one account the object lives in; None watches every account.
+    account_id: str | None = None
 
 
 # A person's new mail in the Primary inbox; the desk's fetch skips the same senders.
@@ -59,6 +61,7 @@ def _ref_watch(ref: ExternalRef) -> _RefWatch:
                 (on_thread,),
                 (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME),
                 DEFAULT_COOLDOWN_SECONDS,
+                ref.account,
             )
         case ExternalRefSource.INBOX_DESK:
             return _RefWatch(
@@ -75,7 +78,9 @@ async def watch_external_ref(
     """
     watch = _ref_watch(ref)
     watched = {
-        sub.trigger_name for sub in subscriptions if set(watch.conditions) <= set(sub.conditions)
+        sub.trigger_name
+        for sub in subscriptions
+        if set(watch.conditions) <= set(sub.conditions) and sub.account_id == watch.account_id
     }
     added: list[TriggerSubscription] = []
     try:
@@ -89,6 +94,7 @@ async def watch_external_ref(
                 conditions=list(watch.conditions),
                 action=SubscriptionAction.EXECUTE,
                 cooldown_seconds=watch.window_seconds,
+                account_id=watch.account_id,
             )
             # Only rows this call stored are rolled back: a concurrent winner's
             # row is not ours to remove if a later watch fails.

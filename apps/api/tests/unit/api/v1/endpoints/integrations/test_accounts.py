@@ -13,6 +13,7 @@ import pytest
 from tests.integration_account_factories import (
     make_integration_account,
     make_integration_record,
+    provider_account_id,
     with_nickname,
 )
 
@@ -224,7 +225,7 @@ class TestRemoveAccount:
         assert resp.status_code == 200
         accounts = resp.json()["accounts"]
         assert [(a["id"], a["isPrimary"]) for a in accounts] == [("ca_2", True)]
-        composio.delete_connected_account.assert_awaited_once_with("ca_1")
+        composio.delete_connected_account.assert_awaited_once_with(provider_account_id("ca_1"))
 
     async def test_removal_is_audited_and_the_wide_event_counts_what_remains(
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock, wide_log: MagicMock

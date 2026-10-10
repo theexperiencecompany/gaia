@@ -185,7 +185,9 @@ def _single_account_record(identity: dict[str, str]) -> UserIntegrationDocument 
         user_id="user-1",
         integration_id="gmail",
         status="connected",
-        accounts=[IntegrationAccount(connected_account_id="ca_1", identity=identity, label="x")],
+        accounts=[
+            IntegrationAccount(id="ca_1", connected_account_id="ca_1", identity=identity, label="x")
+        ],
         primary_account_id="ca_1",
     )
 

@@ -65,7 +65,11 @@ def _accounts_record(status: IntegrationAccountStatus = "connected") -> UserInte
         user_id=USER,
         integration_id="any",
         status="connected" if status == "connected" else "expired",
-        accounts=[IntegrationAccount(connected_account_id=ACCOUNT_ID, label="me", status=status)],
+        accounts=[
+            IntegrationAccount(
+                id=ACCOUNT_ID, connected_account_id=ACCOUNT_ID, label="me", status=status
+            )
+        ],
         primary_account_id=ACCOUNT_ID,
     )
 

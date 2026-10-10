@@ -91,7 +91,7 @@ async def expire_account(
         log.set_ns("integration_expiry", outcome="no_record")
         return None
     account = (
-        record.find_account(connected_account_id)
+        record.find_provider_account(connected_account_id)
         if connected_account_id
         else primary_account(record)
     )
@@ -114,7 +114,7 @@ async def expire_account(
     outcome = AccountExpired(
         account=dead,
         account_count=len(accounts),
-        was_primary=record.primary_account_id == account.connected_account_id,
+        was_primary=record.primary_account_id == account.id,
         integration_expired=saved.status == "expired",
     )
     log.set_ns(
@@ -218,7 +218,7 @@ async def announce_account_expiry(
                         config=ActionConfig(
                             redirect=RedirectConfig(
                                 url=f"/integrations?connect={integration_id}"
-                                f"&account={expired.account.connected_account_id}",
+                                f"&account={expired.account.id}",
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )

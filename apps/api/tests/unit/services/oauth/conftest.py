@@ -48,8 +48,9 @@ def mock_composio_service():
 def mock_record_account():
     """Patch the account recorder; by default it records a first account, so the primary moved."""
     connected = AccountConnected(
-        account=IntegrationAccount(connected_account_id="ca_new", label="ada@example.com"),
-        replaced_account_id=None,
+        account=IntegrationAccount(
+            id="ca_new", connected_account_id="ca_new", label="ada@example.com"
+        ),
         primary_changed=True,
         outcome=AccountConnectOutcome.ADDED,
     )

@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from redis.exceptions import RedisError
 
+from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
@@ -134,6 +135,11 @@ async def _fire_if_matching(
     if subscription.composio_trigger_ids and trigger_id not in subscription.composio_trigger_ids:
         return False
     if subscription.status is not TriggerSubscriptionStatus.ACTIVE:
+        return False
+    if (
+        subscription.account_id is not None
+        and payload.get(EVENT_ACCOUNT_ID_KEY) != subscription.account_id
+    ):
         return False
     if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
         return False

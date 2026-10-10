@@ -54,8 +54,9 @@ from app.constants.integrations import (
     ConnectMode,
 )
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import LIVE_LEDGER_STATES
-from app.models.integration_models import IntegrationAccount
+from app.models.integration_models import IntegrationAccount, new_account_id
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service, init_composio_service
 from app.services.hil.fingerprint import approval_fingerprint
@@ -127,6 +128,7 @@ async def _plan(
         chosen, identity = next(((a, i) for a, i in group if a.id == stored_id), group[-1])
         plan.keep.append(
             IntegrationAccount(
+                id=new_account_id(),
                 connected_account_id=chosen.id,
                 identity=identity,
                 label=account_label(integration, identity, {k.label for k in plan.keep}),
@@ -141,6 +143,7 @@ async def _plan(
         if stored is not None:
             plan.keep.append(
                 IntegrationAccount(
+                    id=new_account_id(),
                     connected_account_id=stored.id,
                     # Equivalent under mutation: account_label treats a None identity as {}.
                     label=account_label(integration, {}, set()),  # pragma: no mutate
@@ -157,7 +160,9 @@ async def _plan(
         if a.id not in kept_ids and a.status != _LIVE and a.status not in _UNTOUCHED
     ]
     plan.keep.sort(key=lambda a: a.connected_at)
-    plan.primary = pick_primary(plan.keep, stored_id)
+    # The legacy record named its account by Composio's id; the primary is now GAIA's.
+    stored_primary = next((k.id for k in plan.keep if k.connected_account_id == stored_id), None)
+    plan.primary = pick_primary(plan.keep, stored_primary)
     return plan
 
 
@@ -167,7 +172,6 @@ async def _migrate_document(
     auth_config_id: str,
     totals: _Totals,
     apply: bool,
-    collection: AsyncIOMotorCollection[dict[str, object]],
 ) -> None:
     user_id = doc.user_id
     stored_id = doc.connected_account_id
@@ -194,16 +198,12 @@ async def _migrate_document(
 
     for account_id in plan.revoke:
         await composio.delete_connected_account(account_id)
-    await collection.update_one(
-        {"_id": doc.id},
-        {
-            "$set": {
-                "accounts": [a.model_dump() for a in plan.keep],
-                "primary_account_id": plan.primary,
-                "status": derive_status(plan.keep) if plan.keep else "created",
-            },
-            "$unset": {"connected_account_id": ""},
-        },
+    await user_integration_repository.replace_legacy_account(
+        user_id,
+        integration.id,
+        accounts=plan.keep,
+        primary_account_id=plan.primary,
+        status=derive_status(plan.keep) if plan.keep else "created",
     )
     for account in plan.keep:
         if account.status == "connected" and integration.associated_triggers:
@@ -286,9 +286,7 @@ async def _run(args: argparse.Namespace) -> None:
         doc = _LegacyRecord.model_validate(raw)
         integration, auth_config_id = composio_integrations[doc.integration_id]
         try:
-            await _migrate_document(
-                doc, integration, auth_config_id, totals, args.apply, user_integrations
-            )
+            await _migrate_document(doc, integration, auth_config_id, totals, args.apply)
         except Exception as e:
             totals.failures.append(f"{doc.user_id} {integration.id}: {e}")
 

@@ -25,6 +25,7 @@ from shared.py.analytics.catalog.integrations import (
 from tests.integration_account_factories import (
     make_integration_account,
     make_integration_record,
+    provider_account_id,
     with_nickname,
 )
 
@@ -251,9 +252,11 @@ class TestDisconnectIntegration:
 
         result = await _disconnect("googlecalendar", "Personal")
 
-        assert result == 'Disconnected Personal. Still connected: "work@acme.com" (primary).'
+        assert (
+            result == 'Disconnected Personal. Still connected: "work@acme.com" (id ca_2, primary).'
+        )
         assert {c.args for c in seams.get_record.await_args_list} == {(USER_ID, "googlecalendar")}
-        seams.revoke.assert_awaited_once_with("ca_1")
+        seams.revoke.assert_awaited_once_with(provider_account_id("ca_1"))
         seams.save.assert_awaited_once()
         assert seams.save.await_args.args[2:] == (
             [seams.get_record.return_value.accounts[1]],
@@ -272,8 +275,8 @@ class TestDisconnectIntegration:
         result = await _disconnect("googlecalendar", "me@gmail.com")
 
         assert result == (
-            'Disconnected me@gmail.com. Still connected: "work@acme.com" (primary), '
-            '"old@acme.com" (expired).'
+            'Disconnected me@gmail.com. Still connected: "work@acme.com" (id ca_1, primary), '
+            '"old@acme.com" (id ca_3, expired).'
         )
 
     async def test_with_several_accounts_and_none_named_nothing_is_removed(

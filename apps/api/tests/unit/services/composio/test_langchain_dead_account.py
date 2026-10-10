@@ -290,9 +290,14 @@ class TestDeadAccountReconciles:
             user_id="user-1",
             integration_id="gmail",
             accounts=[
-                IntegrationAccount(connected_account_id="ca_home", label="me@gmail.com"),
                 IntegrationAccount(
-                    connected_account_id="ca_work", label="work@acme.com", status="expired"
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+                IntegrationAccount(
+                    id="ca_work",
+                    connected_account_id="ca_work",
+                    label="work@acme.com",
+                    status="expired",
                 ),
             ],
             primary_account_id="ca_work",
@@ -331,9 +336,14 @@ class TestDeadAccountReconciles:
             user_id="user-1",
             integration_id="gmail",
             accounts=[
-                IntegrationAccount(connected_account_id="ca_home", label="me@gmail.com"),
                 IntegrationAccount(
-                    connected_account_id="ca_work", label="work@acme.com", status="expired"
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+                IntegrationAccount(
+                    id="ca_work",
+                    connected_account_id="ca_work",
+                    label="work@acme.com",
+                    status="expired",
                 ),
             ],
             primary_account_id="ca_home",

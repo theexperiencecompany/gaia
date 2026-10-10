@@ -269,8 +269,11 @@ class ComposioWebhookAckResponse(BaseModel):
 
 
 class TriggerEventAccount(TypedDict, total=False):
-    """What GAIA adds to a trigger payload: the account that received it, when the user has several."""
+    """What GAIA adds to a trigger payload: the account that received it."""
 
+    # GAIA's id for the account; a watch scoped to one account matches on it.
+    gaia_account_id: str
+    # Its name, only when the user has several accounts to tell apart.
     gaia_account: str
 
 

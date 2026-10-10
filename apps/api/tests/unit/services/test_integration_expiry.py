@@ -24,7 +24,11 @@ from app.services.integrations.integration_expiry import (
     announce_account_expiry,
     expire_account,
 )
-from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import (
+    make_integration_account,
+    make_integration_record,
+    provider_account_id,
+)
 
 MODULE = "app.services.integrations.integration_expiry"
 ACCOUNTS_MODULE = "app.services.integrations.integration_accounts"
@@ -78,14 +82,16 @@ def log() -> Iterator[MagicMock]:
 
 def _saved_accounts(repo: MagicMock) -> dict[str, str]:
     accounts = repo.save_accounts.await_args.kwargs["accounts"]
-    return {a.connected_account_id: a.status for a in accounts}
+    return {a.id: a.status for a in accounts}
 
 
 class TestNoOpGuards:
     async def test_it_never_fabricates_a_record_for_an_integration_the_user_never_added(
         self, repo: MagicMock
     ) -> None:
-        outcome = await expire_account(USER_ID, INTEGRATION_ID, "ca_1", trigger="webhook")
+        outcome = await expire_account(
+            USER_ID, INTEGRATION_ID, provider_account_id("ca_1"), trigger="webhook"
+        )
 
         assert outcome is None
         repo.save_accounts.assert_not_awaited()
@@ -96,7 +102,9 @@ class TestNoOpGuards:
         """A superseded or legacy account dying must not mark a live integration expired."""
         repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
-        outcome = await expire_account(USER_ID, INTEGRATION_ID, "ca_gone", trigger="webhook")
+        outcome = await expire_account(
+            USER_ID, INTEGRATION_ID, provider_account_id("ca_gone"), trigger="webhook"
+        )
 
         assert outcome is None
         repo.get_for_user.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
@@ -108,7 +116,9 @@ class TestNoOpGuards:
     async def test_an_already_expired_account_does_not_expire_again(self, repo: MagicMock) -> None:
         repo.get_for_user.return_value = _record(make_integration_account("ca_1", status="expired"))
 
-        outcome = await expire_account(USER_ID, INTEGRATION_ID, "ca_1", trigger="webhook")
+        outcome = await expire_account(
+            USER_ID, INTEGRATION_ID, provider_account_id("ca_1"), trigger="webhook"
+        )
 
         assert outcome is None
         repo.save_accounts.assert_not_awaited()
@@ -123,7 +133,11 @@ class TestOneAccountOfSeveral:
         )
 
         outcome = await expire_account(
-            USER_ID, INTEGRATION_ID, "ca_2", trigger="webhook", reason="token_expired"
+            USER_ID,
+            INTEGRATION_ID,
+            provider_account_id("ca_2"),
+            trigger="webhook",
+            reason="token_expired",
         )
 
         assert outcome is not None
@@ -163,7 +177,9 @@ class TestOneAccountOfSeveral:
             make_integration_account("ca_1"), make_integration_account("ca_2")
         )
 
-        outcome = await expire_account(USER_ID, INTEGRATION_ID, "ca_1", trigger="webhook")
+        outcome = await expire_account(
+            USER_ID, INTEGRATION_ID, provider_account_id("ca_1"), trigger="webhook"
+        )
 
         assert outcome is not None
         assert outcome.integration_expired is False
@@ -177,7 +193,11 @@ class TestOneAccountOfSeveral:
         )
 
         outcome = await expire_account(
-            USER_ID, INTEGRATION_ID, "ca_1", trigger="webhook", reason="refresh_token_revoked"
+            USER_ID,
+            INTEGRATION_ID,
+            provider_account_id("ca_1"),
+            trigger="webhook",
+            reason="refresh_token_revoked",
         )
 
         assert outcome is not None
@@ -191,7 +211,9 @@ class TestOneAccountOfSeveral:
     async def test_the_workspace_is_resynced(self, repo: MagicMock, vfs_sync: MagicMock) -> None:
         repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
-        await expire_account(USER_ID, INTEGRATION_ID, "ca_1", trigger="webhook")
+        await expire_account(
+            USER_ID, INTEGRATION_ID, provider_account_id("ca_1"), trigger="webhook"
+        )
 
         vfs_sync.assert_called_once_with(USER_ID)
 

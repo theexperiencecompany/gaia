@@ -536,8 +536,9 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
             "app.services.oauth.oauth_service.record_connected_account",
             AsyncMock(
                 return_value=AccountConnected(
-                    account=IntegrationAccount(connected_account_id="ca_gmail", label="me"),
-                    replaced_account_id=None,
+                    account=IntegrationAccount(
+                        id="ca_gmail", connected_account_id="ca_gmail", label="me"
+                    ),
                     primary_changed=True,
                     outcome=AccountConnectOutcome.ADDED,
                 )

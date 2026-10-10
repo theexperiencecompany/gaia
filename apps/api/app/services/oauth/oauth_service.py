@@ -35,6 +35,7 @@ from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
+    resume_watches_for_connected_account,
     resume_workflows_for_reconnected_integration,
 )
 from app.services.workspace_sync import schedule_user_provision
@@ -355,6 +356,13 @@ async def handle_oauth_connection(
 
     if integration_config.associated_triggers:
         _setup_account_triggers(user_id, integration_config, connected, background_tasks)
+        # Any account coming back revives the todo watches its death paused.
+        background_tasks.add_task(
+            resume_watches_for_connected_account,
+            user_id,
+            integration_config.id,
+            connected.account.id,
+        )
 
     # Personalization reads the primary inbox; a further account adds no profile.
     if integration_config.id == GMAIL_INTEGRATION_ID and connected.primary_changed:

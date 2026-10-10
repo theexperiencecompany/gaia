@@ -948,8 +948,9 @@ class TestHandleOAuthConnection:
     async def test_a_further_account_leaves_primary_bound_work_alone(self, mock_record_account):
         """Adding a second mailbox must not move workflows, resume them, or re-run personalization."""
         mock_record_account.return_value = AccountConnected(
-            account=IntegrationAccount(connected_account_id="ca_new", label="me@gmail.com"),
-            replaced_account_id=None,
+            account=IntegrationAccount(
+                id="ca_new", connected_account_id="ca_new", label="me@gmail.com"
+            ),
             primary_changed=False,
             outcome=AccountConnectOutcome.ADDED,
         )

@@ -450,9 +450,13 @@ class TestConnectionExpiryDelivery:
             integration_id="googlecalendar",
             status="connected",
             accounts=[
-                IntegrationAccount(connected_account_id="ca_xxxxxxxxxxxx", label="work@acme.com")
+                IntegrationAccount(
+                    id="acct_work",
+                    connected_account_id="ca_xxxxxxxxxxxx",
+                    label="work@acme.com",
+                )
             ],
-            primary_account_id="ca_xxxxxxxxxxxx",
+            primary_account_id="acct_work",
         )
         repository = MagicMock()
         repository.get_for_user = AsyncMock(return_value=record)
@@ -471,6 +475,7 @@ class TestConnectionExpiryDelivery:
             ),
             patch("app.services.integrations.integration_expiry.schedule_user_integrations_sync"),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.announce_account_expiry", announce),
         ):
             response = await unauthenticated_client.post(
@@ -487,6 +492,10 @@ class TestConnectionExpiryDelivery:
         assert saved["status"] == "expired"
         assert [a.status for a in saved["accounts"]] == ["expired"]
         pause.assert_awaited_once_with(USER_ID, "googlecalendar")
+        # The integration's only account died, so its watches on every account stop too.
+        pause_watches.assert_awaited_once_with(
+            USER_ID, "googlecalendar", record.accounts[0].id, integration_expired=True
+        )
         user_id, integration_id, expired, paused, reason = announce.await_args.args
         assert (user_id, integration_id, paused, reason) == (
             USER_ID,

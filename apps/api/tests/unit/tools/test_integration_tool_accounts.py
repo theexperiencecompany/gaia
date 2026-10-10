@@ -327,7 +327,7 @@ class TestCheckIntegrationsStatusAccounts:
             )
 
         assert result == (
-            'Gmail: ✅ Connected; accounts: "ca_1@acme.com" (primary), '
-            '"Work" or "ca_2@acme.com" (expired)'
+            'Gmail: ✅ Connected; accounts: "ca_1@acme.com" (id ca_1, primary), '
+            '"Work" or "ca_2@acme.com" (id ca_2, expired)'
         )
         lookup.assert_awaited_once_with(FAKE_USER_ID, "gmail")

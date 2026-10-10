@@ -1446,6 +1446,13 @@ class TestMultipleAccounts:
             yield resync
 
     @staticmethod
+    def _gaia(repo: _FakeUserIntegrationRepo, provider_id: str) -> str:
+        """GAIA's id for the account the provider knows as provider_id."""
+        account = repo.docs[(USER_ID, "gmail")].find_provider_account(provider_id)
+        assert account is not None
+        return account.id
+
+    @staticmethod
     def _gmail() -> OAuthIntegration:
         gmail = get_integration_by_id("gmail")
         assert gmail is not None
@@ -1461,7 +1468,7 @@ class TestMultipleAccounts:
         assert connected.outcome is AccountConnectOutcome.ADDED
         doc = repo.docs[(USER_ID, "gmail")]
         assert doc.status == "connected"
-        assert doc.primary_account_id == "ca_work"
+        assert doc.primary_account_id == self._gaia(repo, "ca_work")
         assert [(a.label, a.identity) for a in doc.accounts] == [
             ("work@acme.com", {"email": "work@acme.com"})
         ]
@@ -1479,7 +1486,7 @@ class TestMultipleAccounts:
         assert connected.outcome is AccountConnectOutcome.ADDED
         doc = repo.docs[(USER_ID, "gmail")]
         assert [a.label for a in doc.accounts] == ["work@acme.com", "me@gmail.com"]
-        assert doc.primary_account_id == "ca_work"
+        assert doc.primary_account_id == self._gaia(repo, "ca_work")
         assert composio.revoked == []
 
     async def test_adding_a_mailbox_already_connected_replaces_it_and_says_so(
@@ -1488,20 +1495,28 @@ class TestMultipleAccounts:
         """The new grant takes the old one's place, nickname and primacy included; nothing is added."""
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
         await update_account(
-            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+            USER_ID,
+            "gmail",
+            self._gaia(repo, "ca_work"),
+            nickname="Work",
+            rename=True,
+            make_primary=False,
         )
+
+        work_id = self._gaia(repo, "ca_work")
 
         connected = await record_connected_account(USER_ID, self._gmail(), "ca_work_again")
 
         assert isinstance(connected, AccountConnected)
-        assert connected.replaced_account_id == "ca_work"
-        assert connected.primary_changed is True
         assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
+        # Same identity, same GAIA account: what points at it outlives the provider swap,
+        # while the primary's provider-bound triggers must move to the new grant.
+        assert (connected.primary_changed, connected.primary_restored) == (False, True)
         doc = repo.docs[(USER_ID, "gmail")]
-        assert [(a.connected_account_id, a.display_name) for a in doc.accounts] == [
-            ("ca_work_again", "Work")
+        assert [(a.id, a.connected_account_id, a.display_name) for a in doc.accounts] == [
+            (work_id, "ca_work_again", "Work")
         ]
-        assert doc.primary_account_id == "ca_work_again"
+        assert doc.primary_account_id == work_id
         assert composio.revoked == ["ca_work"]
 
     async def test_adding_the_identity_of_an_expired_account_is_a_reconnect(
@@ -1522,7 +1537,12 @@ class TestMultipleAccounts:
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
         await record_connected_account(USER_ID, self._gmail(), "ca_home")
         await update_account(
-            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+            USER_ID,
+            "gmail",
+            self._gaia(repo, "ca_work"),
+            nickname="Work",
+            rename=True,
+            make_primary=False,
         )
         await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook", reason="expired")
 
@@ -1532,7 +1552,6 @@ class TestMultipleAccounts:
         assert connected.outcome is AccountConnectOutcome.RECONNECTED
         assert connected.primary_restored is True
         assert connected.primary_changed is False
-        assert connected.replaced_account_id is None
         doc = repo.docs[(USER_ID, "gmail")]
         assert [
             (a.connected_account_id, a.display_name, a.status, a.expired_at, a.expired_reason)
@@ -1541,7 +1560,7 @@ class TestMultipleAccounts:
             ("ca_work", "Work", "connected", None, None),
             ("ca_home", "me@gmail.com", "connected", None, None),
         ]
-        assert doc.primary_account_id == "ca_work"
+        assert doc.primary_account_id == self._gaia(repo, "ca_work")
         assert composio.revoked == []
 
     async def test_restoring_a_secondary_account_leaves_the_primary_alone(
@@ -1555,7 +1574,7 @@ class TestMultipleAccounts:
 
         assert isinstance(connected, AccountConnected)
         assert connected.primary_restored is False
-        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == self._gaia(repo, "ca_work")
 
     async def test_signing_an_expired_account_in_as_someone_new_renames_it(
         self, repo: _FakeUserIntegrationRepo, composio: _Composio
@@ -1563,7 +1582,12 @@ class TestMultipleAccounts:
         """The account now holds the other person's grant, so the old nickname no longer fits."""
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
         await update_account(
-            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+            USER_ID,
+            "gmail",
+            self._gaia(repo, "ca_work"),
+            nickname="Work",
+            rename=True,
+            make_primary=False,
         )
         await expire_account(USER_ID, "gmail", "ca_work", trigger="webhook")
         composio.emails["ca_work"] = "someone.else@acme.com"
@@ -1593,10 +1617,9 @@ class TestMultipleAccounts:
         assert isinstance(connected, AccountConnected)
         assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
         assert connected.account.connected_account_id == "ca_home"
-        assert connected.replaced_account_id == "ca_work"
         doc = repo.docs[(USER_ID, "gmail")]
         assert [a.connected_account_id for a in doc.accounts] == ["ca_home"]
-        assert doc.primary_account_id == "ca_home"
+        assert doc.primary_account_id == self._gaia(repo, "ca_home")
         assert composio.revoked == ["ca_work"]
         resync.assert_awaited_once_with(USER_ID, self._gmail())
 
@@ -1609,7 +1632,6 @@ class TestMultipleAccounts:
 
         assert isinstance(connected, AccountConnected)
         assert connected.outcome is AccountConnectOutcome.ALREADY_CONNECTED
-        assert connected.replaced_account_id is None
         assert [a.connected_account_id for a in repo.docs[(USER_ID, "gmail")].accounts] == [
             "ca_work"
         ]
@@ -1632,10 +1654,10 @@ class TestMultipleAccounts:
         for account_id in ("ca_work", "ca_home", "ca_0"):
             await record_connected_account(USER_ID, self._gmail(), account_id)
 
-        doc = await remove_account(USER_ID, "gmail", "ca_work")
+        doc = await remove_account(USER_ID, "gmail", self._gaia(repo, "ca_work"))
 
         assert doc is not None
-        assert doc.primary_account_id == "ca_home"
+        assert doc.primary_account_id == self._gaia(repo, "ca_home")
         assert [a.connected_account_id for a in doc.accounts] == ["ca_home", "ca_0"]
         assert composio.revoked == ["ca_work"]
         # Workflow triggers lived on the removed primary.
@@ -1647,9 +1669,9 @@ class TestMultipleAccounts:
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
         await record_connected_account(USER_ID, self._gmail(), "ca_home")
 
-        await remove_account(USER_ID, "gmail", "ca_home")
+        await remove_account(USER_ID, "gmail", self._gaia(repo, "ca_home"))
 
-        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == self._gaia(repo, "ca_work")
         resync.assert_not_awaited()
 
     async def test_removing_the_last_account_is_a_full_disconnect(
@@ -1658,7 +1680,7 @@ class TestMultipleAccounts:
         await record_connected_account(USER_ID, self._gmail(), "ca_work")
 
         with patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect:
-            doc = await remove_account(USER_ID, "gmail", "ca_work")
+            doc = await remove_account(USER_ID, "gmail", self._gaia(repo, "ca_work"))
 
         assert doc is None
         disconnect.assert_awaited_once_with(USER_ID, "gmail")
@@ -1670,10 +1692,15 @@ class TestMultipleAccounts:
         await record_connected_account(USER_ID, self._gmail(), "ca_home")
 
         doc = await update_account(
-            USER_ID, "gmail", "ca_home", nickname=None, rename=False, make_primary=True
+            USER_ID,
+            "gmail",
+            self._gaia(repo, "ca_home"),
+            nickname=None,
+            rename=False,
+            make_primary=True,
         )
 
-        assert doc.primary_account_id == "ca_home"
+        assert doc.primary_account_id == self._gaia(repo, "ca_home")
         resync.assert_awaited_once_with(USER_ID, self._gmail())
 
     async def test_an_expired_account_cannot_be_made_primary(
@@ -1685,11 +1712,16 @@ class TestMultipleAccounts:
 
         with pytest.raises(AppError) as exc:
             await update_account(
-                USER_ID, "gmail", "ca_home", nickname=None, rename=False, make_primary=True
+                USER_ID,
+                "gmail",
+                self._gaia(repo, "ca_home"),
+                nickname=None,
+                rename=False,
+                make_primary=True,
             )
 
         assert exc.value.status_code == 409
-        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == self._gaia(repo, "ca_work")
 
     async def test_an_unreadable_identity_still_keeps_the_account_under_a_numbered_label(
         self, repo: _FakeUserIntegrationRepo, composio: _Composio

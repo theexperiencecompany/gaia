@@ -345,9 +345,14 @@ class TestConnectedIntegrationsManifest:
                 user_id="u1",
                 integration_id="gmail",
                 accounts=[
-                    IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
                     IntegrationAccount(
-                        connected_account_id="ca_2", label="me@gmail.com", status="expired"
+                        id="ca_1", connected_account_id="ca_1", label="work@acme.com"
+                    ),
+                    IntegrationAccount(
+                        id="ca_2",
+                        connected_account_id="ca_2",
+                        label="me@gmail.com",
+                        status="expired",
                     ),
                 ],
                 primary_account_id="ca_1",
@@ -365,7 +370,8 @@ class TestConnectedIntegrationsManifest:
 
         assert manifest == (
             "HEADER:\n"
-            '- Gmail (gmail) [accounts: "work@acme.com" (primary), "me@gmail.com" (expired)]\n'
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, primary), '
+            '"me@gmail.com" (id ca_2, expired)]\n'
             "- GitHub (github)\n"
             "GUIDE"
         )

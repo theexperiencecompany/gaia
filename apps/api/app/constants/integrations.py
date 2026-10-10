@@ -46,6 +46,10 @@ DEAD_CONNECTION_STATUSES: Final = frozenset(
 
 # --- Multi-account (Composio) ------------------------------------------------
 MAX_ACCOUNTS_PER_INTEGRATION: Final = 5
+# GAIA's own account ids; the provider's (Composio's) id stays a field beside it.
+INTEGRATION_ACCOUNT_ID_PREFIX: Final = "acct_"
+# The trigger payload key GAIA stamps with the account an event arrived on (TriggerEventAccount).
+EVENT_ACCOUNT_ID_KEY: Final = "gaia_account_id"
 # One page of a user's Composio accounts; covers every provider's accounts at the cap.
 COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
 # Label for an account whose provider exposes no identity (no metadata_config).

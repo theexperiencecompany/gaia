@@ -51,8 +51,7 @@ def mock_config():
 
 def _connected(outcome: AccountConnectOutcome) -> AccountConnected:
     return AccountConnected(
-        account=IntegrationAccount(connected_account_id="acc1", label="me@gmail.com"),
-        replaced_account_id=None,
+        account=IntegrationAccount(id="acc1", connected_account_id="acc1", label="me@gmail.com"),
         primary_changed=False,
         outcome=outcome,
     )

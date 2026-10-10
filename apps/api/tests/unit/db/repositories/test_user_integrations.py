@@ -33,6 +33,7 @@ def collection() -> Iterator[MagicMock]:
 
 def _account() -> IntegrationAccount:
     return IntegrationAccount(
+        id="acct_1",
         connected_account_id="ca_1",
         label="ada@acme.com",
         connected_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -100,17 +101,18 @@ class TestSetAccountNickname:
     ) -> None:
         with patch.object(UserIntegrationsRepository, "_cache_store", AsyncMock()) as store:
             doc = await UserIntegrationsRepository().set_account_nickname(
-                USER_ID, INTEGRATION_ID, "ca_1", "Work"
+                USER_ID, INTEGRATION_ID, "acct_1", "Work"
             )
 
         (filter_, update), kwargs = collection.find_one_and_update.await_args
         assert filter_ == {
             "user_id": USER_ID,
             "integration_id": INTEGRATION_ID,
-            "accounts.connected_account_id": "ca_1",
+            "accounts.id": "acct_1",
         }
         assert update["$set"]["accounts.$[account].nickname"] == "Work"
-        assert kwargs["array_filters"] == [{"account.connected_account_id": "ca_1"}]
+        # Named by GAIA's own id, so a rename never depends on the provider's.
+        assert kwargs["array_filters"] == [{"account.id": "acct_1"}]
         store.assert_awaited_once_with(USER_ID, doc)
 
 

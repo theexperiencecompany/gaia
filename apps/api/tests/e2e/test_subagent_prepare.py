@@ -34,7 +34,11 @@ def _gmail_record(identity: dict[str, str]) -> UserIntegrationDocument:
         user_id="u1",
         integration_id="gmail",
         status="connected",
-        accounts=[IntegrationAccount(connected_account_id="ca_1", label="me", identity=identity)],
+        accounts=[
+            IntegrationAccount(
+                id="ca_1", connected_account_id="ca_1", label="me", identity=identity
+            )
+        ],
         primary_account_id="ca_1",
     )
 

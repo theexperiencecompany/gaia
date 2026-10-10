@@ -322,7 +322,9 @@ class TestTheBackgroundExpiry:
 
     @staticmethod
     def _expired(*, stops_workflows: bool) -> AccountExpired:
-        account = IntegrationAccount(connected_account_id="ca_1", label="a@b.c", status="expired")
+        account = IntegrationAccount(
+            id="acct_1", connected_account_id="ca_1", label="a@b.c", status="expired"
+        )
         return AccountExpired(
             account=account,
             account_count=2,
@@ -339,6 +341,7 @@ class TestTheBackgroundExpiry:
                 f"{MODULE}.pause_workflows_for_expired_integration",
                 AsyncMock(return_value=["Morning digest"]),
             ) as pause,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
@@ -347,31 +350,41 @@ class TestTheBackgroundExpiry:
             "user-1", "gmail", "ca_1", trigger="webhook", reason="refresh_token_revoked"
         )
         pause.assert_awaited_once_with("user-1", "gmail")
+        pause_watches.assert_awaited_once_with(
+            "user-1", "gmail", "acct_1", integration_expired=False
+        )
         announce.assert_awaited_once_with(
             "user-1", "gmail", expired, ["Morning digest"], "refresh_token_revoked"
         )
 
-    async def test_a_secondary_account_dying_pauses_nothing_but_is_still_announced(self) -> None:
+    async def test_a_secondary_account_dying_pauses_only_its_own_watches(self) -> None:
+        """Workflows run as the primary, so they keep going; the dead account's watches stop."""
         expired = self._expired(stops_workflows=False)
         with (
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
 
         pause.assert_not_awaited()
+        pause_watches.assert_awaited_once_with(
+            "user-1", "gmail", "acct_1", integration_expired=False
+        )
         announce.assert_awaited_once_with("user-1", "gmail", expired, [], "revoked")
 
     async def test_an_account_that_changed_nothing_is_not_announced(self) -> None:
         with (
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_gone")
 
         pause.assert_not_awaited()
+        pause_watches.assert_not_awaited()
         announce.assert_not_awaited()
 
     async def test_a_stall_is_logged_rather_than_disappearing_with_the_task(self) -> None:
@@ -679,14 +692,14 @@ class TestDeliveryWithoutAnId:
 class TestBackgroundTriggerProcessing:
     @pytest.fixture(autouse=True)
     def account_name(self):
-        with patch(f"{MODULE}.event_account_name", AsyncMock(return_value=None)) as name:
+        with patch(f"{MODULE}.event_account", AsyncMock(return_value=None)) as name:
             yield name
 
-    async def test_an_event_on_one_of_several_accounts_names_that_account(
+    async def test_an_event_carries_the_account_that_received_it(
         self, account_name: AsyncMock
     ) -> None:
-        """The run must act on the inbox that received the email, not the primary."""
-        account_name.return_value = "me@gmail.com"
+        """The run must act on, and a watch match, the inbox that received the email."""
+        account_name.return_value = {"gaia_account_id": "acct_home", "gaia_account": "me@gmail.com"}
         handler = MagicMock()
         handler.process_event = AsyncMock()
         event = ComposioWebhookEvent(
@@ -705,6 +718,7 @@ class TestBackgroundTriggerProcessing:
         account_name.assert_awaited_once_with("user-1", "GMAIL_NEW_GMAIL_MESSAGE", "ca_personal")
         assert handler.process_event.await_args.kwargs["data"] == {
             "payload": 1,
+            "gaia_account_id": "acct_home",
             "gaia_account": "me@gmail.com",
         }
 

@@ -104,9 +104,7 @@ async def _connected_account_names(user_id: str, integration_id: str) -> list[st
     record = await user_integration_repository.get_for_user(user_id, integration_id)
     if record is None:
         return []
-    ordered = sorted(
-        record.accounts, key=lambda a: a.connected_account_id != record.primary_account_id
-    )
+    ordered = sorted(record.accounts, key=lambda a: a.id != record.primary_account_id)
     return [a.display_name for a in ordered]
 
 
@@ -149,9 +147,7 @@ async def request_integration_connection(
                         await _connected_account_names(user_id, integration_id) if adding else []
                     ),
                     "reconnect_account": (
-                        {"id": account.connected_account_id, "name": account.display_name}
-                        if account
-                        else None
+                        {"id": account.id, "name": account.display_name} if account else None
                     ),
                 }
             }
@@ -175,7 +171,7 @@ async def request_integration_connection(
         )
 
     connect_url = await build_connect_link_url(
-        user_id, integration_id, account.connected_account_id if account else None
+        user_id, integration_id, account.id if account else None
     )
     if not connect_url:
         return (

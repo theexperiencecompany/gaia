@@ -18009,6 +18009,18 @@
       "TriggerSubscription": {
         "description": "A tracked todo's standing interest in one trigger.",
         "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GAIA id of the one connected account whose events fire it; None for every account",
+            "title": "Account Id"
+          },
           "action": {
             "$ref": "#/components/schemas/SubscriptionAction"
           },

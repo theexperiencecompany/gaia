@@ -112,8 +112,9 @@ class TestSetStatusStamps:
     async def test_saving_accounts_round_trips_them_with_their_primary(self, repo):
         await repo.create(_ui("u", "gmail", status="created"))
         accounts = [
-            IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
+            IntegrationAccount(id="ca_1", connected_account_id="ca_1", label="work@acme.com"),
             IntegrationAccount(
+                id="ca_2",
                 connected_account_id="ca_2",
                 label="me@gmail.com",
                 identity={"email": "me@gmail.com"},
@@ -136,7 +137,7 @@ class TestSetStatusStamps:
         saved = await repo.save_accounts(
             "u",
             "gmail",
-            accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
+            accounts=[IntegrationAccount(id="ca_1", connected_account_id="ca_1", label="a")],
             primary_account_id="ca_1",
             status="connected",
         )
@@ -145,7 +146,9 @@ class TestSetStatusStamps:
         assert (await repo.get_for_user("u", "gmail")) is not None
 
     async def test_every_account_dead_stamps_the_expiry_and_a_revival_clears_it(self, repo):
-        dead = IntegrationAccount(connected_account_id="ca_1", label="a", status="expired")
+        dead = IntegrationAccount(
+            id="ca_1", connected_account_id="ca_1", label="a", status="expired"
+        )
         await repo.save_accounts(
             "u",
             "gmail",
@@ -171,7 +174,7 @@ class TestSetStatusStamps:
         await repo.save_accounts(
             "u",
             "gmail",
-            accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
+            accounts=[IntegrationAccount(id="ca_1", connected_account_id="ca_1", label="a")],
             primary_account_id="ca_1",
             status="connected",
         )
@@ -202,8 +205,8 @@ class TestConcurrentAccountWrites:
             OWNER_ID,
             "gmail",
             accounts=[
-                IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
-                IntegrationAccount(connected_account_id="ca_2", label="me@gmail.com"),
+                IntegrationAccount(id="ca_1", connected_account_id="ca_1", label="work@acme.com"),
+                IntegrationAccount(id="ca_2", connected_account_id="ca_2", label="me@gmail.com"),
             ],
             primary_account_id="ca_2",
             status="connected",
@@ -234,8 +237,12 @@ class TestConcurrentAccountWrites:
             OWNER_ID,
             "gmail",
             accounts=[
-                IntegrationAccount(connected_account_id="ca_1", label="a", nickname="Old"),
-                IntegrationAccount(connected_account_id="ca_2", label="b", status="expired"),
+                IntegrationAccount(
+                    id="ca_1", connected_account_id="ca_1", label="a", nickname="Old"
+                ),
+                IntegrationAccount(
+                    id="ca_2", connected_account_id="ca_2", label="b", status="expired"
+                ),
             ],
             primary_account_id="ca_1",
             status="connected",
@@ -254,7 +261,7 @@ class TestConcurrentAccountWrites:
         await repo.save_accounts(
             OWNER_ID,
             "gmail",
-            accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
+            accounts=[IntegrationAccount(id="ca_1", connected_account_id="ca_1", label="a")],
             primary_account_id="ca_1",
             status="connected",
         )
@@ -262,3 +269,105 @@ class TestConcurrentAccountWrites:
         assert await repo.set_account_nickname(OWNER_ID, "gmail", "ca_gone", "X") is None
         assert await repo.set_account_nickname("stranger", "gmail", "ca_1", "X") is None
         assert (await repo.get_for_user(OWNER_ID, "gmail")).accounts[0].nickname is None
+
+
+class TestTheReadCache:
+    """A read after any write sees the write, never the record cached before it.
+
+    Account records are read on every tool call and trigger event, so they live in Redis.
+    """
+
+    @pytest.fixture
+    def repo(self, raw_collection, redis) -> UserIntegrationsRepository:
+        return UserIntegrationsRepository()
+
+    @staticmethod
+    def _account(account_id: str, **fields: object) -> IntegrationAccount:
+        return IntegrationAccount(
+            id=account_id,
+            connected_account_id=f"composio_{account_id}",
+            label=f"{account_id}@acme.com",
+            **fields,
+        )
+
+    async def test_a_read_is_served_from_redis_once_cached(self, repo, raw_collection):
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[self._account("acct_1")],
+            primary_account_id="acct_1",
+            status="connected",
+        )
+        first = await repo.get_for_user("u", "gmail")
+        # Written behind the repository's back: only a cached read still sees the old record.
+        await raw_collection.update_one({"user_id": "u"}, {"$set": {"status": "expired"}})
+
+        assert (await repo.get_for_user("u", "gmail")) == first
+
+    async def test_saving_accounts_is_seen_by_the_next_read(self, repo):
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[self._account("acct_1")],
+            primary_account_id="acct_1",
+            status="connected",
+        )
+        await repo.get_for_user("u", "gmail")
+        await repo.list_for_user("u")
+
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[self._account("acct_1"), self._account("acct_2")],
+            primary_account_id="acct_2",
+            status="connected",
+        )
+
+        stored = await repo.get_for_user("u", "gmail")
+        assert [a.id for a in stored.accounts] == ["acct_1", "acct_2"]
+        assert stored.primary_account_id == "acct_2"
+        [listed] = await repo.list_for_user("u")
+        assert listed.primary_account_id == "acct_2"
+
+    async def test_naming_an_account_is_seen_by_the_next_read(self, repo):
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[self._account("acct_1")],
+            primary_account_id="acct_1",
+            status="connected",
+        )
+        await repo.get_for_user("u", "gmail")
+
+        await repo.set_account_nickname("u", "gmail", "acct_1", "Work")
+
+        assert (await repo.get_for_user("u", "gmail")).accounts[0].nickname == "Work"
+
+    async def test_removing_the_record_is_seen_by_the_next_read(self, repo):
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[self._account("acct_1")],
+            primary_account_id="acct_1",
+            status="connected",
+        )
+        await repo.get_for_user("u", "gmail")
+
+        await repo.delete_for_user("u", "gmail")
+
+        assert await repo.get_for_user("u", "gmail") is None
+
+    async def test_one_users_write_leaves_anothers_cached_record_alone(self, repo):
+        for user in ("u", "v"):
+            await repo.save_accounts(
+                user,
+                "gmail",
+                accounts=[self._account("acct_1")],
+                primary_account_id="acct_1",
+                status="connected",
+            )
+            await repo.get_for_user(user, "gmail")
+
+        await repo.set_account_nickname("u", "gmail", "acct_1", "Work")
+
+        assert (await repo.get_for_user("v", "gmail")).accounts[0].nickname is None

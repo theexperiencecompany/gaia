@@ -8,6 +8,11 @@ from app.models.integration_models import (
 )
 
 
+def provider_account_id(account_id: str) -> str:
+    """Return the provider's id for a test account; never GAIA's, so mixing the two up fails."""
+    return f"composio_{account_id}"
+
+
 def make_integration_account(
     account_id: str,
     status: IntegrationAccountStatus = "connected",
@@ -16,9 +21,10 @@ def make_integration_account(
     nickname: str | None = None,
     identity: dict[str, str] | None = None,
 ) -> IntegrationAccount:
-    """Build one connected account, labelled <account_id>@acme.com unless a label is given."""
+    """Build one connected account with GAIA id account_id, labelled <account_id>@acme.com by default."""
     return IntegrationAccount(
-        connected_account_id=account_id,
+        id=account_id,
+        connected_account_id=provider_account_id(account_id),
         label=label or f"{account_id}@acme.com",
         nickname=nickname,
         identity=identity or {},
@@ -44,15 +50,13 @@ def make_integration_record(
 
 
 def with_nickname(
-    record: UserIntegrationDocument | None, connected_account_id: str, nickname: str | None
+    record: UserIntegrationDocument | None, account_id: str, nickname: str | None
 ) -> UserIntegrationDocument | None:
     """Return what set_account_nickname leaves: the record with one account renamed, or None."""
-    if record is None or record.find_account(connected_account_id) is None:
+    if record is None or record.find_account(account_id) is None:
         return None
     accounts = [
-        a.model_copy(update={"nickname": nickname})
-        if a.connected_account_id == connected_account_id
-        else a
+        a.model_copy(update={"nickname": nickname}) if a.id == account_id else a
         for a in record.accounts
     ]
     return record.model_copy(update={"accounts": accounts})

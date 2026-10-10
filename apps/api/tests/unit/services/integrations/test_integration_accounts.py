@@ -5,12 +5,16 @@ from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.integration_account_factories import (
+    make_integration_account,
+    make_integration_record,
+    provider_account_id,
+)
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.integrations.integration_accounts import (
     derive_status,
-    event_account_name,
+    event_account,
     list_account_records,
     match_account,
     pick_primary,
@@ -88,8 +92,8 @@ class TestPickPrimary:
 
 
 class TestMatchAccount:
-    @pytest.mark.parametrize("name", ["Work", "ca_1@acme.com", "boss@corp.com", "  WORK "])
-    def test_label_nickname_and_identity_values_all_name_the_account(self, name: str) -> None:
+    @pytest.mark.parametrize("name", ["Work", "ca_1@acme.com", "boss@corp.com", "  WORK ", "ca_1"])
+    def test_id_label_nickname_and_identity_values_all_name_the_account(self, name: str) -> None:
         record = _record(
             make_integration_account("ca_1", nickname="Work", identity={"email": "boss@corp.com"}),
             make_integration_account("ca_2"),
@@ -98,10 +102,12 @@ class TestMatchAccount:
         account = match_account(record, name)
 
         assert account is not None
-        assert account.connected_account_id == "ca_1"
+        assert account.id == "ca_1"
 
-    def test_an_unknown_name_matches_nothing(self) -> None:
-        assert match_account(_record(make_integration_account("ca_1")), "someone@else.com") is None
+    @pytest.mark.parametrize("name", ["someone@else.com", provider_account_id("ca_1")])
+    def test_an_unknown_name_or_the_providers_id_matches_nothing(self, name: str) -> None:
+        """The agent only ever sees GAIA's id; the provider's id is not a name for the account."""
+        assert match_account(_record(make_integration_account("ca_1")), name) is None
 
 
 class TestPrimaryConnectedAccountId:
@@ -110,7 +116,7 @@ class TestPrimaryConnectedAccountId:
             make_integration_account("ca_1"), make_integration_account("ca_2"), primary="ca_2"
         )
 
-        assert await primary_connected_account_id(USER_ID, "GMAIL") == "ca_2"
+        assert await primary_connected_account_id(USER_ID, "GMAIL") == provider_account_id("ca_2")
         repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
 
     async def test_no_accounts_is_the_reconnect_error(self, repo: MagicMock) -> None:
@@ -178,33 +184,45 @@ class TestListAccountRecords:
         repo.list_for_user.assert_awaited_once_with(USER_ID)
 
 
-class TestEventAccountName:
-    async def test_an_event_on_one_of_several_accounts_names_it(self, repo: MagicMock) -> None:
+class TestEventAccount:
+    """The event names the provider account; GAIA tags it with its own id, and a name when needed."""
+
+    async def test_an_event_on_one_of_several_accounts_carries_its_id_and_name(
+        self, repo: MagicMock
+    ) -> None:
         repo.get_for_user.return_value = _record(
             make_integration_account("ca_1"), make_integration_account("ca_2", nickname="Personal")
         )
 
-        name = await event_account_name(USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", "ca_2")
+        tagged = await event_account(
+            USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", provider_account_id("ca_2")
+        )
 
-        assert name == "Personal"
+        assert tagged == {"gaia_account_id": "ca_2", "gaia_account": "Personal"}
         repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
 
-    async def test_a_single_account_needs_no_name(self, repo: MagicMock) -> None:
+    async def test_a_single_account_carries_its_id_but_needs_no_name(self, repo: MagicMock) -> None:
         repo.get_for_user.return_value = _record(make_integration_account("ca_1"))
 
-        assert await event_account_name(USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", "ca_1") is None
+        tagged = await event_account(
+            USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", provider_account_id("ca_1")
+        )
 
-    async def test_an_untracked_account_is_not_guessed(self, repo: MagicMock) -> None:
+        assert tagged == {"gaia_account_id": "ca_1"}
+
+    async def test_an_untracked_or_gaia_id_is_not_guessed(self, repo: MagicMock) -> None:
+        """The event carries the provider's id; GAIA's own id must not match it."""
         repo.get_for_user.return_value = _record(
             make_integration_account("ca_1"), make_integration_account("ca_2")
         )
 
-        assert await event_account_name(USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", "ca_gone") is None
+        assert await event_account(USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", "ca_gone") is None
+        assert await event_account(USER_ID, "GMAIL_NEW_GMAIL_MESSAGE", "ca_1") is None
 
     async def test_a_trigger_of_no_known_integration_is_not_looked_up(
         self, repo: MagicMock
     ) -> None:
-        assert await event_account_name(USER_ID, "WEATHER_ALERT", "ca_1") is None
+        assert await event_account(USER_ID, "WEATHER_ALERT", "ca_1") is None
         repo.get_for_user.assert_not_awaited()
 
 

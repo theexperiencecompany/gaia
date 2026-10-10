@@ -417,7 +417,10 @@ class TestComposioConnectionEvents:
         pause.return_value = ["Morning digest", "Invoice filing"]
         expired = AccountExpired(
             account=IntegrationAccount(
-                connected_account_id="ca_xxxxxxxxxxxx", label="me", status="expired"
+                id="ca_xxxxxxxxxxxx",
+                connected_account_id="ca_xxxxxxxxxxxx",
+                label="me",
+                status="expired",
             ),
             account_count=1,
             was_primary=True,

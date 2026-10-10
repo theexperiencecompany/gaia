@@ -8,11 +8,13 @@ This module defines Pydantic models for:
 """
 
 from datetime import UTC, datetime
+import secrets
 from typing import Literal, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
@@ -29,9 +31,16 @@ UserIntegrationStatus = Literal["created", "connected", "expired"]
 IntegrationAccountStatus = Literal["connected", "expired"]
 
 
-class IntegrationAccount(BaseModel):
-    """One Composio connected account the user linked to an integration."""
+def new_account_id() -> str:
+    """Mint GAIA's own id for a connected account, independent of the provider that holds it."""
+    return f"{INTEGRATION_ACCOUNT_ID_PREFIX}{secrets.token_hex(8)}"
 
+
+class IntegrationAccount(BaseModel):
+    """One account the user linked to an integration; id is GAIA's, connected_account_id the provider's."""
+
+    id: str = Field(min_length=1)
+    # The provider's handle for the account (a Composio connected account); only provider calls use it.
     connected_account_id: str
     # Who the account is on the provider (email, handle, workspace), from the
     # integration's metadata_config; empty when the provider exposes none.
@@ -230,11 +239,16 @@ class UserIntegrationDocument(UserScopedDocument):
     expired_at: datetime | None = None
     expired_reason: str | None = None
     # Composio integrations only: every connected account, oldest first, and the
-    # one tools act as when the caller names none.
+    # GAIA id of the one tools act as when the caller names none.
     accounts: list[IntegrationAccount] = Field(default_factory=list)
     primary_account_id: str | None = None
 
-    def find_account(self, connected_account_id: str) -> IntegrationAccount | None:
+    def find_account(self, account_id: str) -> IntegrationAccount | None:
+        """The account GAIA knows by account_id."""
+        return next((a for a in self.accounts if a.id == account_id), None)
+
+    def find_provider_account(self, connected_account_id: str) -> IntegrationAccount | None:
+        """The account the provider knows by connected_account_id (webhooks, callbacks, errors)."""
         return next(
             (a for a in self.accounts if a.connected_account_id == connected_account_id), None
         )

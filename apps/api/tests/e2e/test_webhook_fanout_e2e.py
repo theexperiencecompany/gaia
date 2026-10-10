@@ -111,7 +111,7 @@ class TestEveryShippedHandlerIsReachable:
 class TestProcessWebhookEvent:
     @pytest.fixture(autouse=True)
     def _single_account(self) -> Iterator[None]:
-        with patch(f"{MODULE}.event_account_name", AsyncMock(return_value=None)):
+        with patch(f"{MODULE}.event_account", AsyncMock(return_value=None)):
             yield
 
     async def test_nano_id_is_preferred_over_internal_id(self) -> None:
@@ -147,21 +147,28 @@ class TestExpireConnection:
     async def test_the_expiry_runs_first_and_decides_whether_to_pause(self) -> None:
         order: list[str] = []
         expired = AccountExpired(
-            account=IntegrationAccount(connected_account_id="ca-1", label="me", status="expired"),
+            account=IntegrationAccount(
+                id="ca-1", connected_account_id="ca-1", label="me", status="expired"
+            ),
             account_count=1,
             was_primary=True,
             integration_expired=True,
         )
         expire = AsyncMock(side_effect=lambda *a, **k: (order.append("expire"), expired)[1])
         pause = AsyncMock(side_effect=lambda *a: (order.append("pause"), ["Standup"])[1])
+        pause_watches = AsyncMock(side_effect=lambda *a, **k: order.append("pause_watches"))
         with (
             patch(f"{MODULE}.expire_account", expire),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
+            patch(f"{MODULE}.pause_watches_for_expired_account", pause_watches),
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _expire_connection(USER_ID, "googlecalendar", "revoked", "ca-1")
 
-        assert order == ["expire", "pause"]
+        assert order == ["expire", "pause", "pause_watches"]
+        pause_watches.assert_awaited_once_with(
+            USER_ID, "googlecalendar", "ca-1", integration_expired=True
+        )
         announce.assert_awaited_once_with(
             USER_ID, "googlecalendar", expired, ["Standup"], "revoked"
         )

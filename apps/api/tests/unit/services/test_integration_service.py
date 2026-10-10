@@ -2661,10 +2661,12 @@ def _slack_accounts(*statuses: IntegrationAccountStatus) -> UserIntegrationDocum
         integration_id="slack",
         status="connected",
         accounts=[
-            IntegrationAccount(connected_account_id=f"ca_{i}", label=f"acct {i}", status=status)
+            IntegrationAccount(
+                id=f"acct_{i}", connected_account_id=f"ca_{i}", label=f"acct {i}", status=status
+            )
             for i, status in enumerate(statuses)
         ],
-        primary_account_id="ca_0",
+        primary_account_id="acct_0",
     )
 
 
@@ -2755,24 +2757,25 @@ class TestConnectComposioIntegration:
         seams["record"].return_value = _slack_accounts(
             *(["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1)), "expired"
         )
-        expired_id = f"ca_{MAX_ACCOUNTS_PER_INTEGRATION - 1}"
-        seams["service"].reauthorize_account.return_value["connection_id"] = expired_id
+        last = MAX_ACCOUNTS_PER_INTEGRATION - 1
+        seams["service"].reauthorize_account.return_value["connection_id"] = f"ca_{last}"
 
         async with captured_wide_event() as event:
-            result = await self._connect(reconnect_account_id=expired_id)
+            result = await self._connect(reconnect_account_id=f"acct_{last}")
 
         assert event["integration"]["reconnect_account"] is True
         assert result.status == "redirect"
         assert result.redirect_url == "https://composio.dev/reauth"
-        seams["service"].reauthorize_account.assert_awaited_once_with(expired_id, "state-token")
+        # GAIA names the account; Composio is asked about its own id for it.
+        seams["service"].reauthorize_account.assert_awaited_once_with(f"ca_{last}", "state-token")
         seams["service"].connect_account.assert_not_awaited()
-        seams["attach"].assert_awaited_once_with("state-token", expired_id)
+        seams["attach"].assert_awaited_once_with("state-token", f"ca_{last}")
         seams["status"].assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("account_id", "error"),
         [
-            ("ca_0", "acct 0 is already connected."),
+            ("acct_0", "acct 0 is already connected."),
             ("ca_gone", "That Slack account is no longer connected. Add it again instead."),
         ],
         ids=["working_account", "unknown_account"],

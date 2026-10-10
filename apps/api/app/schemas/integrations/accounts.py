@@ -29,12 +29,12 @@ class IntegrationAccountResponse(ResponseModel, CamelModel):
         cls, account: IntegrationAccount, primary_id: str | None
     ) -> "IntegrationAccountResponse":
         return cls(
-            id=account.connected_account_id,
+            id=account.id,
             label=account.label,
             nickname=account.nickname,
             display_name=account.display_name,
             status=account.status,
-            is_primary=account.connected_account_id == primary_id,
+            is_primary=account.id == primary_id,
             connected_at=account.connected_at,
             expired_at=account.expired_at,
         )

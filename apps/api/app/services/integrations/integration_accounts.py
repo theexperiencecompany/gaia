@@ -11,6 +11,7 @@ from app.models.integration_models import (
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
+from app.models.webhook_models import TriggerEventAccount
 from app.utils.errors import AppError
 
 
@@ -23,33 +24,34 @@ def derive_status(accounts: list[IntegrationAccount]) -> UserIntegrationStatus:
 
 def pick_primary(accounts: list[IntegrationAccount], current: str | None) -> str | None:
     """Keep the current primary while it exists; otherwise the oldest live account, then the oldest."""
-    if any(a.connected_account_id == current for a in accounts):
+    if any(a.id == current for a in accounts):
         return current
     live = [a for a in accounts if a.status == "connected"]
     pool = live or accounts
-    return pool[0].connected_account_id if pool else None
+    return pool[0].id if pool else None
 
 
 def match_account(record: UserIntegrationDocument, name: str) -> IntegrationAccount | None:
-    """Find the account a name refers to by label, nickname or any identity value."""
+    """Find the account a name refers to by its id, label, nickname or any identity value."""
     wanted = name.strip().casefold()
     for account in record.accounts:
-        names = {account.label, account.display_name, *account.identity.values()}
+        names = {account.id, account.label, account.display_name, *account.identity.values()}
         if wanted in {n.strip().casefold() for n in names if n}:
             return account
     return None
 
 
 def describe_account(account: IntegrationAccount, primary_id: str | None) -> str:
-    """One account as the agent sees it: its names, then primary/expired tags."""
+    """One account as the agent sees it: its names, then its id and primary/expired tags."""
     # Quoted, so a model passing one as `account` copies the name and not the tags after it.
     # A nickname hides the address the user may name the account by, so both are names.
     names = [account.display_name, *([account.label] if account.nickname else [])]
-    tags = ["primary"] if account.connected_account_id == primary_id else []
+    tags = [f"id {account.id}"]
+    if account.id == primary_id:
+        tags.append("primary")
     if account.status != "connected":
         tags.append("expired")
-    suffix = f" ({', '.join(tags)})" if tags else ""
-    return " or ".join(f'"{name}"' for name in names) + suffix
+    return " or ".join(f'"{name}"' for name in names) + f" ({', '.join(tags)})"
 
 
 def at_account_limit(record: UserIntegrationDocument | None) -> bool:
@@ -88,11 +90,11 @@ async def save_accounts(
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
 async def set_account_nickname(
-    user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+    user_id: str, integration_id: str, account_id: str, nickname: str | None
 ) -> UserIntegrationDocument | None:
     """Name one account without rewriting the others; None when the record lacks it."""
     return await user_integration_repository.set_account_nickname(
-        user_id, integration_id, connected_account_id, nickname
+        user_id, integration_id, account_id, nickname
     )
 
 
@@ -102,18 +104,21 @@ async def list_account_records(user_id: str) -> list[UserIntegrationDocument]:
     return [r for r in records if r.accounts]
 
 
-async def event_account_name(
+async def event_account(
     user_id: str, trigger_slug: str, connected_account_id: str
-) -> str | None:
-    """Name the account a trigger event arrived on, when the user has more than one to tell apart."""
+) -> TriggerEventAccount | None:
+    """Tag a trigger event with the GAIA account it arrived on, and its name when there are several."""
     integration = get_integration_by_tool_slug(trigger_slug)
     if integration is None or not connected_account_id:
         return None
     record = await get_account_record(user_id, integration.id)
-    if record is None or len(record.accounts) < 2:
+    account = record.find_provider_account(connected_account_id) if record else None
+    if record is None or account is None:
         return None
-    account = record.find_account(connected_account_id)
-    return account.display_name if account else None
+    tagged = TriggerEventAccount(gaia_account_id=account.id)
+    if len(record.accounts) > 1:
+        tagged["gaia_account"] = account.display_name
+    return tagged
 
 
 def _not_connected(toolkit: str, why: str) -> AppError:

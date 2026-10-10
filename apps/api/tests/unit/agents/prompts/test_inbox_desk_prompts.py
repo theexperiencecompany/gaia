@@ -271,15 +271,15 @@ def test_every_gmail_account_is_worked_and_keeps_its_own_cursor() -> None:
     guidance = INBOX_DESK_RUN_GUIDANCE
     assert (
         "Every connected Gmail account is yours, as CONNECTED INTEGRATIONS lists them: do steps "
-        "2 to 7 for each one unless a Standing rule leaves one out, passing account=<its name> "
+        "2 to 7 for each one unless a Standing rule leaves one out, passing account=<its id> "
         "to every Gmail call, so a thread is only ever read, drafted and tracked in the account "
         "it was fetched from."
     ) in guidance
-    assert "holds the last processed time of each Gmail account, under its name" in guidance
+    assert "holds the last processed time of each Gmail account, under its id" in guidance
     assert (
-        "create_tracked_todo(gmail_thread_id, gmail_account=<the account it was fetched from>"
-        in guidance
-    )
+        "create_tracked_todo(gmail_thread_id, gmail_account=<the id of the account it was "
+        "fetched from>"
+    ) in guidance
     assert "set each account's last processed time to the" in guidance
 
 

@@ -1708,9 +1708,10 @@ class TestAThreadTodoRunCarriesTheThreadContract:
         assert (
             GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
             + "\n"
-            + GMAIL_THREAD_ACCOUNT_LINE.format(account="Personal")
+            + GMAIL_THREAD_ACCOUNT_LINE.format(account="Personal", account_id="ca_home")
         ) in prompt
-        assert 'pass account="Personal" to execute on every Gmail call' in prompt
+        # By GAIA's stable id, so a rename between runs cannot send it to another mailbox.
+        assert 'pass account="ca_home" to execute on every Gmail call' in prompt
 
     def test_a_thread_whose_account_was_removed_is_left_alone(self):
         thread = ExternalRef(

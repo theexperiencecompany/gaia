@@ -13,7 +13,11 @@ from app.constants.integrations import (
     AccountConnectOutcome,
 )
 from app.constants.log_tags import LogTag
-from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.integration_models import (
+    IntegrationAccount,
+    UserIntegrationDocument,
+    new_account_id,
+)
 from app.models.oauth_models import OAuthIntegration
 from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
@@ -25,7 +29,10 @@ from app.services.integrations.integration_accounts import (
     set_account_nickname,
 )
 from app.services.integrations.integration_connection_service import disconnect_integration
-from app.services.triggers.subscription_service import resync_subscriptions_for_trigger_names
+from app.services.triggers.subscription_service import (
+    AccountScope,
+    resync_subscriptions_for_trigger_names,
+)
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -41,11 +48,10 @@ from shared.py.wide_events import log
 @dataclass(frozen=True)
 class AccountConnected:
     account: IntegrationAccount
-    # The account this connect re-authorized (same identity), now revoked.
-    replaced_account_id: str | None
     primary_changed: bool
     outcome: AccountConnectOutcome
-    # The primary was expired and signed back in under its own id.
+    # The primary signed back in (in place, or as a new provider account for the same
+    # identity), so what is bound to its provider account must be bound again.
     primary_restored: bool = False
 
 
@@ -90,7 +96,9 @@ async def resync_primary_bound_triggers(user_id: str, integration: OAuthIntegrat
     if not names:
         return
     await TriggerService.resync_user_workflow_triggers(user_id, names)
-    await resync_subscriptions_for_trigger_names(user_id, set(names))
+    await resync_subscriptions_for_trigger_names(
+        user_id, set(names), AccountScope(account_id=None, every_account=True)
+    )
 
 
 async def _restore_account(
@@ -102,10 +110,7 @@ async def _restore_account(
     """Bring an account signed back in under its own id to life; its name and role stay."""
     if account.status == INTEGRATION_STATUS_CONNECTED:
         return AccountConnected(
-            account=account,
-            replaced_account_id=None,
-            primary_changed=False,
-            outcome=AccountConnectOutcome.ALREADY_CONNECTED,
+            account=account, primary_changed=False, outcome=AccountConnectOutcome.ALREADY_CONNECTED
         )
     identity = await _identity_or_empty(user_id, integration, account.connected_account_id)
     others = [a for a in record.accounts if a is not account]
@@ -115,12 +120,11 @@ async def _restore_account(
         # Signed in as someone else: the account is now that person.
         twin = next((a for a in others if _same_identity(a.identity, identity)), None)
         if twin is not None:
-            await remove_account(user_id, integration.id, account.connected_account_id)
+            await remove_account(user_id, integration.id, account.id)
             log.set_ns("integration_account", outcome="reconnected_as_existing")
             return AccountConnected(
                 account=twin,
-                replaced_account_id=account.connected_account_id,
-                primary_changed=record.primary_account_id == account.connected_account_id,
+                primary_changed=record.primary_account_id == account.id,
                 outcome=AccountConnectOutcome.ALREADY_CONNECTED,
             )
         update = {
@@ -141,10 +145,9 @@ async def _restore_account(
     log.set_ns("integration_account", outcome="restored", identity_changed=bool(update))
     return AccountConnected(
         account=restored,
-        replaced_account_id=None,
         primary_changed=False,
         outcome=AccountConnectOutcome.RECONNECTED,
-        primary_restored=record.primary_account_id == account.connected_account_id,
+        primary_restored=record.primary_account_id == account.id,
     )
 
 
@@ -156,7 +159,7 @@ async def record_connected_account(
     accounts = list(record.accounts) if record else []
     previous_primary = record.primary_account_id if record else None
 
-    existing = record.find_account(connected_account_id) if record else None
+    existing = record.find_provider_account(connected_account_id) if record else None
     if record is not None and existing is not None:
         return await _restore_account(user_id, integration, record, existing)
 
@@ -169,7 +172,9 @@ async def record_connected_account(
         log.set_ns("integration_account", outcome="limit_reached", count=len(accounts))
         return AccountLimitReached(limit=MAX_ACCOUNTS_PER_INTEGRATION)
 
+    # Same identity, same GAIA account: what refers to it outlives the provider account swap.
     account = IntegrationAccount(
+        id=superseded.id if superseded else new_account_id(),
         connected_account_id=connected_account_id,
         identity=identity,
         label=account_label(
@@ -179,15 +184,9 @@ async def record_connected_account(
     )
     if superseded is not None:
         accounts = [account if a is superseded else a for a in accounts]
-        primary = (
-            connected_account_id
-            if previous_primary == superseded.connected_account_id
-            else previous_primary
-        )
     else:
         accounts.append(account)
-        primary = previous_primary
-    primary = pick_primary(accounts, primary)
+    primary = pick_primary(accounts, previous_primary)
 
     await save_accounts(user_id, integration.id, accounts, primary)
     if superseded is not None:
@@ -197,7 +196,7 @@ async def record_connected_account(
         "integration_account",
         outcome="replaced" if superseded else "added",
         count=len(accounts),
-        is_primary=primary == connected_account_id,
+        is_primary=primary == account.id,
     )
     capture(
         UserId(user_id),
@@ -216,9 +215,9 @@ async def record_connected_account(
         outcome = AccountConnectOutcome.RECONNECTED
     return AccountConnected(
         account=account,
-        replaced_account_id=superseded.connected_account_id if superseded else None,
         primary_changed=primary != previous_primary,
         outcome=outcome,
+        primary_restored=superseded is not None and previous_primary == superseded.id,
     )
 
 
@@ -244,37 +243,35 @@ async def _require_record(user_id: str, integration_id: str) -> UserIntegrationD
     return record
 
 
-def _require_account(
-    record: UserIntegrationDocument, connected_account_id: str
-) -> IntegrationAccount:
-    account = record.find_account(connected_account_id)
+def _require_account(record: UserIntegrationDocument, account_id: str) -> IntegrationAccount:
+    account = record.find_account(account_id)
     if account is None:
-        raise _account_not_found(record.integration_id, connected_account_id)
+        raise _account_not_found(record.integration_id, account_id)
     return account
 
 
-def _account_not_found(integration_id: str, connected_account_id: str) -> AppError:
+def _account_not_found(integration_id: str, account_id: str) -> AppError:
     return AppError(
         message="Account not found on this integration",
         status_code=404,
-        meta={"integration_id": integration_id, "account": connected_account_id},
+        meta={"integration_id": integration_id, "account": account_id},
     )
 
 
 async def _set_primary_account(
-    user_id: str, integration_id: str, connected_account_id: str
+    user_id: str, integration_id: str, account_id: str
 ) -> UserIntegrationDocument:
     integration = composio_integration(integration_id)
     record = await _require_record(user_id, integration_id)
-    if _require_account(record, connected_account_id).status != "connected":
+    if _require_account(record, account_id).status != "connected":
         raise AppError(
             message="Reconnect this account before making it primary",
             status_code=409,
             meta={"integration_id": integration_id},
         )
-    if record.primary_account_id == connected_account_id:
+    if record.primary_account_id == account_id:
         return record
-    saved = await save_accounts(user_id, integration_id, record.accounts, connected_account_id)
+    saved = await save_accounts(user_id, integration_id, record.accounts, account_id)
     await resync_primary_bound_triggers(user_id, integration)
     capture(
         UserId(user_id),
@@ -286,15 +283,15 @@ async def _set_primary_account(
 
 
 async def _rename_account(
-    user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+    user_id: str, integration_id: str, account_id: str, nickname: str | None
 ) -> UserIntegrationDocument:
     composio_integration(integration_id)
-    _require_account(await _require_record(user_id, integration_id), connected_account_id)
+    _require_account(await _require_record(user_id, integration_id), account_id)
     cleaned = (nickname or "").strip() or None
-    saved = await set_account_nickname(user_id, integration_id, connected_account_id, cleaned)
+    saved = await set_account_nickname(user_id, integration_id, account_id, cleaned)
     if saved is None:
         # Removed between the check above and this write.
-        raise _account_not_found(integration_id, connected_account_id)
+        raise _account_not_found(integration_id, account_id)
     capture(
         UserId(user_id),
         IntegrationAccountRenamed(integration_id=integration_id, cleared=cleaned is None),
@@ -310,7 +307,7 @@ async def list_accounts(user_id: str, integration_id: str) -> UserIntegrationDoc
 async def update_account(
     user_id: str,
     integration_id: str,
-    connected_account_id: str,
+    account_id: str,
     *,
     nickname: str | None = None,
     rename: bool = False,
@@ -319,20 +316,20 @@ async def update_account(
     """Rename and/or promote one account; with neither, return the record unchanged."""
     record = await _require_record(user_id, integration_id)
     if rename:
-        record = await _rename_account(user_id, integration_id, connected_account_id, nickname)
+        record = await _rename_account(user_id, integration_id, account_id, nickname)
     if make_primary:
-        record = await _set_primary_account(user_id, integration_id, connected_account_id)
+        record = await _set_primary_account(user_id, integration_id, account_id)
     return record
 
 
 async def remove_account(
-    user_id: str, integration_id: str, connected_account_id: str
+    user_id: str, integration_id: str, account_id: str
 ) -> UserIntegrationDocument | None:
     """Revoke one account; the oldest live one takes over as primary. None when it was the last."""
     integration = composio_integration(integration_id)
     record = await _require_record(user_id, integration_id)
-    _require_account(record, connected_account_id)
-    remaining = [a for a in record.accounts if a.connected_account_id != connected_account_id]
+    target = _require_account(record, account_id)
+    remaining = [a for a in record.accounts if a.id != account_id]
     capture(
         UserId(user_id),
         IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining)),
@@ -342,7 +339,7 @@ async def remove_account(
         await disconnect_integration(user_id, integration_id)
         return None
 
-    await get_composio_service().delete_connected_account(connected_account_id)
+    await get_composio_service().delete_connected_account(target.connected_account_id)
     primary = pick_primary(remaining, record.primary_account_id)
     saved = await save_accounts(user_id, integration_id, remaining, primary)
     if primary != record.primary_account_id:

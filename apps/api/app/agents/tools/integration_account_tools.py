@@ -83,10 +83,8 @@ async def _rename_integration_account(
     target = _named_account(
         await _connected_accounts(user_id, integration_id), integration_id, account
     )
-    saved = await update_account(
-        user_id, integration_id, target.connected_account_id, nickname=name, rename=True
-    )
-    renamed = saved.find_account(target.connected_account_id)
+    saved = await update_account(user_id, integration_id, target.id, nickname=name, rename=True)
+    renamed = saved.find_account(target.id)
     if renamed is None or renamed.nickname is None:
         return f"Cleared the name; the account shows as {target.label} again."
     return f"Renamed {target.display_name} to {renamed.nickname}."
@@ -96,7 +94,7 @@ async def _set_primary_integration_account(user_id: str, integration_id: str, ac
     target = _named_account(
         await _connected_accounts(user_id, integration_id), integration_id, account
     )
-    await update_account(user_id, integration_id, target.connected_account_id, make_primary=True)
+    await update_account(user_id, integration_id, target.id, make_primary=True)
     return f"{target.display_name} is now the primary {integration_id} account."
 
 
@@ -131,7 +129,7 @@ async def _disconnect_integration(user_id: str, integration_id: str, account: st
             fix=f"Pass account as one of: {listed}, or ask the user which one",
         )
 
-    remaining = await remove_account(user_id, integration_id, target.connected_account_id)
+    remaining = await remove_account(user_id, integration_id, target.id)
     if remaining is None:
         return (
             f"Disconnected {target.display_name}, the only {integration_id} account, "

@@ -13,6 +13,7 @@ import pytest
 from tests.integration_account_factories import (
     make_integration_account,
     make_integration_record,
+    provider_account_id,
     with_nickname,
 )
 
@@ -25,6 +26,7 @@ from app.services.integrations.integration_account_lifecycle import (
     remove_account,
     update_account,
 )
+from app.services.triggers.subscription_service import AccountScope
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -99,7 +101,10 @@ def seams() -> Iterator[Seams]:
 
 def _assert_triggers_resynced(seams: Seams) -> None:
     seams.workflow_triggers.assert_awaited_once_with(USER_ID, GMAIL_WORKFLOW_TRIGGERS)
-    seams.subscriptions.assert_awaited_once_with(USER_ID, set(GMAIL_WORKFLOW_TRIGGERS))
+    # A primary change resumes only watches on every account; another account's stay as they are.
+    seams.subscriptions.assert_awaited_once_with(
+        USER_ID, set(GMAIL_WORKFLOW_TRIGGERS), AccountScope(account_id=None, every_account=True)
+    )
 
 
 class TestComposioIntegration:
@@ -208,7 +213,7 @@ class TestUpdateAccount:
         )
 
         seams.name.assert_awaited_once_with(USER_ID, "gmail", "ca_1", "Work")
-        assert [(a.connected_account_id, a.nickname) for a in result.accounts] == [
+        assert [(a.id, a.nickname) for a in result.accounts] == [
             ("ca_1", "Work"),
             ("ca_2", None),
         ]
@@ -265,10 +270,13 @@ class TestRemoveAccount:
         result = await remove_account(USER_ID, "gmail", "ca_1")
 
         assert result is not None
-        assert [a.connected_account_id for a in result.accounts] == ["ca_2", "ca_3"]
+        assert [a.id for a in result.accounts] == ["ca_2", "ca_3"]
         assert result.primary_account_id == "ca_3"
         seams.get_record.assert_awaited_once_with(USER_ID, "gmail")
-        seams.composio.delete_connected_account.assert_awaited_once_with("ca_1")
+        # GAIA names the account; Composio revokes its own id for it.
+        seams.composio.delete_connected_account.assert_awaited_once_with(
+            provider_account_id("ca_1")
+        )
         seams.workflow_triggers.assert_not_awaited()
         seams.subscriptions.assert_not_awaited()
         seams.capture.assert_called_once_with(

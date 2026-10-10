@@ -14267,6 +14267,11 @@ export interface components {
          * @description A tracked todo's standing interest in one trigger.
          */
         TriggerSubscription: {
+            /**
+             * Account Id
+             * @description GAIA id of the one connected account whose events fire it; None for every account
+             */
+            account_id?: string | null;
             action: components["schemas"]["SubscriptionAction"];
             /**
              * Composio Trigger Ids
