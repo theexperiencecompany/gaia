@@ -321,6 +321,7 @@ async def _persist_first_contact(
                     type="user",
                     response=body.first_message,
                     date=(now - timedelta(milliseconds=100)).isoformat(),
+                    first_contact=True,
                 )
             )
         messages.append(

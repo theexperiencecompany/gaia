@@ -174,6 +174,9 @@ class MessageModel(BaseModel):
     # ts). Set only on user messages that arrived through a bot, so a later
     # background reaction can anchor to the exact platform message. Else None.
     platform_message_id: str | None = None
+    # Set on the user's linking message stored at account linking: no chat turn
+    # ran for it, so no chat:message_submitted counts it. None everywhere else.
+    first_contact: bool | None = None
 
 
 class SystemPurpose(str, Enum):

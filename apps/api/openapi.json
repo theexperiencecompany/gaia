@@ -9732,6 +9732,17 @@
             ],
             "title": "Filetype"
           },
+          "first_contact": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Contact"
+          },
           "follow_up_actions": {
             "anyOf": [
               {
@@ -9998,6 +10009,17 @@
               }
             ],
             "title": "Filetype"
+          },
+          "first_contact": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Contact"
           },
           "follow_up_actions": {
             "anyOf": [
