@@ -95,7 +95,7 @@ class WorkflowStepsRegenerated(ServerEvent):
 
     event: ClassVar[str] = "workflow:steps_regenerated"
     previous_names: ClassVar[tuple[str, ...]] = ("workflows:steps_regenerated",)
-    budget_per_user_day: ClassVar[int] = 10
+    budget_per_user_day: ClassVar[int] = 25
 
     force_different_tools: bool
     steps_count: int
