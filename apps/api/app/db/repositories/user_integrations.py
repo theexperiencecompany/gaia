@@ -141,7 +141,7 @@ class UserIntegrationsRepository(
                 "accounts.connected_account_id": connected_account_id,
             },
             {"$set": {"accounts.$[account].nickname": nickname}},
-            scope=user_id,  # pragma: no mutate — cache_policy is None, so scope is never read
+            scope=user_id,
             array_filters=[{"account.connected_account_id": connected_account_id}],
         )
 

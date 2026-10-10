@@ -94,6 +94,26 @@ class TestSaveAccounts:
             )
 
 
+class TestSetAccountNickname:
+    async def test_it_names_one_account_in_place_under_that_users_scope(
+        self, collection: MagicMock
+    ) -> None:
+        with patch.object(UserIntegrationsRepository, "_cache_store", AsyncMock()) as store:
+            doc = await UserIntegrationsRepository().set_account_nickname(
+                USER_ID, INTEGRATION_ID, "ca_1", "Work"
+            )
+
+        (filter_, update), kwargs = collection.find_one_and_update.await_args
+        assert filter_ == {
+            "user_id": USER_ID,
+            "integration_id": INTEGRATION_ID,
+            "accounts.connected_account_id": "ca_1",
+        }
+        assert update["$set"]["accounts.$[account].nickname"] == "Work"
+        assert kwargs["array_filters"] == [{"account.connected_account_id": "ca_1"}]
+        store.assert_awaited_once_with(USER_ID, doc)
+
+
 def _row(status: str, connected_at: datetime | None) -> dict[str, Any]:
     return {
         "_id": ObjectId(),
