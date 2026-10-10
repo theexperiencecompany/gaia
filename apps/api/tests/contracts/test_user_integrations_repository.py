@@ -191,11 +191,15 @@ class TestSetStatusStamps:
         assert (await repo.get_for_user("stranger", "gmail")).status == "connected"
 
 
+# The rename tool reports analytics, whose user id must be a Mongo ObjectId.
+OWNER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
+
 class TestConcurrentAccountWrites:
     async def test_two_accounts_renamed_at_once_both_keep_their_names(self, repo):
         """Seen live: the agent renamed two accounts in parallel, both calls reported success, and one name was lost."""
         await repo.save_accounts(
-            "u",
+            OWNER_ID,
             "gmail",
             accounts=[
                 IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
@@ -204,7 +208,7 @@ class TestConcurrentAccountWrites:
             primary_account_id="ca_2",
             status="connected",
         )
-        config = {"metadata": {"user_id": "u"}}
+        config = {"metadata": {"user_id": OWNER_ID}}
 
         results = await asyncio.gather(
             rename_integration_account.ainvoke(
@@ -218,7 +222,7 @@ class TestConcurrentAccountWrites:
         )
 
         assert results == ["Renamed work@acme.com to Work.", "Renamed me@gmail.com to Personal."]
-        stored = await repo.get_for_user("u", "gmail")
+        stored = await repo.get_for_user(OWNER_ID, "gmail")
         assert [(a.connected_account_id, a.nickname) for a in stored.accounts] == [
             ("ca_1", "Work"),
             ("ca_2", "Personal"),
@@ -227,7 +231,7 @@ class TestConcurrentAccountWrites:
 
     async def test_naming_an_account_touches_only_that_account(self, repo):
         await repo.save_accounts(
-            "u",
+            OWNER_ID,
             "gmail",
             accounts=[
                 IntegrationAccount(connected_account_id="ca_1", label="a", nickname="Old"),
@@ -237,24 +241,24 @@ class TestConcurrentAccountWrites:
             status="connected",
         )
 
-        named = await repo.set_account_nickname("u", "gmail", "ca_2", "Side")
+        named = await repo.set_account_nickname(OWNER_ID, "gmail", "ca_2", "Side")
 
         assert named is not None
         assert [(a.nickname, a.status) for a in named.accounts] == [
             ("Old", "connected"),
             ("Side", "expired"),
         ]
-        assert named == await repo.get_for_user("u", "gmail")
+        assert named == await repo.get_for_user(OWNER_ID, "gmail")
 
     async def test_naming_an_account_the_record_lacks_changes_nothing(self, repo):
         await repo.save_accounts(
-            "u",
+            OWNER_ID,
             "gmail",
             accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
             primary_account_id="ca_1",
             status="connected",
         )
 
-        assert await repo.set_account_nickname("u", "gmail", "ca_gone", "X") is None
+        assert await repo.set_account_nickname(OWNER_ID, "gmail", "ca_gone", "X") is None
         assert await repo.set_account_nickname("stranger", "gmail", "ca_1", "X") is None
-        assert (await repo.get_for_user("u", "gmail")).accounts[0].nickname is None
+        assert (await repo.get_for_user(OWNER_ID, "gmail")).accounts[0].nickname is None
