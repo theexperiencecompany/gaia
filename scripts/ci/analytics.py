@@ -57,6 +57,8 @@ PROJECT_JSON = REPO_ROOT / "config" / "posthog" / "project.json"
 ACTIONS_JSON = REPO_ROOT / "config" / "posthog" / "actions.json"
 
 KEY_ENV = "POSTHOG_PERSONAL_API_KEY"
+# The /query/ refresh mode that always recomputes; the default serves a cached result.
+QUERY_REFRESH = "force_blocking"
 READ_SCOPES = ("insight:read", "project:read", "query:read", "dashboard:read", "action:read")
 WRITE_SCOPE = "action:write"
 
@@ -614,7 +616,7 @@ class PostHog:
     ) -> list[list[JsonValue]]:
         """Run a HogQL query with {placeholder} values and return its rows."""
         node: JsonObject = {"kind": "HogQLQuery", "query": query, "values": dict(values or {})}
-        return self._request("POST", f"{self.base}/query/", {"query": node})["results"]
+        return self._query(node)
 
     def probe(self, filter_test_accounts: bool) -> int:
         """Count the probe event over the probe window, with the test-account filter on or off."""
@@ -625,8 +627,15 @@ class PostHog:
             "dateRange": {"date_from": f"-{PROBE_DAYS}d"},
             "filterTestAccounts": filter_test_accounts,
         }
-        [series] = self._request("POST", f"{self.base}/query/", {"query": query})["results"]
+        [series] = self._query(query)
         return int(series["count"])
+
+    def _query(self, node: JsonObject) -> list[JsonValue]:
+        """Run a query node and return its rows, never from PostHog's result cache."""
+        # A cached read after a write (a merge, a filter change) reports the state before it.
+        return self._request(
+            "POST", f"{self.base}/query/", {"query": node, "refresh": QUERY_REFRESH}
+        )["results"]
 
     def create_action(self, action: Mapping[str, JsonValue]) -> None:
         """Create an action."""
