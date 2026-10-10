@@ -75,8 +75,9 @@ class TestConnectModes:
         result = await self._connect("gmail")
 
         assert result == (
-            "✅ Gmail is already connected (ca_1@acme.com, Work). To add another account, "
-            "call connect_integration with mode='add_account'."
+            "✅ Gmail is already connected (ca_1@acme.com, Work). If the user wants another "
+            "account, call connect_integration with mode='add_account'; if you're not sure "
+            "they do, ask them."
         )
         record.assert_awaited_once_with(FAKE_USER_ID, "gmail")
         request.assert_not_awaited()
@@ -91,8 +92,8 @@ class TestConnectModes:
             result = await self._connect("gmail")
 
         assert result == (
-            "✅ Gmail is already connected. To add another account, "
-            "call connect_integration with mode='add_account'."
+            "✅ Gmail is already connected. If the user wants another account, call "
+            "connect_integration with mode='add_account'; if you're not sure they do, ask them."
         )
         assert event["tool"] == {
             "name": "connect_integration",

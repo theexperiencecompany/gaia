@@ -321,8 +321,9 @@ async def _connect_step(
     names = ", ".join(a.display_name for a in record.accounts) if record else ""
     listed = f" ({names})" if names else ""
     return (
-        f"✅ {integration.name} is already connected{listed}. To add another account, call "
-        f"{CONNECT_INTEGRATION_TOOL} with mode='{ConnectMode.ADD_ACCOUNT}'."
+        f"✅ {integration.name} is already connected{listed}. If the user wants another "
+        f"account, call {CONNECT_INTEGRATION_TOOL} with mode='{ConnectMode.ADD_ACCOUNT}'; if "
+        "you're not sure they do, ask them."
     )
 
 
@@ -336,9 +337,8 @@ async def connect_integration(
     config: RunnableConfig,
     mode: Annotated[
         ConnectMode,
-        "'connect' (default) for a plain 'connect X', even when X is already connected (it "
-        "then lists the accounts); 'add_account' only when the user asks for another "
-        "account; 'reconnect' only when they explicitly ask to reconnect or refresh access.",
+        "'connect' (default), 'add_account' for another account on an integration they "
+        "already have, or 'reconnect' when they ask to reconnect or refresh access.",
     ] = ConnectMode.CONNECT,
 ) -> str:
     try:

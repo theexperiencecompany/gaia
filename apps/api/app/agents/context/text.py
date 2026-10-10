@@ -41,7 +41,10 @@ BACKGROUND_EXECUTION_BANNER = (
 #: Comms: pure capability awareness — it delegates via call_executor rather
 #: than acting.
 CONNECTED_INTEGRATIONS_HEADER = (
-    "Connected integrations (the executor can act on these when you delegate via call_executor):"
+    "Connected integrations (the executor can act on these when you delegate via "
+    "call_executor). Each can hold several accounts. If they ask to connect one already "
+    "listed here, tell them which accounts it has and ask whether they want to add another; "
+    'when they clearly want another, delegate it ("add another Gmail account"):'
 )
 
 #: Comms: knows a device exists so it delegates local/file work rather than
