@@ -268,6 +268,12 @@ class ComposioWebhookAckResponse(BaseModel):
     message: str
 
 
+class TriggerEventAccount(TypedDict, total=False):
+    """What GAIA adds to a trigger payload: the account that received it, when the user has several."""
+
+    gaia_account: str
+
+
 def _stamped_in_data(name: str) -> AliasChoices:
     """Read an id Composio stamps into a delivery's data, or the same name given directly."""
     # The wire path first: a missing id is reported at data.<name>, where Composio put it.

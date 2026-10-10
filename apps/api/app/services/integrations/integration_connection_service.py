@@ -6,7 +6,6 @@ from typing import Literal
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
 import pymongo.errors
-import redis
 
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
@@ -14,8 +13,8 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
+from app.constants.integrations import ACCOUNT_LIMIT_ERROR, MAX_ACCOUNTS_PER_INTEGRATION
 from app.constants.log_tags import LogTag
-from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
@@ -27,6 +26,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
+from app.services.integrations.integration_accounts import at_account_limit, get_account_record
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
@@ -38,7 +38,7 @@ from app.services.integrations.user_integrations import (
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.oauth.oauth_state_service import create_oauth_state
+from app.services.oauth.oauth_state_service import attach_connected_account, create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
 from shared.py.wide_events import log
 
@@ -332,24 +332,35 @@ async def connect_composio_integration(
     log.set(integration={"provider": provider, "action": "connect_composio"})
     composio_service = get_composio_service()
 
+    record = await get_account_record(user_id, integration_id)
+    if at_account_limit(record):
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=integration_name,
+            error=ACCOUNT_LIMIT_ERROR,
+            message=(
+                f"You can connect up to {MAX_ACCOUNTS_PER_INTEGRATION} {integration_name} "
+                "accounts. Remove one to add another."
+            ),
+        )
+
     state_token = await create_oauth_state(
         user_id=user_id,
         redirect_path=redirect_path,
         integration_id=integration_id,
     )
 
-    await update_user_integration_status(user_id, integration_id, "created")
+    # Adding a further account must not demote a working integration to pending.
+    if record is None or not record.accounts:
+        await update_user_integration_status(user_id, integration_id, "created")
 
     connect_link: ComposioConnectLink = await composio_service.connect_account(
         provider, user_id, state_token=state_token
     )
-
-    # Composio mints the connected account before the user authorizes it; record
-    # it now so an abandoned connection is still addressable. Callback overwrites
-    # it with whichever account actually completed.
-    await update_user_integration_status(
-        user_id, integration_id, "created", connected_account_id=connect_link["connection_id"]
-    )
+    # Composio mints the account before the user authorizes it, and the hosted
+    # Connect Link redirects back without naming it.
+    await attach_connected_account(state_token, connect_link["connection_id"])
 
     log.set(
         integration={
@@ -519,7 +530,7 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         provider = resolved.platform_integration.provider if resolved.platform_integration else None
         if not provider:
             raise ValueError(f"Provider not configured for {integration_id}")
-        await composio_service.delete_connected_account(user_id=user_id, provider=provider)
+        await composio_service.delete_all_connected_accounts(user_id=user_id, provider=provider)
 
     elif resolved.managed_by == "self":
         provider = resolved.platform_integration.provider if resolved.platform_integration else None
@@ -554,30 +565,17 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
     )
 
 
+async def remove_from_workspace(user_id: str, integration_id: str) -> bool:
+    """Remove an integration from the workspace, revoking its Composio accounts when it has any."""
+    record = await get_account_record(user_id, integration_id)
+    if record is not None and record.accounts:
+        await disconnect_integration(user_id, integration_id)
+        return True
+    return await remove_user_integration(user_id, integration_id)
+
+
 async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:
     """Invalidate relevant caches after disconnect."""
-    # Provider metadata cache (24h TTL) is keyed by integration.provider, not
-    # integration_id. Without this clear, disconnected integrations keep
-    # injecting stale metadata into subagent prompts until the TTL expires.
-    integration = get_integration_by_id(integration_id)
-    if integration and integration.provider:
-        try:
-            metadata_key = f"provider_metadata:{user_id}:{integration.provider}"
-            await delete_cache(metadata_key)
-            log.info(
-                f"{LogTag.INTEGRATION} Provider metadata cache invalidated for",
-                user_id=user_id,
-                provider=integration.provider,
-            )
-        except redis.RedisError as e:
-            log.warning(
-                f"{LogTag.INTEGRATION} Failed to invalidate provider metadata cache",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                integration_id=integration_id,
-            )
-
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
         # MCP integrations: record already deleted in main disconnect logic

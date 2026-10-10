@@ -9,11 +9,12 @@ Run with:
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
@@ -566,10 +567,26 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
+        record = UserIntegrationDocument(
+            user_id="user_abc123",
+            integration_id="gmail",
+            status="connected",
+            accounts=[
+                IntegrationAccount(connected_account_id="ca_work", label="work@acme.com"),
+                IntegrationAccount(connected_account_id="ca_home", label="me@gmail.com"),
+            ],
+            primary_account_id="ca_home",
+        )
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=record),
+        ):
+            result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert result["user_id"] == "user_abc123"
         assert result["entity_id"] == "user_abc123"
+        # Composio never picks among several accounts: the call names the primary.
+        assert result["connected_account_id"] == "ca_home"
         # __runnable_config__ should be popped from arguments
         assert "__runnable_config__" not in result["arguments"]
 

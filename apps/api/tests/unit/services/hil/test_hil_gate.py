@@ -33,11 +33,14 @@ from app.services.hil.utils import GatedCall
 
 from .conftest import (
     CONVERSATION_ID,
+    GATED_ACCOUNT,
+    GATED_ACCOUNT_SUMMARY,
     GATED_ARGS,
     GATED_TOOL,
     STREAM_ID,
     USER_ID,
     GateSeams,
+    account_gated_request,
     gated_request,
     make_record,
     make_request,
@@ -488,6 +491,15 @@ class TestBarrierAutoMode:
 
         assert barrier.publish_request.await_args_list[0].kwargs["auto_reason"] == card_reason
         barrier.interrupt.assert_called_once()
+
+
+class TestBarrierNamesTheAccount:
+    async def test_the_card_names_the_account_the_call_acts_as(self, barrier: GateSeams) -> None:
+        await decide_tool_call(account_gated_request())
+
+        approval = barrier.publish_request.await_args.args[0]
+        assert approval.summary == GATED_ACCOUNT_SUMMARY
+        assert approval.tool_call.account == GATED_ACCOUNT
 
 
 class TestBarrierValidatesArgsAgainstTheRealTool:

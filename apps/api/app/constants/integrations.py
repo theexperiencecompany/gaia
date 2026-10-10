@@ -1,5 +1,6 @@
 """Constants for integration tools."""
 
+from enum import StrEnum
 from typing import Final
 
 from composio.core.models.webhook_events import ConnectionStatusEnum
@@ -42,6 +43,37 @@ DEAD_CONNECTION_STATUSES: Final = frozenset(
         ConnectionStatusEnum.FAILED.value,
     }
 )
+
+# --- Multi-account (Composio) ------------------------------------------------
+MAX_ACCOUNTS_PER_INTEGRATION: Final = 5
+# One page of a user's Composio accounts; covers every provider's accounts at the cap.
+COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
+# Label for an account whose provider exposes no identity (no metadata_config).
+FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
+# What the agent is told when the account a call ran as has lost its connection.
+ACCOUNT_NEEDS_RECONNECT_HINT: Final = (
+    "Tell the user it must be reconnected in Integrations. Do not use another account "
+    "in its place, or answer with another account's data, unless they ask."
+)
+# The agent's account tools; bound when an integration with several accounts is activated.
+RENAME_INTEGRATION_ACCOUNT_TOOL: Final = "rename_integration_account"
+SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL: Final = "set_primary_integration_account"
+DISCONNECT_INTEGRATION_TOOL: Final = "disconnect_integration"
+# Starts a connect, an added account or a reconnect (ConnectMode).
+CONNECT_INTEGRATION_TOOL: Final = "connect_integration"
+# A nickname replaces the account's label in the UI and the agent's context.
+MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
+# Redirect error code when a connect would exceed MAX_ACCOUNTS_PER_INTEGRATION.
+ACCOUNT_LIMIT_ERROR: Final = "account_limit"
+
+
+class ConnectMode(StrEnum):
+    """What a connect_integration call asks the user to do."""
+
+    CONNECT = "connect"
+    ADD_ACCOUNT = "add_account"
+    RECONNECT = "reconnect"
+
 
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"

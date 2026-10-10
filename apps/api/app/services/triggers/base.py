@@ -14,10 +14,12 @@ from typing import Any, Literal, TypedDict
 from composio_client import APIStatusError
 from pydantic import BaseModel, Field, StrictInt, ValidationError
 
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -72,7 +74,7 @@ def _parse_event_start_utc(timing: _EventTiming) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _log_event_timing(data: dict[str, object], now_utc: datetime) -> None:
+def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
     """Attach event-start and webhook-lag instrumentation to the log context."""
     try:
         timing = _EventTiming.model_validate(data)
@@ -105,6 +107,20 @@ def _log_event_timing(data: dict[str, object], now_utc: datetime) -> None:
             f"{LogTag.TRIGGER} webhook fired far from expected time — lag=s (positive = late, negative = early)",
             webhook_lag=webhook_lag,
         )
+
+
+async def primary_account_for_trigger(user_id: str, composio_slug: str) -> str:
+    """Return the account a workflow trigger registers on: its integration's primary.
+
+    Named explicitly because Composio, given only a user, picks the newest account
+    of any status — an abandoned or expired one as readily as a live one.
+    """
+    integration = get_integration_by_tool_slug(composio_slug)
+    if integration is None or integration.composio_config is None:
+        raise TriggerRegistrationError(
+            f"No integration owns trigger {composio_slug}", composio_slug
+        )
+    return await primary_connected_account_id(user_id, integration.composio_config.toolkit)
 
 
 class TriggerHandler(ABC):
@@ -232,12 +248,13 @@ class TriggerHandler(ABC):
             return []
 
         composio = get_composio_service()
+        connected_account_id = await primary_account_for_trigger(user_id, composio_slug)
 
         async def register_single(config: Mapping[str, object]) -> str | None:
             """Register a single trigger and return trigger_id."""
             result = await asyncio.to_thread(
                 composio.composio.triggers.create,
-                user_id=user_id,
+                connected_account_id=connected_account_id,
                 slug=composio_slug,
                 trigger_config=dict(config),
             )

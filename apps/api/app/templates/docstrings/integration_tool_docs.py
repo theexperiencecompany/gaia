@@ -84,47 +84,34 @@ WHEN NOT TO USE:
 """
 
 CONNECT_INTEGRATION = """
-INTEGRATIONS (CONNECT): This tool initiates the connection flow for one or more integrations.
+INTEGRATIONS (CONNECT): This tool starts the connection flow for one or more integrations,
+including adding another account to an integration the user already has.
 
 Use this tool when the user asks to:
-- "Connect Gmail"
-- "I want to link my Notion account"
-- "Set up Twitter integration"
-- "Connect my [service] account"
-- "Connect Gmail and Notion"
-- "Set up multiple integrations"
+- "Connect Gmail" / "Link my Notion account" / "Set up Gmail and Notion"
+- "Add another Gmail account" / "Connect my work calendar too" (mode="add_account")
+- "Reconnect Slack" / "Refresh my Gmail access" (mode="reconnect")
 
 PARAMETERS:
-- `integration_ids` (List[str]): List of exact integration IDs to connect.
-  - Use integration IDs (e.g., "gmail", "notion", "twitter"); call list_integrations first if unsure
-  - Can be a single ID or multiple IDs
-- `force_reconnect` (bool, optional): Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected. Defaults to false.
+- `integration_ids` (List[str]): Exact integration IDs (e.g., "gmail", "notion");
+  call list_integrations first if unsure.
+- `mode`: "connect" (default) for integrations the user has not connected;
+  "add_account" to connect another account while the current ones stay connected;
+  "reconnect" only when the user explicitly asks to reconnect or refresh access.
 
 BEHAVIOR:
-- Validates each integration ID (exact match only)
-- Checks if integration is available
-- Checks if integration is already connected
-- Initiates OAuth/connection flow for disconnected integrations
-- When `force_reconnect` is true, bypasses the connected-status check and starts reauthorization
-
-IMPORTANT:
-- This tool does NOT directly connect integrations
-- It initiates the OAuth flow and the user must complete authentication
-- Multiple integrations can be connected in a single call
-- If an integration is already connected, it will skip and inform the user
-- Do not force reconnection unless the user explicitly asks to reconnect or refresh access
-
-RETURN VALUE:
-Returns a status message for each integration:
-- Already connected
-- Connection initiated (user needs to complete OAuth)
-- Not found (suggests available IDs)
-- Not available yet (coming soon)
+- A card (or, on text-only platforms, a single-use link) lets the user sign in;
+  this tool never connects anything by itself.
+- "connect" on an integration that is already connected starts nothing and lists its
+  accounts; call again with mode="add_account" if the user wants another one.
+- "add_account" works for integrations that support several accounts (up to 5); the
+  user signs in with the account to add.
+- To remove an account or a connection, use disconnect_integration.
 
 Examples:
-- User: "Connect Gmail" → integration_ids: ["gmail"]
-- User: "Set up Gmail and Notion" → integration_ids: ["gmail", "notion"]
-- User: "Link my calendar" → integration_ids: ["googlecalendar"]
+- User: "Connect Gmail" -> integration_ids: ["gmail"]
+- User: "Add my work Gmail too" -> integration_ids: ["gmail"], mode: "add_account"
+- User: "Reconnect my calendar" -> integration_ids: ["googlecalendar"], mode: "reconnect"
 """
 
 CHECK_INTEGRATIONS_STATUS = """

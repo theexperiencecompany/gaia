@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
+from langchain_core.runnables import RunnableConfig
+
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.tools.execute.dispatch import (
     DispatchErrorKind,
@@ -335,8 +337,9 @@ async def redeem_approved(
     user_id: str,
     conversation_id: str,
     caller: str,
+    run_config: RunnableConfig,
 ) -> RedeemResult:
-    """Honor one ticket: run the stored envelope, return its outcome.
+    """Honor one ticket: run the stored envelope inside run_config's run, return its outcome.
 
     The model supplies no args — the ticket IS the approval id and the row
     holds the envelope, so nothing the model says can drift the call. The
@@ -380,9 +383,10 @@ async def redeem_approved(
             user_id=row.user_id or None,
             tool_name=row.tool_name,
             data=dict(row.args),
-            # Identity-bearing config, not a bare configurable: the wrappers
-            # resolve per-user auth from this (see dispatch_config_for).
-            config=dispatch_config_for(row.user_id),
+            account=row.account,
+            # The row's identity on the redeeming run: wrappers resolve per-user
+            # auth from it, and the tool's cards stream on that run.
+            config=dispatch_config_for(row.user_id, run_config),
         )
     except Exception as e:
         await approval_ledger_repository.transition(

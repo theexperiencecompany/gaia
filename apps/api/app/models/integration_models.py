@@ -26,6 +26,27 @@ AuthType = Literal["none", "oauth", "bearer"]
 # ("added, never authenticated") and from the absence of a record entirely.
 UserIntegrationStatus = Literal["created", "connected", "expired"]
 
+IntegrationAccountStatus = Literal["connected", "expired"]
+
+
+class IntegrationAccount(BaseModel):
+    """One Composio connected account the user linked to an integration."""
+
+    connected_account_id: str
+    # Who the account is on the provider (email, handle, workspace), from the
+    # integration's metadata_config; empty when the provider exposes none.
+    identity: dict[str, str] = Field(default_factory=dict)
+    label: str
+    nickname: str | None = None
+    status: IntegrationAccountStatus = "connected"
+    connected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expired_at: datetime | None = None
+    expired_reason: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        return self.nickname or self.label
+
 
 class StoredIntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
@@ -208,10 +229,15 @@ class UserIntegrationDocument(UserScopedDocument):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
-    # Composio's connected-account nanoid (``ca_...``). Recorded so a dead or
-    # stale account can be addressed directly — revoked, deleted, or inspected —
-    # without listing every account for the user first.
-    connected_account_id: str | None = None
+    # Composio integrations only: every connected account, oldest first, and the
+    # one tools act as when the caller names none.
+    accounts: list[IntegrationAccount] = Field(default_factory=list)
+    primary_account_id: str | None = None
+
+    def find_account(self, connected_account_id: str) -> IntegrationAccount | None:
+        return next(
+            (a for a in self.accounts if a.connected_account_id == connected_account_id), None
+        )
 
 
 class UserIntegrationUpdate(BaseModel):
@@ -223,7 +249,6 @@ class UserIntegrationUpdate(BaseModel):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
-    connected_account_id: str | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):

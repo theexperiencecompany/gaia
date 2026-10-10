@@ -895,18 +895,6 @@
             ],
             "title": "Platform Links Connected At"
           },
-          "provider_metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Metadata"
-          },
           "selected_voice_id": {
             "anyOf": [
               {
@@ -5157,6 +5145,8 @@
           "invalid_args",
           "internal_tool",
           "out_of_scope",
+          "unknown_account",
+          "account_expired",
           "timeout"
         ],
         "title": "DispatchErrorKind",
@@ -7476,6 +7466,100 @@
         ],
         "title": "InstructionsEditor",
         "type": "string"
+      },
+      "IntegrationAccountResponse": {
+        "properties": {
+          "connectedAt": {
+            "format": "date-time",
+            "title": "Connectedat",
+            "type": "string"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "expiredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiredat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isPrimary": {
+            "title": "Isprimary",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "status": {
+            "enum": [
+              "connected",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "nickname",
+          "displayName",
+          "status",
+          "isPrimary",
+          "connectedAt",
+          "expiredAt"
+        ],
+        "title": "IntegrationAccountResponse",
+        "type": "object"
+      },
+      "IntegrationAccountsResponse": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationAccountResponse"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "integrationId": {
+            "title": "Integrationid",
+            "type": "string"
+          },
+          "maxAccounts": {
+            "title": "Maxaccounts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "integrationId",
+          "accounts",
+          "maxAccounts"
+        ],
+        "title": "IntegrationAccountsResponse",
+        "type": "object"
       },
       "IntegrationConfigItem": {
         "properties": {
@@ -18412,6 +18496,36 @@
         "title": "UpdateHoloCardColorsResponse",
         "type": "object"
       },
+      "UpdateIntegrationAccountRequest": {
+        "description": "Make the account primary and/or rename it; an empty nickname clears it.",
+        "properties": {
+          "isPrimary": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isprimary"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          }
+        },
+        "title": "UpdateIntegrationAccountRequest",
+        "type": "object"
+      },
       "UpdateIntegrationInstructionsRequest": {
         "description": "Request to set a user's custom instructions for one integration.",
         "properties": {
@@ -28635,6 +28749,218 @@
           }
         },
         "summary": "Disconnect Integration Endpoint",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/{integration_id}/accounts": {
+      "get": {
+        "operationId": "integrations_list_integration_accounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationAccountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Integration Accounts",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/{integration_id}/accounts/{account_id}": {
+      "delete": {
+        "operationId": "integrations_remove_integration_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationAccountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Remove Integration Account",
+        "tags": [
+          "Integrations"
+        ]
+      },
+      "patch": {
+        "operationId": "integrations_update_integration_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIntegrationAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationAccountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Integration Account",
         "tags": [
           "Integrations"
         ]

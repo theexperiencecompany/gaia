@@ -238,7 +238,11 @@ class ProviderMetadataConfig(BaseModel):
                     ],
                 ),
             ],
+            label_template="@{username}",
         )
     """
 
     tools: list[ToolMetadataConfig]  # List of tools to call and variables to extract
+    # str.format over the extracted variables: how one connected account is named
+    # to the user and the model ("work@x.com", "@handle", "dhruv @ Acme").
+    label_template: str

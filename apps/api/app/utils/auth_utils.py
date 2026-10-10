@@ -66,7 +66,6 @@ def build_user_context(
         updated_at=user_doc.updated_at,
         last_active_at=user_doc.last_active_at,
         onboarding=user_doc.onboarding,
-        provider_metadata=user_doc.provider_metadata,
         hil_preferences=user_doc.hil_preferences,
         notification_channel_prefs=user_doc.notification_channel_prefs,
         platform_links=user_doc.platform_links,

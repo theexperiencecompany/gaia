@@ -4,7 +4,7 @@ These are the proxy's two load-bearing behaviors.
 """
 
 import asyncio
-from collections.abc import Container
+from collections.abc import Container, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
@@ -18,9 +18,14 @@ from app.agents.tools.execute.dispatch import (
     DispatchError,
     DispatchErrorKind,
     ToolExecutionResult,
+    ToolSpace,
+    dispatch_config_for,
     dispatch_tool,
 )
 from app.agents.tools.execute.resolver import ResolvedTool
+from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
 from tests.helpers import captured_wide_event
@@ -42,6 +47,272 @@ def _tool(name: str = "GMAIL_SEND_EMAIL", schema: object = _SendEmailArgs) -> Ma
     tool.args_schema = schema
     tool.ainvoke = AsyncMock(return_value={"status": "sent"})
     return tool
+
+
+@pytest.fixture(autouse=True)
+def account_record() -> Iterator[AsyncMock]:
+    """Pin the user's accounts on the tool's integration; none on record by default."""
+    with patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as lookup:
+        yield lookup
+
+
+def _gmail_accounts(
+    *accounts: IntegrationAccount, primary: str = "ca_work"
+) -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id=USER_ID,
+        integration_id="gmail",
+        status="connected",
+        accounts=list(accounts),
+        primary_account_id=primary,
+    )
+
+
+WORK = IntegrationAccount(
+    connected_account_id="ca_work", label="work@acme.com", identity={"email": "work@acme.com"}
+)
+PERSONAL = IntegrationAccount(
+    connected_account_id="ca_personal", label="me@gmail.com", nickname="Personal"
+)
+
+
+async def _dispatch_send(account: str | None, tool: MagicMock) -> ToolExecutionResult:
+    with (
+        patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+        ),
+        patch(f"{MODULE}.capture"),
+    ):
+        return await dispatch_tool(
+            user_id=USER_ID,
+            tool_name="GMAIL_SEND_EMAIL",
+            data={"recipient": "a@b.c", "subject": "hi"},
+            config=CONFIG,
+            account=account,
+        )
+
+
+def _invoked_account(tool: MagicMock) -> object:
+    return tool.ainvoke.await_args.kwargs["config"]["metadata"]["composio_account"]
+
+
+@pytest.mark.unit
+class TestAccountChoice:
+    async def test_no_account_named_runs_as_the_primary(self, account_record: AsyncMock) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        result = await _dispatch_send(None, tool)
+
+        assert result.ok is True
+        assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
+        account_record.assert_awaited_once_with(USER_ID, "gmail")
+
+    @pytest.mark.parametrize(
+        ("name", "account"), [(None, "work@acme.com"), ("me@gmail.com", "Personal")]
+    )
+    async def test_with_several_accounts_the_result_names_the_one_it_ran_as(
+        self, account_record: AsyncMock, name: str | None, account: str
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        result = await _dispatch_send(name, _tool())
+
+        assert (result.output, result.account) == ({"status": "sent"}, account)
+
+    async def test_with_one_account_the_result_names_none(self, account_record: AsyncMock) -> None:
+        account_record.return_value = _gmail_accounts(WORK)
+
+        result = await _dispatch_send(None, _tool())
+
+        assert result.account is None
+
+    @pytest.mark.parametrize(
+        ("name", "connected_account_id", "is_primary"),
+        [(None, "ca_work", True), ("Personal", "ca_personal", False)],
+    )
+    async def test_the_wide_event_names_the_account_the_call_ran_as(
+        self,
+        account_record: AsyncMock,
+        name: str | None,
+        connected_account_id: str,
+        is_primary: bool,
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        async with captured_wide_event() as event:
+            await _dispatch_send(name, _tool())
+
+        assert event["execute"] == {
+            "tool": "GMAIL_SEND_EMAIL",
+            "connected_account_id": connected_account_id,
+            "account_is_primary": is_primary,
+            "outcome": "ok",
+        }
+
+    @pytest.mark.parametrize("name", ["Personal", "me@gmail.com", " ME@GMAIL.COM "])
+    async def test_a_named_account_runs_as_that_account(
+        self, account_record: AsyncMock, name: str
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        await _dispatch_send(name, tool)
+
+        assert _invoked_account(tool) == {
+            "toolkit": "GMAIL",
+            "connected_account_id": "ca_personal",
+        }
+
+    async def test_an_unknown_account_lists_the_real_ones_and_never_runs(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        result = await _dispatch_send("boss@acme.com", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        assert '"work@acme.com" (connected)' in result.error.hint
+        assert '"Personal" (connected)' in result.error.hint
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_an_expired_account_is_refused_while_another_still_works(
+        self, account_record: AsyncMock
+    ) -> None:
+        dead = PERSONAL.model_copy(update={"status": "expired"})
+        account_record.return_value = _gmail_accounts(WORK, dead)
+        tool = _tool()
+
+        result = await _dispatch_send("Personal", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.ACCOUNT_EXPIRED
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_with_every_account_dead_the_call_runs_into_the_reconnect_path(
+        self, account_record: AsyncMock
+    ) -> None:
+        """No alternative exists, so the tool's own dead-account handling shows the connect card."""
+        dead = WORK.model_copy(update={"status": "expired"})
+        account_record.return_value = _gmail_accounts(dead)
+        tool = _tool()
+
+        await _dispatch_send(None, tool)
+
+        assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
+
+    async def test_an_account_on_a_tool_without_accounts_is_refused(self) -> None:
+        tool = _tool(name="todo_create")
+        with patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
+        ):
+            result = await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="todo_create",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="work",
+            )
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_a_personless_run_cannot_choose_an_account(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+        ):
+            result = await dispatch_tool(
+                user_id=None,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="Personal",
+            )
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_an_integration_without_composio_has_no_accounts_to_choose(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with patch(
+            f"{MODULE}.get_integration_by_tool_slug",
+            return_value=get_integration_by_id("perplexity"),
+        ):
+            result = await _dispatch_send("Personal", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_the_chosen_account_joins_the_callers_metadata(
+        self, account_record: AsyncMock
+    ) -> None:
+        """Composio wrappers read the user from metadata, so pinning an account must not drop it."""
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture"),
+        ):
+            await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=dispatch_config_for(USER_ID),
+                account="Personal",
+            )
+
+        assert tool.ainvoke.await_args.kwargs["config"]["metadata"] == {
+            "user_id": USER_ID,
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_personal"},
+        }
+
+    async def test_the_usage_event_says_how_many_accounts_and_whether_primary(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="Personal",
+            )
+
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            ToolUsed(
+                tool_name="GMAIL_SEND_EMAIL",
+                via="execute",
+                account_count=2,
+                account_is_primary=False,
+            ),
+        )
 
 
 @pytest.mark.unit
@@ -209,7 +480,7 @@ class TestIntegrationOnlySurface:
                 tool_name="create_todo",
                 data={"recipient": "x", "subject": "y"},
                 config=CONFIG,
-                integration_only=True,
+                space=ToolSpace(integration_only=True),
             )
         assert result.ok is False
         assert result.error is not None
@@ -259,7 +530,7 @@ class TestSubagentToolSpace:
                 tool_name="SLACK_SEND_MESSAGE",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL", "read"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL", "read"}),
             )
         assert result.ok is False
         assert result.error is not None
@@ -285,7 +556,7 @@ class TestSubagentToolSpace:
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
             )
         assert result.ok is True
 
@@ -304,7 +575,7 @@ class TestSubagentToolSpace:
                 tool_name="notion_mcp_search",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
             )
         assert result.ok is False
         assert result.error is not None
@@ -331,7 +602,7 @@ class TestSubagentToolSpace:
                 tool_name="notion_mcp_search",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"notion_mcp_search"},
+                space=ToolSpace(tool_names={"notion_mcp_search"}),
             )
         assert result.ok is True
 
@@ -447,6 +718,8 @@ class _Refusal:
     integration_only: bool = False
     scoped_tool_names: Container[str] | None = None
     data: dict[str, object] = field(default_factory=dict)
+    account: str | None = None
+    accounts: UserIntegrationDocument | None = None
 
 
 _INTERNAL = _tool(name="create_todo")
@@ -533,6 +806,47 @@ REFUSALS = {
         warning="execute: args failed schema validation",
         data={"recipient": "a@b.c"},
     ),
+    "account_on_an_accountless_tool": _Refusal(
+        tool_name="create_todo",
+        resolved=ResolvedTool("create_todo", _INTERNAL, is_integration=False),
+        error=DispatchError(
+            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+            detail="'create_todo' has no connected accounts to choose between.",
+            hint="Retry without `account`.",
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="work",
+    ),
+    "unknown_account": _Refusal(
+        tool_name="GMAIL_SEND_EMAIL",
+        resolved=ResolvedTool("GMAIL_SEND_EMAIL", _GMAIL, is_integration=True),
+        error=DispatchError(
+            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+            detail="No connected Gmail account is called 'boss@acme.com'.",
+            hint=(
+                'If the user meant one of these, pass it as `account`: "work@acme.com" '
+                '(connected), "Personal" (expired). Otherwise ask them which account they meant.'
+            ),
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="boss@acme.com",
+        accounts=_gmail_accounts(WORK, PERSONAL.model_copy(update={"status": "expired"})),
+    ),
+    "expired_account": _Refusal(
+        tool_name="GMAIL_SEND_EMAIL",
+        resolved=ResolvedTool("GMAIL_SEND_EMAIL", _GMAIL, is_integration=True),
+        error=DispatchError(
+            kind=DispatchErrorKind.ACCOUNT_EXPIRED,
+            detail="The Gmail account Personal needs reconnecting.",
+            hint=ACCOUNT_NEEDS_RECONNECT_HINT,
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="Personal",
+        accounts=_gmail_accounts(WORK, PERSONAL.model_copy(update={"status": "expired"})),
+    ),
 }
 
 
@@ -541,7 +855,10 @@ class TestPredictableFailuresAreFullyReported:
     """Each refusal: the exact correction the model reads, one warning, metric tick, outcome and analytics event."""
 
     @pytest.mark.parametrize("case", REFUSALS.values(), ids=REFUSALS.keys())
-    async def test_a_refusal_is_reported_on_every_channel(self, case: _Refusal) -> None:
+    async def test_a_refusal_is_reported_on_every_channel(
+        self, case: _Refusal, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = case.accounts
         resolver = AsyncMock(return_value=case.resolved)
         before = _dispatched(str(case.error.kind))
         with (
@@ -554,8 +871,11 @@ class TestPredictableFailuresAreFullyReported:
                     tool_name=case.tool_name,
                     data=case.data,
                     config=CONFIG,
-                    integration_only=case.integration_only,
-                    scoped_tool_names=case.scoped_tool_names,
+                    account=case.account,
+                    space=ToolSpace(
+                        integration_only=case.integration_only,
+                        tool_names=case.scoped_tool_names,
+                    ),
                 )
         assert result == ToolExecutionResult(
             ok=False, resolved_name=case.tool_name, error=case.error

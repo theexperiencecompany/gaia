@@ -1,4 +1,7 @@
-import type { AddIntegrationResponse } from "@shared/api/generated";
+import type {
+  AddIntegrationResponse,
+  UpdateIntegrationAccountRequest,
+} from "@shared/api/generated";
 import { api, type RequestOrigin } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
@@ -134,6 +137,30 @@ export const integrationsApi = {
       throw error;
     }
   },
+
+  /** Every account the user connected to one integration, the primary marked. */
+  getIntegrationAccounts: (integrationId: string) =>
+    api.get("/api/v1/integrations/{integration_id}/accounts", {
+      path: { integration_id: integrationId },
+      silent: true,
+    }),
+
+  /** Make an account primary and/or rename it; an empty nickname clears it. */
+  updateIntegrationAccount: (
+    integrationId: string,
+    accountId: string,
+    body: UpdateIntegrationAccountRequest,
+  ) =>
+    api.patch("/api/v1/integrations/{integration_id}/accounts/{account_id}", {
+      path: { integration_id: integrationId, account_id: accountId },
+      body,
+    }),
+
+  /** Revoke one account; the last one out disconnects the integration. */
+  removeIntegrationAccount: (integrationId: string, accountId: string) =>
+    api.delete("/api/v1/integrations/{integration_id}/accounts/{account_id}", {
+      path: { integration_id: integrationId, account_id: accountId },
+    }),
 
   /**
    * Create a custom MCP integration.

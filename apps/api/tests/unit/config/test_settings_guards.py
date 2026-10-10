@@ -49,6 +49,7 @@ DEV_OVERRIDE_VARS = (
     "DEV_UNLIMITED_RATE_LIMITS",
     "OPENROUTER_BASE_URL",
     "GAIA_SIM_MODE",
+    "COMPOSIO_AUTH_CONFIG_OVERRIDES",
     "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
     "OBSCURA_ALLOW_PRIVATE_NETWORK",
     "BROWSER_HOST_TEST_CA_FILE",
@@ -80,6 +81,7 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
+        ("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}'),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):

@@ -7,9 +7,24 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 
-from app.agents.tools.execute.dispatch import dispatch_tool
+from app.agents.tools.execute.dispatch import ToolSpace, dispatch_tool
+from app.constants.execute import RAN_AS_ACCOUNT_KEY
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from shared.py.analytics.catalog.properties import Identifier
+
+
+def _for_model(output: object, account: str | None) -> str:
+    """Serialise a tool result for the model, naming the account it ran as when there are several.
+
+    A dict keeps its top-level keys (the offload marker lives there), so the account joins them.
+    """
+    if account is None:
+        return output if isinstance(output, str) else json.dumps(output, default=str)
+    if isinstance(output, dict):
+        return json.dumps({RAN_AS_ACCOUNT_KEY: account, **output}, default=str)
+    if isinstance(output, str):
+        return f"{RAN_AS_ACCOUNT_KEY}: {account}\n{output}"
+    return json.dumps({RAN_AS_ACCOUNT_KEY: account, "result": output}, default=str)
 
 
 def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseTool:
@@ -42,6 +57,11 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
             "Arguments for tool_name, matching the args schema retrieve_tools showed. "
             "Pass {} when the tool takes no arguments.",
         ],
+        account: Annotated[
+            str | None,
+            "Which of the user's connected accounts to act as, by the name listed for "
+            "the integration (e.g. 'work@acme.com'). Omit to use the primary account.",
+        ] = None,
     ) -> str:
         """Run an integration tool (Gmail, GitHub, Notion, MCP, ...) by name.
 
@@ -58,7 +78,8 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
             tool_name=tool_name,
             data=data,
             config=config,
-            scoped_tool_names=None if scoped_tools is None else set(scoped_tools),
+            account=account,
+            space=ToolSpace(tool_names=None if scoped_tools is None else set(scoped_tools)),
         )
         if result.error is not None:
             return json.dumps(
@@ -69,8 +90,7 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
                     "next": result.error.hint,
                 }
             )
-        output = result.output
-        return output if isinstance(output, str) else json.dumps(output, default=str)
+        return _for_model(result.output, result.account)
 
     return execute
 

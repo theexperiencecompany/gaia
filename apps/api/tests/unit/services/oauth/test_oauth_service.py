@@ -10,16 +10,19 @@ from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
 
 from app.constants.log_tags import LogTag
+from app.models.integration_models import IntegrationAccount
 from app.models.user_models import BioStatus, UserDocument
 from app.services.email.signup_delivery import signup_email_job_id
+from app.services.integrations.integration_account_lifecycle import (
+    AccountConnected,
+    AccountLimitReached,
+    resync_primary_bound_triggers,
+)
 from app.services.oauth.oauth_service import (
     check_integration_status,
     check_multiple_integrations_status,
     handle_oauth_connection,
     store_user_info,
-)
-from app.services.triggers.subscription_service import (
-    resync_subscriptions_for_trigger_names,
 )
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
@@ -41,15 +44,6 @@ def mock_user_repo():
         mock_repo.set_bio_status = AsyncMock()
         mock_repo.stamp_signup_deliveries = AsyncMock()
         yield mock_repo
-
-
-@pytest.fixture
-def mock_update_user_integration_status():
-    with patch(
-        "app.services.oauth.oauth_service.update_user_integration_status",
-        new_callable=AsyncMock,
-    ) as mock_fn:
-        yield mock_fn
 
 
 @pytest.fixture
@@ -78,15 +72,6 @@ def mock_track_signup():
 def mock_track_login():
     with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
         yield mock_tl
-
-
-@pytest.fixture
-def mock_fetch_and_store_provider_metadata():
-    with patch(
-        "app.services.oauth.oauth_service.fetch_and_store_provider_metadata",
-        new_callable=AsyncMock,
-    ) as mock_fn:
-        yield mock_fn
 
 
 @pytest.fixture
@@ -570,32 +555,42 @@ class TestCheckMultipleIntegrationsStatus:
 
 
 class TestHandleOAuthConnection:
-    async def test_invalidates_cache_and_updates_integration_status(
-        self,
-        mock_update_user_integration_status,
-    ):
-        """Core behavior: update integration status (cache invalidation is handled by decorator)."""
-        config = make_integration_config(
-            integration_id="notion",
-            name="Notion",
-        )
+    async def test_records_the_account_that_authorized(self, mock_record_account):
+        config = make_integration_config(integration_id="notion", name="Notion")
+
+        with patch("app.services.oauth.oauth_service.publish_connected") as publish:
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=MagicMock(),
+                connected_account_id="ca_new",
+            )
+
+        mock_record_account.assert_awaited_once_with("user123", config, "ca_new")
+        publish.assert_awaited_once_with("user123", "notion")
+
+    async def test_a_connect_over_the_account_limit_has_no_side_effects(self, mock_record_account):
+        mock_record_account.return_value = AccountLimitReached(limit=5)
+        config = make_integration_config(integration_id="gmail", associated_triggers=[MagicMock()])
         background_tasks = MagicMock()
 
-        await handle_oauth_connection(
-            user_id="user123",
-            integration_config=config,
-            background_tasks=background_tasks,
-        )
+        with patch("app.services.oauth.oauth_service.publish_connected") as publish:
+            outcome = await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
 
-        mock_update_user_integration_status.assert_awaited_once_with(
-            "user123", "notion", "connected", connected_account_id=None
-        )
+        assert outcome == AccountLimitReached(limit=5)
+        background_tasks.add_task.assert_not_called()
+        publish.assert_not_called()
 
-    async def test_sets_up_triggers_when_present(
+    async def test_subscribes_the_new_account_to_account_level_triggers(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
     ):
-        """If integration has associated_triggers, schedule trigger setup."""
+        """Account-level events (a new email) fire for every account, so each one subscribes."""
         mock_trigger = MagicMock()
         config = make_integration_config(
             integration_id="notion",
@@ -611,17 +606,19 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
         background_tasks.add_task.assert_any_call(
             mock_cs.handle_subscribe_trigger,
             user_id="user123",
+            connected_account_id="ca_new",
             triggers=[mock_trigger],
         )
 
     async def test_does_not_setup_triggers_when_empty(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
     ):
         """If no associated_triggers, do not call get_composio_service for triggers."""
         config = make_integration_config(
@@ -634,6 +631,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         # No trigger-related background task should be queued
@@ -646,7 +644,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_enqueues_personalization(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -660,6 +658,7 @@ class TestHandleOAuthConnection:
             user_id=user_id,
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_enqueue_personalization.assert_awaited_once_with(user_id)
@@ -670,7 +669,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_queues_memory_ingestion_when_pipeline_skipped(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -685,6 +684,7 @@ class TestHandleOAuthConnection:
             user_id=user_id,
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_redis_pool_manager.enqueue_job.assert_awaited_once_with(
@@ -694,7 +694,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_updates_bio_status_when_no_gmail(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_websocket_manager,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
@@ -711,6 +711,7 @@ class TestHandleOAuthConnection:
             user_id=user_id,
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_user_repo.set_bio_status.assert_awaited_once_with(user_id, BioStatus.PROCESSING)
@@ -718,7 +719,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_sends_websocket_update(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_websocket_manager,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
@@ -735,6 +736,7 @@ class TestHandleOAuthConnection:
             user_id=user_id,
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_websocket_manager.broadcast_to_user.assert_awaited_once()
@@ -745,7 +747,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_skips_bio_update_when_already_completed(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -760,6 +762,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_user_repo.set_bio_status.assert_not_awaited()
@@ -767,7 +770,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_skips_bio_when_onboarding_not_completed(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -782,6 +785,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         mock_user_repo.set_bio_status.assert_not_awaited()
@@ -789,7 +793,7 @@ class TestHandleOAuthConnection:
     async def test_gmail_arq_queue_failure_does_not_raise(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_enqueue_personalization,
     ):
         """ARQ enqueue failure should be logged, not raised."""
@@ -808,11 +812,12 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
     async def test_non_gmail_connection_skips_email_processing(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
     ):
         """Non-Gmail integrations should not queue email processing."""
         config = make_integration_config(integration_id="notion")
@@ -823,64 +828,15 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
             mock_rpm.get_pool.assert_not_called()
 
-    async def test_metadata_config_queues_metadata_fetch(
-        self,
-        mock_update_user_integration_status,
-        mock_fetch_and_store_provider_metadata,
-    ):
-        """If integration has metadata_config, schedule background metadata fetch."""
-        mock_metadata = MagicMock()
-        config = make_integration_config(
-            integration_id="slack",
-            name="Slack",
-            metadata_config=mock_metadata,
-        )
-        background_tasks = MagicMock()
-
-        await handle_oauth_connection(
-            user_id="user123",
-            integration_config=config,
-            background_tasks=background_tasks,
-        )
-
-        # fetch_and_store_provider_metadata should be added as a background task
-        background_tasks.add_task.assert_any_call(
-            mock_fetch_and_store_provider_metadata,
-            user_id="user123",
-            integration_id="slack",
-        )
-
-    async def test_no_metadata_config_skips_metadata_fetch(
-        self,
-        mock_update_user_integration_status,
-    ):
-        """If no metadata_config, should not schedule metadata fetch."""
-        config = make_integration_config(
-            integration_id="notion",
-            metadata_config=None,
-        )
-        background_tasks = MagicMock()
-
-        await handle_oauth_connection(
-            user_id="user123",
-            integration_config=config,
-            background_tasks=background_tasks,
-        )
-
-        # No fetch_and_store_provider_metadata call
-        for call in background_tasks.add_task.call_args_list:
-            func_called = call[0][0]
-            func_name = getattr(func_called, "__name__", str(func_called))
-            assert "fetch_and_store_provider_metadata" not in func_name
-
     async def test_gmail_provisions_the_inbox_desk_and_no_system_workflow(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_provision_system_workflows,
         mock_queue_inbox_desk,
         mock_redis_pool_manager,
@@ -894,6 +850,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         background_tasks.add_task.assert_any_call(mock_queue_inbox_desk, "user123")
@@ -902,7 +859,7 @@ class TestHandleOAuthConnection:
 
     async def test_googlecalendar_provisions_system_workflows(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_provision_system_workflows,
     ):
         """Google Calendar connection should provision system workflows."""
@@ -916,6 +873,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         background_tasks.add_task.assert_any_call(
@@ -927,7 +885,7 @@ class TestHandleOAuthConnection:
 
     async def test_non_gmail_non_calendar_skips_system_workflow_provisioning(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
     ):
         """Non-Gmail/Calendar integrations should not provision system workflows."""
         config = make_integration_config(
@@ -941,6 +899,7 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
             # provision_system_workflows should NOT appear in any background task
@@ -949,7 +908,7 @@ class TestHandleOAuthConnection:
 
     async def test_reconnecting_schedules_the_workflow_resume_for_that_user_and_integration(
         self,
-        mock_update_user_integration_status,
+        mock_record_account,
     ):
         """A reconnect scheduled for the wrong user or integration leaves workflows dark."""
         config = make_integration_config(integration_id="notion", name="Notion")
@@ -959,6 +918,7 @@ class TestHandleOAuthConnection:
             user_id="user123",
             integration_config=config,
             background_tasks=background_tasks,
+            connected_account_id="ca_new",
         )
 
         background_tasks.add_task.assert_any_call(
@@ -967,17 +927,11 @@ class TestHandleOAuthConnection:
             "notion",
         )
 
-    async def test_reconnect_resyncs_todo_subscriptions_for_this_integrations_triggers(
-        self,
-        mock_update_user_integration_status,
-    ):
-        """Todo subscriptions strand on this integration's triggers exactly like workflow triggers do."""
+    async def test_a_new_primary_moves_the_workflow_triggers_onto_it(self, mock_record_account):
+        """Workflow and todo triggers live on the primary; a connect that moved it must re-register them."""
         trigger = MagicMock()
         trigger.workflow_trigger_schema.slug = "notion_page_added"
-        config = make_integration_config(
-            integration_id="notion",
-            associated_triggers=[trigger],
-        )
+        config = make_integration_config(integration_id="notion", associated_triggers=[trigger])
         background_tasks = MagicMock()
 
         with patch("app.services.oauth.oauth_service.get_composio_service"):
@@ -985,37 +939,43 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
-        background_tasks.add_task.assert_any_call(
-            resync_subscriptions_for_trigger_names,
-            "user123",
-            {"notion_page_added"},
-        )
+        background_tasks.add_task.assert_any_call(resync_primary_bound_triggers, "user123", config)
 
-    async def test_integration_status_update_failure_does_not_raise(
-        self,
-    ):
-        """Integration status update failure should be logged, not raised."""
-        config = make_integration_config(integration_id="notion")
+    async def test_a_further_account_leaves_primary_bound_work_alone(self, mock_record_account):
+        """Adding a second mailbox must not move workflows, resume them, or re-run personalization."""
+        mock_record_account.return_value = AccountConnected(
+            account=IntegrationAccount(connected_account_id="ca_new", label="me@gmail.com"),
+            replaced_account_id=None,
+            primary_changed=False,
+        )
+        trigger = MagicMock()
+        trigger.workflow_trigger_schema.slug = "gmail_new_message"
+        config = make_integration_config(integration_id="gmail", associated_triggers=[trigger])
         background_tasks = MagicMock()
 
-        with patch(
-            "app.services.oauth.oauth_service.update_user_integration_status",
-            new_callable=AsyncMock,
-            side_effect=Exception("MongoDB down"),
+        with (
+            patch("app.services.oauth.oauth_service.get_composio_service"),
+            patch("app.services.oauth.oauth_service._handle_gmail_connection") as gmail,
         ):
-            # Should not raise
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
+
+        scheduled = {call.args[0] for call in background_tasks.add_task.call_args_list}
+        assert resync_primary_bound_triggers not in scheduled
+        assert resume_workflows_for_reconnected_integration not in scheduled
+        gmail.assert_not_called()
 
     async def test_websocket_failure_does_not_block_flow(
         self,
         mock_user_repo,
-        mock_update_user_integration_status,
+        mock_record_account,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -1034,6 +994,7 @@ class TestHandleOAuthConnection:
                 user_id="user123",
                 integration_config=config,
                 background_tasks=background_tasks,
+                connected_account_id="ca_new",
             )
 
 

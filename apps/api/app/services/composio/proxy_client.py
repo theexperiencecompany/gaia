@@ -6,24 +6,24 @@ composio.tools.proxy(...), which authenticates server-side via the
 connected_account_id.
 
 This module wraps that flow so callers only need to supply user_id,
-toolkit, and the request shape. The connected account lookup is cached
-in-process with a short TTL since the value is stable for the lifetime
-of a connection.
+toolkit, and the request shape. The account is the one the current tool
+call is scoped to, else the user's primary (see account_scope).
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from threading import Lock
-import time
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
 from composio import Composio
+import composio_client
 
-from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.log_tags import LogTag
+from app.services.composio.account_scope import scoped_connected_account_id
+from app.services.composio.dead_account import ConnectedAccountGoneError, is_dead_account_error
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -61,26 +61,12 @@ class ProxyResponse(TypedDict):
     headers: dict[str, Any]
 
 
-_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS = 600
-
-_connected_account_cache: dict[tuple[str, str], tuple[str, float]] = {}
-_cache_lock = Lock()
-
-
 def _get_composio() -> Composio:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
     from app.services.composio.composio_service import get_composio_service
 
     return get_composio_service().composio
-
-
-def _toolkit_to_auth_config_id(toolkit: str) -> str | None:
-    target = toolkit.upper()
-    for cfg in get_composio_social_configs().values():
-        if cfg.toolkit and cfg.toolkit.upper() == target:
-            return cfg.auth_config_id
-    return None
 
 
 def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
@@ -92,112 +78,12 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             status_code=500,
             meta={"toolkit": toolkit},
         )
-
-    cache_key = (user_id, toolkit.upper())
-    now = time.time()
-    with _cache_lock:
-        cached = _connected_account_cache.get(cache_key)
-        if cached and cached[1] > now:
-            return cached[0]
-
-    auth_config_id = _toolkit_to_auth_config_id(toolkit)
-    if not auth_config_id:
-        log.error(
-            "composio_proxy_unknown_toolkit",
-            toolkit=toolkit,
-            user_id=user_id,
-        )
-        raise AppError(
-            message=f"Unknown Composio toolkit: {toolkit}",
-            why="No registered auth config matches this toolkit slug",
-            status_code=500,
-            meta={"toolkit": toolkit, "user_id": user_id},
-        )
-
-    composio = _get_composio()
-    try:
-        accounts = composio.connected_accounts.list(
-            user_ids=[user_id],
-            auth_config_ids=[auth_config_id],
-            limit=10,
-        )
-    except AppError:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} composio.connected_accounts.list failed",
-            user_id=user_id,
-            toolkit=toolkit,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise AppError(
-            message=f"Composio connected_accounts.list failed: {e}",
-            why="SDK or transport error while resolving the connected account",
-            status_code=502,
-            meta={"toolkit": toolkit, "user_id": user_id, "exception": str(e)},
-        ) from e
-
-    total_accounts = len(accounts.items)
-    active = next(
-        (
-            acc
-            for acc in accounts.items
-            if acc.status == "ACTIVE" and not acc.auth_config.is_disabled
-        ),
-        None,
-    )
-    if active is None:
-        # Surface what Composio actually told us: how many accounts exist and
-        # why none qualified (status / disabled). Critical for diagnosing
-        # "Gmail expired" UX without guessing.
-        account_summary = [
-            {
-                "id": getattr(acc, "id", "?"),
-                "status": getattr(acc, "status", "?"),
-                "is_disabled": getattr(getattr(acc, "auth_config", None), "is_disabled", "?"),
-            }
-            for acc in accounts.items[:5]
-        ]
-        log.warning(
-            f"{LogTag.COMPOSIO} composio: no ACTIVE account for this user and toolkit",
-            user_id=user_id,
-            toolkit=toolkit,
-            total_accounts=total_accounts,
-            account_summary=account_summary,
-        )
-        # 403, not 401: the user's session is valid, they just have no active
-        # connection. 401 would trip the client's session-expiry interceptor and
-        # pop a "please log in" modal on a logged-in user; 403 routes to reconnect.
-        raise AppError(
-            message=f"No active {toolkit} connection",
-            why="This integration has no active connected account",
-            fix=f"Reconnect the {toolkit} integration",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            # The web interceptor keys its reconnect toast on `toolkit`.
-            public={"toolkit": toolkit},
-            meta={"user_id": user_id},
-        )
-
-    log.info(
-        f"{LogTag.COMPOSIO} composio: resolved connected_account_id and cached it",
-        user_id=user_id,
-        toolkit=toolkit,
-        id=active.id,
-        _connected_account_cache_ttl_seconds=_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
-    )
-    with _cache_lock:
-        _connected_account_cache[cache_key] = (
-            active.id,
-            now + _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
-        )
-    return cast(str, active.id)
+    return scoped_connected_account_id(user_id, toolkit)
 
 
 def _build_parameters(
     headers: dict[str, str] | None,
-    query: dict[str, Any] | None,
+    query: Mapping[str, object] | None,
 ) -> list[dict[str, str]]:
     params: list[dict[str, str]] = []
     if headers:
@@ -212,6 +98,30 @@ def _build_parameters(
             elif narrowed is not None:
                 params.append({"name": name, "type": "query", "value": str(narrowed)})
     return params
+
+
+def _proxy_failure(request: ProxyRequest, error: Exception) -> AppError:
+    """Log and build the loud failure for a proxy call the SDK or transport could not complete."""
+    log.error(
+        f"{LogTag.COMPOSIO} composio.tools.proxy raised",
+        user_id=request.user_id,
+        toolkit=request.toolkit,
+        method=request.method,
+        endpoint=request.endpoint,
+        error=str(error),
+        error_type=type(error).__name__,
+    )
+    return AppError(
+        message=f"Composio tools.proxy failed: {error}",
+        why="SDK or transport error while calling the provider",
+        status_code=502,
+        meta={
+            "toolkit": request.toolkit,
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "exception": str(error),
+        },
+    )
 
 
 def _proxy_call(request: ProxyRequest) -> ProxyResponse:
@@ -244,35 +154,18 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
         response = _get_composio().tools.proxy(**proxy_kwargs)
     except AppError:
         raise
+    except composio_client.NotFoundError as e:
+        if not is_dead_account_error(e):
+            raise _proxy_failure(request, e) from e
+        raise ConnectedAccountGoneError(request.toolkit, str(e)) from e
     except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} composio.tools.proxy raised",
-            user_id=request.user_id,
-            toolkit=request.toolkit,
-            method=request.method,
-            endpoint=request.endpoint,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise AppError(
-            message=f"Composio tools.proxy failed: {e}",
-            why="SDK or transport error while calling the provider",
-            status_code=502,
-            meta={
-                "toolkit": request.toolkit,
-                "endpoint": request.endpoint,
-                "method": request.method,
-                "exception": str(e),
-            },
-        ) from e
+        raise _proxy_failure(request, e) from e
 
     status = int(response.status)
     if status >= 400:
         # A provider 401 means Composio's token was rejected and refresh failed —
         # the integration needs reconnecting, not the GAIA session. Surface as 403
         # so the web client routes to reconnect instead of a false "sign in again".
-        if status == 401:
-            invalidate_connected_account_cache(user_id=request.user_id, toolkit=request.toolkit)
         gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
         raise AppError(
             message=f"{request.toolkit} API error ({status})",
@@ -311,7 +204,8 @@ def proxy_request_sync(request: ProxyRequest) -> Any:
     provider's differently-shaped JSON, and annotating it -> object measured
     47 new mypy errors across 16 files (mostly "object has no attribute get").
     """
-    return _proxy_call(request)["data"]
+    response: ProxyResponse = _proxy_call(request)
+    return response["data"]
 
 
 def proxy_request_full_sync(request: ProxyRequest) -> ProxyResponse:
@@ -328,34 +222,10 @@ async def proxy_request(request: ProxyRequest) -> Any:
     return await asyncio.to_thread(proxy_request_sync, request)
 
 
-def invalidate_connected_account_cache(
-    user_id: str | None = None, toolkit: str | None = None
-) -> None:
-    """Clear cached connected_account_id entries.
-
-    Call after a user disconnects or reconnects an integration so the next
-    proxy request re-resolves the account.
-    """
-    with _cache_lock:
-        if user_id is None and toolkit is None:
-            _connected_account_cache.clear()
-            return
-        normalized_toolkit = toolkit.upper() if toolkit else None
-        keys_to_remove = [
-            key
-            for key in _connected_account_cache
-            if (user_id is None or key[0] == user_id)
-            and (normalized_toolkit is None or key[1] == normalized_toolkit)
-        ]
-        for key in keys_to_remove:
-            _connected_account_cache.pop(key, None)
-
-
 __all__ = [
     "ProxyMethod",
     "ProxyResponse",
     "proxy_request",
     "proxy_request_sync",
     "proxy_request_full_sync",
-    "invalidate_connected_account_cache",
 ]

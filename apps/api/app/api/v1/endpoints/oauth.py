@@ -28,7 +28,6 @@ from app.models.oauth_models import (
 from app.services.oauth.composio_callback import (
     ConnectionRejected,
     complete_composio_connection,
-    stored_connected_account_id,
 )
 from app.services.oauth.oauth_service import store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -548,7 +547,8 @@ async def composio_callback(
         )
         return _composio_failure(redirect_path, error_type)
 
-    connected_account_id = connectedAccountId or await stored_connected_account_id(state_data)
+    # The hosted Connect Link redirects back without the id; the state recorded it at initiate.
+    connected_account_id = connectedAccountId or state_data["connected_account_id"]
     if not connected_account_id:
         log.error(
             f"{LogTag.OAUTH} Connected account ID missing for successful connection",

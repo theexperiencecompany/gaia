@@ -3,49 +3,32 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.models.agent_config import ComposioAccountSelection
 from app.services.composio import proxy_client
+from app.services.composio.account_scope import account_scope
+from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.proxy_client import (
     ProxyRequest,
     _build_parameters,
     _resolve_connected_account_id,
-    invalidate_connected_account_cache,
     proxy_request,
     proxy_request_sync,
 )
 from app.utils.errors import AppError
 from shared.py.wide_events import log
-
-
-@pytest.fixture(autouse=True)
-def _clear_cache():
-    invalidate_connected_account_cache()
-    yield
-    invalidate_connected_account_cache()
-
-
-def _make_account(account_id: str = "acc_active", active: bool = True) -> MagicMock:
-    account = MagicMock()
-    account.id = account_id
-    account.status = "ACTIVE" if active else "INACTIVE"
-    account.auth_config.is_disabled = False
-    return account
+from tests.factories import make_composio_not_found
 
 
 def _make_composio(
-    account_id: str = "acc_active",
     proxy_status: int = 200,
     proxy_data: Any = None,
 ) -> MagicMock:
     composio = MagicMock()
-    accounts = MagicMock()
-    accounts.items = [_make_account(account_id=account_id)]
-    composio.connected_accounts.list.return_value = accounts
-
     response = MagicMock()
     response.status = proxy_status
     response.data = proxy_data if proxy_data is not None else {"ok": True}
@@ -57,11 +40,11 @@ def _patch_composio(composio: MagicMock):
     return patch.object(proxy_client, "_get_composio", return_value=composio)
 
 
-def _patch_auth_config(toolkit: str = "GMAIL", auth_config_id: str | None = "ac_test"):
-    return patch.object(
-        proxy_client,
-        "_toolkit_to_auth_config_id",
-        side_effect=lambda t: auth_config_id if t.upper() == toolkit else None,
+def _patch_primary(account_id: str = "acc_active"):
+    """Pin the user's primary account, as the account scope resolves it from Mongo."""
+    return patch(
+        "app.services.composio.account_scope.primary_connected_account_id",
+        AsyncMock(return_value=account_id),
     )
 
 
@@ -103,60 +86,37 @@ class TestResolveConnectedAccountId:
             _resolve_connected_account_id("", "GMAIL")
         assert exc.value.status_code == 500
 
-    def test_raises_when_toolkit_unknown(self) -> None:
-        with _patch_auth_config(auth_config_id=None):
-            with pytest.raises(AppError) as exc:
-                _resolve_connected_account_id("u1", "WHATSAPP")
-        assert "Unknown" in exc.value.message
+    def test_without_a_scope_it_is_the_users_primary(self) -> None:
+        with _patch_primary("acc_primary") as primary:
+            assert _resolve_connected_account_id("u1", "GMAIL") == "acc_primary"
+        primary.assert_awaited_once_with("u1", "GMAIL")
 
-    def test_raises_when_no_active_account(self) -> None:
-        composio = MagicMock()
-        accounts = MagicMock()
-        accounts.items = [_make_account(active=False)]
-        composio.connected_accounts.list.return_value = accounts
-        with _patch_auth_config(), _patch_composio(composio):
+    def test_the_account_the_call_was_scoped_to_wins(self) -> None:
+        selection = ComposioAccountSelection(toolkit="GMAIL", connected_account_id="acc_work")
+        with _patch_primary("acc_primary") as primary, account_scope(selection):
+            assert _resolve_connected_account_id("u1", "GMAIL") == "acc_work"
+        primary.assert_not_awaited()
+
+    def test_a_scope_on_another_toolkit_does_not_leak_into_this_one(self) -> None:
+        selection = ComposioAccountSelection(toolkit="NOTION", connected_account_id="acc_notion")
+        with _patch_primary("acc_primary"), account_scope(selection):
+            assert _resolve_connected_account_id("u1", "GMAIL") == "acc_primary"
+
+    def test_no_connected_primary_is_the_reconnect_error(self) -> None:
+        not_connected = AppError(message="x", status_code=403, code=INTEGRATION_NOT_CONNECTED)
+        with patch(
+            "app.services.composio.account_scope.primary_connected_account_id",
+            AsyncMock(side_effect=not_connected),
+        ):
             with pytest.raises(AppError) as exc:
                 _resolve_connected_account_id("u1", "GMAIL")
-        assert exc.value.status_code == 403
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
-        assert exc.value.meta == {"user_id": "u1"}, "the user id is wide-event context, not a body"
-        assert exc.value.why == "This integration has no active connected account", (
-            "the user reads this; it must not name them or the account"
-        )
-
-    def test_returns_active_account_id(self) -> None:
-        composio = _make_composio(account_id="acc_xyz")
-        with _patch_auth_config(), _patch_composio(composio):
-            assert _resolve_connected_account_id("u1", "GMAIL") == "acc_xyz"
-
-    def test_caches_lookup_per_user_toolkit(self) -> None:
-        composio = _make_composio(account_id="acc_xyz")
-        with _patch_auth_config(), _patch_composio(composio):
-            _resolve_connected_account_id("u1", "GMAIL")
-            _resolve_connected_account_id("u1", "GMAIL")
-        assert composio.connected_accounts.list.call_count == 1
-
-    def test_cache_keyed_per_user(self) -> None:
-        composio = _make_composio()
-        with _patch_auth_config(), _patch_composio(composio):
-            _resolve_connected_account_id("u1", "GMAIL")
-            _resolve_connected_account_id("u2", "GMAIL")
-        assert composio.connected_accounts.list.call_count == 2
-
-    def test_invalidate_clears_cache(self) -> None:
-        composio = _make_composio()
-        with _patch_auth_config(), _patch_composio(composio):
-            _resolve_connected_account_id("u1", "GMAIL")
-            invalidate_connected_account_cache(user_id="u1", toolkit="GMAIL")
-            _resolve_connected_account_id("u1", "GMAIL")
-        assert composio.connected_accounts.list.call_count == 2
 
 
 class TestProxyRequestSync:
     def test_sends_basic_request(self) -> None:
         composio = _make_composio(proxy_data={"hello": "world"})
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             result = proxy_request_sync(
                 ProxyRequest(
                     user_id="u1",
@@ -177,7 +137,7 @@ class TestProxyRequestSync:
 
     def test_passes_body_and_parameters(self) -> None:
         composio = _make_composio()
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             proxy_request_sync(
                 ProxyRequest(
                     user_id="u1",
@@ -200,7 +160,7 @@ class TestProxyRequestSync:
 
     def test_binary_body_takes_precedence_over_body(self) -> None:
         composio = _make_composio()
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             proxy_request_sync(
                 ProxyRequest(
                     user_id="u1",
@@ -220,7 +180,7 @@ class TestProxyRequestSync:
 
     def test_raises_app_error_on_non_2xx(self) -> None:
         composio = _make_composio(proxy_status=404, proxy_data={"err": "missing"})
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
                     ProxyRequest(
@@ -247,7 +207,7 @@ class TestProxyRequestSync:
         # A rejected token means the *integration* needs reconnecting, not the
         # GAIA session — the client routes on the 403 + code pair.
         composio = _make_composio(proxy_status=401, proxy_data={"error": "invalid_grant"})
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
@@ -262,35 +222,10 @@ class TestProxyRequestSync:
             "provider_response": {"error": "invalid_grant"},
         }
 
-    def test_provider_401_evicts_only_that_users_toolkit_from_the_cache(self) -> None:
-        # Warm three cache entries, then get a 401 for (u1, GMAIL): the next
-        # call for that pair must re-resolve, while (u2, GMAIL) and (u1, NOTION)
-        # keep their cached account and never hit connected_accounts.list again.
-        composio = _make_composio()
-        with (
-            patch.object(proxy_client, "_toolkit_to_auth_config_id", return_value="ac_test"),
-            _patch_composio(composio),
-        ):
-            for user_id, toolkit in (("u1", "GMAIL"), ("u2", "GMAIL"), ("u1", "NOTION")):
-                _resolve_connected_account_id(user_id, toolkit)
-            assert composio.connected_accounts.list.call_count == 3
-
-            composio.tools.proxy.return_value.status = 401
-            with pytest.raises(AppError):
-                proxy_request_sync(
-                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
-                )
-
-            _resolve_connected_account_id("u2", "GMAIL")
-            _resolve_connected_account_id("u1", "NOTION")
-            assert composio.connected_accounts.list.call_count == 3
-            _resolve_connected_account_id("u1", "GMAIL")
-            assert composio.connected_accounts.list.call_count == 4
-
     def test_sdk_failure_is_a_502_carrying_the_request_identity(self) -> None:
         composio = _make_composio()
         composio.tools.proxy.side_effect = ConnectionError("boom")
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="POST")
@@ -303,10 +238,38 @@ class TestProxyRequestSync:
             "exception": "boom",
         }
 
+    def test_an_account_composio_no_longer_holds_is_reported_as_gone(self) -> None:
+        """Seen live: the tool path never recognised this 404, so the agent retried a dead account."""
+        composio = _make_composio()
+        composio.tools.proxy.side_effect = make_composio_not_found(
+            {"error": {"code": 606, "slug": "ConnectedAccount_ResourceNotFound"}},
+            'Connected account "ca_gone" not found',
+        )
+        with _patch_primary("ca_gone"), _patch_composio(composio):
+            with pytest.raises(ConnectedAccountGoneError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert exc.value.code == INTEGRATION_NOT_CONNECTED
+        assert exc.value.public == {"toolkit": "GMAIL"}
+
+    def test_any_other_composio_404_stays_a_loud_502(self) -> None:
+        composio = _make_composio()
+        composio.tools.proxy.side_effect = make_composio_not_found(
+            {"error": {"code": 1404, "slug": "Tool_NotFound"}}, "Tool not found"
+        )
+        with _patch_primary(), _patch_composio(composio):
+            with pytest.raises(AppError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert not isinstance(exc.value, ConnectedAccountGoneError)
+        assert exc.value.status_code == 502
+
     def test_request_identity_is_recorded_on_the_wide_event(self) -> None:
         log.reset()
         composio = _make_composio()
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             proxy_request_sync(
                 ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
             )
@@ -322,7 +285,7 @@ class TestProxyRequestAsync:
     @pytest.mark.asyncio
     async def test_async_delegates_to_sync(self) -> None:
         composio = _make_composio(proxy_data={"async": True})
-        with _patch_auth_config(), _patch_composio(composio):
+        with _patch_primary(), _patch_composio(composio):
             result = await proxy_request(
                 ProxyRequest(
                     user_id="u1",

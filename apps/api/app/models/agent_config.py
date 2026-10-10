@@ -279,6 +279,13 @@ def run_analytics_context(configurable: AgentConfigurable) -> AnalyticsContext:
     return stamped or current_analytics_context().acting_as(Actor.AGENT)
 
 
+class ComposioAccountSelection(BaseModel):
+    """The connected account one tool call acts as, chosen at dispatch."""
+
+    toolkit: str
+    connected_account_id: str
+
+
 class RunMetadata(BaseModel):
     """The GAIA keys of a run config's metadata; user_id names the caller."""
 
@@ -286,6 +293,7 @@ class RunMetadata(BaseModel):
 
     user_id: str | None = None
     conversation_id: str | None = None
+    composio_account: ComposioAccountSelection | None = None
 
 
 class _RunConfigMetadataView(BaseModel):

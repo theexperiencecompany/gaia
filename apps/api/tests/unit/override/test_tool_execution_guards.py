@@ -132,6 +132,8 @@ class TestTimeoutGuard:
         monkeypatch.setattr(f"{DISPATCH}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.3)
+        # No accounts on record: the account lookup is Mongo, not this guard.
+        monkeypatch.setattr(f"{DISPATCH}.get_account_record", AsyncMock(return_value=None))
 
         hung = MagicMock()
         hung.name = "GMAIL_SEND_EMAIL"

@@ -11,6 +11,7 @@ Mocked: Redis, MongoDB collections, the Composio service, the token
 repository, and the MCP client.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -23,14 +24,23 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.models.integration_models import (
     Integration,
+    IntegrationAccount,
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.scheduler_models import DeactivationReason
+from app.services.integrations.integration_account_lifecycle import (
+    AccountConnected,
+    AccountLimitReached,
+    record_connected_account,
+    remove_account,
+    update_account,
+)
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -38,6 +48,7 @@ from app.services.integrations.integration_connection_service import (
     connect_self_integration,
     disconnect_integration,
 )
+from app.services.integrations.integration_expiry import expire_account
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
     ResolvedIntegration,
@@ -54,6 +65,8 @@ from app.services.oauth.oauth_state_service import (
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
+from app.utils.errors import AppError
+from tests.integration_account_factories import with_nickname
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -120,7 +133,6 @@ class _FakeUserIntegrationRepo:
         *,
         status: UserIntegrationStatus,
         expired_reason: str | None = None,
-        connected_account_id: str | None = None,
     ) -> bool:
         key = (user_id, integration_id)
         existing = self.docs.get(key)
@@ -131,10 +143,9 @@ class _FakeUserIntegrationRepo:
             "status": status,
             "created_at": existing.created_at if existing else now,
         }
-        if connected_account_id is not None:
-            fields["connected_account_id"] = connected_account_id
-        elif existing is not None:
-            fields["connected_account_id"] = existing.connected_account_id
+        if existing is not None:
+            fields["accounts"] = existing.accounts
+            fields["primary_account_id"] = existing.primary_account_id
         if existing is not None and existing.connected_at is not None:
             fields["connected_at"] = existing.connected_at
         if existing is not None and status != "connected":
@@ -149,6 +160,39 @@ class _FakeUserIntegrationRepo:
             fields["expired_reason"] = expired_reason
         self.docs[key] = UserIntegrationDocument.model_validate(fields)
         return True
+
+    async def save_accounts(
+        self,
+        user_id: str,
+        integration_id: str,
+        *,
+        accounts: list[IntegrationAccount],
+        primary_account_id: str | None,
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
+    ) -> UserIntegrationDocument:
+        existing = self.docs.get((user_id, integration_id))
+        base = existing or UserIntegrationDocument(user_id=user_id, integration_id=integration_id)
+        doc = base.model_copy(
+            update={
+                "accounts": list(accounts),
+                "primary_account_id": primary_account_id,
+                "status": status,
+                "expired_reason": expired_reason if status == "expired" else None,
+            }
+        )
+        self.docs[(user_id, integration_id)] = doc
+        return doc
+
+    async def set_account_nickname(
+        self, user_id: str, integration_id: str, connected_account_id: str, nickname: str | None
+    ) -> UserIntegrationDocument | None:
+        doc = with_nickname(
+            self.docs.get((user_id, integration_id)), connected_account_id, nickname
+        )
+        if doc is not None:
+            self.docs[(user_id, integration_id)] = doc
+        return doc
 
     async def get_for_user(
         self, user_id: str, integration_id: str
@@ -173,6 +217,10 @@ def _patched_repo(repo: _FakeUserIntegrationRepo):
         ),
         patch(
             "app.services.integrations.user_integrations.user_integration_repository",
+            repo,
+        ),
+        patch(
+            "app.services.integrations.integration_accounts.user_integration_repository",
             repo,
         ),
     ):
@@ -406,16 +454,13 @@ class TestUserIntegrationStatusTracking:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            result = await update_user_integration_status(
-                USER_ID, "gmail", "connected", connected_account_id="ca_new"
-            )
+            result = await update_user_integration_status(USER_ID, "gmail", "connected")
 
         assert result is True
         assert len(repo.stored) == 1
         doc = repo.stored[0]
         assert doc.status == "connected"
         assert doc.connected_at is not None
-        assert doc.connected_account_id == "ca_new"
         assert doc.expired_at is None
         assert doc.expired_reason is None
 
@@ -465,6 +510,14 @@ class TestComposioIntegrationConnection:
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 AsyncMock(return_value=True),
             ),
+            patch(
+                "app.services.integrations.integration_connection_service.attach_connected_account",
+                AsyncMock(),
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.get_account_record",
+                AsyncMock(return_value=None),
+            ),
         ):
             response = await connect_composio_integration(
                 user_id=USER_ID,
@@ -506,6 +559,14 @@ class TestComposioIntegrationConnection:
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 AsyncMock(return_value=True),
             ),
+            patch(
+                "app.services.integrations.integration_connection_service.attach_connected_account",
+                AsyncMock(),
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.get_account_record",
+                AsyncMock(return_value=None),
+            ),
         ):
             await connect_composio_integration(
                 user_id=USER_ID,
@@ -534,6 +595,7 @@ class TestComposioIntegrationConnection:
         )
 
         mock_update_status = AsyncMock(return_value=True)
+        mock_attach = AsyncMock()
 
         with (
             patch(
@@ -548,6 +610,14 @@ class TestComposioIntegrationConnection:
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 mock_update_status,
             ),
+            patch(
+                "app.services.integrations.integration_connection_service.attach_connected_account",
+                mock_attach,
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.get_account_record",
+                AsyncMock(return_value=None),
+            ),
         ):
             await connect_composio_integration(
                 user_id=USER_ID,
@@ -557,12 +627,10 @@ class TestComposioIntegrationConnection:
                 redirect_path="/integrations",
             )
 
-            # `created` before the redirect (so an abandoned connect still leaves a
-            # record), then again with the id Composio minted at initiate time.
-            assert mock_update_status.await_args_list == [
-                call(USER_ID, "gmail", "created"),
-                call(USER_ID, "gmail", "created", connected_account_id="ca_initiated"),
-            ]
+            # `created` before the redirect, so an abandoned connect still leaves a
+            # record; the pending account id rides on this attempt's OAuth state.
+            assert mock_update_status.await_args_list == [call(USER_ID, "gmail", "created")]
+            mock_attach.assert_awaited_once_with("state_token", "ca_initiated")
 
 
 # ---------------------------------------------------------------------------
@@ -636,13 +704,13 @@ class TestDisconnectIntegration:
     """disconnect_integration: cleanup for different managed_by types."""
 
     async def test_disconnect_composio_integration(self) -> None:
-        """Disconnecting a Composio integration calls delete_connected_account."""
+        """Disconnecting a Composio integration revokes every account the user holds on it."""
 
         gmail_config = get_integration_by_id("gmail")
         assert gmail_config is not None
 
         mock_composio = AsyncMock()
-        mock_composio.delete_connected_account = AsyncMock()
+        mock_composio.delete_all_connected_accounts = AsyncMock(return_value=2)
 
         resolved = ResolvedIntegration(
             integration_id="gmail",
@@ -665,10 +733,6 @@ class TestDisconnectIntegration:
                 return_value=mock_composio,
             ),
             patch(
-                "app.services.integrations.integration_connection_service.delete_cache",
-                AsyncMock(),
-            ),
-            patch(
                 "app.services.integrations.integration_connection_service.remove_user_integration",
                 AsyncMock(return_value=True),
             ),
@@ -681,7 +745,7 @@ class TestDisconnectIntegration:
 
             assert result.integration_id == "gmail"
             assert "disconnected" in result.message.lower()
-            mock_composio.delete_connected_account.assert_called_once_with(
+            mock_composio.delete_all_connected_accounts.assert_called_once_with(
                 user_id=USER_ID, provider="gmail"
             )
 
@@ -714,10 +778,6 @@ class TestDisconnectIntegration:
             patch(
                 "app.services.integrations.integration_connection_service.remove_user_integration",
                 AsyncMock(return_value=True),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.delete_cache",
-                AsyncMock(),
             ),
         ):
             result = await disconnect_integration(USER_ID, "deepwiki")
@@ -766,10 +826,6 @@ class TestDisconnectIntegration:
             patch(
                 "app.services.integrations.integration_connection_service.delete_custom_integration",
                 mock_delete_custom,
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.delete_cache",
-                AsyncMock(),
             ),
         ):
             result = await disconnect_integration(USER_ID, "my-custom-mcp")
@@ -1327,3 +1383,207 @@ class TestMCPIntegrationConnection:
             assert response.status == "redirect"
             assert response.redirect_url is not None
             assert "auth.example.com" in response.redirect_url
+
+
+# ---------------------------------------------------------------------------
+# Tests — Multiple accounts on one Composio integration
+# ---------------------------------------------------------------------------
+
+LIFECYCLE = "app.services.integrations.integration_account_lifecycle"
+
+
+class _Composio:
+    """Composio at its client seam: who each connected account is, and which ones were revoked."""
+
+    def __init__(self, emails: dict[str, str]) -> None:
+        self.emails = emails
+        self.service = MagicMock()
+        self.service.delete_connected_account = AsyncMock()
+        self.service.composio.tools.execute = MagicMock(side_effect=self._profile)
+
+    def _profile(self, **kwargs: Any) -> dict[str, Any]:
+        email = self.emails[kwargs["connected_account_id"]]
+        return {"successful": True, "data": {"emailAddress": email}, "error": None}
+
+    @property
+    def revoked(self) -> list[str]:
+        return [c.args[0] for c in self.service.delete_connected_account.await_args_list]
+
+
+@pytest.mark.integration
+class TestMultipleAccounts:
+    """Real lifecycle + account services against the in-memory repository; Composio mocked at its client."""
+
+    @pytest.fixture
+    def repo(self, fake_redis: object) -> Iterator[_FakeUserIntegrationRepo]:
+        repository = _FakeUserIntegrationRepo()
+        with _patched_repo(repository):
+            yield repository
+
+    @pytest.fixture
+    def composio(self) -> Iterator[_Composio]:
+        fake = _Composio(
+            {
+                "ca_work": "work@acme.com",
+                "ca_home": "me@gmail.com",
+                "ca_work_again": "work@acme.com",
+                **{f"ca_{n}": f"user{n}@acme.com" for n in range(10)},
+            }
+        )
+        with (
+            patch(f"{LIFECYCLE}.get_composio_service", return_value=fake.service),
+            patch(
+                "app.services.integrations.account_identity.get_composio_service",
+                return_value=fake.service,
+            ),
+            patch(f"{LIFECYCLE}.capture"),
+        ):
+            yield fake
+
+    @pytest.fixture
+    def resync(self) -> Iterator[AsyncMock]:
+        with patch(f"{LIFECYCLE}.resync_primary_bound_triggers", AsyncMock()) as resync:
+            yield resync
+
+    @staticmethod
+    def _gmail() -> OAuthIntegration:
+        gmail = get_integration_by_id("gmail")
+        assert gmail is not None
+        return gmail
+
+    async def test_the_first_account_becomes_primary_named_by_its_identity(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.primary_changed is True
+        doc = repo.docs[(USER_ID, "gmail")]
+        assert doc.status == "connected"
+        assert doc.primary_account_id == "ca_work"
+        assert [(a.label, a.identity) for a in doc.accounts] == [
+            ("work@acme.com", {"email": "work@acme.com"})
+        ]
+
+    async def test_a_second_mailbox_is_added_beside_the_primary(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_home")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.primary_changed is False
+        doc = repo.docs[(USER_ID, "gmail")]
+        assert [a.label for a in doc.accounts] == ["work@acme.com", "me@gmail.com"]
+        assert doc.primary_account_id == "ca_work"
+        assert composio.revoked == []
+
+    async def test_reconnecting_the_same_identity_replaces_it_instead_of_duplicating(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        """The old account dies (or is a leftover); the new grant takes its place, nickname and primacy included."""
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await update_account(
+            USER_ID, "gmail", "ca_work", nickname="Work", rename=True, make_primary=False
+        )
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work_again")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.replaced_account_id == "ca_work"
+        assert connected.primary_changed is True
+        doc = repo.docs[(USER_ID, "gmail")]
+        assert [(a.connected_account_id, a.display_name) for a in doc.accounts] == [
+            ("ca_work_again", "Work")
+        ]
+        assert doc.primary_account_id == "ca_work_again"
+        assert composio.revoked == ["ca_work"]
+
+    async def test_a_new_identity_over_the_limit_is_revoked_and_rejected(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        for n in range(MAX_ACCOUNTS_PER_INTEGRATION):
+            await record_connected_account(USER_ID, self._gmail(), f"ca_{n}")
+
+        outcome = await record_connected_account(USER_ID, self._gmail(), "ca_home")
+
+        assert outcome == AccountLimitReached(limit=MAX_ACCOUNTS_PER_INTEGRATION)
+        assert len(repo.docs[(USER_ID, "gmail")].accounts) == MAX_ACCOUNTS_PER_INTEGRATION
+        assert composio.revoked == ["ca_home"]
+
+    async def test_removing_the_primary_promotes_the_oldest_live_account(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio, resync: AsyncMock
+    ) -> None:
+        for account_id in ("ca_work", "ca_home", "ca_0"):
+            await record_connected_account(USER_ID, self._gmail(), account_id)
+
+        doc = await remove_account(USER_ID, "gmail", "ca_work")
+
+        assert doc is not None
+        assert doc.primary_account_id == "ca_home"
+        assert [a.connected_account_id for a in doc.accounts] == ["ca_home", "ca_0"]
+        assert composio.revoked == ["ca_work"]
+        # Workflow triggers lived on the removed primary.
+        resync.assert_awaited_once_with(USER_ID, self._gmail())
+
+    async def test_removing_a_secondary_account_leaves_triggers_alone(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio, resync: AsyncMock
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+
+        await remove_account(USER_ID, "gmail", "ca_home")
+
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+        resync.assert_not_awaited()
+
+    async def test_removing_the_last_account_is_a_full_disconnect(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        with patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect:
+            doc = await remove_account(USER_ID, "gmail", "ca_work")
+
+        assert doc is None
+        disconnect.assert_awaited_once_with(USER_ID, "gmail")
+
+    async def test_making_an_account_primary_moves_the_triggers_onto_it(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio, resync: AsyncMock
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+
+        doc = await update_account(
+            USER_ID, "gmail", "ca_home", nickname=None, rename=False, make_primary=True
+        )
+
+        assert doc.primary_account_id == "ca_home"
+        resync.assert_awaited_once_with(USER_ID, self._gmail())
+
+    async def test_an_expired_account_cannot_be_made_primary(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+        await record_connected_account(USER_ID, self._gmail(), "ca_home")
+        await expire_account(USER_ID, "gmail", "ca_home", trigger="webhook")
+
+        with pytest.raises(AppError) as exc:
+            await update_account(
+                USER_ID, "gmail", "ca_home", nickname=None, rename=False, make_primary=True
+            )
+
+        assert exc.value.status_code == 409
+        assert repo.docs[(USER_ID, "gmail")].primary_account_id == "ca_work"
+
+    async def test_an_unreadable_identity_still_keeps_the_account_under_a_numbered_label(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        composio.service.composio.tools.execute.side_effect = RuntimeError("profile down")
+
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        (account,) = repo.docs[(USER_ID, "gmail")].accounts
+        assert account.label == "Gmail account 1"
+        assert account.identity == {}

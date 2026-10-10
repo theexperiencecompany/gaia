@@ -1,7 +1,7 @@
 """What the Composio OAuth callback does once the route has consumed its state.
 
-The route owns the redirect URLs; this module resolves the connected account
-and records the connection.
+The route owns the redirect URLs; this module verifies the connected account
+and records it on the integration.
 """
 
 from dataclasses import dataclass
@@ -12,9 +12,9 @@ from fastapi import BackgroundTasks
 from app.config.oauth_config import get_integration_by_config
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.oauth_models import OAuthStateData
 from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
+from app.services.integrations.integration_account_lifecycle import AccountLimitReached
 from app.services.integrations.user_integration_status import reconnect_or_unknown
 from app.services.oauth.oauth_service import handle_oauth_connection
 from shared.py.analytics import UserId
@@ -31,26 +31,9 @@ class ConnectionCompleted:
 
 @dataclass(frozen=True)
 class ConnectionRejected:
-    reason: Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
-
-
-async def stored_connected_account_id(state_data: OAuthStateData) -> str | None:
-    """Return the id minted at initiate time — the source of truth for the callback.
-
-    Composio's hosted Connect Link redirects back without the connectedAccountId
-    the retired initiate() flow appended, and the parameter is documented
-    nowhere, so it cannot be relied on either way. Failing on the query string
-    alone rejected connections that had actually succeeded.
-    """
-    record = await user_integration_repository.get_for_user(
-        state_data["user_id"], state_data["integration_id"]
-    )
-    connected_account_id = record.connected_account_id if record else None
-    log.set_ns(
-        "oauth",
-        connected_account_id_source="stored_record" if connected_account_id else "missing",
-    )
-    return connected_account_id
+    reason: Literal[
+        "account_not_found", "user_missing", "config_missing", "user_mismatch", "account_limit"
+    ]
 
 
 async def complete_composio_connection(
@@ -108,12 +91,19 @@ async def complete_composio_connection(
         user_integration_repository.has_connected_before(str(user_id), integration_config.id),
         integration_config.id,
     )
-    await handle_oauth_connection(
+    connected = await handle_oauth_connection(
         user_id=str(user_id),
         integration_config=integration_config,
         background_tasks=background_tasks,
         connected_account_id=connected_account_id,
     )
+    if isinstance(connected, AccountLimitReached):
+        log.warning(
+            f"{LogTag.OAUTH} Connect rejected at the per-integration account limit",
+            limit=connected.limit,
+            integration_id=integration_config.id,
+        )
+        return ConnectionRejected(reason="account_limit")
     capture(
         UserId(str(user_id)),
         IntegrationConnected(

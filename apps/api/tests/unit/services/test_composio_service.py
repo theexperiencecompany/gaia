@@ -2,12 +2,15 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import composio_client
+import httpx
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT, GMAIL_INTEGRATION_ID
 from app.services.composio import composio_service
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # ComposioService tests
@@ -487,6 +490,12 @@ class TestCheckConnectionStatus:
             result = await svc.check_connection_status(["gmail"], "user1")
 
         assert result == {"gmail": True}
+        svc.composio.connected_accounts.list.assert_called_once_with(
+            user_ids=["user1"],
+            auth_config_ids=["auth_gmail"],
+            statuses=["ACTIVE"],
+            limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_for_disabled(self):
@@ -552,72 +561,58 @@ class TestGetConnectedAccountById:
         assert svc.get_connected_account_by_id("abc") is None
 
 
-class TestDeleteConnectedAccount:
+class TestDeleteAllConnectedAccounts:
     @pytest.mark.asyncio
     async def test_unsupported_provider(self):
         svc = _make_service()
         with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
             with pytest.raises(ValueError, match="not supported"):
-                await svc.delete_connected_account("user1", "bad")
+                await svc.delete_all_connected_accounts("user1", "bad")
 
     @pytest.mark.asyncio
-    async def test_no_active_accounts(self):
+    async def test_every_account_goes_whatever_its_status(self):
+        """Expired and abandoned reconnect leftovers are revoked with the live ones."""
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
-
-        user_accounts = MagicMock()
-        user_accounts.items = []
-        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
-
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
-            result = await svc.delete_connected_account("user1", "gmail")
-
-        assert result["status"] == "success"
-        assert "already disconnected" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_deletes_active_accounts(self):
-        svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
-
-        account = MagicMock()
-        account.status = "ACTIVE"
-        account.auth_config.is_disabled = False
-        account.id = "acc1"
-
-        user_accounts = MagicMock()
-        user_accounts.items = [account]
-        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
+        accounts = []
+        for account_id, status in (("acc1", "ACTIVE"), ("acc2", "EXPIRED"), ("acc3", "INITIATED")):
+            account = MagicMock()
+            account.id = account_id
+            account.status = status
+            accounts.append(account)
+        svc.composio.connected_accounts.list = MagicMock(return_value=MagicMock(items=accounts))
         svc.composio.connected_accounts.delete = MagicMock(return_value=None)
 
         with patch(
             "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
             {"gmail": config},
         ):
-            result = await svc.delete_connected_account("user1", "gmail")
+            async with captured_wide_event() as event:
+                deleted = await svc.delete_all_connected_accounts("user1", "gmail")
 
-        assert result["status"] == "success"
-        assert "1 account(s)" in result["message"]
+        assert deleted == 3
+        assert event["composio_user_id"] == "user1"
+        assert event["composio_provider"] == "gmail"
+        svc.composio.connected_accounts.list.assert_called_once_with(
+            user_ids=["user1"], auth_config_ids=["auth_gmail"], limit=COMPOSIO_ACCOUNT_LIST_LIMIT
+        )
+        assert {
+            c.kwargs["nanoid"] for c in svc.composio.connected_accounts.delete.call_args_list
+        } == {
+            "acc1",
+            "acc2",
+            "acc3",
+        }
 
     @pytest.mark.asyncio
-    async def test_delete_propagates_exception(self):
+    async def test_a_failed_revoke_propagates(self):
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
-
         account = MagicMock()
-        account.status = "ACTIVE"
-        account.auth_config.is_disabled = False
         account.id = "acc1"
-
-        user_accounts = MagicMock()
-        user_accounts.items = [account]
-        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
+        svc.composio.connected_accounts.list = MagicMock(return_value=MagicMock(items=[account]))
         svc.composio.connected_accounts.delete = MagicMock(side_effect=RuntimeError("fail"))
 
         with patch(
@@ -625,63 +620,43 @@ class TestDeleteConnectedAccount:
             {"gmail": config},
         ):
             with pytest.raises(RuntimeError, match="fail"):
-                await svc.delete_connected_account("user1", "gmail")
+                await svc.delete_all_connected_accounts("user1", "gmail")
 
+
+class TestDeleteConnectedAccount:
     @pytest.mark.asyncio
-    async def test_delete_invalidates_proxy_cache(self):
-        """Disconnect must flush the proxy_client cache, or its 10-minute TTL keeps serving the deleted account id."""
+    async def test_revokes_exactly_that_account(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
-        config.toolkit = "GMAIL"
-
-        account = MagicMock()
-        account.status = "ACTIVE"
-        account.auth_config.is_disabled = False
-        account.id = "acc1"
-
-        user_accounts = MagicMock()
-        user_accounts.items = [account]
-        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
         svc.composio.connected_accounts.delete = MagicMock(return_value=None)
 
-        with (
-            patch(
-                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-                {"gmail": config},
-            ),
-            patch(
-                "app.services.composio.composio_service.invalidate_connected_account_cache"
-            ) as mock_invalidate,
-        ):
-            await svc.delete_connected_account("user1", "gmail")
+        async with captured_wide_event() as event:
+            await svc.delete_connected_account("ca_1")
 
-        mock_invalidate.assert_called_once_with(user_id="user1", toolkit="GMAIL")
+        svc.composio.connected_accounts.delete.assert_called_once_with(nanoid="ca_1")
+        assert event["composio_connected_account_id"] == "ca_1"
 
     @pytest.mark.asyncio
-    async def test_delete_invalidates_proxy_cache_when_no_active_account(self):
-        """Even an idempotent disconnect with no active account must flush the cache, since a prior session may have cached a since-revoked id."""
+    async def test_an_account_composio_no_longer_has_counts_as_revoked(self):
+        """Removed from Composio's side already, it must still be removable from GAIA."""
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
-        config.toolkit = "GMAIL"
+        request = httpx.Request(
+            "DELETE", "https://backend.composio.dev/api/v3/connected_accounts/ca_1"
+        )
+        svc.composio.connected_accounts.delete = MagicMock(
+            side_effect=composio_client.NotFoundError(
+                "gone", response=httpx.Response(404, request=request), body=None
+            )
+        )
 
-        user_accounts = MagicMock()
-        user_accounts.items = []
-        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
+        await svc.delete_connected_account("ca_1")
 
-        with (
-            patch(
-                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-                {"gmail": config},
-            ),
-            patch(
-                "app.services.composio.composio_service.invalidate_connected_account_cache"
-            ) as mock_invalidate,
-        ):
-            await svc.delete_connected_account("user1", "gmail")
+    @pytest.mark.asyncio
+    async def test_any_other_revoke_failure_propagates(self):
+        svc = _make_service()
+        svc.composio.connected_accounts.delete = MagicMock(side_effect=RuntimeError("down"))
 
-        mock_invalidate.assert_called_once_with(user_id="user1", toolkit="GMAIL")
+        with pytest.raises(RuntimeError, match="down"):
+            await svc.delete_connected_account("ca_1")
 
 
 class TestHandleSubscribeTrigger:
@@ -691,7 +666,7 @@ class TestHandleSubscribeTrigger:
         trigger = MagicMock()
         trigger.auto_activate = False
 
-        result = await svc.handle_subscribe_trigger("user1", [trigger])
+        result = await svc.handle_subscribe_trigger("user1", "ca_1", [trigger])
         assert result == []
 
     @pytest.mark.asyncio
@@ -703,9 +678,19 @@ class TestHandleSubscribeTrigger:
         trigger.config = {}
 
         svc.composio.triggers.create = MagicMock(return_value={"id": "t1"})
+        inactive = MagicMock()
+        inactive.auto_activate = False
 
-        result = await svc.handle_subscribe_trigger("user1", [trigger])
+        async with captured_wide_event() as event:
+            result = await svc.handle_subscribe_trigger("user1", "ca_1", [trigger, inactive])
         assert result == [{"id": "t1"}]
+        assert event["composio_user_id"] == "user1"
+        assert event["composio_connected_account_id"] == "ca_1"
+        assert event["composio_trigger_count"] == 2
+        # The account is named, so Composio cannot attach it to whichever account it picks.
+        svc.composio.triggers.create.assert_called_once_with(
+            connected_account_id="ca_1", slug="test-slug", trigger_config={}
+        )
 
     @pytest.mark.asyncio
     async def test_subscribe_error_swallowed(self):
@@ -718,7 +703,7 @@ class TestHandleSubscribeTrigger:
         svc.composio.triggers.create = MagicMock(side_effect=RuntimeError("fail"))
 
         # Should not raise (error is logged)
-        result = await svc.handle_subscribe_trigger("user1", [trigger])
+        result = await svc.handle_subscribe_trigger("user1", "ca_1", [trigger])
         # gather will raise and be caught by the except block
         assert result is None
 
@@ -733,7 +718,7 @@ class TestGmailConnectTriggers:
         gmail = get_integration_by_id(GMAIL_INTEGRATION_ID)
         assert gmail is not None
 
-        await svc.handle_subscribe_trigger("user1", gmail.associated_triggers)
+        await svc.handle_subscribe_trigger("user1", "ca_1", gmail.associated_triggers)
 
         created = sorted(
             (c.kwargs["slug"], c.kwargs["trigger_config"])

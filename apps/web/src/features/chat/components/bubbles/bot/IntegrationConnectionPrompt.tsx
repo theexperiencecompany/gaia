@@ -4,9 +4,9 @@ import { Input } from "@heroui/input";
 import { Spinner } from "@heroui/spinner";
 import { AlertCircleIcon } from "@icons";
 import {
-  CONNECT_ACTION_LABEL,
+  type ConnectionPromptState,
   connectionPromptState,
-  type IntegrationConnectionState,
+  PROMPT_ACTION_LABEL,
 } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -34,6 +34,7 @@ interface IntegrationConnectCardProps {
   integration: Integration;
   message: string;
   expired?: boolean;
+  addAccount?: boolean;
 }
 
 function StatusChip({
@@ -43,9 +44,10 @@ function StatusChip({
 }: {
   isConnected: boolean;
   failed: boolean;
-  state: IntegrationConnectionState;
+  state: ConnectionPromptState;
 }) {
-  if (isConnected) {
+  // Adding an account leaves the integration connected while the card asks for more.
+  if (isConnected || (state === "add_account" && !failed)) {
     return (
       <Chip size="sm" variant="flat" color="success">
         Connected
@@ -68,7 +70,7 @@ interface InlineConnectActionProps {
   message: string;
   error: string | undefined;
   failed: boolean;
-  state: IntegrationConnectionState;
+  state: ConnectionPromptState;
   needsBearerToken: boolean;
   token: string;
   setToken: (value: string) => void;
@@ -119,7 +121,7 @@ function InlineConnectAction({
           isDisabled={needsBearerToken && !token.trim()}
           onPress={() => connect(needsBearerToken ? token : undefined)}
         >
-          {failed ? "Retry" : CONNECT_ACTION_LABEL[state]}
+          {failed ? "Retry" : PROMPT_ACTION_LABEL[state]}
         </Button>
       </div>
     </div>
@@ -132,11 +134,15 @@ function IntegrationConnectCard({
   integration,
   message,
   expired,
+  addAccount,
 }: IntegrationConnectCardProps) {
   const { phase, token, setToken, toolsCount, error, connect } =
     useInlineIntegrationConnect(integration.id);
 
-  const state = connectionPromptState(expired, integration.status);
+  const state = connectionPromptState(
+    { expired, add_account: addAccount },
+    integration.status,
+  );
   const isConnected = phase === "connected" || state === "connected";
   const isAvailable = integration.source === "custom" || integration.available;
   // Bearer/API-key servers collect their token in-card; the value is POSTed
@@ -190,7 +196,7 @@ function IntegrationConnectCard({
 export default function IntegrationConnectionPrompt({
   integration_connection_required,
 }: IntegrationConnectionPromptProps) {
-  const { integration_id, message, expired, integration_name } =
+  const { integration_id, message, expired, add_account, integration_name } =
     integration_connection_required;
   const { integrations } = useIntegrations();
   const integration = integrations.find((i) => i.id === integration_id);
@@ -199,7 +205,13 @@ export default function IntegrationConnectionPrompt({
     <CollapsibleListWrapper
       icon={cardIcon(integration_id)}
       count={1}
-      label={expired ? "Reconnect Required" : "Integration Required"}
+      label={
+        expired
+          ? "Reconnect Required"
+          : add_account
+            ? "Add Account"
+            : "Integration Required"
+      }
       isCollapsible={true}
     >
       {integration ? (
@@ -207,6 +219,7 @@ export default function IntegrationConnectionPrompt({
           integration={integration}
           message={message}
           expired={expired}
+          addAccount={add_account}
         />
       ) : (
         // Catalog still loading: header from the streamed name + spinner, rather

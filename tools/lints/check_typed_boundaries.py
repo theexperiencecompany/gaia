@@ -85,6 +85,8 @@ EXTERNAL_TYPEDDICTS = (
     "UsageMetadata",
     "InputTokenDetails",
     "OutputTokenDetails",
+    # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
+    "ToolExecuteParams",
 )
 # Library TypedDicts app classes subclass, by the path they are imported from: the
 # local name is often an alias (``State as _BigtoolState``), so the bare name can't

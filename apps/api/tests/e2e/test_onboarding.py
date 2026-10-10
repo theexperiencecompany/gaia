@@ -38,6 +38,7 @@ from app.constants.onboarding import (
     HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
 )
+from app.models.integration_models import IntegrationAccount
 from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
 from app.models.oauth_models import OAuthIntegration
 from app.models.onboarding_models import (
@@ -49,6 +50,7 @@ from app.models.onboarding_models import (
     WritingStyleOutput,
 )
 from app.models.user_models import OnboardingPhase, PersonalizationBundle, UserDocument
+from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.onboarding.intelligence_job import personalization_job_id
 from app.services.onboarding.intelligence_service import OnboardingStage, holo_card_url
@@ -528,10 +530,19 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
         patch(f"{SVC}.writing_style_service.ainvoke_structured", _structured),
         patch(f"{SVC}.inbox_triage_service.ainvoke_structured", _structured),
         patch("app.utils.profile_card.ainvoke_structured", _structured),
+        # The account record and its Composio profile call are their own subject;
+        # here only the outcome matters: Gmail's first account, so it is primary.
         patch(
-            "app.services.oauth.oauth_service.update_user_integration_status",
-            new_callable=AsyncMock,
+            "app.services.oauth.oauth_service.record_connected_account",
+            AsyncMock(
+                return_value=AccountConnected(
+                    account=IntegrationAccount(connected_account_id="ca_gmail", label="me"),
+                    replaced_account_id=None,
+                    primary_changed=True,
+                )
+            ),
         ),
+        patch("app.services.oauth.oauth_service.publish_connected", AsyncMock()),
     ):
         stack.enter_context(patcher)
 
@@ -596,7 +607,7 @@ async def queued_job_names(pool: ArqRedis) -> list[str]:
 
 async def connect_gmail() -> None:
     """Run the real OAuth connect handler's Gmail branch, which starts the personalization pipeline."""
-    await handle_oauth_connection(USER_ID, GMAIL_CONFIG, BackgroundTasks())
+    await handle_oauth_connection(USER_ID, GMAIL_CONFIG, BackgroundTasks(), "ca_gmail")
 
 
 def submit_body(**overrides: Any) -> dict[str, Any]:

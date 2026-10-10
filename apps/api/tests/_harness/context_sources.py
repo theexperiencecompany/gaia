@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.services.gaia_knowledge_service import KnowledgeResult
@@ -41,7 +42,10 @@ class ContextSources:
     skills: str = ""
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
-    provider_metadata: dict[str, str] = field(default_factory=dict)
+    #: Identity of the user's one connected account on the integration in context.
+    account_identity: dict[str, str] = field(default_factory=dict)
+    #: Integrations holding several accounts, for the manifest's account lists.
+    multi_account_records: list[UserIntegrationDocument] = field(default_factory=list)
     custom_instructions: str = ""
     active_todo: TodoDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
@@ -131,8 +135,14 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.agents.context.fetchers.get_provider_metadata",
-                AsyncMock(return_value=dict(sources.provider_metadata)),
+                "app.agents.context.fetchers.get_account_record",
+                AsyncMock(return_value=_single_account_record(sources.account_identity)),
+            )
+        )
+        enter(
+            patch(
+                "app.agents.context.fetchers.list_multi_account_records",
+                AsyncMock(return_value=list(sources.multi_account_records)),
             )
         )
         enter(
@@ -166,6 +176,18 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
         yield
+
+
+def _single_account_record(identity: dict[str, str]) -> UserIntegrationDocument | None:
+    if not identity:
+        return None
+    return UserIntegrationDocument(
+        user_id="user-1",
+        integration_id="gmail",
+        status="connected",
+        accounts=[IntegrationAccount(connected_account_id="ca_1", identity=identity, label="x")],
+        primary_account_id="ca_1",
+    )
 
 
 @contextmanager

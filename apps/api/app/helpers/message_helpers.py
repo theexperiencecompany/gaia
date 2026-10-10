@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +12,7 @@ from app.agents.prompts.onboarding_prompts import (
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
+    TRIGGERED_ACCOUNT_SECTION,
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_EXECUTION_PROMPT,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -32,6 +33,7 @@ from app.models.message_models import (
 )
 from app.models.onboarding_models import PersistedTriageSummary
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument
+from app.models.webhook_models import TriggerEventAccount
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -126,6 +128,29 @@ class TriggerEmailData(BaseModel):
     message_text: str = ""
 
 
+class _BatchedTriggerPayload(TypedDict, total=False):
+    """A batched run's payload: its events, unchecked, as providers send anything."""
+
+    events: object
+
+
+def _event_accounts(payload: Mapping[str, object]) -> list[str]:
+    """Name the accounts a trigger payload (or each event of a batched one) arrived on.
+
+    Provider payloads have no fixed shape, so this reads the one key GAIA adds and
+    ignores anything else rather than validating the payload.
+    """
+    batch: _BatchedTriggerPayload = cast(_BatchedTriggerPayload, payload)
+    events = batch.get("events")
+    sources = [payload, *(events if isinstance(events, list) else [])]
+    names: set[object] = set()
+    for source in sources:
+        if isinstance(source, Mapping):
+            tagged: TriggerEventAccount = cast(TriggerEventAccount, source)
+            names.add(tagged.get("gaia_account"))
+    return sorted(name for name in names if isinstance(name, str) and name)
+
+
 class WorkflowTriggerContext(BaseModel):
     """The keys ``format_workflow_execution_message`` reads off a run's trigger context.
 
@@ -145,6 +170,8 @@ class WorkflowTriggerContext(BaseModel):
     type: str | None = None
     email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
     triggered_at: str = "Unknown"
+    # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
+    trigger_data: dict[str, object] = Field(default_factory=dict)
 
 
 async def format_workflow_execution_message(
@@ -221,6 +248,9 @@ async def format_workflow_execution_message(
     # This run already replayed the playbook and stopped partway; appended
     # rather than folded into the templates since it's per-run evidence.
     fallback_section = trigger.playbook_fallback or ""
+    accounts = _event_accounts(trigger.trigger_data)
+    if accounts:
+        fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
 
     # Email-triggered workflows get enhanced context
     if trigger.type == "gmail":

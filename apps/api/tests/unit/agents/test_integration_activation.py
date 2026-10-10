@@ -7,17 +7,20 @@ from langchain_core.tools import tool as langchain_tool
 from langgraph.types import Command
 import pytest
 
+from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
 from app.agents.core.subagents import integration_activation
 from app.agents.core.subagents.handoff_tools import CustomMcpSubagent
 from app.agents.core.subagents.integration_activation import (
     _activate_tools,
     _activation_context,
     _activation_header,
+    _has_several_accounts,
     activate_integration,
 )
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.log_tags import LogTag
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 _MOD = "app.agents.core.subagents.integration_activation"
 
@@ -69,7 +72,7 @@ class TestActivationContext:
     async def test_every_section_lands_in_order_for_this_integration_and_user(
         self, sources: dict[str, MagicMock]
     ) -> None:
-        context = await _activation_context("gmail", "u1")
+        context = await _activation_context("gmail", "Gmail", "u1", False)
 
         assert context == "\n\n".join(
             [
@@ -92,7 +95,7 @@ class TestActivationContext:
     ) -> None:
         sources["get_subagent_by_id"].return_value = None
 
-        await _activation_context("gmail", "u1")
+        await _activation_context("gmail", "Gmail", "u1", False)
 
         sources["get_available_skills_text"].assert_awaited_once_with("u1", "")
 
@@ -102,7 +105,7 @@ class TestActivationContext:
         sources["build_subagent_system_prompt"].return_value = ""
         sources["integration_skills_block"].return_value = ""
 
-        assert await _activation_context("gmail", None) == ""
+        assert await _activation_context("gmail", "Gmail", None, False) == ""
         sources["get_instructions"].assert_not_awaited()
 
     async def test_enrichment_failure_degrades_to_partial_and_is_logged(
@@ -112,7 +115,7 @@ class TestActivationContext:
         sources["get_instructions"].side_effect = ConnectionError("mongo down")
 
         async with captured_wide_event() as event:
-            context = await _activation_context("gmail", "u1")
+            context = await _activation_context("gmail", "Gmail", "u1", False)
 
         assert context == f"## gmail: how it works\n{REFRAME}\nYou manage gmail."
         assert event["warnings"] == [
@@ -121,6 +124,49 @@ class TestActivationContext:
                 "integration": "gmail",
                 "error_type": "ConnectionError",
                 "error": "mongo down",
+            }
+        ]
+
+    async def test_several_accounts_point_at_the_per_turn_list_instead_of_copying_it(
+        self, sources: dict[str, MagicMock]
+    ) -> None:
+        """Activation runs once per conversation; an account added later must not be hidden by a stale copy."""
+        context = await _activation_context("gmail", "Gmail", "u1", True)
+
+        assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(
+            integration="Gmail",
+            tools="rename_integration_account, set_primary_integration_account, "
+            "disconnect_integration",
+        ) in context.split("\n\n")
+        sources["build_provider_metadata_block"].assert_not_awaited()
+
+
+class TestHasSeveralAccounts:
+    @pytest.mark.parametrize(("count", "several"), [(0, False), (1, False), (2, True)])
+    async def test_it_counts_the_users_accounts_on_this_integration(
+        self, count: int, several: bool
+    ) -> None:
+        accounts = [make_integration_account(f"ca_{i}") for i in range(count)]
+        record = make_integration_record(*accounts, user_id="u1")
+        with patch(f"{_MOD}.get_account_record", AsyncMock(return_value=record)) as lookup:
+            assert await _has_several_accounts("gmail", "u1") is several
+        lookup.assert_awaited_once_with("u1", "gmail")
+
+    async def test_no_user_has_no_accounts(self) -> None:
+        with patch(f"{_MOD}.get_account_record", AsyncMock()) as lookup:
+            assert await _has_several_accounts("gmail", None) is False
+        lookup.assert_not_awaited()
+
+    async def test_an_unreadable_record_counts_as_one_account_and_is_logged(self) -> None:
+        with patch(f"{_MOD}.get_account_record", AsyncMock(side_effect=ConnectionError("down"))):
+            async with captured_wide_event() as event:
+                assert await _has_several_accounts("gmail", "u1") is False
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.AGENT} Activation could not read the integration's accounts",
+                "integration": "gmail",
+                "error_type": "ConnectionError",
+                "error": "down",
             }
         ]
 
@@ -421,6 +467,7 @@ class TestActivateIntegrationTool:
         with (
             patch(f"{_MOD}._get_subagent_by_id", new=resolve),
             patch(f"{_MOD}.check_integration_connection", new=AsyncMock(return_value=None)),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
         ):
             yield resolve
 
@@ -450,7 +497,7 @@ class TestActivateIntegrationTool:
                 result = await activate_integration.ainvoke(call, run_cfg)
 
         activate_tools.assert_awaited_once_with(connected.return_value, "u1")
-        context.assert_awaited_once_with("gmail", "u1")
+        context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", False)
         assert self._text(result) == (
             _activation_header("gmail", 7, [], [], "", False) + "PROMPT + SKILLS"
         )
@@ -504,6 +551,29 @@ class TestActivateIntegrationTool:
         # Schemas live in the trailing section, never interleaved with context.
         assert text.index("CTX") < text.index("## GMAIL_FETCH_MESSAGES")
         assert self._bound(result) == ["query_json"]
+
+    async def test_with_several_accounts_the_account_tools_are_bound_too(
+        self, connected: AsyncMock
+    ) -> None:
+        context = AsyncMock(return_value="CTX")
+        with (
+            patch(
+                f"{_MOD}._activate_tools",
+                new=AsyncMock(return_value=(40, ["query_json"], [], "")),
+            ),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=True)),
+            patch(f"{_MOD}._activation_context", new=context),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        assert self._bound(result) == [
+            "query_json",
+            "rename_integration_account",
+            "set_primary_integration_account",
+            "disconnect_integration",
+        ]
+        context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", True)
 
     async def test_unconnected_integration_returns_the_connect_prompt(self) -> None:
         """Activating an unconnected integration must gate on the connection check."""

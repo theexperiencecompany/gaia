@@ -1037,7 +1037,9 @@ def test_a_scoped_subagent_binds_its_space_the_proxy_and_finish_task():
 async def test_a_subagents_execute_proxy_is_confined_to_its_own_tool_dict():
     """A Gmail subagent's execute must refuse Slack's tools; the proxy sees exactly this dict."""
     scoped, _ = _scoped_provider_tools()
-    dispatch = AsyncMock(return_value=SimpleNamespace(ok=True, error=None, output="done"))
+    dispatch = AsyncMock(
+        return_value=SimpleNamespace(ok=True, error=None, output="done", account=None)
+    )
 
     with patch("app.agents.tools.execute.execute_tool.dispatch_tool", dispatch):
         await scoped["execute"].ainvoke(
@@ -1045,7 +1047,7 @@ async def test_a_subagents_execute_proxy_is_confined_to_its_own_tool_dict():
             config={"configurable": {}},
         )
 
-    assert dispatch.await_args.kwargs["scoped_tool_names"] == set(scoped)
+    assert dispatch.await_args.kwargs["space"].tool_names == set(scoped)
 
 
 @pytest.mark.asyncio

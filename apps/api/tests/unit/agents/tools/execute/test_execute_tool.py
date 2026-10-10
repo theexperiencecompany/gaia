@@ -18,6 +18,7 @@ from app.agents.tools.execute.dispatch import (
     DispatchError,
     DispatchErrorKind,
     ToolExecutionResult,
+    ToolSpace,
     _dispatch_ticket,
     dispatch_tool,
 )
@@ -77,7 +78,11 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         redeem.assert_awaited_once_with(
-            "ap_1", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1",
+            user_id=USER_ID,
+            conversation_id="conv-1",
+            caller="executor_conv-1",
+            run_config=self._config(),
         )
         assert result.ok is True
         assert "Executed 'ap_1'" in str(result.output)
@@ -141,7 +146,7 @@ class TestDispatchTicketNames:
                 tool_name="approve",
                 data={"id": "ap_1"},
                 config=self._config(),
-                integration_only=True,
+                space=ToolSpace(integration_only=True),
             )
 
         assert result.ok is False
@@ -170,7 +175,7 @@ class TestDispatchTicketNames:
                     tool_name="approve",
                     data={"id": "ap_1"},
                     config=self._config(),
-                    scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                    space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
                 )
 
         redeem.assert_awaited_once()
@@ -183,7 +188,7 @@ class TestExecuteToolScope:
         """The executor's space is the whole registry — scoping it would refuse every tool it is supposed to run."""
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
             await _invoke(execute)
-        assert dispatch.await_args.kwargs["scoped_tool_names"] is None
+        assert dispatch.await_args.kwargs["space"].tool_names is None
 
     async def test_a_scoped_instance_passes_its_live_tool_set(self) -> None:
         """Read at CALL time, not build time: a subagent keeps adding to its dict (todo tools, finish_task) after execute is put in it, and a snapshot taken then would refuse every tool added afterwards."""
@@ -194,7 +199,7 @@ class TestExecuteToolScope:
         )
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
             await _invoke(proxy)
-        assert dispatch.await_args.kwargs["scoped_tool_names"] == {"GMAIL_SEND_EMAIL"}
+        assert dispatch.await_args.kwargs["space"].tool_names == {"GMAIL_SEND_EMAIL"}
 
     async def test_a_scoped_instance_keeps_the_proxy_name(self) -> None:
         """The name is a constant five other seams key on (HIL unwrap, the stream formatter, the analytics dedupe) — a per-agent instance must not rename it."""
@@ -310,5 +315,27 @@ class TestExecuteToolCall:
         self, output: object, rendered: str
     ) -> None:
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output)
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
+            assert await _invoke(build_execute_tool()) == rendered
+
+    @pytest.mark.parametrize(
+        ("output", "rendered"),
+        [
+            (
+                {"data": [1], "__offload__": {"path": "f"}},
+                json.dumps({"ran_as_account": "Work", "data": [1], "__offload__": {"path": "f"}}),
+            ),
+            ("plain text", "ran_as_account: Work\nplain text"),
+            ([1, 2], json.dumps({"ran_as_account": "Work", "result": [1, 2]})),
+        ],
+        ids=["structured", "text", "other"],
+    )
+    async def test_with_several_accounts_the_model_is_told_which_one_answered(
+        self, output: object, rendered: str
+    ) -> None:
+        """Seen live: a call that omitted account ran as the primary and was reported as another account."""
+        result = ToolExecutionResult(
+            ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output, account="Work"
+        )
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
             assert await _invoke(build_execute_tool()) == rendered

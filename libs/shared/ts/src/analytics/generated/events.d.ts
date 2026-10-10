@@ -65,6 +65,9 @@ export type ServerEventName =
   | "hil:revoked"
   | "image:described"
   | "image:generated"
+  | "integration:account_added"
+  | "integration:account_removed"
+  | "integration:account_renamed"
   | "integration:connect_initiated"
   | "integration:connected"
   | "integration:custom_deleted"
@@ -73,6 +76,7 @@ export type ServerEventName =
   | "integration:custom_updated"
   | "integration:disconnected"
   | "integration:instructions_updated"
+  | "integration:primary_changed"
   | "mcp:connection_tested"
   | "memory:cleared"
   | "memory:created"
@@ -865,6 +869,29 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
+  "integration:account_added": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "account_count": number;
+    "replaced": boolean;
+    "has_identity": boolean;
+  };
+  "integration:account_removed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "account_count": number;
+  };
+  "integration:account_renamed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "cleared": boolean;
+  };
   "integration:connect_initiated": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -927,6 +954,13 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "integration_id": string;
+  };
+  "integration:primary_changed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "account_count": number;
   };
   "mcp:connection_tested": {
     "actor": "user" | "agent";
@@ -1456,6 +1490,8 @@ export interface EventProperties {
     "tool_name": string;
     "via"?: "bound" | "execute";
     "source"?: "mcp_app";
+    "account_count"?: number;
+    "account_is_primary"?: boolean;
   };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;
