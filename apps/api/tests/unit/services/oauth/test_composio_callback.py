@@ -242,24 +242,19 @@ class TestCompleteComposioConnectionSuccess:
         mock_log.error.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("outcome", "is_reconnect"),
+        "case",
         [
             (AccountConnectOutcome.ADDED, False),
             (AccountConnectOutcome.RECONNECTED, True),
             (AccountConnectOutcome.ALREADY_CONNECTED, True),
         ],
+        ids=lambda case: str(case[0]) if isinstance(case, tuple) else str(case),
     )
     async def test_is_reconnect_says_whether_an_account_the_user_had_signed_in_again(
-        self,
-        mock_composio,
-        mock_config,
-        mock_handle,
-        mock_capture,
-        background_tasks,
-        outcome,
-        is_reconnect,
+        self, mock_composio, mock_config, mock_handle, mock_capture, background_tasks, case
     ):
         """A further account on an integration connected before is a new connect, not a reconnect."""
+        outcome, is_reconnect = case
         mock_composio.get_connected_account_by_id.return_value = _account(
             user_id=USER_ID, config_id="config1"
         )

@@ -8,6 +8,7 @@ single-use consumption, and rejection of unknown/malformed codes.
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
+from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.config.settings import settings
@@ -30,8 +31,15 @@ def fake_store() -> Generator[dict[str, object], None, None]:
         store[key] = value
         return True
 
-    async def _getdel(key: str) -> object | None:
-        return store.pop(key, None)
+    async def _getdel(key: str, model: type[BaseModel] | None = None) -> object | None:
+        # Like the real GETDEL: a value that fails its model reads as nothing.
+        value = store.pop(key, None)
+        if value is None or model is None:
+            return value
+        try:
+            return model.model_validate(value)
+        except ValidationError:
+            return None
 
     with (
         patch.object(svc, "set_cache", AsyncMock(side_effect=_set)),
@@ -54,7 +62,7 @@ class TestConnectLinkCode:
         assert url.startswith(f"{settings.FRONTEND_URL.rstrip('/')}/connect/")
         code = _code_from_url(url)
         assert await resolve_and_consume_connect_code(code) == ConnectLinkBinding(
-            "user1", "notion", None
+            user_id="user1", integration_id="notion", account_id=None
         )
 
     async def test_a_reconnect_link_carries_the_account_to_sign_back_in(
@@ -62,7 +70,7 @@ class TestConnectLinkCode:
     ) -> None:
         code = _code_from_url(await build_connect_link_url("user1", "gmail", "ca_work"))
         assert await resolve_and_consume_connect_code(code) == ConnectLinkBinding(
-            "user1", "gmail", "ca_work"
+            user_id="user1", integration_id="gmail", account_id="ca_work"
         )
 
     async def test_single_use_second_resolve_is_none(self, fake_store: dict[str, object]) -> None:
@@ -70,7 +78,9 @@ class TestConnectLinkCode:
         code = _code_from_url(await build_connect_link_url("user1", "notion"))
         first = await resolve_and_consume_connect_code(code)
         second = await resolve_and_consume_connect_code(code)
-        assert first == ConnectLinkBinding("user1", "notion", None)
+        assert first == ConnectLinkBinding(
+            user_id="user1", integration_id="notion", account_id=None
+        )
         assert second is None
 
     async def test_unknown_code_rejected(self, fake_store: dict[str, object]) -> None:

@@ -17,6 +17,7 @@ from app.constants.integrations import INTEGRATION_STATUS_CONNECTED, MAX_ACCOUNT
 from app.constants.log_tags import LogTag
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import UserIntegrationDocument
+from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -367,6 +368,7 @@ async def connect_composio_integration(
         integration_id=integration_id,
     )
 
+    connect_link: ComposioConnectLink
     if reconnect_account_id is not None:
         # Same Composio account, so its name, primary role and triggers survive.
         connect_link = await composio_service.reauthorize_account(reconnect_account_id, state_token)

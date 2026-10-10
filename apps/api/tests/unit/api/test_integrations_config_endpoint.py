@@ -656,7 +656,9 @@ class TestConnectLinkEndpoint:
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
-                return_value=ConnectLinkBinding(_VALID_UID, "notion", None),
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
             ),
             patch(
                 f"{_MODULE}.user_repository.get",
@@ -686,7 +688,9 @@ class TestConnectLinkEndpoint:
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
-                return_value=ConnectLinkBinding(_VALID_UID, "gmail", "ca_work"),
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="gmail", account_id="ca_work"
+                ),
             ),
             patch(
                 f"{_MODULE}.user_repository.get",
@@ -730,7 +734,9 @@ class TestConnectLinkEndpoint:
         with patch(
             f"{_MODULE}.resolve_and_consume_connect_code",
             new_callable=AsyncMock,
-            return_value=ConnectLinkBinding(_VALID_UID, "notion", None),
+            return_value=ConnectLinkBinding(
+                user_id=_VALID_UID, integration_id="notion", account_id=None
+            ),
         ) as mock_consume:
             resp = await unauthed_client.get(
                 f"{API}/connect-link?code=somecode", follow_redirects=False
@@ -745,7 +751,9 @@ class TestConnectLinkEndpoint:
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
-                return_value=ConnectLinkBinding(_VALID_UID, "notion", None),
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
             ),
             patch(
                 f"{_MODULE}.user_repository.get",

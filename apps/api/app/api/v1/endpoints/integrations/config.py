@@ -330,7 +330,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         )
         return _connect_link_error("invalid_or_expired_link")
 
-    user_id, integration_id, account_id = verified
+    user_id, integration_id = verified.user_id, verified.integration_id
     log.set(user={"id": user_id}, integration={"id": integration_id})
     # The single-use code is spent here: this is the state change, and it grants
     # the holder the bound user's OAuth flow without a session.
@@ -371,7 +371,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         integration_id=integration_id,
         user_email=user_email,
         redirect_path="/integrations",
-        reconnect_account_id=account_id,
+        reconnect_account_id=verified.account_id,
     )
     if result and result.status == "redirect" and result.redirect_url:
         capture(
