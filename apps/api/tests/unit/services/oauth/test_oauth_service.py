@@ -950,6 +950,7 @@ class TestHandleOAuthConnection:
             account=IntegrationAccount(connected_account_id="ca_new", label="me@gmail.com"),
             replaced_account_id=None,
             primary_changed=False,
+            reauthorized=False,
         )
         trigger = MagicMock()
         trigger.workflow_trigger_schema.slug = "gmail_new_message"

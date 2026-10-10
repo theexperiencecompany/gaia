@@ -11,11 +11,9 @@ from fastapi import BackgroundTasks
 
 from app.config.oauth_config import get_integration_by_config
 from app.constants.log_tags import LogTag
-from app.db.repositories.user_integrations import user_integration_repository
 from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_account_lifecycle import AccountLimitReached
-from app.services.integrations.user_integration_status import reconnect_or_unknown
 from app.services.oauth.oauth_service import handle_oauth_connection
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
@@ -87,10 +85,6 @@ async def complete_composio_connection(
         )
         return ConnectionRejected(reason="user_mismatch")
 
-    is_reconnect = await reconnect_or_unknown(
-        user_integration_repository.has_connected_before(str(user_id), integration_config.id),
-        integration_config.id,
-    )
     connected = await handle_oauth_connection(
         user_id=str(user_id),
         integration_config=integration_config,
@@ -109,7 +103,8 @@ async def complete_composio_connection(
         IntegrationConnected(
             integration_id=integration_config.id,
             provider=integration_config.provider,
-            is_reconnect=is_reconnect,
+            # A further account is a new connect even when the integration had one before.
+            is_reconnect=connected.reauthorized,
         ),
     )
     log.info(

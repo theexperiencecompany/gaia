@@ -42,7 +42,8 @@ class IntegrationConnected(ServerEvent):
     connection_method: Literal["oauth"] | None = None
     provider: Identifier | None = None
     is_new_link: bool | None = None
-    # An OAuth callback for an integration this user had connected before (an expiry or re-auth).
+    # The user signed in again to an account they already had (an expiry or re-auth). A further
+    # account on a multi-account integration is a new connect, not a reconnect.
     is_reconnect: bool | None = None
 
 

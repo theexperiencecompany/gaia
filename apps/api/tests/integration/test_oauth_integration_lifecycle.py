@@ -1458,6 +1458,7 @@ class TestMultipleAccounts:
 
         assert isinstance(connected, AccountConnected)
         assert connected.primary_changed is True
+        assert connected.reauthorized is False
         doc = repo.docs[(USER_ID, "gmail")]
         assert doc.status == "connected"
         assert doc.primary_account_id == "ca_work"
@@ -1474,6 +1475,8 @@ class TestMultipleAccounts:
 
         assert isinstance(connected, AccountConnected)
         assert connected.primary_changed is False
+        # Another mailbox on a connected integration is a new connect, not a reconnect.
+        assert connected.reauthorized is False
         doc = repo.docs[(USER_ID, "gmail")]
         assert [a.label for a in doc.accounts] == ["work@acme.com", "me@gmail.com"]
         assert doc.primary_account_id == "ca_work"
@@ -1493,12 +1496,27 @@ class TestMultipleAccounts:
         assert isinstance(connected, AccountConnected)
         assert connected.replaced_account_id == "ca_work"
         assert connected.primary_changed is True
+        assert connected.reauthorized is True
         doc = repo.docs[(USER_ID, "gmail")]
         assert [(a.connected_account_id, a.display_name) for a in doc.accounts] == [
             ("ca_work_again", "Work")
         ]
         assert doc.primary_account_id == "ca_work_again"
         assert composio.revoked == ["ca_work"]
+
+    async def test_a_callback_for_an_account_already_recorded_is_a_reauthorization(
+        self, repo: _FakeUserIntegrationRepo, composio: _Composio
+    ) -> None:
+        await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        connected = await record_connected_account(USER_ID, self._gmail(), "ca_work")
+
+        assert isinstance(connected, AccountConnected)
+        assert connected.reauthorized is True
+        assert connected.replaced_account_id is None
+        assert [a.connected_account_id for a in repo.docs[(USER_ID, "gmail")].accounts] == [
+            "ca_work"
+        ]
 
     async def test_a_new_identity_over_the_limit_is_revoked_and_rejected(
         self, repo: _FakeUserIntegrationRepo, composio: _Composio

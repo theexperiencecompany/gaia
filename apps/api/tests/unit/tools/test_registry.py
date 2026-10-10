@@ -429,7 +429,6 @@ _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
     "send_notification",
     "execute_workflow",
     "connect_integration",
-    "disconnect_integration",
     "browser_task",
 }
 
@@ -1012,8 +1011,8 @@ class TestInitializedCategoryContract:
             "rename_integration_account": False,
             # Which account is the default; reversible, so it runs without asking.
             "set_primary_integration_account": False,
-            # Revokes the grant; the user must reconnect to undo it.
-            "disconnect_integration": True,
+            # Force-gated (always_gate): revoking the grant is undone only by signing in again.
+            "disconnect_integration": False,
             # Force-gated (always_gate), not destructive — see the always_gate test.
             "add_custom_mcp_server": False,
             # Read-only device catalog lookup.
@@ -1028,14 +1027,18 @@ class TestInitializedCategoryContract:
             "run_on_device": False,
         }
 
-    def test_integrations_always_gate_set_is_exactly_the_two_forced_tools(
+    def test_integrations_always_gate_set_is_exactly_the_forced_tools(
         self, registry: ToolRegistry
     ) -> None:
-        """Dropping either forced tool silently removes the human gate on a security-sensitive action."""
+        """Dropping any forced tool silently removes the human gate on a security-sensitive action."""
         gated = {
             tool.name for tool in registry._categories["integrations"].tools if tool.always_gate
         }
-        assert gated == {"add_custom_mcp_server", "approve_device_pairing"}
+        assert gated == {
+            "add_custom_mcp_server",
+            "approve_device_pairing",
+            "disconnect_integration",
+        }
 
 
 @pytest.mark.unit

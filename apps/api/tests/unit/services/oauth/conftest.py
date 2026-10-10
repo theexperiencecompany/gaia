@@ -50,6 +50,7 @@ def mock_record_account():
         account=IntegrationAccount(connected_account_id="ca_new", label="ada@example.com"),
         replaced_account_id=None,
         primary_changed=True,
+        reauthorized=False,
     )
     with (
         patch(

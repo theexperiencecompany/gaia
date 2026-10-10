@@ -20,7 +20,10 @@ Per Composio integration document this:
 - subscribes every kept account to the integration's account-level triggers
   and re-registers workflow triggers on the primary.
 
-It also drops the retired users.provider_metadata field.
+It also drops the retired users.provider_metadata field, and moves live
+connect_integration approvals off the retired force_reconnect argument (a
+reconnect becomes mode=reconnect), so one approved after the deploy still
+reconnects instead of answering "already connected".
 
 Dry run by default. Nothing is written or revoked without ``--apply``.
 
@@ -45,11 +48,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
-from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT
+from app.constants.integrations import (
+    COMPOSIO_ACCOUNT_LIST_LIMIT,
+    CONNECT_INTEGRATION_TOOL,
+    ConnectMode,
+)
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.models.hil_models import LIVE_LEDGER_STATES
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service, init_composio_service
+from app.services.hil.fingerprint import approval_fingerprint
 from app.services.integrations.account_identity import account_label, fetch_account_identity
 from app.services.integrations.integration_account_lifecycle import resync_primary_bound_triggers
 from app.services.integrations.integration_accounts import derive_status, pick_primary
@@ -206,6 +215,57 @@ async def _migrate_document(
         await resync_primary_bound_triggers(user_id, integration)
 
 
+_RETIRED_CONNECT_ARG = "force_reconnect"
+
+
+class _LegacyConnectApproval(BaseModel):
+    """A live connect_integration approval stored before mode replaced force_reconnect."""
+
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+
+    id: ObjectId = Field(alias="_id")
+    args: dict[str, object]
+    account: str | None = None
+
+
+def connect_args_with_mode(args: dict[str, object]) -> dict[str, object]:
+    """Return connect_integration args with force_reconnect replaced by the mode it meant."""
+    migrated = {k: v for k, v in args.items() if k != _RETIRED_CONNECT_ARG}
+    if args.get(_RETIRED_CONNECT_ARG) is True:
+        migrated["mode"] = str(ConnectMode.RECONNECT)
+    return migrated
+
+
+async def migrate_connect_approvals(approvals: AsyncIOMotorCollection, *, apply: bool) -> int:
+    """Rewrite each live connect approval still carrying force_reconnect; return how many."""
+    cursor = approvals.find(
+        {
+            "tool_name": CONNECT_INTEGRATION_TOOL,
+            "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
+            f"args.{_RETIRED_CONNECT_ARG}": {"$exists": True},
+        }
+    )
+    count = 0
+    async for raw in cursor:
+        row = _LegacyConnectApproval.model_validate(raw)
+        args = connect_args_with_mode(row.args)
+        count += 1
+        if apply:
+            await approvals.update_one(
+                {"_id": row.id},
+                {
+                    "$set": {
+                        "args": args,
+                        # The dedup id is the call's exact bytes, so it moves with them.
+                        "fingerprint": approval_fingerprint(
+                            CONNECT_INTEGRATION_TOOL, args, row.account
+                        ),
+                    }
+                },
+            )
+    return count
+
+
 async def _run(args: argparse.Namespace) -> None:
     capture_running_loop()
     init_composio_service()
@@ -240,6 +300,9 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"\nFAILED ({len(totals.failures)}):")
         for failure in totals.failures:
             print(f"  {failure}")
+
+    connect_approvals = await migrate_connect_approvals(database.approval_ledger, apply=args.apply)
+    print(f"live connect approvals moved off force_reconnect: {connect_approvals}")
 
     users_with_metadata = await database.users.count_documents(
         {"provider_metadata": {"$exists": True}}

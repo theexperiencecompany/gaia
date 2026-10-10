@@ -539,6 +539,7 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
                     account=IntegrationAccount(connected_account_id="ca_gmail", label="me"),
                     replaced_account_id=None,
                     primary_changed=True,
+                    reauthorized=False,
                 )
             ),
         ),

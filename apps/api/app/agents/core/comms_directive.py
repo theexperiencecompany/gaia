@@ -33,8 +33,13 @@ from shared.py.analytics.catalog.properties import Emoji
 from shared.py.wide_events import log
 
 # One line, no DOTALL: a directive never spans lines, so a multi-line reply can
-# never be mis-silenced. The closing tag must name the opening one.
-_TAG_RE = re.compile(rf"^<({SILENCE_TAG}|{EMOJI_TAG})>([^\n]*?)</\1>$", re.IGNORECASE)
+# never be mis-silenced. The closing tag must name the opening one. Spaces inside
+# the brackets are tolerated: gpt-6-luna writes "< SILENCE >".
+_TAG_RE = re.compile(
+    rf"^<\s*({SILENCE_TAG}|{EMOJI_TAG})\s*>([^\n]*?)<\s*/\s*\1\s*>$", re.IGNORECASE
+)
+# The opening of a tag still being written, spaces inside its brackets dropped.
+_SPACED_OPENING_RE = re.compile(r"^<[ \t]*([A-Za-z]*)[ \t]*")
 _LEGACY_LINE_RE = re.compile(rf"^({SILENCE_TAG}|{LEGACY_REACT_KEYWORD}):([^\n]*)$", re.IGNORECASE)
 # How each form above begins: a bubble that does not start like one is text.
 _DIRECTIVE_OPENINGS = (
@@ -71,8 +76,9 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
 def _could_become_directive(bubble: str) -> bool:
     """Whether a bubble still being written can end as a directive."""
     candidate = bubble.lstrip()
+    compact = _SPACED_OPENING_RE.sub(r"<\1", candidate, count=1)
     if not any(
-        opening.startswith(candidate[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
+        opening.startswith(compact[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
     ):
         return False
     # Past a newline only trailing whitespace may follow, so the bubble is decided.

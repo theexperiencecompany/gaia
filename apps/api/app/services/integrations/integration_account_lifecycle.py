@@ -40,6 +40,8 @@ class AccountConnected:
     # The account this connect re-authorized (same identity), now revoked.
     replaced_account_id: str | None
     primary_changed: bool
+    # Signed in an account the user already had (the same one, or its identity), not a new one.
+    reauthorized: bool
 
 
 @dataclass(frozen=True)
@@ -96,7 +98,9 @@ async def record_connected_account(
 
     existing = next((a for a in accounts if a.connected_account_id == connected_account_id), None)
     if existing is not None:
-        return AccountConnected(account=existing, replaced_account_id=None, primary_changed=False)
+        return AccountConnected(
+            account=existing, replaced_account_id=None, primary_changed=False, reauthorized=True
+        )
 
     identity = await _identity_or_empty(user_id, integration, connected_account_id)
     superseded = next((a for a in accounts if _same_identity(a.identity, identity)), None)
@@ -150,6 +154,7 @@ async def record_connected_account(
         account=account,
         replaced_account_id=superseded.connected_account_id if superseded else None,
         primary_changed=primary != previous_primary,
+        reauthorized=superseded is not None,
     )
 
 

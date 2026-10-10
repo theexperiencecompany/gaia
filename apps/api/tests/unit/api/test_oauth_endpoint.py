@@ -12,6 +12,8 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.models.integration_models import IntegrationAccount
+from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
@@ -62,13 +64,24 @@ def _mock_auth_response(
 # ---------------------------------------------------------------------------
 
 
+# What recording a first-time account returns: a new connect, not a reconnect.
+NEW_ACCOUNT = AccountConnected(
+    account=IntegrationAccount(connected_account_id="acc1", label="me@gmail.com"),
+    replaced_account_id=None,
+    primary_changed=True,
+    reauthorized=False,
+)
+
+
 @pytest.fixture
 def stubbed_oauth_side_effects():
     """Patch the callback's fire-and-forget side effects no test asserts."""
     with (
         patch("app.services.oauth.composio_callback.capture"),
         patch(
-            "app.services.oauth.composio_callback.handle_oauth_connection", new_callable=AsyncMock
+            "app.services.oauth.composio_callback.handle_oauth_connection",
+            new_callable=AsyncMock,
+            return_value=NEW_ACCOUNT,
         ),
     ):
         yield
@@ -418,15 +431,6 @@ class TestWorkOSCallback:
 class TestComposioCallback:
     """GET /api/v1/oauth/composio/callback."""
 
-    @pytest.fixture(autouse=True)
-    def first_connection(self):
-        with patch(
-            "app.services.oauth.composio_callback.user_integration_repository.has_connected_before",
-            new_callable=AsyncMock,
-            return_value=False,
-        ):
-            yield
-
     @pytest.fixture
     def composio_state(self):
         with patch(
@@ -455,7 +459,11 @@ class TestComposioCallback:
             yield mock_log
 
     @patch("app.services.oauth.composio_callback.capture")
-    @patch("app.services.oauth.composio_callback.handle_oauth_connection", new_callable=AsyncMock)
+    @patch(
+        "app.services.oauth.composio_callback.handle_oauth_connection",
+        new_callable=AsyncMock,
+        return_value=NEW_ACCOUNT,
+    )
     @patch("app.services.oauth.composio_callback.get_integration_by_config")
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(

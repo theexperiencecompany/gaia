@@ -4,16 +4,22 @@ It deletes Composio accounts, so the plan is pinned case by case: the profile
 call (identity) is the only seam mocked; the grouping and choices are real.
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from bson import ObjectId
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
-from app.scripts.migrate_integration_accounts import _plan
+from app.scripts.migrate_integration_accounts import (
+    _plan,
+    connect_args_with_mode,
+    migrate_connect_approvals,
+)
+from app.services.hil.fingerprint import approval_fingerprint
 
 EMAILS = {
     "ca_old": "me@gmail.com",
@@ -234,3 +240,70 @@ async def test_an_expired_integration_whose_account_composio_dropped_keeps_nothi
     assert plan.keep == []
     assert plan.revoke == []
     assert plan.primary is None
+
+
+@pytest.mark.parametrize(
+    ("stored", "migrated"),
+    [
+        (
+            {"integration_ids": ["gmail"], "force_reconnect": True},
+            {"integration_ids": ["gmail"], "mode": "reconnect"},
+        ),
+        ({"integration_ids": ["gmail"], "force_reconnect": False}, {"integration_ids": ["gmail"]}),
+    ],
+    ids=["reconnect", "plain_connect"],
+)
+def test_a_stored_connect_approval_keeps_what_it_asked_for(
+    stored: dict[str, object], migrated: dict[str, object]
+) -> None:
+    assert connect_args_with_mode(stored) == migrated
+
+
+async def _cursor(rows: list[dict[str, object]]) -> AsyncIterator[dict[str, object]]:
+    for row in rows:
+        yield row
+
+
+def _approvals(*rows: dict[str, object]) -> MagicMock:
+    """Fake the approval_ledger slice the rewrite touches: find's cursor and update_one."""
+    approvals = MagicMock()
+    approvals.find.return_value = _cursor(list(rows))
+    approvals.update_one = AsyncMock()
+    return approvals
+
+
+async def test_live_connect_approvals_are_rewritten_with_a_matching_fingerprint() -> None:
+    row_id = ObjectId()
+    approvals = _approvals(
+        {"_id": row_id, "args": {"integration_ids": ["gmail"], "force_reconnect": True}}
+    )
+
+    count = await migrate_connect_approvals(approvals, apply=True)
+
+    assert count == 1
+    approvals.find.assert_called_once_with(
+        {
+            "tool_name": "connect_integration",
+            "state": {"$in": ["approved", "pending"]},
+            "args.force_reconnect": {"$exists": True},
+        }
+    )
+    new_args = {"integration_ids": ["gmail"], "mode": "reconnect"}
+    approvals.update_one.assert_awaited_once_with(
+        {"_id": row_id},
+        {
+            "$set": {
+                "args": new_args,
+                "fingerprint": approval_fingerprint("connect_integration", new_args),
+            }
+        },
+    )
+
+
+async def test_a_dry_run_counts_the_approvals_and_writes_nothing() -> None:
+    approvals = _approvals(
+        {"_id": ObjectId(), "args": {"integration_ids": ["slack"], "force_reconnect": False}}
+    )
+
+    assert await migrate_connect_approvals(approvals, apply=False) == 1
+    approvals.update_one.assert_not_awaited()
