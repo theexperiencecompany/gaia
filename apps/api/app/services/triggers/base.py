@@ -9,9 +9,10 @@ import asyncio
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from http import HTTPStatus
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
 from composio_client import APIStatusError
+from pydantic import BaseModel, Field, StrictInt, ValidationError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
@@ -41,28 +42,28 @@ class TriggerEventResult(TypedDict):
     message: str
 
 
-class _EventTiming(TypedDict, total=False):
-    """The timing fields a calendar-style trigger payload may carry; unchecked, as providers vary."""
+class _EventTiming(BaseModel):
+    """The event-start fields a calendar payload carries, read only for webhook-lag instrumentation."""
 
-    start_time: object
-    startTime: object
-    countdown_window_minutes: object
+    start_time: str | None = None
+    start_time_camel: str | None = Field(default=None, alias="startTime")
+    countdown_window_minutes: StrictInt | None = None
+
+    @property
+    def raw_start(self) -> str | None:
+        """Return the start time as the payload spelled it, snake_case first."""
+        return self.start_time or self.start_time_camel
 
 
-def _raw_event_start(data: Mapping[str, object]) -> object:
-    timing: _EventTiming = cast(_EventTiming, data)
-    return timing.get("start_time") or timing.get("startTime")
-
-
-def _parse_event_start_utc(data: Mapping[str, object]) -> datetime | None:
+def _parse_event_start_utc(timing: _EventTiming) -> datetime | None:
     """Best-effort extraction of an event's start time as a UTC datetime.
 
     Handles Composio/Google payloads that may ship start_time as an ISO-8601
     string with or without offset. Returns None when the field is absent or
     unparseable — callers should skip lag instrumentation in that case.
     """
-    raw = _raw_event_start(data)
-    if not isinstance(raw, str) or not raw:
+    raw = timing.raw_start
+    if not raw:
         return None
     try:
         parsed = datetime.fromisoformat(raw)
@@ -75,18 +76,25 @@ def _parse_event_start_utc(data: Mapping[str, object]) -> datetime | None:
 
 def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
     """Attach event-start and webhook-lag instrumentation to the log context."""
-    event_start_utc = _parse_event_start_utc(data)
+    try:
+        timing = _EventTiming.model_validate(data)
+    except ValidationError as e:
+        log.debug(
+            f"{LogTag.TRIGGER} event timing fields unparseable — no lag instrumentation",
+            error=str(e),
+        )
+        return
+    event_start_utc = _parse_event_start_utc(timing)
     if event_start_utc is None:
         return
     seconds_until_event = int((event_start_utc - now_utc).total_seconds())
     log.set(
         event_start_time_utc=event_start_utc.isoformat(),
-        event_start_time_raw=_raw_event_start(data),
+        event_start_time_raw=timing.raw_start,
         seconds_until_event=seconds_until_event,
     )
-    timing: _EventTiming = cast(_EventTiming, data)
-    countdown = timing.get("countdown_window_minutes")
-    if not isinstance(countdown, int):
+    countdown = timing.countdown_window_minutes
+    if countdown is None:
         return
     expected_fire = event_start_utc.timestamp() - countdown * 60
     webhook_lag = int(now_utc.timestamp() - expected_fire)
@@ -137,6 +145,17 @@ class TriggerHandler(ABC):
 
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
+
+    def trigger_names_for_event(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; account-level handlers narrow by it
+    ) -> list[str]:
+        """Return the GAIA trigger names one Composio event fires; every name by default.
+
+        Per-resource subscriptions are still gated by their instance ids, so the
+        default is safe; an account-level handler with several events must narrow it.
+        """
+        return self.trigger_names
 
     @property
     def registers_instances(self) -> bool:
@@ -391,7 +410,7 @@ class TriggerHandler(ABC):
             await enqueue_worker_job(
                 pool,
                 "dispatch_todo_subscriptions",
-                self.trigger_names,
+                self.trigger_names_for_event(event_type),
                 trigger_id,
                 user_id,
                 data,

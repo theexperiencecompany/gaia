@@ -41,7 +41,7 @@ from app.models.hil_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.hil.bridge import (
     SettledApprovalCard,
     _approval_entry,
@@ -55,6 +55,8 @@ from app.services.hil.resolution import (
 )
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
 from shared.py.wide_events import log
 
 DecisionKind = Literal["approve", "deny"]
@@ -103,6 +105,7 @@ async def decide_ledger(
     kind: DecisionKind,
     feedback: str | None = None,
     v: int | None = None,
+    via: HilDecisionVia,
 ) -> LedgerDecision:
     """Commit one decision and wake the model with the ticket. Never blocks."""
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
@@ -149,16 +152,17 @@ async def decide_ledger(
     card_age_seconds: float | None = None
     if row.created_at is not None:
         card_age_seconds = (datetime.now(UTC) - row.created_at).total_seconds()
-    capture_event(
-        user_id,
-        AnalyticsEvents.HIL_DECISION_SUBMITTED,
-        {
-            "approval_id": approval_id,
-            "decision": target.value,
-            "card_age_seconds": card_age_seconds,
+    capture(
+        UserId(user_id),
+        HilDecisionSubmitted(
+            approval_id=approval_id,
+            decision="approved" if target is LedgerState.APPROVED else "denied",
+            tool_name=row.tool_name,
+            via=via,
+            card_age_seconds=card_age_seconds,
             # The transition $incs v: the committed version is row.v + 1.
-            "ledger_version": row.v + 1,
-        },
+            ledger_version=row.v + 1,
+        ),
     )
     queued = bool(target is LedgerState.APPROVED and row.blocked_by)
     if target is LedgerState.APPROVED and not queued:
@@ -217,6 +221,7 @@ async def decide_ledger_batch(
                 kind=item.decision,
                 feedback=item.feedback,
                 v=item.v,
+                via="batch",
             )
         except ApprovalRequestNotFoundError:
             outcomes.append(
@@ -491,14 +496,9 @@ async def revoke_ticket(
     if revoked_row is not None:
         await publish_ledger_revocation(revoked_row)
     await sync_conversation_approval_flag(row.conversation_id, row.user_id)
-    capture_event(
-        user_id,
-        AnalyticsEvents.HIL_REVOKED,
-        {
-            "approval_id": approval_id,
-            "ledger_version": row.v + 1,
-            "revoker": caller,
-        },
+    capture(
+        UserId(user_id),
+        HilRevoked(approval_id=approval_id, ledger_version=row.v + 1, revoker=caller),
     )
     return f"Revoked '{approval_id}' ({row.summary}). It will never be asked."
 
@@ -522,14 +522,11 @@ async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[st
         current = await approval_ledger_repository.get_by_approval_id(row.approval_id)
         if current is not None:
             await publish_ledger_revocation(current)
-        capture_event(
-            user_id,
-            AnalyticsEvents.HIL_REVOKED,
-            {
-                "approval_id": row.approval_id,
-                "ledger_version": row.v + 1,
-                "revoker": "cancelled-run",
-            },
+        capture(
+            UserId(user_id),
+            HilRevoked(
+                approval_id=row.approval_id, ledger_version=row.v + 1, revoker="cancelled-run"
+            ),
         )
         cancelled.append(row.approval_id)
     await sync_conversation_approval_flag(conversation_id, user_id)

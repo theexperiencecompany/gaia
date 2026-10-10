@@ -72,6 +72,7 @@ from app.templates.docstrings.integration_tool_docs import (
 )
 from app.utils.device_onboarding import request_device_approval, request_device_onboarding
 from app.utils.integration_checker import request_integration_connection
+from app.utils.log_identifiers import user_text_shape
 from app.utils.url_safety import assert_safe_url_shape
 from shared.py.wide_events import log
 
@@ -162,7 +163,7 @@ async def _search_suggested(query: str, exclude_ids: set[str]) -> list[Suggested
     """Public integrations matching query, excluding ids the user already has."""
     suggested_list: list[SuggestedIntegration] = []
     try:
-        log.info(f"{LogTag.TOOL} Searching public integrations", query=query)
+        log.info(f"{LogTag.TOOL} Searching public integrations", query=user_text_shape(query))
 
         # Flexible word-based search (regex construction lives in the repo)
         words = build_search_patterns(query)

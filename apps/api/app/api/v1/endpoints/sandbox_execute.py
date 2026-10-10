@@ -32,13 +32,14 @@ from app.constants.execute import (
 from app.db.redis import redis_cache
 from app.services.sandbox.execute_token import SandboxExecuteClaims, verify_execute_token
 from app.utils.errors import AppError
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/sandbox", tags=["Sandbox"])
 
 
 class SandboxExecuteRequest(BaseModel):
-    tool_name: str = Field(min_length=1)
+    tool_name: Identifier
     data: dict[str, Any] = Field(default_factory=dict)
 
 

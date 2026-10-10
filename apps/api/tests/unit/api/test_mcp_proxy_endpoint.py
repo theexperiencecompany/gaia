@@ -23,7 +23,9 @@ from mcp.types import (
 )
 from pydantic import AnyUrl
 
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
+from tests.conftest import FAKE_USER
 
 API = "/api/v1/mcp"
 
@@ -40,7 +42,7 @@ class TestProxyToolCall:
                 "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
                 new_callable=AsyncMock,
             ) as mock_get,
-            patch("app.api.v1.endpoints.mcp_proxy.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.mcp_proxy.capture") as mock_capture,
         ):
             mock_client = AsyncMock()
             mock_client.call_tool_on_server.return_value = mock_result
@@ -59,8 +61,7 @@ class TestProxyToolCall:
         assert data["content"][0]["text"] == "hello"
         assert data["is_error"] is False
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": "test_tool", "source": "mcp_app"},
+            UserId(FAKE_USER.user_id), ToolUsed(tool_name="test_tool", source="mcp_app")
         )
 
     async def test_tool_call_with_error_flag(self, client: AsyncClient) -> None:
@@ -70,7 +71,7 @@ class TestProxyToolCall:
                 "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
                 new_callable=AsyncMock,
             ) as mock_get,
-            patch("app.api.v1.endpoints.mcp_proxy.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.mcp_proxy.capture") as mock_capture,
         ):
             mock_client = AsyncMock()
             mock_client.call_tool_on_server.return_value = mock_result
@@ -85,8 +86,7 @@ class TestProxyToolCall:
         assert resp.status_code == 200
         assert resp.json()["is_error"] is True
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": "failing_tool", "source": "mcp_app"},
+            UserId(FAKE_USER.user_id), ToolUsed(tool_name="failing_tool", source="mcp_app")
         )
 
     async def test_tool_call_service_error(self, client: AsyncClient) -> None:
@@ -106,6 +106,19 @@ class TestProxyToolCall:
             )
         assert resp.status_code == 500
         assert "Tool call failed" in resp.json()["message"]
+
+    async def test_a_tool_name_outside_the_mcp_charset_is_refused_before_the_call(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+        ) as mock_get:
+            resp = await client.post(
+                f"{API}/proxy/tool-call",
+                json={"server_url": "https://example.com/mcp", "tool_name": "send email"},
+            )
+        assert resp.status_code == 422
+        mock_get.assert_not_awaited()
 
     async def test_tool_call_validation_error(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/proxy/tool-call", json={})

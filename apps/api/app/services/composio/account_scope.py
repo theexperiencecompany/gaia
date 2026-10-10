@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from app.models.integrations.composio_hooks import ComposioAccountSelection
+from app.models.agent_config import ComposioAccountSelection
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.utils.concurrency import run_on_captured_loop
 

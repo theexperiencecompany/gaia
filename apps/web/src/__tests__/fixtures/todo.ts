@@ -26,6 +26,8 @@ export function makeTodo(id: string, overrides: Partial<Todo> = {}): Todo {
     trigger_subscriptions: [],
     gaia_retry_count: 0,
     pending_approval: null,
+    parent_todo_id: null,
+    sub_todo_count: 0,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

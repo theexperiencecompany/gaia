@@ -43,6 +43,7 @@ from app.models.hil_models import (
     HILApprovalStatus,
     LedgerState,
 )
+from app.services.analytics_service import capture
 from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabled
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
@@ -91,6 +92,8 @@ from app.services.hil.utils import (
     unpack_tool_call,
 )
 from app.utils.general_utils import clip_text
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
@@ -522,7 +525,7 @@ async def _judge(
         # JEV classifies first, LLM stays as its transport-failure fallback.
         judge = JevIntentJudge()
     tool = await gated_tool_object(request, context.user_id, call.name)
-    return await judge_intent(
+    decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
@@ -544,6 +547,17 @@ async def _judge(
         prior_calls=prior_tool_calls(request.state, call.id),
         assistant_turns=recent_assistant_turns(request.state),
     )
+    if decision.outcome != "ask":
+        # A settled auto decision has no card and no ledger row; this is its only record.
+        capture(
+            UserId(context.user_id),
+            HilDecisionSubmitted(
+                decision="approved" if decision.outcome == "accept" else "denied",
+                tool_name=call.name,
+                via="auto",
+            ),
+        )
+    return decision
 
 
 async def _never_auto_tools(user_id: str) -> frozenset[str]:

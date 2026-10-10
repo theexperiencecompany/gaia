@@ -5,6 +5,10 @@ This module is separated to avoid circular imports between
 oauth_service.py and integration_service.py.
 """
 
+from collections.abc import Awaitable
+
+from pymongo.errors import PyMongoError
+
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
@@ -70,3 +74,22 @@ async def update_user_integration_status(
     if status == "connected":
         await publish_connected(user_id, integration_id)
     return True
+
+
+async def reconnect_or_unknown(
+    connected_before: Awaitable[bool], integration_id: str
+) -> bool | None:
+    """Await the connected-before lookup for an OAuth callback; None when Mongo cannot answer.
+
+    It only labels integration:connected, so like the callbacks' own best-effort
+    status write it must never fail the connect the user just completed.
+    """
+    try:
+        return await connected_before
+    except PyMongoError as e:
+        log.warning(
+            f"{LogTag.INTEGRATION} Could not tell whether the connect is a reconnect",
+            integration_id=integration_id,
+            error_type=type(e).__name__,
+        )
+        return None

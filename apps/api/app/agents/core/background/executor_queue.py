@@ -13,6 +13,7 @@ Preparing is this module's job, spawning the runner's — the one-way dependency
 
 import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 import time
 from typing import Any, TypedDict, cast
@@ -80,6 +81,8 @@ class ExecutorRunItem(TypedDict, total=False):
     # wide event, and a queue pop or HIL resume rebuilds the run elsewhere, so the
     # item is the only carrier across; read into ExecutorRun for attribution.
     workflow_execution_id: str | None
+    # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
+    dispatched_at: str
 
 
 @dataclass(frozen=True)
@@ -361,6 +364,7 @@ def build_run_item(
         "user_message_id": identity.user_message_id,
         "bot_message_id": identity.bot_message_id,
         "workflow_execution_id": workflow_execution_id or current_workflow_execution_id(),
+        "dispatched_at": identity.dispatched_at.isoformat(),
     }
 
 
@@ -494,6 +498,12 @@ async def prepare_run_from_item(
             task_id=task_id,
             user_message_id=queued_user_message_id,
             bot_message_id=queued_bot_message_id,
+            # An item stored before dispatch times were kept is dispatched now.
+            dispatched_at=(
+                datetime.fromisoformat(stored_dispatch)
+                if (stored_dispatch := item.get("dispatched_at"))
+                else datetime.now(UTC)
+            ),
         ),
         workflow_execution_id=item.get("workflow_execution_id"),
     )

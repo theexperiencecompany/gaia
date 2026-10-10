@@ -17,12 +17,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import hashlib
-import importlib.util
 import json
-from pathlib import Path
 import re
-import sys
-from types import ModuleType
 from typing import Any
 
 from starlette.applications import Starlette
@@ -30,26 +26,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from tests.helpers import pick_free_port
+from tests.helpers import load_llm_stub_module, pick_free_port
 from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
-_LLM_STUB_DIR = Path(__file__).resolve().parents[7] / "tools" / "llm-stub"
-
-
-def _load_stub_module(name: str) -> ModuleType:
-    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
-    spec = importlib.util.spec_from_file_location(name, _LLM_STUB_DIR / f"{name}.py")
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 # wire imports directives by its bare name, so directives is registered first.
-_directives = _load_stub_module("directives")
-_wire = _load_stub_module("wire")
+_directives = load_llm_stub_module("directives")
+_wire = load_llm_stub_module("wire")
 
 #: The Browser-Use structured-output name both of its callers use.
 _AGENT_OUTPUT = "agent_output"
@@ -265,17 +247,17 @@ class FakeModels:
             return self._agent_tier(body)
         if (response_format.get("json_schema") or {}).get("name") == _AGENT_OUTPUT:
             if properties == {"memory", "action"}:
-                return self._json_content(self._agent_step(messages, schema))
+                return self._json_content(self._agent_step(messages, schema), messages)
             if properties == {"text"}:
-                return self._json_content(self._text_value(messages))
+                return self._json_content(self._text_value(messages), messages)
         if system.startswith(_EXTRACT_SYSTEM):
-            return self._plain(self._extract(messages))
+            return self._plain(self._extract(messages), messages)
         if system.startswith(_COMPACTION_SYSTEM):
             self.calls.append(ModelCall("compaction", None))
-            return self._plain("The run so far, compacted.")
+            return self._plain("The run so far, compacted.", messages)
         if system.startswith(_KEY_TERMS_PROMPT):
             self.calls.append(ModelCall("key_terms", None))
-            return self._plain("page text")
+            return self._plain("page text", messages)
         self._fail(f"a model request nothing here answers: {json.dumps(body)[:400]}")
         return JSONResponse(status_code=500, content={"error": {"message": "unscripted request"}})
 
@@ -290,7 +272,11 @@ class FakeModels:
             args=_emptiest(parameters, parameters.get("$defs") or {}),
         )
         return JSONResponse(
-            content=_wire.build_chat_completion(body.get("model") or "fake", response)
+            content=_wire.build_chat_completion(
+                body.get("model") or "fake",
+                response,
+                _wire.prompt_tokens(body.get("messages") or []),
+            )
         )
 
     # --- comms and executor ------------------------------------------------
@@ -305,9 +291,14 @@ class FakeModels:
             self.tool_calls.append(response.name)
         if parsed.stream:
             return StreamingResponse(
-                _wire.sse_lines(parsed.model, response), media_type="text/event-stream"
+                _wire.sse_lines(parsed.model, response, _wire.prompt_tokens(parsed.messages)),
+                media_type="text/event-stream",
             )
-        return JSONResponse(content=_wire.build_chat_completion(parsed.model, response))
+        return JSONResponse(
+            content=_wire.build_chat_completion(
+                parsed.model, response, _wire.prompt_tokens(parsed.messages)
+            )
+        )
 
     def _result_echo(self, messages: list[dict[str, Any]]) -> Any:
         """Re-voice a result handed to this tier after its script, word for word."""
@@ -500,13 +491,15 @@ class FakeModels:
     # --- wire ---------------------------------------------------------------
 
     @staticmethod
-    def _json_content(content: dict[str, Any]) -> JSONResponse:
-        return FakeModels._plain(json.dumps(content))
+    def _json_content(content: dict[str, Any], messages: list[dict[str, Any]]) -> JSONResponse:
+        return FakeModels._plain(json.dumps(content), messages)
 
     @staticmethod
-    def _plain(text: str) -> JSONResponse:
+    def _plain(text: str, messages: list[dict[str, Any]]) -> JSONResponse:
         return JSONResponse(
-            content=_wire.build_chat_completion("fake", _directives.SayResponse(text))
+            content=_wire.build_chat_completion(
+                "fake", _directives.SayResponse(text), _wire.prompt_tokens(messages)
+            )
         )
 
 

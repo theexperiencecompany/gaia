@@ -19,8 +19,7 @@ vi.mock("@/features/auth/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { INTEGRATION_ERROR: "integration:error" },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/lib/toast", () => ({

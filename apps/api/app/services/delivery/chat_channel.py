@@ -17,9 +17,11 @@ from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.platform_models import PlatformLinkEntry
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsChatChannelPriorityUpdated
 
 #: The chat platforms a priority list may contain — a stored document naming
 #: anything else is filtered out here. Includes every bot platform, not just
@@ -50,10 +52,9 @@ async def get_chat_channel_priority(user_id: str) -> list[str]:
 async def set_chat_channel_priority(user_id: str, priority: Sequence[str]) -> None:
     """Store a new order and report the change (platform names only, no content)."""
     await user_repository.set_chat_channel_priority(user_id, list(priority))
-    capture_event(
-        user_id,
-        AnalyticsEvents.SETTINGS_CHAT_CHANNEL_PRIORITY_UPDATED,
-        {"first": priority[0], "count": len(priority)},
+    capture(
+        UserId(user_id),
+        SettingsChatChannelPriorityUpdated(first=priority[0], count=len(priority)),
     )
 
 
@@ -77,7 +78,7 @@ def pick_chat_channel(
     skipped and falls through to the next. None means no bot platform is usable.
     """
     for platform in priority:
-        entry = linked.get(platform)
+        entry: PlatformLinkEntry | None = linked.get(platform)
         if entry is None or not preferences.get(platform, True):
             continue
         source = ConversationSource.coerce(platform)

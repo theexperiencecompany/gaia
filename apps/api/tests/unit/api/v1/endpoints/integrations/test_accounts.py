@@ -76,7 +76,7 @@ def composio() -> Iterator[MagicMock]:
     service.delete_connected_account = AsyncMock()
     with (
         patch(f"{LIFECYCLE}.get_composio_service", return_value=service),
-        patch(f"{LIFECYCLE}.capture_event"),
+        patch(f"{LIFECYCLE}.capture"),
         patch(f"{LIFECYCLE}.resync_primary_bound_triggers", AsyncMock()),
     ):
         yield service

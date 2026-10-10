@@ -82,6 +82,17 @@ repos:
         files: '^apps/api/app/.*\.py$|^apps/api/scripts/export_openapi\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
         pass_filenames: false
 
+      - id: analytics-types
+        name: analytics catalog JSON + generated event types up to date
+        entry: >-
+          bash -c 'set -e; mise run analytics:types; regenerated=$(git status --porcelain
+          -- libs/shared/ts/src/analytics/generated | cut -c4-); if [ -n "$regenerated" ];
+          then echo "analytics-types regenerated and staged:"; echo "$regenerated"; git add
+          -- $regenerated; else echo "analytics-types: already in sync"; fi'
+        language: system
+        files: '^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\.lock$|^scripts/ci/checks\.mjs$'
+        pass_filenames: false
+
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
         entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'

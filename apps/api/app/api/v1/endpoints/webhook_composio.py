@@ -14,12 +14,11 @@ integration and running the shared integration expiry transition.
 """
 
 import asyncio
-from collections.abc import Mapping
-from typing import TypedDict, cast
 
-from composio.core.models.webhook_events import is_connection_expired_event
+from composio.core.models.webhook_events import WebhookEventType, is_connection_expired_event
 from fastapi import APIRouter, Request
-from pydantic import ValidationError
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config.oauth_config import get_integration_by_config, get_integration_by_toolkit
 from app.constants.integrations import (
@@ -114,53 +113,42 @@ async def _expire_connection(
         )
 
 
-class _WebhookEnvelope(TypedDict, total=False):
-    """A Composio delivery as it arrives, before validation; values unchecked."""
+def _delivered_keys(delivered: BaseModel) -> list[str]:
+    """The keys a delivery carried, declared and undeclared alike.
 
-    type: object
-    timestamp: object
-    data: object
-
-
-class _TriggerData(TypedDict, total=False):
-    """The identifiers a trigger delivery's data carries; values unchecked."""
-
-    connection_id: object
-    connection_nano_id: object
-    trigger_nano_id: object
-    trigger_id: object
-    user_id: object
+    ``model_fields_set`` already holds the extras on an ``extra="allow"`` model, and is
+    None-free on every other config, so it is the whole answer on its own: unioning
+    ``model_extra`` over it added a second source that could only ever repeat it.
+    """
+    return sorted(delivered.model_fields_set)
 
 
-def _handle_connection_event(body: Mapping[str, object]) -> ComposioWebhookAckResponse:
+def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
     """Route a Composio connection-lifecycle event onto the shared expiry transition.
 
     Always acknowledges: an envelope GAIA cannot parse, an integration it does not
     recognise, or a status that is not terminal are all logged and dropped, because
     a non-200 makes Composio redeliver the same unusable event indefinitely.
     """
-    # Confirms the delivered shape against the SDK TypedDicts without ever
-    # touching `data.state`, which carries the account's access/refresh tokens.
-    envelope: _WebhookEnvelope = cast(_WebhookEnvelope, body)
-    data = envelope.get("data")
-    log.set_ns(
-        "composio_connection",
-        envelope_keys=sorted(body),
-        data_keys=sorted(data) if isinstance(data, dict) else None,
-    )
-
     try:
         event = ComposioConnectionEvent.model_validate(body)
     except ValidationError as e:
         log.error(
             f"{LogTag.COMPOSIO} Unparseable connection event — dropped",
-            event_type=envelope.get("type"),
+            event_type=WebhookEventType.CONNECTION_EXPIRED.value,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ComposioWebhookAckResponse(message="Connection event not understood")
 
     data = event.data
+    # Confirms the delivered shape against the SDK TypedDicts: keys only, never
+    # data.state, which carries the account's access/refresh tokens.
+    log.set_ns(
+        "composio_connection",
+        envelope_keys=_delivered_keys(event),
+        data_keys=_delivered_keys(data),
+    )
     integration = get_integration_by_config(data.auth_config.id) or get_integration_by_toolkit(
         data.toolkit.slug
     )
@@ -229,9 +217,8 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     # and requires trigger identifiers connection events don't carry, so
     # constructing it first would raise before routing.
     if is_connection_expired_event(body):
-        # The SDK type guard narrows to its ConnectionExpiredEvent TypedDict; the
-        # handler re-validates the payload itself rather than trusting that shape.
-        return _handle_connection_event(cast(Mapping[str, object], body))
+        # The handler validates the payload itself rather than trusting the SDK guard's shape.
+        return _handle_connection_event(body)
 
     if not isinstance(body, dict):
         # Composio only ever sends an object, so this is malformed. Ack anyway:
@@ -243,22 +230,11 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
         )
         return ComposioWebhookAckResponse(message="Webhook body not understood")
 
-    envelope: _WebhookEnvelope = cast(_WebhookEnvelope, body)
-    data = envelope.get("data")
-    trigger: _TriggerData = cast(_TriggerData, data if isinstance(data, dict) else {})
-
-    event_data = ComposioWebhookEvent.model_validate(
-        {
-            "connection_id": trigger.get("connection_id"),
-            "connection_nano_id": trigger.get("connection_nano_id"),
-            "trigger_nano_id": trigger.get("trigger_nano_id"),
-            "trigger_id": trigger.get("trigger_id"),
-            "user_id": trigger.get("user_id"),
-            "data": data,
-            "timestamp": envelope.get("timestamp"),
-            "type": envelope.get("type"),
-        }
-    )
+    try:
+        event_data = ComposioWebhookEvent.model_validate(body)
+    except ValidationError as e:
+        # A delivery missing its timestamp or ids is refused, naming the fields.
+        raise RequestValidationError(e.errors()) from e
     log.set(
         user={"id": event_data.user_id},
         webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},

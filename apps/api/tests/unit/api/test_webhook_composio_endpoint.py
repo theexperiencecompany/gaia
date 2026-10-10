@@ -14,6 +14,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
 from app.models.integration_models import IntegrationAccount
@@ -273,6 +274,23 @@ class TestTheExpiryIsHandedOffCorrectly:
             },
         }
 
+    async def test_the_wide_event_names_the_keys_a_delivery_carried_beyond_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """Report the delivered shape, so an undeclared field Composio added is visible."""
+        body = {
+            **_expired_connection_event(),
+            "sdk_version": "3.9.1",
+            "data": {**_expired_connection_event()["data"], "sdk_hint": "new-field"},
+        }
+
+        with patch(f"{MODULE}.spawn_logged_task"), patch(f"{MODULE}.log") as mock_log:
+            await _post_event(unauthed_client, body, "conn-extra-keys")
+
+        fields = _ns_fields(mock_log)
+        assert "sdk_version" in fields["envelope_keys"]
+        assert "sdk_hint" in fields["data_keys"]
+
     async def test_the_wide_event_records_the_connection_it_acted_on(
         self, unauthed_client: AsyncClient
     ) -> None:
@@ -394,6 +412,66 @@ def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
     }
 
 
+class TestStampedDeliveryIds:
+    """Composio stamps the trigger ids inside data, not beside it.
+
+    The alias reads the wire path first and the plain name second, so a delivery
+    carrying both keeps the one Composio actually stamped, and a missing id is
+    reported at data.<name> — where Composio put it — rather than at the top level.
+    """
+
+    @pytest.mark.regression
+    def test_the_wire_path_is_read_before_the_plain_name(self) -> None:
+        # Function scope: the helper is absent on base, where a module import
+        # would fail collection instead of failing this test.
+        from app.models.webhook_models import _stamped_in_data
+
+        assert _stamped_in_data("connection_id") == AliasChoices(
+            AliasPath("data", "connection_id"), "connection_id"
+        )
+
+    @pytest.mark.regression
+    def test_ids_stamped_inside_data_validate(self) -> None:
+        event = ComposioWebhookEvent.model_validate(_trigger_event())
+
+        assert event.connection_id == "conn-1"
+        assert event.trigger_id == "trig-1"
+        assert event.user_id == "507f1f77bcf86cd799439011"
+
+    def test_ids_given_directly_validate_too(self) -> None:
+        body = {
+            "type": "gmail_new_gmail_message",
+            "timestamp": "2026-08-10T05:44:33Z",
+            "data": {"payload": {"subject": "hi"}},
+            "connection_id": "conn-direct",
+            "connection_nano_id": "nano-direct",
+            "trigger_nano_id": "trig-nano-direct",
+            "trigger_id": "trig-direct",
+            "user_id": "507f1f77bcf86cd799439011",
+        }
+
+        event = ComposioWebhookEvent.model_validate(body)
+
+        assert event.connection_id == "conn-direct"
+        assert event.trigger_id == "trig-direct"
+
+    @pytest.mark.regression
+    def test_a_missing_id_is_reported_where_composio_put_it(self) -> None:
+        body = _trigger_event()
+        del body["data"]["trigger_id"]
+
+        with pytest.raises(ValidationError) as caught:
+            ComposioWebhookEvent.model_validate(body)
+
+        assert caught.value.errors(include_url=False, include_input=False) == [
+            {
+                "type": "missing",
+                "loc": ("data", "trigger_id"),
+                "msg": "Field required",
+            }
+        ]
+
+
 class TestDeliveryGuards:
     """Signature and replay checks run before anything reads the body, since Composio retries aggressively and a delivery processed twice fires a workflow twice."""
 
@@ -496,6 +574,82 @@ class TestTriggerEventRouting:
         assert event.timestamp == "2026-08-10T05:44:33Z"
         assert event.data["payload"] == {"subject": "hi"}
         spawn.assert_called_once()
+
+
+def _without(body: dict, *path: str) -> dict:
+    """Drop the key at path from a copy of body."""
+    copied = json.loads(json.dumps(body))
+    *parents, last = path
+    target = copied
+    for key in parents:
+        target = target[key]
+    del target[last]
+    return copied
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestAMalformedTriggerDeliveryIsRefused:
+    """Regression: a delivery missing timestamp or connection_id was a 500; it is a 422 naming the field."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("path", "loc"),
+        [(("timestamp",), ["timestamp"]), (("data", "connection_id"), ["data", "connection_id"])],
+        ids=["timestamp", "connection_id"],
+    )
+    async def test_a_missing_field_is_a_422_that_names_it(
+        self, unauthed_client: AsyncClient, path: tuple[str, ...], loc: list[str]
+    ) -> None:
+        with patch(f"{MODULE}.get_handler_by_event") as get_handler:
+            response = await _post_event(
+                unauthed_client, _without(_trigger_event(), *path), f"bad-{path[-1]}"
+            )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["code"] == "validation_error"
+        assert [issue["loc"] for issue in body["errors"]] == [loc]
+        assert body["errors"][0]["type"] == "missing"
+        get_handler.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_data_that_is_not_an_object_is_a_422(self, unauthed_client: AsyncClient) -> None:
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-data")
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "validation_error"
+
+    @pytest.mark.regression
+    async def test_the_422_reports_the_field_that_was_wrong_and_echoes_no_input(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """The refusal names the field, says what was wrong with it, and quotes nothing back."""
+        secret = "sk-live-should-not-be-echoed"
+        body = {**_trigger_event(), "data": "not-an-object", "token": secret}
+
+        response = await _post_event(unauthed_client, body, "bad-quoting")
+
+        assert response.status_code == 422
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert issue["type"]
+        assert "input" not in issue
+        assert secret not in response.text
+
+    @pytest.mark.regression
+    async def test_the_422_carries_no_url_into_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """include_url is off: a link into GAIA's own schema tells the caller nothing."""
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-url")
+
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert "url" not in issue
 
 
 @pytest.mark.usefixtures("_accepted_delivery")

@@ -17,14 +17,18 @@ from app.agents.tools.integration_account_tools import (
     set_primary_integration_account,
 )
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationAccountRenamed,
+    IntegrationDisconnected,
+)
 from tests.integration_account_factories import (
     make_integration_account,
     make_integration_record,
     with_nickname,
 )
 
-USER_ID = "user-1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CONFIG = {"metadata": {"user_id": USER_ID}}
 LIFECYCLE = "app.services.integrations.integration_account_lifecycle"
 TOOLS = "app.agents.tools.integration_account_tools"
@@ -62,7 +66,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{LIFECYCLE}.get_account_record", AsyncMock(return_value=None)) as get_record,
         patch(f"{LIFECYCLE}.save_accounts", AsyncMock(side_effect=_persist)) as save,
         patch(f"{LIFECYCLE}.set_account_nickname", AsyncMock()) as name,
-        patch(f"{LIFECYCLE}.capture_event") as capture,
+        patch(f"{LIFECYCLE}.capture") as capture,
         patch(f"{LIFECYCLE}.TriggerService") as trigger_service,
         patch(f"{LIFECYCLE}.resync_subscriptions_for_trigger_names", AsyncMock()),
         patch(f"{LIFECYCLE}.get_composio_service") as composio,
@@ -70,7 +74,7 @@ def seams() -> Iterator[Seams]:
         patch(
             f"{TOOLS}.integration_connection_service.disconnect_integration", AsyncMock()
         ) as disconnect_one_connection,
-        patch(f"{TOOLS}.capture_event") as tool_capture,
+        patch(f"{TOOLS}.capture") as tool_capture,
         patch("app.agents.tools.core.mutations.log"),
     ):
         name.side_effect = lambda _u, _i, account_id, nickname: with_nickname(
@@ -117,9 +121,8 @@ class TestRenameIntegrationAccount:
         # One account is written in place, never the whole list another rename may be writing.
         seams.save.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
-            {"integration_id": "googlecalendar", "cleared": False},
+            UserId(USER_ID),
+            IntegrationAccountRenamed(integration_id="googlecalendar", cleared=False),
         )
 
     async def test_the_account_can_be_named_by_its_identity(self, seams: Seams) -> None:
@@ -300,7 +303,7 @@ class TestDisconnectIntegration:
         assert result == "Disconnected deepwiki."
         seams.disconnect_one_connection.assert_awaited_once_with(USER_ID, "deepwiki")
         seams.tool_capture.assert_called_once_with(
-            USER_ID, AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "deepwiki"}
+            UserId(USER_ID), IntegrationDisconnected(integration_id="deepwiki")
         )
         seams.get_record.assert_not_awaited()
 

@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
 
 from pydantic import ValidationError
 from standardwebhooks.webhooks import Webhook
@@ -16,18 +15,23 @@ from app.models.webhook_models import (
     DodoPaymentData,
     DodoWebhookEvent,
     DodoWebhookEventType,
+    DodoWebhookLogFields,
+    DodoWebhookPayload,
     DodoWebhookProcessingResult,
     WebhookProcessingStatus,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, track_payment_event
+from app.services.analytics_service import capture
+from app.services.payments.revenue_properties import payment_revenue_properties
 from app.services.payments.subscription_events import (
-    CENTS_PER_UNIT,
     SubscriptionEvent,
     SubscriptionEventKind,
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from app.utils.money import to_major_units
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
 
 WebhookHandler = Callable[[DodoWebhookEvent], Awaitable[DodoWebhookProcessingResult]]
@@ -137,7 +141,7 @@ class PaymentWebhookService:
             return False
 
     async def process_webhook(
-        self, webhook_data: dict[str, Any], webhook_id: str
+        self, webhook_data: DodoWebhookPayload, webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """Process a Dodo payment webhook exactly once.
 
@@ -155,28 +159,19 @@ class PaymentWebhookService:
                 message="Webhook already processed",
             )
         try:
-            # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data: dict[str, Any] = webhook_data.get("data", webhook_data)
-            customer_field = payload_data.get("customer")
-            customer_id = (
-                customer_field.get("customer_id")
-                if isinstance(customer_field, dict)
-                else payload_data.get("customer_id")
-            )
+            payload_data = DodoWebhookLogFields.model_validate(webhook_data.get("data", {}))
             log.set(
                 payment={
                     "event_type": event_type_raw,
                     "status": "processing",
                     "webhook_id": webhook_id,
-                    "customer_id": customer_id,
-                    "amount_cents": payload_data.get("amount")
-                    or payload_data.get("amount_paid")
-                    or payload_data.get("total_amount", 0),
-                    "currency": payload_data.get("currency", "usd"),
+                    "customer_id": payload_data.customer.customer_id or payload_data.customer_id,
+                    "amount_cents": payload_data.total_amount,
+                    "currency": payload_data.currency,
                 }
             )
 
-            event = DodoWebhookEvent(**webhook_data)
+            event = DodoWebhookEvent.model_validate(webhook_data)
 
             handler = self._handler_for(event.type, webhook_id)
             if not handler:
@@ -221,9 +216,8 @@ class PaymentWebhookService:
             # Keep the workspace's account/subscription projection honest after
             # any billing state change.
             if result.status == WebhookProcessingStatus.PROCESSED:
-                metadata = payload_data.get("metadata")
-                webhook_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
-                if isinstance(webhook_user_id, str) and webhook_user_id:
+                webhook_user_id = payload_data.metadata.user_id
+                if webhook_user_id:
                     schedule_account_sync(webhook_user_id)
 
             await processed_webhook_repository.record_outcome(webhook_id, _outcome_of(result))
@@ -275,39 +269,38 @@ class PaymentWebhookService:
             return None
         return self.handlers.get(known)
 
-    async def _get_user_id_from_metadata(self, metadata: dict[str, Any]) -> str | None:
-        """Get the stable application user ID from payment metadata."""
-        user_id = metadata.get("user_id")
-        return str(user_id) if user_id else None
-
     async def _capture_payment(
-        self, event_type: AnalyticsEvents, payment_data: DodoPaymentData
+        self, event_type: type[PaymentSucceeded | PaymentFailed], payment_data: DodoPaymentData
     ) -> None:
         """Capture a payment against the GAIA user who made it.
 
-        A webhook has no authenticated request to inherit context from, so the
-        id comes off the payment's own metadata. Without one the event is not
-        sent at all — sending it anonymous would split the person's funnel —
-        and the gap is logged, since an uncaptured payment is invisible in PostHog.
+        A webhook has no authenticated request, so the id comes off the payment's
+        own metadata. Without a valid one the event is not sent (an anonymous
+        payment would split the person's funnel) and the gap is logged.
         """
-        user_id = await self._get_user_id_from_metadata(payment_data.metadata)
-        if not user_id:
+        raw_user_id = payment_data.metadata.user_id
+        try:
+            user_id = UserId(str(raw_user_id))
+        except ValueError:
             log.warning(
-                f"{LogTag.PAYMENT} Payment carries no GAIA user id; analytics not captured",
+                f"{LogTag.PAYMENT} Payment carries no valid GAIA user id; analytics not captured",
                 failure_reason="unattributable_payment",
-                analytics_event=event_type.value,
+                analytics_event=event_type.event,
                 payment_id=payment_data.payment_id,
             )
             return
 
-        track_payment_event(
-            user_id=user_id,
-            event_type=event_type,
-            payment_id=payment_data.payment_id,
-            amount=payment_data.total_amount / CENTS_PER_UNIT
-            if payment_data.total_amount
-            else None,
-            currency=payment_data.currency,
+        revenue = payment_revenue_properties(payment_data)
+        capture(
+            user_id,
+            event_type(
+                payment_id=payment_data.payment_id,
+                amount=float(to_major_units(payment_data.total_amount, payment_data.currency)),
+                currency=payment_data.currency,
+                amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                currency_charged=revenue.currency_charged,
+                amount_usd_pre_tax=revenue.amount_usd_pre_tax,
+            ),
         )
 
     # Payment event handlers
@@ -321,7 +314,7 @@ class PaymentWebhookService:
 
         log.info(f"{LogTag.PAYMENT} Payment succeeded", payment_id=payment_data.payment_id)
 
-        await self._capture_payment(AnalyticsEvents.PAYMENT_SUCCEEDED, payment_data)
+        await self._capture_payment(PaymentSucceeded, payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,
@@ -338,7 +331,7 @@ class PaymentWebhookService:
 
         log.warning(f"{LogTag.PAYMENT} Payment failed", payment_id=payment_data.payment_id)
 
-        await self._capture_payment(AnalyticsEvents.PAYMENT_FAILED, payment_data)
+        await self._capture_payment(PaymentFailed, payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,

@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.services.analytics_service import AnalyticsEvents
 from app.services.storage import JuiceFSUnavailable
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import SessionArtifactPinned
 from tests.conftest import FAKE_USER
 
 PIN_URL = "/api/v1/sessions/conv_1/pin"
@@ -25,7 +26,7 @@ class TestPinArtifact:
     async def test_returns_the_pinned_workspace_path(self, client: AsyncClient) -> None:
         with (
             patch(f"{_MODULE}.pin_session_artifact", new_callable=AsyncMock) as pin,
-            patch(f"{_MODULE}.capture_context_event") as capture,
+            patch(f"{_MODULE}.capture") as capture,
         ):
             pin.return_value = "/workspace/pinned/report.pdf"
             resp = await client.post(PIN_URL, json={"path": "out/report.pdf"})
@@ -33,7 +34,7 @@ class TestPinArtifact:
         assert resp.status_code == 201
         assert resp.json() == {"pinned_path": "/workspace/pinned/report.pdf"}
         pin.assert_awaited_once_with(FAKE_USER.user_id, "conv_1", "out/report.pdf", None)
-        capture.assert_called_once_with(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
+        capture.assert_called_once_with(UserId(FAKE_USER.user_id), SessionArtifactPinned())
 
     async def test_a_target_name_is_handed_through(self, client: AsyncClient) -> None:
         with patch(f"{_MODULE}.pin_session_artifact", new_callable=AsyncMock) as pin:

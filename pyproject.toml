@@ -378,6 +378,17 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# The only modules allowed to import the PostHog SDK (banned-api above): the two
+# capture paths, the client's construction and shutdown, the request context
+# captures inherit identity from, flag evaluation, and LLM-generation tracing.
+"apps/api/app/services/analytics_service.py" = ["TID251"]  # the API's one capture path
+"libs/shared/py/analytics/client.py" = ["TID251"]  # the shared capture path voice uses
+"apps/api/app/config/posthog.py" = ["TID251"]  # builds the client; emits nothing
+"apps/api/app/core/lifespan.py" = ["TID251"]  # shuts the client down; emits nothing
+"apps/api/app/api/v1/middleware/auth.py" = ["TID251"]  # binds the request session for capture
+"apps/api/app/services/feature_flags.py" = ["TID251"]  # flag evaluation is a separate PostHog product
+"apps/api/tests/**" = ["TID251"]  # tests assert against the SDK's own context and handler types
+"apps/api/scripts/analytics_ops/posthog_api.py" = ["TID251"]  # builds the backfills' client; catalog events still go through prepare_capture
 # Docstrings in these trees are runtime data, not documentation: route handler
 # docstrings are the OpenAPI descriptions (apps/api/openapi.json is generated
 # from them and drift-gated), @tool bodies are the model-facing tool
@@ -413,7 +424,7 @@ unfixable = [
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/agents/tools/integrations/calendar_tool.py" = ["PLR0912", "PLR0915"]  # register_calendar_custom_tools is a registration factory whose PLR0915 statement count is just its ~10 nested @custom_tool bodies (inherent to the pattern). The individual tool bodies (CUSTOM_GET_DAY_SUMMARY / CUSTOM_CREATE_EVENT) are branch-heavy Google-payload builders; extracting their loops adds indirection the mutation gate can't test (debug-log calls, tz-sensitive ids). The loop-dispatch fix only touches _run_sync, so this predates it.
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
-"apps/api/app/services/todos/todo_service.py" = ["PLR0912", "PLR0913"]  # update_todo and get_all_todos predate this change; the triggers feature only adds subscription teardown-on-delete here
+"apps/api/app/services/todos/todo_service.py" = ["PLR0913"]  # get_all_todos predates this change; the triggers feature only adds subscription teardown-on-delete here
 "apps/api/app/services/tracked_todo_service.py" = ["PLR0913"]  # the flagged function predates this change; the triggers feature adds subscription teardown to this file
 "apps/api/app/services/triggers/handlers/calendar.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/github.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
@@ -590,6 +601,11 @@ known-first-party = ["app", "shared", "apps", "libs"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "parents"
+
+# One door to PostHog: events go through the typed capture in
+# shared.py.analytics / app.services.analytics_service, never the SDK directly.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"posthog".msg = "Capture through app.services.analytics_service.capture (or shared.py.analytics.PostHogAnalytics) with a catalog event; only the analytics modules may import the PostHog SDK."
 
 [tool.ruff.lint.pylint]
 max-args = 6

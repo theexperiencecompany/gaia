@@ -8,13 +8,16 @@ import pytest
 from app.constants.browser import EngineFailure, HandoffDecision, HandoffStatus
 from app.constants.chat import ConversationSource
 from app.schemas.browser import NewHandoff
-from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import handoff as handoff_mod
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from app.services.browser.live_code import mint_live_code, resolve_live_code
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +28,7 @@ def redis(fake_redis: fakeredis.aioredis.FakeRedis) -> fakeredis.aioredis.FakeRe
 @pytest.fixture(autouse=True)
 def events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr(handoff_mod, "capture_event", lambda *args: calls.append(args))
+    monkeypatch.setattr(handoff_mod, "capture", lambda *args: calls.append(args))
     return calls
 
 
@@ -33,11 +36,11 @@ async def test_the_first_decision_is_the_one_of_record(events: list[tuple[object
     """Card, chat reply and a stop can all reach one handoff; only the first decides it, and a late one hears that decision."""
     await handoff_mod.create_pending_handoff(
         "h1",
-        NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-1", reply_to="conv-1"),
+        NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-1", reply_to="conv-1"),
     )
 
-    first = await handoff_mod.resolve_handoff("h1", HandoffDecision.CANCEL, "user-1", "first")
-    second = await handoff_mod.resolve_handoff("h1", HandoffDecision.CONTINUE, "user-1", "second")
+    first = await handoff_mod.resolve_handoff("h1", HandoffDecision.CANCEL, USER_ID, "first")
+    second = await handoff_mod.resolve_handoff("h1", HandoffDecision.CONTINUE, USER_ID, "second")
 
     record = await handoff_mod.get_handoff("h1")
     assert (first, second) == (HandoffStatus.CANCELLED, HandoffStatus.CANCELLED)
@@ -46,13 +49,7 @@ async def test_the_first_decision_is_the_one_of_record(events: list[tuple[object
     # A plain note is the user's words, never a replaced request.
     assert (await handoff_mod.await_handoff("h1", timeout_seconds=1)).redirect is False
     # Resolution can run where no request context exists: the id travels explicitly.
-    assert events == [
-        (
-            "user-1",
-            AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-            {"decision": "cancel", "with_note": True},
-        )
-    ]
+    assert events == [(UserId(USER_ID), BrowserHandoffResolved(decision="cancel", with_note=True))]
 
 
 async def test_only_its_owner_decides_a_handoff() -> None:
@@ -73,11 +70,11 @@ async def test_a_bare_continue_carries_no_note_and_a_bare_handoff_no_reason_or_a
     redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     await handoff_mod.create_pending_handoff(
-        "h2b", NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-2b")
+        "h2b", NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-2b")
     )
     assert await redis.keys("browser:handoff:reply:*") == []
 
-    await handoff_mod.resolve_handoff("h2b", HandoffDecision.CONTINUE, "user-1")
+    await handoff_mod.resolve_handoff("h2b", HandoffDecision.CONTINUE, USER_ID)
 
     record = await handoff_mod.get_handoff("h2b")
     assert record is not None
@@ -89,13 +86,13 @@ async def test_the_wait_wakes_on_the_decision_with_its_note_and_redirect() -> No
     """The waiting run is woken by the settle itself, an hour-long window notwithstanding, and gets the note it was sent with."""
     await handoff_mod.create_pending_handoff(
         "h3",
-        NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-3", reply_to="conv-3"),
+        NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-3", reply_to="conv-3"),
     )
     waiter = asyncio.create_task(handoff_mod.await_handoff("h3", timeout_seconds=3600))
     await asyncio.sleep(0)
 
     await handoff_mod.resolve_handoff(
-        "h3", HandoffDecision.CONTINUE, "user-1", " open Contact ", redirect=True
+        "h3", HandoffDecision.CONTINUE, USER_ID, " open Contact ", redirect=True
     )
 
     outcome = await asyncio.wait_for(waiter, timeout=2)
@@ -111,12 +108,12 @@ async def test_a_lapsed_wait_settles_timeout_and_a_later_decision_is_late() -> N
     """The run gave up; a continue now must not read as accepted, nor leave the chat looking paused."""
     await handoff_mod.create_pending_handoff(
         "h4",
-        NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-4", reply_to="conv-4"),
+        NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-4", reply_to="conv-4"),
     )
 
     async with captured_wide_event() as event:
         outcome = await handoff_mod.await_handoff("h4", timeout_seconds=0.05)
-    late = await handoff_mod.resolve_handoff("h4", HandoffDecision.CONTINUE, "user-1", "go on")
+    late = await handoff_mod.resolve_handoff("h4", HandoffDecision.CONTINUE, USER_ID, "go on")
 
     [warning] = event["warnings"]
     assert "timed out" in warning["msg"]
@@ -129,11 +126,11 @@ async def test_a_lapsed_wait_settles_timeout_and_a_later_decision_is_late() -> N
 async def test_a_stop_and_a_lost_browser_settle_it_and_close_its_live_link() -> None:
     """Settled, nobody is to act in that browser any more: its bot link stops opening it."""
     await handoff_mod.create_pending_handoff(
-        "h5", NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-5")
+        "h5", NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-5")
     )
-    code = await mint_live_code("sess-5", "user-1", "h5")
+    code = await mint_live_code("sess-5", USER_ID, "h5")
     await handoff_mod.create_pending_handoff(
-        "h6", NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-6")
+        "h6", NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-6")
     )
 
     assert await handoff_mod.cancel_handoff("h5") is HandoffStatus.CANCELLED
@@ -153,13 +150,13 @@ async def test_settling_an_older_handoff_leaves_a_newer_ones_reply_address() -> 
     await handoff_mod.create_pending_handoff(
         "old",
         NewHandoff(
-            job_id="job-1", user_id="user-1", conversation_id="conv-a", reply_to="telegram:user-1"
+            job_id="job-1", user_id=USER_ID, conversation_id="conv-a", reply_to="telegram:user-1"
         ),
     )
     await handoff_mod.create_pending_handoff(
         "new",
         NewHandoff(
-            job_id="job-1", user_id="user-1", conversation_id="conv-b", reply_to="telegram:user-1"
+            job_id="job-1", user_id=USER_ID, conversation_id="conv-b", reply_to="telegram:user-1"
         ),
     )
 
@@ -177,11 +174,11 @@ async def test_everything_a_handoff_writes_lapses_with_the_job(
 ) -> None:
     await handoff_mod.create_pending_handoff(
         "h9",
-        NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-9", reply_to="conv-9"),
+        NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-9", reply_to="conv-9"),
     )
     reply_ttl = await redis.ttl("browser:handoff:reply:conv-9")
 
-    await handoff_mod.resolve_handoff("h9", HandoffDecision.CONTINUE, "user-1")
+    await handoff_mod.resolve_handoff("h9", HandoffDecision.CONTINUE, USER_ID)
 
     assert reply_ttl > 0
     keys = await redis.keys("browser:handoff:h9*")
@@ -197,10 +194,11 @@ async def test_everything_a_handoff_writes_lapses_with_the_job(
 def test_a_bot_runs_reply_comes_from_the_users_chat_on_that_platform() -> None:
     """The prompt goes to the requester's DM whichever chat started the run, so a group's run is answered from there."""
     assert (
-        handoff_mod.reply_address("group", "user-1", ConversationSource.DISCORD) == "discord:user-1"
+        handoff_mod.reply_address("group", USER_ID, ConversationSource.DISCORD)
+        == f"discord:{USER_ID}"
     )
-    assert handoff_mod.reply_address("conv-web", "user-1", ConversationSource.WEB) == "conv-web"
-    assert handoff_mod.reply_address("conv-web", "user-1", None) == "conv-web"
+    assert handoff_mod.reply_address("conv-web", USER_ID, ConversationSource.WEB) == "conv-web"
+    assert handoff_mod.reply_address("conv-web", USER_ID, None) == "conv-web"
 
 
 async def test_a_handoff_that_was_never_stored_fails_loud(
@@ -216,7 +214,7 @@ async def test_a_handoff_that_was_never_stored_fails_loud(
         BrowserUnavailableError, match=r"^Could not persist handoff h8 \(storage unavailable\)\.$"
     ):
         await handoff_mod.create_pending_handoff(
-            "h8", NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-8")
+            "h8", NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-8")
         )
 
 
@@ -225,7 +223,7 @@ async def test_a_decision_whose_marker_never_landed_fails_loud(
 ) -> None:
     """Told the decision was taken when it was never stored, the run would wait out its window."""
     await handoff_mod.create_pending_handoff(
-        "h10", NewHandoff(job_id="job-1", user_id="user-1", conversation_id="conv-10")
+        "h10", NewHandoff(job_id="job-1", user_id=USER_ID, conversation_id="conv-10")
     )
 
     async def _write_fails(*_args: object, **_kwargs: object) -> bool:

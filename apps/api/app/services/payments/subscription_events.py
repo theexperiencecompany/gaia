@@ -4,7 +4,7 @@ Every source of a billing change — Dodo's webhooks, the user's own cancel
 request, payment verification reconciling against Dodo when the webhook never
 landed — is reduced to a SubscriptionEvent and applied here. Nothing else
 writes status, billing dates, the plan-cache drop, subscription:* analytics,
-or workflow pause/resume — three call sites each doing their own version is
+or workflow pause/resume and the resume of paywall-paused reminders and todos — three call sites each doing their own version is
 how a recovered subscription was left lapsed and a replayed webhook
 double-counted an activation.
 
@@ -15,35 +15,47 @@ workflows, leaving it pauses them, and each analytics event fires once per
 transition.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 
+from pymongo.errors import PyMongoError
+
 from app.constants.log_tags import LogTag
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
+from app.constants.payments import (
+    PAID_PERSON_SYNC_TASK,
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+    SubscriptionWorkflowSync,
+)
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    PlanType,
     SubscriptionDocument,
     SubscriptionStatus,
     SubscriptionUpdate,
 )
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import (
-    AnalyticsEvents,
-    SubscriptionPlan,
-    track_subscription_event,
-)
+from app.services.analytics_service import identify_user, track_subscription_event
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
+from app.services.payments.revenue_properties import subscription_revenue_properties
+from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    SubscriptionActivated,
+    SubscriptionCancelled,
+    SubscriptionExpired,
+    SubscriptionLapsed,
+    SubscriptionRenewed,
+)
 from shared.py.wide_events import log
 
-CENTS_PER_UNIT = 100
 EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 LAPSED_STATUSES = frozenset(
@@ -100,29 +112,58 @@ class SubscriptionEventResult:
     user_id: str | None
 
 
-async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
-    """Hand an unfinished workflow move to the worker, which owns the retries.
+async def _queue_retry(task: str, *args: str, **context: str) -> None:
+    """Hand a post-write step that did not finish to the worker, which owns the retries.
 
-    Dodo's own retry cannot recover this: the row above already carries the
-    reported status, so a redelivery reduces to UNCHANGED and never reaches
-    the workflows again. The job id is per user and direction, so a second
-    billing event for the same move collapses onto the one already queued.
+    Dodo's own retry cannot recover it: the row already carries the reported
+    status, so a redelivery reduces to UNCHANGED and never reaches the step
+    again. The job id is the task and its arguments, so a second billing event
+    owing the same step collapses onto the one already queued.
     """
-    job_id = f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{user_id}:{sync.value}"
     try:
         pool = await RedisPoolManager.get_pool()
-        await enqueue_worker_job(
-            pool, SUBSCRIPTION_WORKFLOW_SYNC_TASK, user_id, sync.value, _job_id=job_id
-        )
+        await enqueue_worker_job(pool, task, *args, _job_id=":".join((task, *args)))
     except Exception as e:
         # Nothing is left to fall back on, so this line is the only trace the
-        # stranded workflows leave.
+        # unfinished step leaves.
         log.error(
-            f"{LogTag.PAYMENT} Workflow subscription sync could not be queued",
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=task,
+            error=str(e),
+            error_type=type(e).__name__,
+            **context,
+        )
+
+
+async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
+    await _queue_retry(
+        SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+        user_id,
+        sync.value,
+        user_id=user_id,
+        workflow_sync=sync.value,
+    )
+
+
+async def queue_inbox_desk_safely(user_id: str) -> None:
+    """Queue the Inbox desk for a newly paying user; the worker retries it until it holds.
+
+    Never raises, for the same reason as reactivate_workflows_safely.
+    """
+    # Deferred import: the same app.decorators cycle as reactivate_workflows_safely.
+    from app.services.todos.inbox_desk import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+        queue_inbox_desk_provision,
+    )
+
+    try:
+        await queue_inbox_desk_provision(user_id)
+    except Exception as e:
+        # Nothing retries an unqueued job: scripts/provision_inbox_desks.py opens the desk.
+        log.error(
+            f"{LogTag.PAYMENT} Inbox desk provisioning could not be queued",
             error=str(e),
             error_type=type(e).__name__,
             user_id=user_id,
-            workflow_sync=sync.value,
         )
 
 
@@ -173,6 +214,28 @@ async def deactivate_workflows_safely(user_id: str) -> None:
         await _queue_workflow_sync(user_id, SubscriptionWorkflowSync.PAUSE)
 
 
+async def resume_paywall_pauses_safely(user_id: str) -> None:
+    """Resume the reminders and tracked todos paused because this user was not paid.
+
+    Never raises — see reactivate_workflows_safely. What could not resume is
+    queued for the worker, the same retry a workflow resume gets.
+    """
+    from app.services.workflow.subscription_pause import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+        resume_paywall_paused_automation,
+    )
+
+    try:
+        await resume_paywall_paused_automation(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.PAYMENT} Failed to resume paywall-paused automation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+        await _queue_workflow_sync(user_id, SubscriptionWorkflowSync.RESUME_PAUSED)
+
+
 async def send_welcome_email_safely(user_id: str) -> None:
     """Welcome the new subscriber. Never raises — see reactivate_workflows_safely."""
     try:
@@ -203,9 +266,8 @@ async def resolve_subscription_owner(sub_data: DodoSubscriptionData) -> str | No
     Callers acting on a client-supplied subscription id must compare this
     against the authenticated user before activating anything.
     """
-    metadata_user_id = sub_data.metadata.get("user_id")
-    if metadata_user_id:
-        return str(metadata_user_id)
+    if sub_data.metadata.user_id:
+        return sub_data.metadata.user_id
 
     user = await user_repository.get_by_email(sub_data.customer.email)
     return str(user.id) if user else None
@@ -268,13 +330,15 @@ DESIRED_STATE: dict[SubscriptionEventKind, Callable[[DodoSubscriptionData], Subs
 }
 
 
-def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> dict[str, object]:
-    """Return the desired fields whose value differs from the row's."""
-    return {
-        field: value
-        for field, value in desired.model_dump(exclude_unset=True).items()
-        if getattr(row, field) != value
-    }
+def _changes(row: SubscriptionDocument, desired: SubscriptionUpdate) -> SubscriptionUpdate:
+    """Return the desired fields whose value differs from the row's, as the only set fields."""
+    return SubscriptionUpdate.model_validate(
+        {
+            field: value
+            for field, value in desired.model_dump(exclude_unset=True).items()
+            if getattr(row, field) != value
+        }
+    )
 
 
 def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
@@ -283,18 +347,8 @@ def _is_stale(row: SubscriptionDocument, event: SubscriptionEvent) -> bool:
     return last_event_at is not None and event.occurred_at < last_event_at
 
 
-def _plan_of(data: DodoSubscriptionData) -> SubscriptionPlan:
-    return SubscriptionPlan(
-        name="Pro",
-        amount=data.recurring_pre_tax_amount / CENTS_PER_UNIT
-        if data.recurring_pre_tax_amount
-        else None,
-        currency=data.currency,
-    )
-
-
 def _capture_transition(
-    event: SubscriptionEvent, user_id: str, changes: Mapping[str, object]
+    event: SubscriptionEvent, user_id: str, changes: SubscriptionUpdate
 ) -> None:
     """Fire the one analytics event this transition names, if it names one.
 
@@ -304,41 +358,118 @@ def _capture_transition(
     """
     data = event.data
     match event.kind:
-        case SubscriptionEventKind.ACTIVATED if (
-            changes.get("status") == SubscriptionStatus.ACTIVE.value
-        ):
+        case SubscriptionEventKind.ACTIVATED if changes.status == SubscriptionStatus.ACTIVE.value:
+            revenue = subscription_revenue_properties(data)
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-                subscription_id=data.subscription_id,
-                plan=_plan_of(data),
+                UserId(user_id),
+                SubscriptionActivated(
+                    subscription_id=data.subscription_id,
+                    plan_name="Pro",
+                    amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency)),
+                    currency=data.currency,
+                    amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                    currency_charged=revenue.currency_charged,
+                ),
             )
         case SubscriptionEventKind.RENEWED:
+            revenue = subscription_revenue_properties(data)
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
-                subscription_id=data.subscription_id,
-                plan=SubscriptionPlan(currency=data.currency),
+                UserId(user_id),
+                SubscriptionRenewed(
+                    subscription_id=data.subscription_id,
+                    currency=data.currency,
+                    amount_charged_pre_tax=revenue.amount_charged_pre_tax,
+                    currency_charged=revenue.currency_charged,
+                ),
             )
         case SubscriptionEventKind.CANCELLED if (
-            changes.get("cancel_at_next_billing_date") is True
-            or changes.get("status") == SubscriptionStatus.CANCELLED.value
+            changes.cancel_at_next_billing_date is True
+            or changes.status == SubscriptionStatus.CANCELLED.value
         ):
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
-                subscription_id=data.subscription_id,
-                properties={
-                    "product_id": data.product_id,
-                    "billing_interval": data.payment_frequency_interval,
-                },
+                UserId(user_id),
+                SubscriptionCancelled(
+                    subscription_id=data.subscription_id,
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
+                ),
             )
-        case SubscriptionEventKind.EXPIRED if "status" in changes:
+        case SubscriptionEventKind.EXPIRED if "status" in changes.model_fields_set:
             track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
-                subscription_id=data.subscription_id,
+                UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
             )
+        case SubscriptionEventKind.FAILED | SubscriptionEventKind.ON_HOLD if (
+            "status" in changes.model_fields_set
+        ):
+            track_subscription_event(
+                UserId(user_id),
+                SubscriptionLapsed(
+                    subscription_id=data.subscription_id,
+                    status="failed" if event.kind is SubscriptionEventKind.FAILED else "on_hold",
+                ),
+            )
+
+
+def paid_person_properties(
+    status: SubscriptionStatus, *, cancel_at_period_end: bool
+) -> dict[str, object]:
+    """Return the person properties mirroring a row's paid state; a $0 discount-code subscription is a subscriber."""
+    is_subscribed = status is SubscriptionStatus.ACTIVE
+    return {
+        "plan": (PlanType.PRO if is_subscribed else PlanType.FREE).value,
+        "is_subscribed": is_subscribed,
+        "subscription_status": status.value,
+        "subscription_cancel_at_period_end": cancel_at_period_end,
+    }
+
+
+async def sync_paid_person_properties(user_id: str, dodo_subscription_id: str) -> None:
+    """Set the person's paid state as it stands now: the user's active subscription, else the changed row.
+
+    The person is the user, so another subscription still active outranks the
+    one this change lapsed. Raises PyMongoError when a read fails, for the
+    caller to retry; a changed row that is gone is logged, since no retry brings it back.
+    """
+    current = await subscription_repository.get_active_for_user(
+        user_id
+    ) or await subscription_repository.get_by_dodo_id(dodo_subscription_id)
+    if current is None:
+        log.error(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
+            subscription_id=dodo_subscription_id,
+            user_id=user_id,
+        )
+        return
+    identify_user(
+        UserId(user_id),
+        paid_person_properties(
+            SubscriptionStatus(current.status),
+            cancel_at_period_end=bool(current.cancel_at_next_billing_date),
+        ),
+    )
+
+
+async def _sync_paid_person_properties(
+    user_id: str, dodo_subscription_id: str, changes: SubscriptionUpdate
+) -> None:
+    """Re-set the person's paid state when the write moved it, from the row as it stands now.
+
+    Read after the write rather than taken from this event's snapshot: a newer
+    delivery may have landed meanwhile, and its state is the one to keep. The
+    billing write already committed, so a failed read becomes worker retries.
+    """
+    if not {"status", "cancel_at_next_billing_date"} & changes.model_fields_set:
+        return
+    try:
+        await sync_paid_person_properties(user_id, dodo_subscription_id)
+    except PyMongoError:
+        await _queue_retry(
+            PAID_PERSON_SYNC_TASK,
+            user_id,
+            dodo_subscription_id,
+            user_id=user_id,
+            subscription_id=dodo_subscription_id,
+        )
 
 
 async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
@@ -374,15 +505,21 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
                 "last_event_at": event.occurred_at,
                 "created_at": now,
                 "updated_at": now,
-                "metadata": data.metadata,
+                "metadata": data.metadata.model_dump(exclude_unset=True),
             }
         )
     )
 
-    _capture_transition(event, user_id, {"status": SubscriptionStatus.ACTIVE.value})
+    _capture_transition(event, user_id, SubscriptionUpdate(status=SubscriptionStatus.ACTIVE.value))
+    identify_user(
+        UserId(user_id),
+        paid_person_properties(SubscriptionStatus.ACTIVE, cancel_at_period_end=False),
+    )
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
+    await resume_paywall_pauses_safely(user_id)
+    await queue_inbox_desk_safely(user_id)
 
     log.info(f"{LogTag.PAYMENT} Subscription activated", subscription_id=data.subscription_id)
     return SubscriptionEventResult(SubscriptionEventOutcome.CREATED, user_id)
@@ -420,7 +557,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         return SubscriptionEventResult(SubscriptionEventOutcome.STALE, row.user_id)
 
     changes = _changes(row, DESIRED_STATE[event.kind](event.data))
-    if not changes:
+    if not changes.model_fields_set:
         log.info(
             f"{LogTag.PAYMENT} Subscription already in the reported state",
             event_kind=event.kind.value,
@@ -434,7 +571,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     # Matching on the id alone would let this older patch land on top of it.
     if not await subscription_repository.apply_update_by_dodo_id(
         data.subscription_id,
-        SubscriptionUpdate.model_validate({**changes, "last_event_at": event.occurred_at}),
+        changes.model_copy(update={"last_event_at": event.occurred_at}),
         if_not_newer_than=event.occurred_at,
     ):
         log.warning(
@@ -446,17 +583,20 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         return SubscriptionEventResult(SubscriptionEventOutcome.STALE, row.user_id)
     await invalidate_plan_cache(row.user_id)
 
-    new_status = changes.get("status")
+    new_status = changes.status
     _capture_transition(event, row.user_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
+        await resume_paywall_pauses_safely(row.user_id)
+        await queue_inbox_desk_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
+    await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)
 
     log.info(
         f"{LogTag.PAYMENT} Subscription event applied",
         event_kind=event.kind.value,
         subscription_id=data.subscription_id,
-        changed_fields=sorted(changes),
+        changed_fields=sorted(changes.model_fields_set),
     )
     return SubscriptionEventResult(SubscriptionEventOutcome.APPLIED, row.user_id)

@@ -6,6 +6,7 @@ and no task body should have to remember:
 
 * the worker_task wide-event boundary, carrying the trace id propagated by
   app.workers.queue.enqueue_worker_job plus ARQ's job_id / job_try.
+* the analytics context the producer carried in; a cron fire is system work.
 * the Prometheus duration/outcome metrics behind the arq-worker dashboard.
 * the task's deadline, cut off here so the event reads failed with reason
   task_timeout; ARQ's own timeout only cancels, and sits past it as a backstop.
@@ -29,13 +30,18 @@ from app.workers.config.worker_settings import (
     WORKER_JOB_TIMEOUT_SECONDS,
 )
 from app.workers.metrics import TASK_DURATION_SECONDS, TASK_TOTAL
-from app.workers.queue import TRACE_ID_KWARG
+from app.workers.queue import ANALYTICS_CONTEXT_KWARG, TRACE_ID_KWARG
+from shared.py.analytics.catalog.attribution import Actor, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 from shared.py.wide_events import log, wide_task
 
 T = TypeVar("T")
 #: An ARQ task coroutine. ARQ calls it with (ctx, *args, **kwargs) from the job
 #: payload, so its parameters are the task's own business; its result is typed.
 ArqTask = Callable[..., Coroutine[object, object, T]]
+
+# A retrying task defers try n by its base delay times this to the power n-1.
+RETRY_BACKOFF_BASE = 2
 
 
 class ArqJobContext(TypedDict, total=False):
@@ -72,20 +78,21 @@ def arq_task(
         start = time.perf_counter()
         status = "success"
         try:
-            async with wide_task(
-                task_name,
-                trace_id=_pop_trace_id(kwargs),
-                **job_context,
-            ):
-                deadline = asyncio.timeout(timeout_seconds)
-                try:
-                    async with deadline:
-                        return await func(ctx, *args, **kwargs)
-                except TimeoutError:
-                    # A TimeoutError the task raised itself is its own failure.
-                    if deadline.expired():
-                        log.fail(REASON_TASK_TIMEOUT, timeout_seconds=timeout_seconds)
-                    raise
+            with analytics_context(_pop_analytics_context(kwargs)):
+                async with wide_task(
+                    task_name,
+                    trace_id=_pop_trace_id(kwargs),
+                    **job_context,
+                ):
+                    deadline = asyncio.timeout(timeout_seconds)
+                    try:
+                        async with deadline:
+                            return await func(ctx, *args, **kwargs)
+                    except TimeoutError:
+                        # A TimeoutError the task raised itself is its own failure.
+                        if deadline.expired():
+                            log.fail(REASON_TASK_TIMEOUT, timeout_seconds=timeout_seconds)
+                        raise
         except Exception:
             status = "error"
             raise
@@ -101,6 +108,18 @@ def _pop_trace_id(kwargs: dict[str, object]) -> str | None:
     """Take the trace id enqueue_worker_job appended to the job's kwargs, so the task never sees it."""
     trace_id = kwargs.pop(TRACE_ID_KWARG, None)
     return trace_id if isinstance(trace_id, str) else None
+
+
+def _pop_analytics_context(kwargs: dict[str, object]) -> AnalyticsContext:
+    """Take the run enqueue_worker_job carried in, acted on by the agent; a job nobody attributed is system work.
+
+    The human's own action was captured when they made the request; queued work
+    running later must not count as theirs or mark them active.
+    """
+    carried = kwargs.pop(ANALYTICS_CONTEXT_KWARG, None)
+    if carried is None:
+        return worker_context(Trigger.SYSTEM)
+    return AnalyticsContext.model_validate(carried).acting_as(Actor.AGENT)
 
 
 def arq_function(

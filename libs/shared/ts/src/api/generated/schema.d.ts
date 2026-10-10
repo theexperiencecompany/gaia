@@ -3547,6 +3547,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/discount-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discount Codes Endpoint
+         * @description Get the discount codes the clients advertise.
+         */
+        get: operations["payments_get_discount_codes_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/plans": {
         parameters: {
             query?: never;
@@ -4012,7 +4032,7 @@ export interface paths {
         };
         /**
          * Validate Cron Endpoint
-         * @description Validate a cron expression and preview its next few run times.
+         * @description Check a cron expression against the recurring-schedule rule and preview its next runs.
          */
         get: operations["reminders_validate_cron_endpoint"];
         put?: never;
@@ -7122,6 +7142,16 @@ export interface components {
          */
         ConditionOperator: "equals" | "not_equals" | "contains" | "not_contains" | "starts_with" | "ends_with" | "greater_than" | "greater_or_equal" | "less_than" | "less_or_equal";
         /**
+         * ConfirmedSocialProfile
+         * @description A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.
+         */
+        ConfirmedSocialProfile: {
+            /** Platform */
+            platform: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * ConnectIntegrationRequest
          * @description Request to connect an integration.
          */
@@ -7700,7 +7730,7 @@ export interface components {
         CronValidationResponse: {
             /**
              * Error
-             * @description Why the expression could not be evaluated, if it raised
+             * @description Why the expression is not an acceptable schedule
              */
             error?: string | null;
             /**
@@ -7713,9 +7743,11 @@ export interface components {
              * @description ISO timestamps of the next few runs; empty unless the expression is valid
              */
             next_runs?: string[];
+            /** @description Machine-readable reason the expression was refused */
+            reason?: components["schemas"]["ScheduleRejection"] | null;
             /**
              * Valid
-             * @description Whether the expression parses as a valid cron
+             * @description Whether the expression is an acceptable recurring schedule
              */
             valid: boolean;
         };
@@ -7735,12 +7767,13 @@ export interface components {
         };
         /**
          * DeactivationReason
-         * @description Why a workflow was deactivated by the system, so an automatic resume can tell
-         *     its own pauses apart from a workflow the user deliberately switched off. A
-         *     user-initiated deactivation records no reason at all.
+         * @description Why the system paused a reminder or deactivated a workflow.
+         *
+         *     An automatic resume only touches tasks carrying the reason it owns, so a task
+         *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -7994,6 +8027,17 @@ export interface components {
              * @description Disconnect status (e.g., 'disconnected')
              */
             status: string;
+        };
+        /**
+         * DiscountCodesResponse
+         * @description Coupon codes the clients advertise, each a Dodo discount code or null when unset.
+         */
+        DiscountCodesResponse: {
+            /**
+             * Founder Letter
+             * @description Code the founder's letter offers
+             */
+            founder_letter: string | null;
         };
         /**
          * DiscoveredSkillInfo
@@ -8645,6 +8689,17 @@ export interface components {
             }[];
             /** Nextpagetoken */
             nextPageToken?: string | null;
+        };
+        /**
+         * GmailEmailSentConfig
+         * @description Config for the gmail sent-mail trigger; account-level, so nothing to scope.
+         */
+        GmailEmailSentConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            trigger_name: "gmail_email_sent";
         };
         /**
          * GmailLabelResource
@@ -10525,6 +10580,11 @@ export interface components {
              * @default false
              */
             is_onboarding_demo?: boolean;
+            /**
+             * Is Retry
+             * @default false
+             */
+            is_retry?: boolean;
             /** Message */
             message: string;
             /** Messages */
@@ -11579,6 +11639,8 @@ export interface components {
              * @description Plan name
              */
             name: string;
+            /** @description Tier this plan sells */
+            plan_type: components["schemas"]["PlanTier"];
             /**
              * Updated At
              * Format: date-time
@@ -11586,6 +11648,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * PlanTier
+         * @description What a catalogue row sells.
+         *
+         *     Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+         *     never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+         * @enum {string}
+         */
+        PlanTier: "free" | "pro" | "enterprise";
         /**
          * PlanType
          * @description Subscription plan types.
@@ -12403,6 +12474,12 @@ export interface components {
          */
         ScheduledTaskStatus: "scheduled" | "executing" | "completed" | "failed" | "cancelled" | "paused";
         /**
+         * ScheduleRejection
+         * @description Why a recurring schedule was refused; the value is the machine-readable reason code.
+         * @enum {string}
+         */
+        ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
          * SearchIntegrationItem
          * @description Integration item in search results.
          */
@@ -12947,7 +13024,7 @@ export interface components {
         /** SocialProfilesConfirmRequest */
         SocialProfilesConfirmRequest: {
             /** Profiles */
-            profiles: components["schemas"]["SocialProfile"][];
+            profiles: components["schemas"]["ConfirmedSocialProfile"][];
         };
         /**
          * StarConversationResponse
@@ -13617,7 +13694,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence?: string | null;
             /**
@@ -13720,6 +13797,11 @@ export interface components {
              * @default true
              */
             notify_on_run: boolean;
+            /**
+             * Parent Todo Id
+             * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
+             */
+            parent_todo_id: string | null;
             /** @description Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation */
             pending_approval: components["schemas"]["PendingApprovalRef"] | null;
             /**
@@ -13734,7 +13816,7 @@ export interface components {
             project_id: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence: string | null;
             /**
@@ -13747,6 +13829,12 @@ export interface components {
              * @description When GAIA should execute this tracked todo
              */
             scheduled_at: string | null;
+            /**
+             * Sub Todo Count
+             * @description Open sub-todos of this tracked todo
+             * @default 0
+             */
+            sub_todo_count: number;
             /**
              * Subtasks
              * @description List of subtasks
@@ -14105,7 +14193,7 @@ export interface components {
              * Trigger Data
              * @description Provider-specific trigger configuration
              */
-            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
+            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
             /**
              * Trigger Name
              * @description Specific trigger slug for identification
@@ -15524,6 +15612,7 @@ export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
+export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
@@ -15568,6 +15657,7 @@ export type DeviceServerResponse = components['schemas']['DeviceServerResponse']
 export type DeviceTokenRequest = components['schemas']['DeviceTokenRequest'];
 export type DeviceTokenResponse = components['schemas']['DeviceTokenResponse'];
 export type DisconnectPlatformResponse = components['schemas']['DisconnectPlatformResponse'];
+export type DiscountCodesResponse = components['schemas']['DiscountCodesResponse'];
 export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
 export type DispatchError = components['schemas']['DispatchError'];
@@ -15609,6 +15699,7 @@ export type GitHubStarAddedConfig = components['schemas']['GitHubStarAddedConfig
 export type GmailDeletionResponse = components['schemas']['GmailDeletionResponse'];
 export type GmailDraftResource = components['schemas']['GmailDraftResource'];
 export type GmailDraftsResponse = components['schemas']['GmailDraftsResponse'];
+export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig'];
 export type GmailLabelResource = components['schemas']['GmailLabelResource'];
 export type GmailLabelsResponse = components['schemas']['GmailLabelsResponse'];
 export type GmailMessageResponse = components['schemas']['GmailMessageResponse'];
@@ -15769,6 +15860,7 @@ export type PinRequest = components['schemas']['PinRequest'];
 export type PinResponse = components['schemas']['PinResponse'];
 export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
+export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
@@ -15808,6 +15900,7 @@ export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaR
 export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfilesResponse'];
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
+export type ScheduleRejection = components['schemas']['ScheduleRejection'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
@@ -25542,6 +25635,53 @@ export interface operations {
             };
         };
     };
+    payments_get_discount_codes_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     payments_get_plans_endpoint: {
         parameters: {
             query?: {
@@ -28135,6 +28275,7 @@ export interface operations {
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
+                parent_todo_id?: string | null;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;

@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import type { ComposerMode } from "@/types/shared/searchTypes";
@@ -23,11 +23,11 @@ interface SearchbarLeftDropdownProps {
 }
 
 interface DropdownItemConfig {
-  id: ComposerMode;
+  id: NonNullable<ComposerMode>;
   label: string;
   icon: React.ReactNode;
   action?: () => void;
-  isMode?: boolean;
+  isMode: boolean;
   loadingText?: string;
   description?: string;
 }
@@ -37,7 +37,7 @@ export default function ComposerLeft({
   openFilePicker,
   handleSelectionChange,
   onOpenSlashCommandDropdown,
-  isSlashCommandDropdownOpen,
+  isSlashCommandDropdownOpen = false,
 }: SearchbarLeftDropdownProps) {
   // Locked only during the initial response (send → main_response_complete),
   // matching the send button — unlocks once the agent acknowledges the task.
@@ -95,9 +95,8 @@ export default function ComposerLeft({
               <DropdownMenuItem
                 key={item.id}
                 onClick={() => {
-                  trackEvent(ANALYTICS_EVENTS.CHAT_COMPOSER_PLUS_MENU_CLICKED, {
+                  track("chat:composer_plus_menu_clicked", {
                     item_id: item.id,
-                    item_label: item.label,
                     is_mode: item.isMode,
                   });
                   // setLoadingText(item.loadingText ?? "");
@@ -153,7 +152,7 @@ export default function ComposerLeft({
             )}
             disabled={isMainResponseStreaming}
             onClick={() => {
-              trackEvent(ANALYTICS_EVENTS.CHAT_TOOLS_BUTTON_CLICKED, {
+              track("chat:tools_button_clicked", {
                 is_open: isSlashCommandDropdownOpen,
               });
               onOpenSlashCommandDropdown?.();

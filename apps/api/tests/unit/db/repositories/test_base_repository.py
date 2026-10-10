@@ -9,7 +9,9 @@ them because the raise sites are the PR's changed lines.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
 import pytest
@@ -24,6 +26,11 @@ class _Doc(MongoDocument):
 
 class _Update(BaseModel):
     name: str | None = None
+
+
+class _StampedDoc(MongoDocument):
+    name: str = ""
+    updated_at: datetime | None = None
 
 
 def _concrete(**overrides: Any) -> type[_BaseRepository]:
@@ -90,3 +97,63 @@ def test_an_operator_valued_id_targets_no_single_doc() -> None:
 
     assert repo._filter_doc_id({"_id": {"$in": ["a", "b"]}}) is None
     assert repo._filter_doc_id({"_id": {"$ne": "a"}}) is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "doc_id", "valid"),
+    [
+        ({"uses_object_id": True}, "6812f0b3c9a14e2b7d5a91cc", True),
+        ({"uses_object_id": True}, "user-1", False),
+        ({"uses_object_id": True, "identity_field": "conversation_id"}, "user-1", True),
+        ({"uses_object_id": False}, "user-1", True),
+        ({"uses_object_id": False}, "", False),
+    ],
+    ids=["object-id", "not-an-object-id", "business-key", "string-id", "empty"],
+)
+def test_an_id_is_valid_by_the_collections_own_identity(
+    overrides: dict[str, Any], doc_id: str, valid: bool
+) -> None:
+    assert _concrete(**overrides)().is_valid_id(doc_id) is valid
+
+
+async def _set_written(repo: _BaseRepository, *, touch: bool = True) -> dict[str, object]:
+    collection = MagicMock()
+    collection.find_one_and_update = AsyncMock(return_value=None)
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        await repo._apply_update("abc", "u1", {}, _Update(name="x"), touch=touch)
+    (_filter, operations), _ = collection.find_one_and_update.await_args
+    return operations["$set"]
+
+
+async def test_an_update_stamps_updated_at() -> None:
+    written = await _set_written(_concrete(document_model=_StampedDoc)())
+
+    assert written["name"] == "x"
+    assert isinstance(written["updated_at"], datetime)
+
+
+async def test_an_untouched_update_keeps_updated_at() -> None:
+    assert await _set_written(_concrete(document_model=_StampedDoc)(), touch=False) == {"name": "x"}
+
+
+async def test_a_repository_that_stamps_nothing_writes_no_updated_at() -> None:
+    repo = _concrete(document_model=_StampedDoc, auto_stamp_timestamps=False)()
+
+    assert await _set_written(repo) == {"name": "x"}
+
+
+async def test_a_document_without_updated_at_is_not_stamped() -> None:
+    assert await _set_written(_concrete()()) == {"name": "x"}
+
+
+async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> None:
+    collection = MagicMock()
+    collection.find_one = AsyncMock(return_value=None)
+    with patch(
+        "app.db.repositories.base.get_async_collection", return_value=collection
+    ) as get_collection:
+        found = await _concrete()()._find_one({"name": "x"}, sort=[("name", -1)])
+
+    assert found is None
+    get_collection.assert_called_once_with("things")
+    collection.find_one.assert_awaited_once_with({"name": "x"}, sort=[("name", -1)])

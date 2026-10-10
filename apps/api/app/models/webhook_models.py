@@ -4,12 +4,61 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    ValidationError,
+    field_validator,
+)
+from typing_extensions import TypedDict
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+
+class DodoSubscriptionMetadata(BaseModel):
+    """The metadata GAIA stamps on a subscription at checkout; anything else Dodo carries is kept."""
+
+    model_config = ConfigDict(extra="allow")
+
+    user_id: str | None = None
+
+
+class DodoWebhookCustomerRef(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    customer_id: str | None = None
+
+
+class DodoWebhookLogFields(BaseModel):
+    """The data fields every delivery is logged with, whatever its type.
+
+    Validated, not trusted: a body whose customer or metadata has the wrong
+    shape is a malformed delivery, rejected before any side effect.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    customer: DodoWebhookCustomerRef = Field(default_factory=DodoWebhookCustomerRef)
+    customer_id: str | None = None
+    total_amount: int | None = None
+    currency: str | None = None
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
+
+
+class DodoWebhookPayload(TypedDict, total=False):
+    """A webhook body as decoded from JSON: any value may be any JSON type until DodoWebhookEvent validates it."""
+
+    business_id: JsonValue
+    type: JsonValue
+    timestamp: JsonValue
+    data: JsonValue
 
 
 class DodoWebhookEventType(str, Enum):
@@ -89,7 +138,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -117,7 +166,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: DodoSubscriptionMetadata = Field(default_factory=DodoSubscriptionMetadata)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 
@@ -225,17 +274,23 @@ class TriggerEventAccount(TypedDict, total=False):
     gaia_account: str
 
 
+def _stamped_in_data(name: str) -> AliasChoices:
+    """Read an id Composio stamps into a delivery's data, or the same name given directly."""
+    # The wire path first: a missing id is reported at data.<name>, where Composio put it.
+    return AliasChoices(AliasPath("data", name), name)
+
+
 class ComposioWebhookEvent(BaseModel):
-    """Composio webhook event structure."""
+    """A Composio trigger delivery, validated straight off the posted body."""
 
     type: str
     timestamp: str
     data: dict[str, Any]
-    connection_id: str
-    connection_nano_id: str
-    trigger_nano_id: str
-    trigger_id: str
-    user_id: str
+    connection_id: str = Field(validation_alias=_stamped_in_data("connection_id"))
+    connection_nano_id: str = Field(validation_alias=_stamped_in_data("connection_nano_id"))
+    trigger_nano_id: str = Field(validation_alias=_stamped_in_data("trigger_nano_id"))
+    trigger_id: str = Field(validation_alias=_stamped_in_data("trigger_id"))
+    user_id: str = Field(validation_alias=_stamped_in_data("user_id"))
 
     model_config = ConfigDict(extra="allow")
 
@@ -246,6 +301,12 @@ class ComposioWebhookEvent(BaseModel):
         if isinstance(v, str):
             return v.upper()
         return v
+
+
+class ComposioTriggerEventIds(BaseModel):
+    """The ids Composio stamps into a trigger event's data beside the provider payload."""
+
+    user_id: str | None = None
 
 
 class ComposioConnectionToolkit(BaseModel):

@@ -19,6 +19,7 @@ from app.agents.tools.execute.resolver import ResolvedTool
 from app.models.hil_models import LedgerState
 from app.services.hil import ledger_decide
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CARD_FRAME = {"integration_connection_required": {"integration_id": "gmail"}}
 
 
@@ -36,7 +37,7 @@ class _State(TypedDict):
 async def _redeem_node(state: _State, config: RunnableConfig) -> _State:
     del state
     result = await dispatch_tool(
-        user_id="u1", tool_name="approve", data={"id": "ap_card"}, config=config
+        user_id=USER_ID, tool_name="approve", data={"id": "ap_card"}, config=config
     )
     return {"result": result}
 
@@ -45,7 +46,7 @@ def _approved_row() -> MagicMock:
     row = MagicMock()
     row.approval_id = "ap_card"
     row.conversation_id = "conv-1"
-    row.user_id = "u1"
+    row.user_id = USER_ID
     row.tool_name = "show_card"
     row.args = {}
     row.account = None
@@ -72,7 +73,7 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     config: RunnableConfig = {
         "configurable": {
             "thread_id": "executor_conv-1",
-            "user_id": "u1",
+            "user_id": USER_ID,
             "conversation_id": "conv-1",
         }
     }

@@ -2,8 +2,8 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi import BackgroundTasks, HTTPException
+from workos.types.user_management.authentication_response import AuthenticationMethod
 
-from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.constants.email import SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS
 from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
@@ -32,6 +32,7 @@ from app.services.integrations.integration_status import (
 from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
@@ -40,6 +41,7 @@ from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -66,15 +68,17 @@ def _returning_user_profile(
     return update_fields, stored_name
 
 
-async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -> None:
+async def _run_signup_side_effects(
+    user_id: str, email: str, signup_name: str, auth_method: AuthenticationMethod | None
+) -> None:
     """Outbound effects of a signup — none of them may fail the signup itself."""
     # Track signup with the stable Mongo user id as the PostHog distinct id.
     try:
         track_signup(
-            user_id=user_id,
+            user_id=UserId(user_id),
             email=email,
             name=signup_name,
-            signup_method=LOGIN_METHOD_WORKOS,
+            signup_method=auth_method,
         )
         log.info(f"{LogTag.OAUTH} Signup tracked in PostHog for new user", user={"id": user_id})
     except Exception as e:
@@ -111,6 +115,7 @@ async def store_user_info(
     email: str,
     picture_url: str | None,
     *,
+    auth_method: AuthenticationMethod | None,
     external_side_effects: bool = True,
 ) -> tuple[str, bool]:
     """Store user info from a Google callback, updating or creating the user.
@@ -139,10 +144,10 @@ async def store_user_info(
             )
             try:
                 track_login(
-                    user_id=existing_user.id,
+                    user_id=UserId(existing_user.id),
                     email=email,
                     name=stored_name,
-                    login_method=LOGIN_METHOD_WORKOS,
+                    login_method=auth_method,
                 )
             except Exception as e:
                 log.error(
@@ -175,7 +180,7 @@ async def store_user_info(
     if not external_side_effects:
         return created.id, True
 
-    await _run_signup_side_effects(created.id, email, signup_name)
+    await _run_signup_side_effects(created.id, email, signup_name, auth_method)
 
     return created.id, True
 
@@ -362,8 +367,10 @@ async def handle_oauth_connection(
             user_id,
             integration_config.id,
         )
-        # Auto-provision system workflows for supported integrations
-        if integration_config.id in (GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID):
+        if integration_config.id == GMAIL_INTEGRATION_ID:
+            background_tasks.add_task(queue_inbox_desk_provision, user_id)
+            log.info(f"{LogTag.OAUTH} Queued Inbox desk provisioning", user_id=user_id)
+        if integration_config.id == GOOGLE_CALENDAR_INTEGRATION_ID:
             background_tasks.add_task(
                 provision_system_workflows,
                 user_id=user_id,

@@ -19,8 +19,9 @@ from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
+from app.constants.triggers import SUBSCRIPTION_WRITE_ATTEMPTS, SUBSCRIPTION_WRITE_MAX_TRIES
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import TodoUpdate
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -30,7 +31,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.todo_activity import record_activity
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
@@ -39,6 +40,12 @@ from app.services.triggers.subscription_validation import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    SubscriptionFailureReason,
+    TodosSubscriptionFailed,
+    TodosSubscriptionRegistered,
+)
 from shared.py.wide_events import log
 
 DEFAULT_COOLDOWN_SECONDS = 900
@@ -76,13 +83,11 @@ async def register_subscription(
     match: ConditionMatch = ConditionMatch.ALL,
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: Mapping[str, object] | None = None,
-) -> tuple[TriggerSubscription, ValidationOutcome]:
+) -> tuple[TriggerSubscription, ValidationOutcome, bool]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
-    Returns the stored subscription and the validation outcome, so the caller can
-    surface what was mechanically repaired. Raises SubscriptionError when the
-    conditions cannot be made valid or the trigger cannot be registered — a
-    subscription that cannot fire must never be stored.
+    Returns the stored row, the validation outcome, and whether this call stored
+    it — a concurrent winner's row must not be treated as this call's own.
     """
     log.set(
         component="trigger_subscription",
@@ -92,13 +97,8 @@ async def register_subscription(
         trigger_name=trigger_name,
     )
 
-    def _fail(reason: str, message: str) -> SubscriptionError:
-        # A webhook/worker path has no request context, so the id is explicit.
-        capture_event(
-            user_id,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": trigger_name, "reason": reason},
-        )
+    def _fail(reason: SubscriptionFailureReason, message: str) -> SubscriptionError:
+        capture(UserId(user_id), TodosSubscriptionFailed(trigger_name=trigger_name, reason=reason))
         return SubscriptionError(message)
 
     handler = get_handler_by_name(trigger_name)
@@ -160,22 +160,32 @@ async def register_subscription(
         trigger_data=dict(trigger_data or {}),
     )
 
-    await todo_repository.update(
-        todo_id,
-        user_id=user_id,
-        update=TodoUpdate(trigger_subscriptions=[*todo.trigger_subscriptions, subscription]),
-    )
-    capture_event(
-        user_id,
-        AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
-        {
-            "trigger_name": trigger_name,
-            "action": action.value,
-            "resolution": subscription.resolution.value,
-            "condition_count": len(outcome.conditions),
-            "repaired": bool(outcome.repairs),
-            "cooldown_seconds": cooldown_seconds,
-        },
+    appended = await _append_subscription(todo_id, user_id, todo, subscription)
+    if appended is None:
+        # The Composio instance registered above has no stored row: without a
+        # release it lives upstream forever, firing for a watch nobody can see.
+        await _release_unstored_registration(todo_id, user_id, subscription)
+        raise _fail(
+            "write_conflict",
+            f"The watches on {todo_id} changed while this one was being added. Try again.",
+        )
+    stored, created = appended
+    if not created:
+        # A concurrent registration of the same watch landed first: its row is
+        # the one on the todo, and the trigger instance registered for ours is
+        # redundant.
+        await _release_unstored_registration(todo_id, user_id, subscription)
+        return stored, outcome, False
+    capture(
+        UserId(user_id),
+        TodosSubscriptionRegistered(
+            trigger_name=trigger_name,
+            action=action.value,
+            resolution=subscription.resolution.value,
+            condition_count=len(outcome.conditions),
+            repaired=bool(outcome.repairs),
+            cooldown_seconds=cooldown_seconds,
+        ),
     )
     await record_activity(
         todo_id,
@@ -193,7 +203,83 @@ async def register_subscription(
         condition_count=len(outcome.conditions),
         repair_count=len(outcome.repairs),
     )
-    return subscription, outcome
+    return stored, outcome, True
+
+
+def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
+    """Whether two watches would fire on exactly the same events, with the same settings."""
+    return (
+        left.trigger_name == right.trigger_name
+        and left.action == right.action
+        and left.match == right.match
+        and set(left.conditions) == set(right.conditions)
+        and left.cooldown_seconds == right.cooldown_seconds
+        and left.trigger_data == right.trigger_data
+        # A paused row is resync-owned: returning it as the duplicate would hand
+        # back a watch that cannot fire, so only active rows dedupe.
+        and left.status is TriggerSubscriptionStatus.ACTIVE
+        and right.status is TriggerSubscriptionStatus.ACTIVE
+    )
+
+
+async def _append_subscription(
+    todo_id: str, user_id: str, todo: TodoDocument, subscription: TriggerSubscription
+) -> tuple[TriggerSubscription, bool] | None:
+    """Add the watch compare-and-set on updated_at.
+
+    Returns the row now on the todo and whether this call stored it, or None
+    when the watches changed under it SUBSCRIPTION_WRITE_ATTEMPTS times.
+    """
+    current = todo
+    lost_races = 0
+    for _ in range(SUBSCRIPTION_WRITE_MAX_TRIES):
+        duplicate = next(
+            (sub for sub in current.trigger_subscriptions if _same_watch(sub, subscription)),
+            None,
+        )
+        if duplicate is not None:
+            return duplicate, False
+        written = await todo_repository.set_trigger_subscriptions(
+            todo_id,
+            user_id,
+            subscriptions=[*current.trigger_subscriptions, subscription],
+            expected_updated_at=current.updated_at,
+        )
+        if written is not None:
+            return subscription, True
+        latest = await todo_repository.get(todo_id, user_id=user_id)
+        if latest is None:
+            return None
+        if latest.trigger_subscriptions != current.trigger_subscriptions:
+            lost_races += 1
+            if lost_races == SUBSCRIPTION_WRITE_ATTEMPTS:
+                return None
+        current = latest
+    return None
+
+
+async def _release_unstored_registration(
+    todo_id: str, user_id: str, subscription: TriggerSubscription
+) -> None:
+    """Drop a Composio instance whose watch was never stored.
+
+    The todo_id is error-log context only: it is NOT passed to
+    unregister_triggers, so a concurrent winner's live reference still counts.
+    """
+    if not subscription.composio_trigger_ids:
+        return
+    try:
+        await TriggerService.unregister_triggers(
+            user_id, subscription.trigger_name, subscription.composio_trigger_ids
+        )
+    except Exception as e:
+        log.error(
+            "todo_subscription.unregister_failed",
+            todo_id=todo_id,
+            subscription_id=subscription.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def unregister_subscription(

@@ -17,14 +17,16 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.workflows import WorkflowsRepository
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+)
+from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
-    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
 )
@@ -140,6 +142,22 @@ class TestWorkflowsOwnedCrud:
         assert plain.blocked_on_integrations == ["github", "slack"]
         assert await repo.deactivate(created.id, "attacker") is None
 
+    async def test_live_system_workflows_are_the_running_and_the_system_paused(self, repo):
+        key = _uid("sys")
+        running, paused, switched_off, other_key = [
+            await repo.create(
+                _workflow(is_system_workflow=True, system_workflow_key=k, activated=True)
+            )
+            for k in (key, key, key, _uid("sys"))
+        ]
+        await repo.deactivate(paused.id, paused.user_id, reason=DeactivationReason.USER_DORMANT)
+        await repo.deactivate(switched_off.id, switched_off.user_id)
+
+        live = await repo.find_live_system_workflows(key)
+
+        assert {w.id for w in live} == {running.id, paused.id}
+        assert other_key.id not in {w.id for w in live}
+
     async def test_delete_for_user_scoped(self, repo):
         created = await repo.create(_workflow(user_id="owner"))
         assert await repo.delete_for_user(created.id, "attacker") is False
@@ -247,7 +265,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowRearm(scheduled_at=new_fire, next_run=new_fire),
+                rearm=TaskRearm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -325,7 +343,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            rearm=WorkflowRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
+            rearm=TaskRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -344,7 +362,7 @@ class TestWorkflowsScheduler:
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowRearm(scheduled_at=None)
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=TaskRearm(scheduled_at=None)
             )
             is True
         )
@@ -364,7 +382,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowRearm(scheduled_at=run_at, repeat="0 9 * * *"),
+                rearm=TaskRearm(scheduled_at=run_at, repeat="0 9 * * *"),
             )
             is True
         )

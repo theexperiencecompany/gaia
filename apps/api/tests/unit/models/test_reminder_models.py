@@ -174,7 +174,7 @@ class TestCreateReminderRequest:
         assert m.repeat == "0 9 * * *"
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderRequest(
                 agent="static",
                 payload=StaticReminderPayload(title="T", body="B"),
@@ -261,12 +261,12 @@ class TestCreateReminderToolRequest:
         assert m.scheduled_at == "2030-06-15 09:00:00"
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderToolRequest(**self._base_data(repeat="bad-cron"))
 
     def test_valid_cron_repeat(self):
-        m = CreateReminderToolRequest(**self._base_data(repeat="*/5 * * * *"))
-        assert m.repeat == "*/5 * * * *"
+        m = CreateReminderToolRequest(**self._base_data(repeat="0 */2 * * *"))
+        assert m.repeat == "0 */2 * * *"
 
     @pytest.mark.parametrize("val", [0, -1])
     def test_max_occurrences_invalid(self, val):
@@ -439,7 +439,7 @@ class TestUpdateReminderRequest:
         assert m.status == ReminderStatus.PAUSED
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             UpdateReminderRequest(repeat="bad-cron")
 
     @pytest.mark.parametrize("val", [0, -1])

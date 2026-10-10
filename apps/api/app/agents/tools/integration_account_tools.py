@@ -11,7 +11,7 @@ from app.constants.integrations import (
     SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,
 )
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.integrations import integration_connection_service
 from app.services.integrations.integration_account_lifecycle import (
     list_accounts,
@@ -20,6 +20,8 @@ from app.services.integrations.integration_account_lifecycle import (
 )
 from app.services.integrations.integration_accounts import match_account, primary_account
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 
 _INTEGRATION_ID = (
     "The integration's id, as shown in parentheses in the connected integrations list "
@@ -115,9 +117,7 @@ async def _disconnect_single_connection(user_id: str, integration_id: str) -> st
         await integration_connection_service.disconnect_integration(user_id, integration_id)
     except ValueError as e:
         raise AppError(message=str(e), fix="Check the integration_id") from e
-    capture_event(
-        user_id, AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": integration_id}
-    )
+    capture(UserId(user_id), IntegrationDisconnected(integration_id=integration_id))
     return f"Disconnected {integration_id}."
 
 

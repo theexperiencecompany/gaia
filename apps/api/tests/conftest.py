@@ -22,7 +22,9 @@ import fakeredis.aioredis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
+from posthog import Posthog
 import pytest
+from starlette.types import Receive, Scope, Send
 
 # Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
 # short; master/local keep "default" (200). suppress differing_executors
@@ -63,6 +65,8 @@ from app.models.payment_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.utils.concurrency import reset_captured_loop
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -629,7 +633,14 @@ async def gated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
             request.state.user = FAKE_USER
             return await call_next(request)
 
-    gated = _AuthedState(app=EntitlementMiddleware(app=test_app))
+    stack = _AuthedState(app=EntitlementMiddleware(app=test_app))
+
+    async def gated(scope: Scope, receive: Receive, send: Send) -> None:
+        # Starlette.__call__ stamps the app on the scope before its middleware
+        # stack runs; the gate reads the route table through request.app.
+        scope["app"] = test_app
+        await stack(scope, receive, send)
+
     transport = ASGITransport(app=gated, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport,
@@ -821,6 +832,25 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
 
 
 @pytest.fixture
+def posthog_events(posthog_provider: Callable[..., None]) -> list[dict[str, object]]:
+    """Install a real PostHog client and return the events it would have sent.
+
+    The SDK builds each message in full (context distinct_id, $session_id)
+    before before_send sees it; returning None there keeps it off the network.
+    """
+    events: list[dict[str, object]] = []
+
+    def record(message: dict[str, object]) -> None:
+        events.append(message)
+
+    posthog_provider(
+        available=True,
+        client=Posthog("phc_test", host="http://127.0.0.1:9", before_send=record, sync_mode=True),
+    )
+    return events
+
+
+@pytest.fixture
 def no_observed_tool_shapes() -> Iterator[AsyncMock]:
     """Empty the shape store, so a rendered tool doc carries only the provider's return shape."""
     with patch(
@@ -836,21 +866,24 @@ def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
 
 
+#: What inner code runs under in production: the agent acting in a user's web turn.
+#: Agent, not user, so no unit test emits user:active by accident.
+_UNIT_TEST_ANALYTICS = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+    )
+)
+
+
 @pytest.fixture(autouse=True)
-def _reset_limit_origin() -> Iterator[None]:
-    """Keep a run's limit origin from leaking between tests.
+def _analytics_context() -> Iterator[None]:
+    """Bind the analytics context an entry point would, so a test of inner code can capture.
 
-    arq gives each job its own task, so a job cannot leak into the next one.
-    Tests share one, so a case that marks a background run would otherwise make
-    later cases mail the wrong email.
+    Entry-point tests (the middleware, the ARQ envelope, the workers) bind or
+    derive their own inside it, exactly as production does.
     """
-    yield
-    # Imported here, not at module level: the import chain eagerly pulls in
-    # transformers (~0.85s), a cost collection and no-test workers should
-    # not pay.
-    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
-
-    mark_run_origin(LimitHitOrigin.INTERACTIVE)
+    with analytics_context(_UNIT_TEST_ANALYTICS):
+        yield
 
 
 @pytest.fixture(autouse=True)

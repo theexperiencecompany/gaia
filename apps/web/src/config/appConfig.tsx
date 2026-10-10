@@ -1,3 +1,4 @@
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import {
   ArrowRight02Icon,
   BlushBrush02Icon,
@@ -50,6 +51,11 @@ export interface AppLink {
   commented?: boolean;
   description?: string;
   hideNavbar?: boolean;
+}
+
+/** An auth link; its href doubles as `navigation:cta_clicked`'s destination. */
+interface AuthLink extends AppLink {
+  href: EventProperties["navigation:cta_clicked"]["destination"];
 }
 
 export interface LinkSection {
@@ -402,7 +408,7 @@ export const appConfig = {
         icon: <MessageMultiple02Icon width={17} color={"currentColor"} />,
         requiresAuth: true,
       },
-    ] as AppLink[],
+    ] satisfies AuthLink[],
   },
 };
 

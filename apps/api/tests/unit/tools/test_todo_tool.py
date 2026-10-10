@@ -1,13 +1,29 @@
 """Unit tests for app.agents.tools.todo_tool."""
 
 from datetime import UTC, datetime
+import inspect
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import ValidationError
 import pytest
 
-from app.models.todo_models import Priority, TodoLabelCount, TodoStats
+from app.agents.tools import todo_tool as todo_tool_module
+from app.agents.tools.todo_tool import (
+    add_checklist_item,
+    delete_checklist_item,
+    update_checklist_item,
+)
+from app.models.agent_models import RunUserMissingError
+from app.models.todo_models import (
+    Priority,
+    SubTask,
+    TodoLabelCount,
+    TodoStats,
+    TodoUpdateRequest,
+)
+from app.services.todos.todo_bulk_service import BulkCompletion
+from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
 # @with_rate_limiting doesn't crash iterating usage_info.items().
@@ -43,13 +59,8 @@ class _UTCOnlyDateTime(datetime):
 
 
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
-    """Return a minimal RunnableConfig-like dict with metadata.user_id."""
-    return {"metadata": {"user_id": user_id}}
-
-
-def _make_config_no_user() -> dict[str, Any]:
-    """Config with no user_id to trigger auth errors."""
-    return {"metadata": {}}
+    """Return a minimal RunnableConfig-like dict naming the run user."""
+    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
 
 
 def _make_todo_response(**overrides: Any) -> MagicMock:
@@ -113,10 +124,8 @@ class TestCreateTodo:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -139,28 +148,9 @@ class TestCreateTodo:
         assert owner == FAKE_USER_ID
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_id_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import create_todo
-
-        result = await create_todo.coroutine(
-            config=_make_config_no_user(),
-            title="Buy groceries",
-        )
-
-        assert result["error"] == "User authentication required"
-        assert result["todo"] is None
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure_returns_error(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -178,10 +168,8 @@ class TestCreateTodo:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_with_all_optional_params(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -210,10 +198,8 @@ class TestCreateTodo:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_workflow_included_in_response(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -247,10 +233,8 @@ class TestListTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -267,25 +251,9 @@ class TestListTodos:
         assert len(result["todos"]) == 3
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import list_todos
-
-        result = await list_todos.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["todos"] == []
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_limit_capped_at_100(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -302,10 +270,8 @@ class TestListTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -320,10 +286,8 @@ class TestListTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_empty_results(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -349,10 +313,8 @@ class TestUpdateTodo:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -372,28 +334,9 @@ class TestUpdateTodo:
         assert result["todo"]["title"] == "Updated Title"
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import update_todo
-
-        result = await update_todo.coroutine(
-            config=_make_config_no_user(),
-            todo_id="todo-1",
-        )
-
-        assert result["error"] == "User authentication required"
-        assert result["todo"] is None
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_mark_complete(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -414,10 +357,8 @@ class TestUpdateTodo:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -446,10 +387,8 @@ class TestDeleteTodo:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.delete_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_delete: AsyncMock,
         mock_writer_factory: MagicMock,
@@ -469,28 +408,9 @@ class TestDeleteTodo:
         mock_delete.assert_awaited_once()
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import delete_todo
-
-        result = await delete_todo.coroutine(
-            config=_make_config_no_user(),
-            todo_id="todo-1",
-        )
-
-        assert result["error"] == "User authentication required"
-        assert result["success"] is False
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_todo_not_found_raises_error(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -517,10 +437,8 @@ class TestSearchTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.search_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -538,27 +456,9 @@ class TestSearchTodos:
         assert result["count"] == 1
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import search_todos
-
-        result = await search_todos.coroutine(
-            config=_make_config_no_user(),
-            query="test",
-        )
-
-        assert result["error"] == "User authentication required"
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.search_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_no_results(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -587,10 +487,8 @@ class TestSemanticSearchTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.semantic_search_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -610,10 +508,8 @@ class TestSemanticSearchTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.semantic_search_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_limit_capped_at_50(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -642,10 +538,8 @@ class TestGetTodoStatistics:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_stats_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -659,20 +553,6 @@ class TestGetTodoStatistics:
         assert result["error"] is None
         assert result["stats"]["total"] == 10
 
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import get_todo_statistics
-
-        result = await get_todo_statistics.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["stats"] is None
-
 
 # ---------------------------------------------------------------------------
 # Tests: get_today_todos
@@ -685,10 +565,8 @@ class TestGetTodayTodos:
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -711,10 +589,8 @@ class TestGetTodayTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_error(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -738,10 +614,8 @@ class TestGetUpcomingTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path_default_days(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -757,10 +631,8 @@ class TestGetUpcomingTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_custom_days(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -788,10 +660,8 @@ class TestCreateProject:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.create_project_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -809,23 +679,6 @@ class TestCreateProject:
         assert result["error"] is None
         assert result["project"]["name"] == "New Project"
 
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import create_project
-
-        result = await create_project.coroutine(
-            config=_make_config_no_user(),
-            name="Project",
-        )
-
-        assert result["error"] == "User authentication required"
-        assert result["project"] is None
-
 
 # ---------------------------------------------------------------------------
 # Tests: list_projects
@@ -837,10 +690,8 @@ class TestListProjects:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -860,16 +711,42 @@ class TestListProjects:
 # ---------------------------------------------------------------------------
 
 
+class TestUpdateProject:
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.update_project_service", new_callable=AsyncMock)
+    async def test_the_run_users_project_is_updated(
+        self,
+        mock_service: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.return_value = _make_project_response(name="Renamed")
+
+        from app.agents.tools.todo_tool import update_project
+
+        result = await update_project.coroutine(
+            config=_make_config(), project_id="proj-1", name="Renamed"
+        )
+
+        assert result["error"] is None
+        assert result["project"]["name"] == "Renamed"
+        project_id, request, user_id = mock_service.await_args.args
+        assert (project_id, request.name, user_id) == ("proj-1", "Renamed", FAKE_USER_ID)
+
+
+# ---------------------------------------------------------------------------
+# Tests: delete_project
+# ---------------------------------------------------------------------------
+
+
 class TestDeleteProject:
     """Tests for the delete_project tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.delete_project_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_get_all: AsyncMock,
         mock_delete: AsyncMock,
         mock_writer_factory: MagicMock,
@@ -891,10 +768,8 @@ class TestDeleteProject:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.delete_project_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_project_not_found_uses_unknown(
         self,
-        mock_get_user: MagicMock,
         mock_get_all: AsyncMock,
         mock_delete: AsyncMock,
         mock_writer_factory: MagicMock,
@@ -927,10 +802,8 @@ class TestGetTodosByLabel:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_label_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -957,10 +830,8 @@ class TestGetAllLabels:
     """Tests for the get_all_labels tool."""
 
     @patch(f"{MODULE}.get_all_labels_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
     ) -> None:
         mock_service.return_value = [
@@ -976,20 +847,6 @@ class TestGetAllLabels:
         assert result["error"] is None
         assert len(result["labels"]) == 3
 
-    @patch(f"{MODULE}.get_all_labels_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_service: AsyncMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import get_all_labels
-
-        result = await get_all_labels.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["labels"] == []
-
 
 # ---------------------------------------------------------------------------
 # Tests: bulk_complete_todos
@@ -1001,16 +858,14 @@ class TestBulkCompleteTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
         todos = [_make_todo_response(completed=True) for _ in range(3)]
-        mock_service.return_value = todos
+        mock_service.return_value = BulkCompletion(todos=todos, failed=[])
 
         from app.agents.tools.todo_tool import bulk_complete_todos
 
@@ -1021,6 +876,28 @@ class TestBulkCompleteTodos:
 
         assert result["error"] is None
         assert result["count"] == 3
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
+    async def test_todos_that_could_not_close_are_named_as_still_open(
+        self,
+        mock_service: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.return_value = BulkCompletion(
+            todos=[_make_todo_response(completed=True)], failed=["t2", "t3"]
+        )
+
+        from app.agents.tools.todo_tool import bulk_complete_todos
+
+        result = await bulk_complete_todos.coroutine(
+            config=_make_config(), todo_ids=["t1", "t2", "t3"]
+        )
+
+        assert result["count"] == 1
+        assert result["error"] == "Not completed, still open: t2, t3"
+        mock_service.assert_awaited_once_with(["t1", "t2", "t3"], FAKE_USER_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -1033,10 +910,8 @@ class TestBulkMoveTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_move_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -1065,10 +940,8 @@ class TestBulkDeleteTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -1086,10 +959,8 @@ class TestBulkDeleteTodos:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure(
         self,
-        mock_get_user: MagicMock,
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -1107,183 +978,228 @@ class TestBulkDeleteTodos:
 
 
 # ---------------------------------------------------------------------------
-# Tests: add_subtask
+# Tests: checklist items
 # ---------------------------------------------------------------------------
 
+_ITEM_CREATED_AT = datetime(2026, 6, 15, tzinfo=UTC)
 
-class TestAddSubtask:
-    """Tests for the add_subtask tool."""
 
+def _checklist_item(item_id: str, title: str, completed: bool = False) -> SubTask:
+    return SubTask(id=item_id, title=title, completed=completed, created_at=_ITEM_CREATED_AT)
+
+
+class TestAddChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_appends_item_streams_the_todo_and_stamps_the_wide_event(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
-        updated = _make_todo_response(
-            subtasks=[{"id": "sub-1", "title": "Buy milk", "completed": False}]
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-0", "Existing", completed=True)]
         )
+        updated = _make_todo_response(title="Groceries")
         mock_update.return_value = updated
 
-        from app.agents.tools.todo_tool import add_subtask
+        async with captured_wide_event() as event:
+            result = await add_checklist_item.coroutine(
+                config=_make_config(), todo_id="todo-1", title="Buy milk"
+            )
 
-        result = await add_subtask.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            title="Buy milk",
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "add_checklist_item", "action": "create"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Added checklist item 'Buy milk' to Groceries",
+                }
+            }
         )
-
-        assert result["error"] is None
-        mock_update.assert_awaited_once()
+        todo_id, update_data, user_id = mock_update.await_args.args
+        assert (todo_id, user_id) == ("todo-1", FAKE_USER_ID)
+        assert [(s.title, s.completed) for s in update_data.subtasks] == [
+            ("Existing", True),
+            ("Buy milk", False),
+        ]
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    async def test_service_failure_returns_the_error(
         self,
-        mock_get_user: MagicMock,
+        mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        from app.agents.tools.todo_tool import add_subtask
+        mock_get_todo.side_effect = RuntimeError("db down")
 
-        result = await add_subtask.coroutine(
-            config=_make_config_no_user(),
-            todo_id="todo-1",
-            title="Sub",
+        result = await add_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", title="Buy milk"
         )
 
-        assert result["error"] == "User authentication required"
-        assert result["todo"] is None
+        assert result == {"error": "Error adding checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Tests: update_subtask
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateSubtask:
-    """Tests for the update_subtask tool."""
-
+class TestUpdateChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_edits_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        subtask = MagicMock()
-        subtask.id = "sub-1"
-        subtask.title = "Original"
-        subtask.completed = False
-        parent = _make_todo_response(subtasks=[subtask])
-        mock_get_todo.return_value = parent
-        mock_update.return_value = _make_todo_response()
-
-        from app.agents.tools.todo_tool import update_subtask
-
-        result = await update_subtask.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            subtask_id="sub-1",
-            completed=True,
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-1", "Original"), _checklist_item("sub-2", "Other")]
         )
+        updated = _make_todo_response(title="Groceries")
+        mock_update.return_value = updated
 
-        assert result["error"] is None
+        async with captured_wide_event() as event:
+            result = await update_checklist_item.coroutine(
+                config=_make_config(),
+                todo_id="todo-1",
+                item_id="sub-1",
+                title="Renamed",
+                completed=True,
+            )
+
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "update_checklist_item", "action": "update"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Updated checklist item in Groceries",
+                }
+            }
+        )
+        mock_update.assert_awaited_once_with(
+            "todo-1",
+            TodoUpdateRequest(
+                subtasks=[
+                    _checklist_item("sub-1", "Renamed", completed=True),
+                    _checklist_item("sub-2", "Other"),
+                ]
+            ),
+            FAKE_USER_ID,
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_subtask_not_found(
+    async def test_item_not_found(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
+        mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
-        from app.agents.tools.todo_tool import update_subtask
-
-        result = await update_subtask.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            subtask_id="nonexistent",
+        result = await update_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
-        assert "not found" in result["error"]
-        assert result["todo"] is None
+        assert result == {"error": "Checklist item nonexistent not found", "todo": None}
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    async def test_service_failure_returns_the_error(
+        self,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_get_todo.side_effect = RuntimeError("db down")
+
+        result = await update_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="sub-1", completed=True
+        )
+
+        assert result == {"error": "Error updating checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Tests: delete_subtask
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteSubtask:
-    """Tests for the delete_subtask tool."""
-
+class TestDeleteChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_removes_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        subtask = MagicMock()
-        subtask.id = "sub-1"
-        parent = _make_todo_response(subtasks=[subtask])
-        mock_get_todo.return_value = parent
-        mock_update.return_value = _make_todo_response(subtasks=[])
-
-        from app.agents.tools.todo_tool import delete_subtask
-
-        result = await delete_subtask.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            subtask_id="sub-1",
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-1", "Drop me"), _checklist_item("sub-2", "Keep me")]
         )
+        updated = _make_todo_response(title="Groceries")
+        mock_update.return_value = updated
 
-        assert result["error"] is None
+        async with captured_wide_event() as event:
+            result = await delete_checklist_item.coroutine(
+                config=_make_config(), todo_id="todo-1", item_id="sub-1"
+            )
+
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "delete_checklist_item", "action": "delete"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Removed checklist item from Groceries",
+                }
+            }
+        )
+        mock_update.assert_awaited_once_with(
+            "todo-1",
+            TodoUpdateRequest(subtasks=[_checklist_item("sub-2", "Keep me")]),
+            FAKE_USER_ID,
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_subtask_not_found(
+    async def test_item_not_found(
         self,
-        mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
+        mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
-        from app.agents.tools.todo_tool import delete_subtask
-
-        result = await delete_subtask.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            subtask_id="nonexistent",
+        result = await delete_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
-        assert "not found" in result["error"]
-        assert result["todo"] is None
+        assert result == {"error": "Checklist item nonexistent not found", "todo": None}
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    async def test_service_failure_returns_the_error(
+        self,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_get_todo.side_effect = RuntimeError("db down")
+
+        result = await delete_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="sub-1"
+        )
+
+        assert result == {"error": "Error deleting checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1299,10 +1215,8 @@ class TestGetTodosSummary:
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_date_range: AsyncMock,
         mock_all_todos: AsyncMock,
         mock_all_projects: AsyncMock,
@@ -1337,27 +1251,11 @@ class TestGetTodosSummary:
         assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        from app.agents.tools.todo_tool import get_todos_summary
-
-        result = await get_todos_summary.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["summary"] is None
-
-    @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure(
         self,
-        mock_get_user: MagicMock,
         mock_date_range: AsyncMock,
         mock_all_todos: AsyncMock,
         mock_all_projects: AsyncMock,
@@ -1397,10 +1295,23 @@ class TestPriorityIsAnEnumInTheToolSchema:
         with (
             patch(f"{MODULE}.get_stream_writer"),
             patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
-            patch(f"{MODULE}.get_user_id_from_config", return_value="u1"),
         ):
             with pytest.raises(ValidationError):
                 await create_todo.ainvoke(
                     {"title": "x", "priority": "normal"}, config=_make_config()
                 )
         svc.assert_not_awaited()
+
+
+def _required_args(tool: Any) -> dict[str, None]:
+    """Bind every required non-config parameter; the user check runs before any is read."""
+    params = inspect.signature(tool.coroutine).parameters.values()
+    return {
+        p.name: None for p in params if p.name != "config" and p.default is inspect.Parameter.empty
+    }
+
+
+@pytest.mark.parametrize("tool", todo_tool_module.tools, ids=lambda t: t.name)
+async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
+    with pytest.raises(RunUserMissingError):
+        await tool.coroutine(config={"configurable": {}}, **_required_args(tool))

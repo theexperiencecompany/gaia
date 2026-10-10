@@ -34,10 +34,10 @@ from app.constants.execute import (
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
+from app.models.agent_config import ComposioAccountSelection
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.integration_models import UserIntegrationDocument
-from app.models.integrations.composio_hooks import ComposioAccountSelection
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_accounts import (
     get_account_record,
     match_account,
@@ -45,6 +45,8 @@ from app.services.integrations.integration_accounts import (
 )
 from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
 from shared.py.wide_events import log, spawn_logged_task
 
 # Health metric of the proxy migration: invalid_args/ok is the
@@ -161,12 +163,15 @@ async def _choose_account(
     )
 
 
-def _usage_properties(tool_name: str, choice: _AccountChoice | None) -> dict[str, object]:
-    properties: dict[str, object] = {"tool_name": tool_name, "via": "execute"}
-    if choice is not None:
-        properties["account_count"] = choice.account_count
-        properties["account_is_primary"] = choice.is_primary
-    return properties
+def _tool_used(tool_name: str, choice: _AccountChoice | None) -> ToolUsed:
+    if choice is None:
+        return ToolUsed(tool_name=tool_name, via="execute")
+    return ToolUsed(
+        tool_name=tool_name,
+        via="execute",
+        account_count=choice.account_count,
+        account_is_primary=choice.is_primary,
+    )
 
 
 def _with_account(config: RunnableConfig, choice: _AccountChoice | None) -> RunnableConfig:
@@ -378,7 +383,7 @@ async def dispatch_tool(
         # The one TOOL_USED per proxied run, attributed to the real tool with
         # via="execute" (the middleware emitter skips calls named execute for
         # this reason: one action, one event, one emitter).
-        capture_event(user_id, AnalyticsEvents.TOOL_USED, _usage_properties(resolved_name, choice))
+        capture(UserId(user_id), _tool_used(resolved_name, choice))
 
     account = choice.display_name if choice is not None and choice.account_count > 1 else None
     return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output, account=account)
@@ -454,11 +459,7 @@ def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolE
     _EXECUTE_DISPATCH_TOTAL.labels(outcome=str(error.kind)).inc()
     log.set_ns("execute", tool=tool_name, outcome=str(error.kind))
     if user_id:
-        capture_event(
-            user_id,
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": tool_name, "reason": str(error.kind)},
-        )
+        capture(UserId(user_id), ToolExecuteFailed(tool_name=tool_name, reason=str(error.kind)))
     return ToolExecutionResult(ok=False, resolved_name=tool_name, error=error)
 
 

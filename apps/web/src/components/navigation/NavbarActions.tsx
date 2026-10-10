@@ -5,7 +5,7 @@ import NumberFlow from "@number-flow/react";
 import Link from "next/link";
 import { Github, StarFilledIcon } from "@/components/shared/icons";
 import { Button } from "@/components/ui/button";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { RaisedButton } from "../ui/raised-button";
 
 interface NavbarActionsProps {
@@ -31,7 +31,7 @@ export function NavbarActions({
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => {
-          trackEvent(ANALYTICS_EVENTS.NAVIGATION_GITHUB_CLICKED, {
+          track("navigation:github_clicked", {
             source: "navbar",
           });
         }}
@@ -59,7 +59,7 @@ export function NavbarActions({
           className="rounded-xl text-black!"
           color="#00bbff"
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            track("navigation:cta_clicked", {
               is_logged_in: isAuthenticated,
               destination: isAuthenticated ? "/c" : "/signup",
             });

@@ -23,7 +23,7 @@ import pydantic
 from app.config.oauth_config import get_integration_by_toolkit
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.constants.log_tags import LogTag
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_config import RunMetadata
 from app.services.composio.account_scope import account_scope
 from app.services.composio.dead_account import (
     ConnectedAccountGoneError,

@@ -11,7 +11,7 @@ from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.oauth_models import OAuthIntegration
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.account_identity import account_label, fetch_account_identity
 from app.services.integrations.integration_accounts import (
@@ -24,6 +24,13 @@ from app.services.integrations.integration_connection_service import disconnect_
 from app.services.triggers.subscription_service import resync_subscriptions_for_trigger_names
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationAccountAdded,
+    IntegrationAccountRemoved,
+    IntegrationAccountRenamed,
+    IntegrationPrimaryChanged,
+)
 from shared.py.wide_events import log
 
 
@@ -130,15 +137,14 @@ async def record_connected_account(
         count=len(accounts),
         is_primary=primary == connected_account_id,
     )
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_ACCOUNT_ADDED,
-        {
-            "integration_id": integration.id,
-            "account_count": len(accounts),
-            "replaced": superseded is not None,
-            "has_identity": bool(identity),
-        },
+    capture(
+        UserId(user_id),
+        IntegrationAccountAdded(
+            integration_id=integration.id,
+            account_count=len(accounts),
+            replaced=superseded is not None,
+            has_identity=bool(identity),
+        ),
     )
     return AccountConnected(
         account=account,
@@ -201,10 +207,11 @@ async def _set_primary_account(
         return record
     saved = await save_accounts(user_id, integration_id, record.accounts, connected_account_id)
     await resync_primary_bound_triggers(user_id, integration)
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_PRIMARY_CHANGED,
-        {"integration_id": integration_id, "account_count": len(record.accounts)},
+    capture(
+        UserId(user_id),
+        IntegrationPrimaryChanged(
+            integration_id=integration_id, account_count=len(record.accounts)
+        ),
     )
     return saved
 
@@ -219,10 +226,9 @@ async def _rename_account(
     if saved is None:
         # Removed between the check above and this write.
         raise _account_not_found(integration_id, connected_account_id)
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
-        {"integration_id": integration_id, "cleared": cleaned is None},
+    capture(
+        UserId(user_id),
+        IntegrationAccountRenamed(integration_id=integration_id, cleared=cleaned is None),
     )
     return saved
 
@@ -258,10 +264,9 @@ async def remove_account(
     record = await _require_record(user_id, integration_id)
     _require_account(record, connected_account_id)
     remaining = [a for a in record.accounts if a.connected_account_id != connected_account_id]
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_ACCOUNT_REMOVED,
-        {"integration_id": integration_id, "account_count": len(remaining)},
+    capture(
+        UserId(user_id),
+        IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining)),
     )
     if not remaining:
         # The last account out is a full disconnect: every stale Composio account goes too.

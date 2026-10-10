@@ -10,8 +10,9 @@ from app.models.todo_models import (
     TodoDocument,
     TodoResponse,
 )
+from tests.conftest import FAKE_USER
 
-USER_ID = "integration-test-user-1"
+USER_ID = FAKE_USER.user_id
 
 
 @pytest.fixture(autouse=True)

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.models.integrations.composio_hooks import ComposioAccountSelection
+from app.models.agent_config import ComposioAccountSelection
 from app.services.composio import proxy_client
 from app.services.composio.account_scope import account_scope
 from app.services.composio.dead_account import ConnectedAccountGoneError

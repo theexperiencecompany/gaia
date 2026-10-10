@@ -26,8 +26,11 @@ from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import RateLimitHit
 
 RESET_AT = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 class TestBuildRateLimitCard:
@@ -111,7 +114,7 @@ async def _call_blocked_tool(
         ),
         patch.object(rl, "get_stream_writer", new=get_writer),
     ):
-        await decorated(config={"metadata": {"user_id": "user-1"}})
+        await decorated(config={"metadata": {"user_id": USER_ID}})
 
 
 class TestBlockedToolStreamsItsCard:
@@ -242,7 +245,7 @@ class TestAllowedCallRecordsTheContext:
                 ),
             ),
         ):
-            await decorated(config={"metadata": {"user_id": "user-1"}})
+            await decorated(config={"metadata": {"user_id": USER_ID}})
         return rl.rate_limit_context.get()
 
     async def test_a_non_enum_plan_is_stringified_into_the_context(self) -> None:
@@ -306,7 +309,7 @@ class TestTokenCounting:
             ),
             patch("app.decorators.rate_limiting.log") as log,
         ):
-            await decorated(config={"metadata": {"user_id": "user-1"}})
+            await decorated(config={"metadata": {"user_id": USER_ID}})
         return log
 
     async def test_a_positive_usage_is_logged_with_its_feature(self) -> None:
@@ -350,7 +353,7 @@ class TestTokenCounting:
             ),
             patch("app.decorators.rate_limiting.log") as log,
         ):
-            await decorated(config={"metadata": {"user_id": "user-1"}})
+            await decorated(config={"metadata": {"user_id": USER_ID}})
 
         assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
 
@@ -406,7 +409,7 @@ class TestSystemBypass:
         decorated = rl.with_rate_limiting(feature_key="generate_image", bypass_for_system=True)(
             tool
         )
-        token = rl.user_context.set({"user_id": "user-1", "initiator": initiator})
+        token = rl.user_context.set({"user_id": USER_ID, "initiator": initiator})
         try:
             with (
                 patch(
@@ -418,7 +421,7 @@ class TestSystemBypass:
                     new=AsyncMock(return_value={}),
                 ) as check,
             ):
-                await decorated(config={"metadata": {"user_id": "user-1"}})
+                await decorated(config={"metadata": {"user_id": USER_ID}})
         finally:
             rl.user_context.reset(token)
         return check
@@ -458,7 +461,7 @@ class TestTieredRateLimitMetersUnderItsOrigin:
             # get_authenticated_user from its own module.
             patch(
                 "app.core.request_context.get_authenticated_user",
-                return_value=AuthenticatedUser(user_id="user-1"),
+                return_value=AuthenticatedUser(user_id=USER_ID),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -582,7 +585,7 @@ class TestDailyCostBudget:
 
     async def test_spend_under_the_budget_passes_and_books_nothing(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD / 2, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
@@ -591,7 +594,7 @@ class TestDailyCostBudget:
     ) -> None:
         monkeypatch.setattr(rl.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
@@ -600,7 +603,7 @@ class TestDailyCostBudget:
             _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
 
         assert raised.value.status_code == 429
         assert raised.value.detail["feature"] == "chat_messages"
@@ -612,17 +615,17 @@ class TestDailyCostBudget:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
                 await rl.enforce_daily_cost_budget(
-                    "user-1", "chat_messages", origin=LimitHitOrigin.BACKGROUND
+                    USER_ID, "chat_messages", origin=LimitHitOrigin.BACKGROUND
                 )
 
         mock_upsell.assert_called_once_with(
-            "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
+            USER_ID, "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
         )
 
     async def test_an_undeclared_origin_books_an_interactive_hit(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
-                await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+                await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
 
         assert mock_upsell.call_args.args[3] is LimitHitOrigin.INTERACTIVE
 
@@ -632,7 +635,7 @@ class TestDailyCostBudget:
             _budget_of(1_000.0, PlanType.PRO),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
 
         assert "plan_required" not in raised.value.detail
         assert raised.value.detail["current_plan"] == PlanType.PRO.value
@@ -660,7 +663,7 @@ class TestToolPlanLabelling:
             ),
             patch.object(rl, "get_stream_writer", MagicMock(return_value=writer)),
         ):
-            await decorated(config={"metadata": {"user_id": "user-1"}})
+            await decorated(config={"metadata": {"user_id": USER_ID}})
 
     async def test_an_allowed_call_records_the_enum_plans_value(self) -> None:
         await self._run(PlanType.PRO)
@@ -721,9 +724,9 @@ class TestUserContext:
     def test_set_user_context_publishes_the_caller_and_initiator(self) -> None:
         token = rl.user_context.set(None)
         try:
-            ctx = rl.set_user_context("user-1", initiator="backend")
-            assert ctx == {"user_id": "user-1", "initiator": "backend"}
-            assert rl.user_context.get() == {"user_id": "user-1", "initiator": "backend"}
+            ctx = rl.set_user_context(USER_ID, initiator="backend")
+            assert ctx == {"user_id": USER_ID, "initiator": "backend"}
+            assert rl.user_context.get() == {"user_id": USER_ID, "initiator": "backend"}
         finally:
             rl.user_context.reset(token)
 
@@ -766,11 +769,11 @@ class TestEnforceFeatureLimit:
             ) as check,
             patch("app.decorators.rate_limiting.log") as log,
         ):
-            await rl._enforce_feature_limit("user-1", "generate_image")
+            await rl._enforce_feature_limit(USER_ID, "generate_image")
 
-        get_plan.assert_awaited_once_with("user-1")
+        get_plan.assert_awaited_once_with(USER_ID)
         check.assert_awaited_once_with(
-            user_id="user-1", feature_key="generate_image", user_plan=PlanType.PRO
+            user_id=USER_ID, feature_key="generate_image", user_plan=PlanType.PRO
         )
         stored = rl.rate_limit_context.get()
         assert stored == {
@@ -780,7 +783,7 @@ class TestEnforceFeatureLimit:
         }
         log.debug.assert_called_once_with(
             f"{rl.LogTag.API} Rate limit check passed",
-            user_id="user-1",
+            user_id=USER_ID,
             actual_feature_key="generate_image",
         )
 
@@ -797,11 +800,11 @@ class TestEnforceFeatureLimit:
             patch("app.decorators.rate_limiting.log") as log,
             pytest.raises(RuntimeError, match="redis down"),
         ):
-            await rl._enforce_feature_limit("user-1", "generate_image")
+            await rl._enforce_feature_limit(USER_ID, "generate_image")
 
         log.error.assert_called_once_with(
             f"{rl.LogTag.API} Rate limiting failed",
-            user_id="user-1",
+            user_id=USER_ID,
             actual_feature_key="generate_image",
             error="redis down",
             error_type="RuntimeError",
@@ -819,19 +822,17 @@ class TestLimitHitException:
             exc.detail = detail
         writer = MagicMock()
         with (
-            patch("app.decorators.rate_limiting.capture_event") as capture,
+            patch("app.decorators.rate_limiting.capture") as capture,
             patch.object(rl, "get_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log") as log,
         ):
-            result = rl._limit_hit_exception("user-1", "generate_image", plan, exc)
+            result = rl._limit_hit_exception(USER_ID, "generate_image", plan, exc)
         return result, capture, writer, log, exc
 
     async def test_paid_plan_hit_captures_an_event_with_exact_props(self) -> None:
         result, capture, _, _, _ = await self._hit(plan=PlanType.PRO)
         capture.assert_called_once_with(
-            "user-1",
-            rl.AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": "generate_image", "plan": "pro"},
+            UserId(USER_ID), RateLimitHit(feature="generate_image", plan="pro")
         )
         assert isinstance(result, rl.LangChainRateLimitError)
 
@@ -855,7 +856,7 @@ class TestLimitHitException:
         _, _, _, log, exc = await self._hit()
         log.warning.assert_called_once_with(
             f"{rl.LogTag.API} Rate limit exceeded",
-            user_id="user-1",
+            user_id=USER_ID,
             actual_feature_key="generate_image",
             error=str(exc),
             error_type="RateLimitExceededException",
@@ -869,11 +870,11 @@ class TestLimitHitExceptionDetailFallbacks:
     async def _convert(exc: RateLimitExceededException) -> tuple[Any, MagicMock]:
         writer = MagicMock()
         with (
-            patch("app.decorators.rate_limiting.capture_event"),
+            patch("app.decorators.rate_limiting.capture"),
             patch.object(rl, "get_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log"),
         ):
-            result = rl._limit_hit_exception("user-1", "generate_image", PlanType.PRO, exc)
+            result = rl._limit_hit_exception(USER_ID, "generate_image", PlanType.PRO, exc)
         return result, writer
 
     async def test_a_reset_time_missing_from_detail_falls_back_to_the_attribute(self) -> None:

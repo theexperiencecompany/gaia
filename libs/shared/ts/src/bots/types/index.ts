@@ -80,10 +80,11 @@ export interface BotConfig {
   /** The base URL of the GAIA frontend app. */
   gaiaFrontendUrl: string;
   /**
-   * PostHog API key for bot analytics. Optional — analytics is silently
-   * disabled when absent (safe for local development).
+   * PostHog project token for bot analytics, the same POSTHOG_PROJECT_TOKEN the
+   * API and voice agent read. Optional — a missing token is logged at boot and
+   * disables analytics (safe for local development).
    */
-  posthogApiKey?: string;
+  posthogProjectToken?: string;
   /**
    * RabbitMQ connection URL for consuming backend-originated outbound
    * messages. Optional — the outbound consumer is disabled when absent (safe

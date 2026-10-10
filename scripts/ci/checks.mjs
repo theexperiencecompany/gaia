@@ -26,6 +26,11 @@
  *                       if either differs from what is committed. --write
  *                       regenerates without checking (what `mise api:types`
  *                       runs).
+ *   analytics-catalog [--write]
+ *                       Regenerate analytics-catalog.json and the TypeScript
+ *                       event types in libs/shared/ts/src/analytics/generated
+ *                       from the Pydantic catalog, then fail if either differs
+ *                       from what is committed. --write is `mise analytics:types`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -770,6 +775,50 @@ function cmdApiSchema(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// analytics-catalog — regenerate the event catalog's JSON + TS and diff; catches a missed `mise analytics:types`
+// ---------------------------------------------------------------------------
+
+const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
+const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
+
+function cmdAnalyticsCatalog(argv) {
+  const opts = { stdio: "inherit" };
+  execFileSync(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--project",
+      "apps/api",
+      "python",
+      "-m",
+      "shared.py.analytics.codegen",
+    ],
+    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
+  );
+  execFileSync(
+    "pnpm",
+    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
+    opts,
+  );
+  if (argv.includes("--write")) return;
+
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--", ANALYTICS_GENERATED_DIR],
+    { encoding: "utf8" },
+  ).trim();
+  if (dirty) {
+    console.log(dirty);
+    console.error(
+      "❌ Analytics catalog drifted — run `mise analytics:types` and commit",
+    );
+    process.exit(1);
+  }
+  console.log("✅ The generated analytics event types match the catalog.");
+}
+
+// ---------------------------------------------------------------------------
 // api-schema-types
 // ---------------------------------------------------------------------------
 
@@ -963,6 +1012,7 @@ function usage() {
       "                                         observability score for bot entry points",
       "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
       "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
+      "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -994,8 +1044,12 @@ function main() {
     case "api-schema-types":
       cmdApiSchemaTypes(rest);
       break;
+    case "analytics-catalog":
+      cmdAnalyticsCatalog(rest);
+      break;
     case "doc-comments":
       cmdDocComments(rest);
+      break;
     case "api-client-imports":
       cmdApiClientImports(rest);
       break;

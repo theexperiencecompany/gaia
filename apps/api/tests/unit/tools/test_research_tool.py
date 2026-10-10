@@ -34,10 +34,6 @@ def _make_config(user_id: str | None = "user-123") -> dict[str, Any]:
     return {"configurable": {"user_id": user_id}}
 
 
-def _no_user_config() -> dict[str, Any]:
-    return {"configurable": {}}
-
-
 class _Clock:
     """Stands in for the module's time module with a scripted wall clock."""
 
@@ -76,21 +72,7 @@ class TestDeepResearch:
     """Tests for the deep_research tool function."""
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=None)
-    async def test_no_user_returns_error(self, _mock_uid: MagicMock, _patch_log: MagicMock) -> None:
-        from app.agents.tools.research_tool import deep_research
-
-        result = await deep_research.ainvoke(
-            {"query": "test", "scope": "", "depth": 2, "focus_areas": None},
-            config=_no_user_config(),
-        )
-        assert result["error"] == "User authentication required"
-        assert result["data"] is None
-        # Every run stamps the wide event with the tool and the action it ran under.
-        _patch_log.set.assert_any_call(tool={"name": "deep_research", "action": "research"})
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     async def test_invalid_depth_returns_error(self, mock_uid: MagicMock) -> None:
         from app.agents.tools.research_tool import deep_research
 
@@ -104,7 +86,7 @@ class TestDeepResearch:
         assert mock_uid.call_args.args[0]["configurable"]["user_id"] == "user-123"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache")
     async def test_cache_hit(
@@ -132,7 +114,7 @@ class TestDeepResearch:
         _patch_stream_writer.assert_any_call({"progress": "Loaded research from cache!"})
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
@@ -167,7 +149,7 @@ class TestDeepResearch:
         assert result["data"] is None
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -276,7 +258,7 @@ class TestDeepResearch:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -319,7 +301,7 @@ class TestDeepResearch:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -366,7 +348,7 @@ class TestDeepResearch:
         _patch_stream_writer.assert_any_call({"progress": "Fetched source 1/1..."})
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -434,7 +416,7 @@ class TestDeepResearch:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -540,7 +522,7 @@ class TestDeepResearch:
         writer.assert_any_call({"progress": "Fetched source 2/2..."})
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(
@@ -565,7 +547,7 @@ class TestDeepResearch:
         assert result["data"] is None
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -605,7 +587,7 @@ class TestDeepResearch:
         assert kwargs.get("max_urls") == 20 or mock_rank.call_args[0][1] == 20
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -665,7 +647,7 @@ class TestDeepResearch:
         ]
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
@@ -711,7 +693,7 @@ class TestDeepResearch:
 
         _patch_stream_writer.assert_any_call({"progress": "Fetched source 3/3..."})
 
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
+    @patch(f"{MODULE}.get_user_id", return_value="user-123")
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)

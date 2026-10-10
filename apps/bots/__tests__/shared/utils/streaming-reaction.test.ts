@@ -7,7 +7,7 @@
  * separate text message holding the bare emoji on every platform.
  */
 import { Readable } from "node:stream";
-import { BOT_EVENTS } from "@gaia/shared/analytics";
+import { parseUserId } from "@gaia/shared/analytics";
 import {
   GaiaClient,
   handleStreamingChat,
@@ -20,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AnalyticsContext } from "../../../../../libs/shared/ts/src/analytics";
 
 const PLACEHOLDER = "Thinking...";
+const USER_ID = parseUserId("6812f0b3c9a14e2b7d5a91cc");
 
 function frames(...payloads: object[]): string {
   return payloads.map((p) => `data: ${JSON.stringify(p)}\n\n`).join("");
@@ -197,7 +198,7 @@ function reactionCaptures(capture: ReturnType<typeof vi.fn>): unknown[] {
   return capture.mock.calls
     .filter(
       ([distinctId, event]) =>
-        distinctId === "gaia-user-1" && event === BOT_EVENTS.REACTION_DELIVERED,
+        distinctId === USER_ID && event === "bot:reaction_delivered",
     )
     .map(([, , properties]) => properties);
 }
@@ -207,6 +208,6 @@ function analyticsCapturingTo(
 ): AnalyticsContext {
   return {
     client: { capture },
-    distinctId: "gaia-user-1",
+    distinctId: USER_ID,
   } as unknown as AnalyticsContext;
 }

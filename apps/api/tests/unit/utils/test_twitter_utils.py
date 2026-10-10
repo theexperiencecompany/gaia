@@ -7,6 +7,7 @@ import pytest
 from app.models.integrations.twitter import TwitterCreatedTweet, TwitterUser
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
+from app.utils.log_identifiers import user_text_shape
 from app.utils.twitter_utils import (
     TWITTER_API_BASE,
     TwitterOutcome,
@@ -160,6 +161,17 @@ class TestCreateTweet:
 
 
 class TestSearchTweets:
+    def test_the_event_records_the_query_shape_and_never_its_words(self, mock_proxy):
+        mock_proxy.return_value = {"data": []}
+        with patch("app.utils.twitter_utils.log") as log:
+            search_tweets(USER_ID, "my divorce papers", max_results=25)
+
+        log.set.assert_any_call(
+            operation="twitter_search_tweets",
+            search_query=user_text_shape("my divorce papers"),
+            max_results=25,
+        )
+
     def test_caps_max_results_at_100(self, mock_proxy):
         mock_proxy.return_value = {"data": []}
         result = search_tweets(USER_ID, "query", max_results=200)

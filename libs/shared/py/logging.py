@@ -77,6 +77,8 @@ from typing import TYPE_CHECKING, TextIO, TypedDict
 
 from loguru import logger
 
+from shared.py.wide_events import TextShape
+
 if TYPE_CHECKING:
     from loguru import Logger, Message, Record
 
@@ -168,6 +170,17 @@ def hash_log_identifier(value: str | int, secret: str | None) -> str:
         else hashlib.sha256(data).hexdigest()
     )
     return f"{_LOG_IDENTIFIER_PREFIX}{digest[:_LOG_IDENTIFIER_HEX_CHARS]}"
+
+
+def text_shape(text: str, secret: str | None) -> TextShape:
+    """Describe user-written text for a log field by its length and keyed hash, never its words.
+
+    Without a secret only the length is kept: an unkeyed digest of a short phrase is
+    reversed by hashing guesses.
+    """
+    if not secret:
+        return {"length": len(text)}
+    return {"length": len(text), "hash": hash_log_identifier(text, secret)}
 
 
 @functools.lru_cache(maxsize=1)

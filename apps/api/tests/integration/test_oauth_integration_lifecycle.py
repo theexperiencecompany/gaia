@@ -33,7 +33,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
-from app.models.workflow_models import DeactivationReason
+from app.models.scheduler_models import DeactivationReason
 from app.services.integrations.integration_account_lifecycle import (
     AccountConnected,
     AccountLimitReached,
@@ -1436,7 +1436,7 @@ class TestMultipleAccounts:
                 "app.services.integrations.account_identity.get_composio_service",
                 return_value=fake.service,
             ),
-            patch(f"{LIFECYCLE}.capture_event"),
+            patch(f"{LIFECYCLE}.capture"),
         ):
             yield fake
 

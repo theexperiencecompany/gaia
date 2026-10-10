@@ -359,14 +359,19 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
 
 def format_active_todo_banner(todo: TodoDocument) -> str:
     folder = f"/workspace/gaia-tasks/{folder_name(todo.id, todo.title)}"
+    files = f"{folder}/canvas.md, {folder}/activity.md"
+    if todo.observations_content:
+        files += f", {folder}/observations.md"
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo.id}\n"
         f"   title: {todo.title or 'Untitled'}\n"
-        f"   files: {folder}/canvas.md, {folder}/activity.md\n"
+        f"   files: {files}\n"
         "\n"
         "   Default write target for this turn: this todo's files.\n"
-        "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+        "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
+        "todo: obey every one over your own defaults.\n"
+        "   - Record progress and outcomes as a dated entry at the end "
         "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
         "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
         "todo (rare).\n"

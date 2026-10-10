@@ -21,8 +21,10 @@ from app.models.files_models import FileDocument
 from app.models.message_models import FileData
 from app.models.user_models import AuthenticatedUser
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.files import FileService
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatFileDeleted, ChatFileUpdated
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -109,11 +111,11 @@ async def update_file_endpoint(
         result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
-            update_data=payload.model_dump(exclude_none=True),
+            update_data=payload,
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
-        capture_context_event(AnalyticsEvents.FILE_UPDATED)
+        capture(UserId(user_id), ChatFileUpdated())
         # CacheInvalidator erases the wrapped function's return type; FileService.update
         # is declared -> FileDocument, so this is correct by construction.
         return cast(FileDocument, result)
@@ -149,7 +151,7 @@ async def delete_file_endpoint(
             file_id=file_id,
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.FILE_DELETED)
+        capture(UserId(user_id), ChatFileDeleted())
         # CacheInvalidator erases the wrapped function's return type; FileService.delete
         # is declared -> FileDeletedResponse, so this is correct by construction.
         return cast(FileDeletedResponse, result)

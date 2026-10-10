@@ -54,6 +54,8 @@ from app.memory import pg_store
 from app.memory.consolidation import consolidate, render_agenda_document
 from app.memory.management import forget_memory
 from app.models.memory_db_models import MemoryRecord
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
 # Phrases marking a sentence as a snapshot, not a standing truth. Word-bounded
 # so "concurrency" isn't read as "currently"; applied only to rows old enough
@@ -310,7 +312,9 @@ def main() -> None:
         help="Age past which a state-like row is retired.",
     )
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(_run(args)))
+    # An operator's maintenance run: the model calls it makes are system work.
+    with analytics_context(worker_context(Trigger.SYSTEM)):
+        raise SystemExit(asyncio.run(_run(args)))
 
 
 if __name__ == "__main__":

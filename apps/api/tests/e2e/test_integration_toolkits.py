@@ -29,6 +29,7 @@ from langgraph.types import StreamMode
 import pytest
 from typing_extensions import TypedDict
 
+from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.models.integration_models import (
     IntegrationAccount,
     IntegrationAccountStatus,
@@ -189,12 +190,17 @@ class TestGmailFetchMessages:
                 return FakeProxyResponse({"messages": [{"id": "m1"}], "resultSizeEstimate": 1})
             return FakeProxyResponse(gmail_message(kwargs["endpoint"].rsplit("/", 1)[1]))
 
+        called_at = int(datetime.now(UTC).timestamp())
         with stub_auth(tool), patch(PROXY_SEAM, return_value=fake_composio(proxy)):
             result, streamed = run_in_graph(
                 lambda: tool.invoke_trusted(user_id=USER, request_kwargs={"query": "in:inbox"})
             )
+        returned_at = int(datetime.now(UTC).timestamp())
 
-        assert set(result) == {"fetched_count", "truncated", "messages"}
+        assert set(result) == {TOOL_RESULT_FETCHED_AT_KEY, "fetched_count", "truncated", "messages"}
+        fetched_at = result[TOOL_RESULT_FETCHED_AT_KEY]
+        assert type(fetched_at) is int
+        assert called_at <= fetched_at <= returned_at
         message = result["messages"][0]
         assert message == {
             "id": "m1",

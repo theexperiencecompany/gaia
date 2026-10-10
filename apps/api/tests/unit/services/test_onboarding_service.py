@@ -39,7 +39,6 @@ from app.models.user_models import (
     OnboardingRequest,
     UserDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.onboarding.first_conversation import SOMETHING_ELSE_CHIP
 from app.services.onboarding.first_question import FirstQuestion
 from app.services.onboarding.intelligence_job import (
@@ -55,6 +54,8 @@ from app.services.onboarding.onboarding_service import (
     update_onboarding_preferences,
 )
 from app.utils.redis_utils import RedisPoolManager
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import OnboardingCompleted
 from tests.helpers import captured_wide_event
 
 SERVICE = "app.services.onboarding.onboarding_service"
@@ -395,32 +396,30 @@ class TestCompleteOnboarding:
         assert result["user_id"] == sample_user_id
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
-    async def test_captures_the_completion_event_deduped_per_user(
+    async def test_captures_the_completion_event_once(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        """Keyed on the user, so a retried POST cannot count the milestone twice."""
+        """A retried POST never reaches the capture: the atomic gate returns early on it."""
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(profession="Engineer", needs=["reminders", "inbox"])
 
         with (
-            patch(f"{SERVICE}.capture_event") as capture,
+            patch(f"{SERVICE}.capture") as capture,
             patch(f"{SERVICE}.identify_user") as identify,
         ):
             await complete_onboarding(sample_user_id, request)
 
         capture.assert_called_once_with(
-            sample_user_id,
-            AnalyticsEvents.ONBOARDING_COMPLETED,
-            {"needs": ["inbox", "reminders"], "has_other_need": False},
-            dedupe_key=sample_user_id,
+            UserId(sample_user_id),
+            OnboardingCompleted(needs=["inbox", "reminders"], has_other_need=False),
         )
         # The profession lands on the person, not the event, so cohorts can
         # cut by it; the free-text need only travels as a flag.
         identify.assert_called_once_with(
-            sample_user_id,
+            UserId(sample_user_id),
             {"profession": "Engineer", "onboarding_completed": True},
         )
 
@@ -436,13 +435,13 @@ class TestCompleteOnboarding:
         )
 
         with (
-            patch(f"{SERVICE}.capture_event") as capture,
+            patch(f"{SERVICE}.capture") as capture,
             patch(f"{SERVICE}.identify_user"),
         ):
             await complete_onboarding(sample_user_id, request)
 
-        props = capture.call_args.args[2]
-        assert props["has_other_need"] is True
+        props = capture.call_args.args[1]
+        assert props.has_other_need is True
         assert "chase invoices" not in str(props)
 
     async def test_a_replay_captures_nothing(
@@ -456,7 +455,7 @@ class TestCompleteOnboarding:
         mock_repo.complete_onboarding.return_value = None
         mock_repo.get.return_value = sample_user
 
-        with patch(f"{SERVICE}.capture_event") as capture:
+        with patch(f"{SERVICE}.capture") as capture:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         capture.assert_not_called()

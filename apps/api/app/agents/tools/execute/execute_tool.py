@@ -10,6 +10,7 @@ from langchain_core.tools import BaseTool, tool
 from app.agents.tools.execute.dispatch import ToolSpace, dispatch_tool
 from app.constants.execute import RAN_AS_ACCOUNT_KEY
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from shared.py.analytics.catalog.properties import Identifier
 
 
 def _for_model(output: object, account: str | None) -> str:
@@ -46,8 +47,9 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
             "One short user-facing line describing what this call does, e.g. "
             "'Archiving 3 promotional emails'. Shown on the tool card in the UI.",
         ],
+        # Identifier-typed: a name analytics cannot carry fails the args schema before dispatch.
         tool_name: Annotated[
-            str,
+            Identifier,
             "Exact tool name to run, verbatim from retrieve_tools (e.g. 'GMAIL_SEND_EMAIL').",
         ],
         data: Annotated[

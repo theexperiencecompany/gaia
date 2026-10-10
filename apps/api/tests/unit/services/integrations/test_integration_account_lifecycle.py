@@ -20,17 +20,22 @@ from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.integrations.integration_account_lifecycle import (
     composio_integration,
     remove_account,
     update_account,
 )
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationAccountRemoved,
+    IntegrationAccountRenamed,
+    IntegrationPrimaryChanged,
+)
 
-USER_ID = "u1"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 LIFECYCLE = "app.services.integrations.integration_account_lifecycle"
-GMAIL_WORKFLOW_TRIGGERS = ["gmail_new_message", "gmail_poll_inbox"]
+GMAIL_WORKFLOW_TRIGGERS = ["gmail_new_message", "gmail_email_sent", "gmail_poll_inbox"]
 
 
 _record = partial(make_integration_record, user_id=USER_ID, integration_id="gmail")
@@ -70,7 +75,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{LIFECYCLE}.get_account_record", AsyncMock(return_value=None)) as get_record,
         patch(f"{LIFECYCLE}.save_accounts", AsyncMock(side_effect=_persist)) as save,
         patch(f"{LIFECYCLE}.set_account_nickname", AsyncMock()) as name,
-        patch(f"{LIFECYCLE}.capture_event") as capture,
+        patch(f"{LIFECYCLE}.capture") as capture,
         patch(f"{LIFECYCLE}.TriggerService") as trigger_service,
         patch(f"{LIFECYCLE}.resync_subscriptions_for_trigger_names", AsyncMock()) as subscriptions,
         patch(f"{LIFECYCLE}.get_composio_service", return_value=composio),
@@ -190,9 +195,7 @@ class TestUpdateAccount:
         seams.save.assert_awaited_once_with(USER_ID, "gmail", record.accounts, "ca_2")
         _assert_triggers_resynced(seams)
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_PRIMARY_CHANGED,
-            {"integration_id": "gmail", "account_count": 2},
+            UserId(USER_ID), IntegrationPrimaryChanged(integration_id="gmail", account_count=2)
         )
 
     async def test_renaming_a_secondary_account_keeps_the_primary(self, seams: Seams) -> None:
@@ -212,9 +215,7 @@ class TestUpdateAccount:
         assert seams.get_record.await_args_list == [call(USER_ID, "gmail")] * 2
         seams.workflow_triggers.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
-            {"integration_id": "gmail", "cleared": False},
+            UserId(USER_ID), IntegrationAccountRenamed(integration_id="gmail", cleared=False)
         )
 
     async def test_a_blank_name_clears_the_nickname(self, seams: Seams) -> None:
@@ -228,9 +229,7 @@ class TestUpdateAccount:
 
         assert result.accounts[0].nickname is None
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_ACCOUNT_RENAMED,
-            {"integration_id": "gmail", "cleared": True},
+            UserId(USER_ID), IntegrationAccountRenamed(integration_id="gmail", cleared=True)
         )
 
 
@@ -255,9 +254,7 @@ class TestRemoveAccount:
         seams.workflow_triggers.assert_not_awaited()
         seams.subscriptions.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_ACCOUNT_REMOVED,
-            {"integration_id": "gmail", "account_count": 2},
+            UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=2)
         )
 
     async def test_removing_the_primary_hands_it_on_and_moves_the_triggers(
@@ -284,7 +281,5 @@ class TestRemoveAccount:
         seams.disconnect.assert_awaited_once_with(USER_ID, "gmail")
         seams.save.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.INTEGRATION_ACCOUNT_REMOVED,
-            {"integration_id": "gmail", "account_count": 0},
+            UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=0)
         )

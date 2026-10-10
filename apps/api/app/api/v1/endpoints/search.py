@@ -19,13 +19,16 @@ from app.models.search_models import (
     URLRequest,
     URLResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
 from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search import perform_search
-from shared.py.wide_events import log
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.search import SearchPerformed
+from shared.py.wide_events import SearchContext, log
 
 router = APIRouter()
 
@@ -46,18 +49,18 @@ async def search_messages_endpoint(
     """
     log.set(
         user={"id": user_id},
-        search={
-            "query": query,
-            "mode": "keyword",
-            "scope": ["messages", "conversations", "notes"],
-        },
+        search=SearchContext(
+            query=user_text_shape(query),
+            mode="keyword",
+            scope=["messages", "conversations", "notes"],
+        ),
     )
     try:
         results = await search_messages(query, user_id)
         result_count = len(results.messages) + len(results.conversations) + len(results.notes)
-        capture_context_event(
-            AnalyticsEvents.SEARCH_PERFORMED,
-            {"mode": "keyword", "query_length": len(query), "result_count": result_count},
+        capture(
+            UserId(user_id),
+            SearchPerformed(mode="keyword", query_length=len(query), result_count=result_count),
         )
         # set_ns: log.set(search={...}) would clobber the query context set above
         log.set_ns("search", result_count=result_count)
@@ -94,11 +97,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
         EmailSearchResponse: The extracted email addresses, combined text, and search data.
     """
     log.set(
-        search={
-            "query": query,
-            "mode": "web",
-            "scope": ["emails"],
-        },
+        search=SearchContext(query=user_text_shape(query), mode="web", scope=["emails"]),
     )
     search_data = await perform_search(
         query=f"Official contact e-mail address of {query}",
@@ -111,7 +110,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
     combined_text = " ".join(f"{item.title} {item.content}" for item in search_data.web)
 
     emails = list(set(extract_emails(combined_text)))
-    log.set(search={"result_count": len(emails)})
+    log.set(search=SearchContext(result_count=len(emails)))
 
     return EmailSearchResponse(
         emails=emails,

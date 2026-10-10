@@ -16,7 +16,6 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.hil_models import LedgerState
-from app.services.analytics_service import AnalyticsEvents
 from app.services.hil import resume as resume_module
 from app.services.hil.resume import (
     _resume_todo,
@@ -24,15 +23,18 @@ from app.services.hil.resume import (
     record_owner_deny,
     resume_owner_after_approval,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilResumed
 
 MODULE = "app.services.hil.resume"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _row(**overrides: Any) -> MagicMock:
     row = MagicMock()
     row.approval_id = "ap_bg1"
     row.conversation_id = "conv-bg"
-    row.user_id = "u1"
+    row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
     row.summary = "Send briefing"
     row.state = LedgerState.APPROVED
@@ -141,14 +143,12 @@ class TestResumedEvent:
                 f"{MODULE}.enqueue_worker_job",
                 new=AsyncMock(),
             ),
-            patch("app.services.hil.resume.capture_event") as capture,
+            patch("app.services.hil.resume.capture") as capture,
         ):
             await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
 
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.HIL_RESUMED,
-            {"approval_id": "ap_bg1", "owner_run_type": "todo"},
+            UserId(USER_ID), HilResumed(approval_id="ap_bg1", owner_run_type="todo")
         )
 
     async def test_workflow_resume_emits_event_with_user_id(self) -> None:
@@ -160,14 +160,12 @@ class TestResumedEvent:
                 "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
                 new=_fake_queue,
             ),
-            patch("app.services.hil.resume.capture_event") as capture,
+            patch("app.services.hil.resume.capture") as capture,
         ):
             await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"))
 
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.HIL_RESUMED,
-            {"approval_id": "ap_bg1", "owner_run_type": "workflow"},
+            UserId(USER_ID), HilResumed(approval_id="ap_bg1", owner_run_type="workflow")
         )
 
 
@@ -192,7 +190,9 @@ def seams() -> Iterator[ResumeSeams]:
         return approval_id == "ap_bg1"
 
     async def _brief(workflow_id: str, user_id: str) -> str:
-        return "last run drafted the briefing" if (workflow_id, user_id) == ("wf-7", "u1") else ""
+        return (
+            "last run drafted the briefing" if (workflow_id, user_id) == ("wf-7", USER_ID) else ""
+        )
 
     with (
         patch(f"{MODULE}.approval_ledger_repository") as repo,
@@ -204,7 +204,7 @@ def seams() -> Iterator[ResumeSeams]:
             f"{MODULE}.WorkflowQueueService.queue_workflow_execution", new=AsyncMock()
         ) as queue_workflow,
         patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         repo.claim_resume = AsyncMock(side_effect=_claim)
         yield ResumeSeams(
@@ -247,7 +247,7 @@ class TestResumeRouting:
 
         seams.queue_workflow.assert_awaited_once_with(
             "wf-7",
-            "u1",
+            USER_ID,
             {
                 "resume_from_approval": "ap_bg1",
                 "approval_summary": "Send briefing",
@@ -328,7 +328,7 @@ class TestDenyTrace:
         await record_owner_deny(_row(owner_run_type="todo", owner_id="todo-3"), feedback)
 
         seams.append_activity.assert_awaited_once_with(
-            "todo-3", "u1", TodoActivityEvent.APPROVAL_DENIED, detail
+            "todo-3", USER_ID, TodoActivityEvent.APPROVAL_DENIED, detail
         )
 
     async def test_workflow_and_live_denies_record_nothing(self, seams: ResumeSeams) -> None:

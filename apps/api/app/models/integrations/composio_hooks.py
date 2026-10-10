@@ -19,6 +19,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.models.agent_config import RunMetadata
+
 
 class ComposioToolCall(BaseModel):
     """The keys of ``ToolExecuteParams`` the hooks read.
@@ -58,22 +60,6 @@ class ComposioDataError(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     error: JsonValue = None
-
-
-class ComposioAccountSelection(BaseModel):
-    """The connected account one tool call acts as, chosen at dispatch."""
-
-    toolkit: str
-    connected_account_id: str
-
-
-class RunMetadata(BaseModel):
-    """The LangGraph run ``metadata`` the tool wrapper forwards; ``user_id`` names the caller."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
-    composio_account: ComposioAccountSelection | None = None
 
 
 class RunnableConfigTransport(BaseModel):

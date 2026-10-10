@@ -12,23 +12,19 @@ Uses Redis for temporary state storage with automatic expiration.
 import secrets
 from typing import TypedDict, cast
 
+from pydantic import TypeAdapter, ValidationError
+
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.oauth_models import OAuthStateData
 from shared.py.wide_events import OAuthContext, log
+
+_OAUTH_STATE_ADAPTER = TypeAdapter(OAuthStateData)
 
 
 class _StoredOAuthState(TypedDict, total=False):
     """The Redis hash behind a state token; a field the writer never set is absent."""
-
-    user_id: str
-    redirect_path: str
-    integration_id: str
-    connected_account_id: str
-
-
-class OAuthStateData(TypedDict):
-    """A validated, consumed OAuth state; connected_account_id is empty unless a Composio connect set it."""
 
     user_id: str
     redirect_path: str
@@ -114,21 +110,17 @@ async def validate_and_consume_oauth_state(
             log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token")
             return None
 
-        # Decode bytes to strings
-        result: OAuthStateData = {
-            "user_id": state_data.get("user_id", ""),
-            "redirect_path": state_data.get("redirect_path", ""),
-            "integration_id": state_data.get("integration_id", ""),
-            "connected_account_id": state_data.get("connected_account_id", ""),
-        }
+        try:
+            # Only a Composio connect attaches an account, so its absence is an empty id.
+            result: OAuthStateData = _OAUTH_STATE_ADAPTER.validate_python(
+                {"connected_account_id": "", **state_data}
+            )
+        except ValidationError:
+            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token")
+            return None
 
         log.set(auth={"user_id": result["user_id"], "provider": result["integration_id"]})
         log.set_ns("oauth", operation="callback", integration_id=result["integration_id"])
-
-        # Validate that we have all required fields
-        if not all([result["user_id"], result["redirect_path"], result["integration_id"]]):
-            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token")
-            return None
 
         # Delete the token to prevent replay attacks
         await redis_client.delete(state_key)

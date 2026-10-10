@@ -17,12 +17,14 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import ApprovalLedgerDocument
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.todo_activity import record_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilResumed
 from shared.py.wide_events import log
 
 
@@ -92,11 +94,7 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
         row.approval_id,
         row.summary,
     )
-    capture_event(
-        row.user_id,
-        AnalyticsEvents.HIL_RESUMED,
-        {"approval_id": row.approval_id, "owner_run_type": "todo"},
-    )
+    capture(UserId(row.user_id), HilResumed(approval_id=row.approval_id, owner_run_type="todo"))
 
 
 async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
@@ -127,8 +125,7 @@ async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
             "prior_run_brief": brief,
         },
     )
-    capture_event(
-        row.user_id,
-        AnalyticsEvents.HIL_RESUMED,
-        {"approval_id": row.approval_id, "owner_run_type": "workflow"},
+    capture(
+        UserId(row.user_id),
+        HilResumed(approval_id=row.approval_id, owner_run_type="workflow"),
     )

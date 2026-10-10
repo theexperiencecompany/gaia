@@ -33,6 +33,7 @@ pytestmark = pytest.mark.stress
 WEBHOOK_URL = "/api/v1/webhook/composio"
 WEBHOOK_SECRET = "stress-test-secret"
 TIMESTAMP = "2025-01-01T00:00:00Z"
+DODO_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 class _FakeRedisClient:
@@ -254,7 +255,7 @@ def _dodo_subscription_active_payload() -> dict[str, Any]:
             "subscription_period_count": 1,
             "subscription_period_interval": "month",
             "created_at": TIMESTAMP,
-            "metadata": {"user_id": "user-1"},
+            "metadata": {"user_id": DODO_USER_ID},
         },
     }
 

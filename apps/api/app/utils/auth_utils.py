@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 from starlette.requests import HTTPConnection
 from workos import AsyncWorkOSClient
 
@@ -6,7 +8,22 @@ from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.utils.errors import AppError
 from shared.py.wide_events import log
+
+
+class OwnerNotFoundError(AppError):
+    """Raised (403) when a record or background run names an owner that is not a user."""
+
+    def __init__(self, owner_id: str) -> None:
+        super().__init__(
+            message="The owner is not a GAIA user",
+            why="only a user may own a todo or workflow or have an agent act for them; "
+            "the template owner owns templates and never acts",
+            status_code=HTTPStatus.FORBIDDEN,
+            code="owner_not_a_user",
+            meta={"owner_id": owner_id},
+        )
 
 
 async def resolve_dev_bypass_user(connection: HTTPConnection) -> tuple[str, UserDocument | None]:
@@ -92,12 +109,26 @@ async def load_user_context(user_id: str) -> AuthenticatedUser | None:
     """Build the user context a background path uses to act on user_id's behalf.
 
     auth_provider is None; the document fields match an interactive turn so the
-    agent sees the same timezone and onboarding. None when no such user.
+    agent sees the same timezone and onboarding. None when no such user, including
+    an id that is not an ObjectId (SYSTEM_USER_ID among them).
     """
+    if not user_repository.is_valid_id(user_id):
+        return None
     user_doc = await user_repository.get(user_id)
     if user_doc is None:
         return None
     return build_user_context(user_doc, auth_provider=None)
+
+
+async def require_owner(user_id: str) -> AuthenticatedUser:
+    """Return the user a record or background run belongs to; raise OwnerNotFoundError for any other id.
+
+    SYSTEM_USER_ID is refused here like any id with no users row: it owns templates only.
+    """
+    owner = await load_user_context(user_id)
+    if owner is None:
+        raise OwnerNotFoundError(user_id)
+    return owner
 
 
 async def authenticate_workos_session(

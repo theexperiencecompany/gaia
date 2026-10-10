@@ -278,8 +278,8 @@ async def test_maybe_write_task_file_refuses_unknown_task_path_exactly() -> None
         out = await _maybe_write_task_file(rel, USER_ID, "x", f"/workspace/{rel}", 1, None)
 
     assert out == (
-        f"Error: {rel} is not an editable notes file. Only canvas.md and "
-        "activity.md under /workspace/gaia-tasks/<todo>/ can be edited."
+        f"Error: {rel} is not an editable notes file. Only canvas.md, activity.md, "
+        "observations.md under /workspace/gaia-tasks/<todo>/ can be edited."
     )
 
 

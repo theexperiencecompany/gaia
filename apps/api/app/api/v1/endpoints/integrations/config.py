@@ -22,7 +22,7 @@ from app.schemas.integrations.responses import (
     IntegrationToolsResponse,
     MyIntegrationsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
+from app.services.analytics_service import capture
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
@@ -41,6 +41,12 @@ from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
     get_my_integrations_snapshot,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationConnected,
+    IntegrationConnectInitiated,
+    IntegrationDisconnected,
 )
 from shared.py.wide_events import log
 
@@ -122,10 +128,7 @@ async def disconnect_integration_endpoint(
         )
         result = await disconnect_integration(user_id, integration_id)
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED,
-            {"integration_id": integration_id},
-        )
+        capture(UserId(user_id), IntegrationDisconnected(integration_id=integration_id))
         return result
     except ValueError as e:
         error_message = str(e)
@@ -174,9 +177,9 @@ async def _connect_by_manager(
         # OAuth-managed connects complete at their callback; only a direct
         # (no-auth / bearer) connect finishes here.
         if result.status == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": integration_id, "managed_by": resolved.managed_by},
+            capture(
+                UserId(user_id),
+                IntegrationConnected(integration_id=integration_id, managed_by=resolved.managed_by),
             )
         return result
     if resolved.managed_by == "composio":
@@ -271,9 +274,11 @@ async def connect_integration_endpoint(
         )
     log.set(outcome="success")
     if result.status == "redirect":
-        capture_context_event(
-            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
-            {"integration_id": integration_id, "managed_by": resolved.managed_by},
+        capture(
+            UserId(user_id),
+            IntegrationConnectInitiated(
+                integration_id=integration_id, managed_by=resolved.managed_by
+            ),
         )
     return result
 
@@ -367,10 +372,9 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         redirect_path="/integrations",
     )
     if result and result.status == "redirect" and result.redirect_url:
-        capture_event(
-            user_id,
-            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
-            {"integration_id": integration_id, "source": "connect_link"},
+        capture(
+            UserId(user_id),
+            IntegrationConnectInitiated(integration_id=integration_id, source="connect_link"),
         )
         log.set(outcome="redirect")
         return RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)

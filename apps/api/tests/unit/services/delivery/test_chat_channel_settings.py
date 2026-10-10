@@ -10,6 +10,8 @@ from app.services.delivery.chat_channel import (
     get_chat_channel_priority,
     set_chat_channel_priority,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsChatChannelPriorityUpdated
 
 USER_ID = "507f1f77bcf86cd799439011"
 
@@ -56,13 +58,11 @@ class TestSetChatChannelPriority:
                 "app.services.delivery.chat_channel.user_repository.set_chat_channel_priority",
                 new_callable=AsyncMock,
             ) as save,
-            patch("app.services.delivery.chat_channel.capture_event") as capture,
+            patch("app.services.delivery.chat_channel.capture") as capture,
         ):
             await set_chat_channel_priority(USER_ID, ["discord", "slack"])
 
         save.assert_awaited_once_with(USER_ID, ["discord", "slack"])
-        assert capture.call_args.args[0] == USER_ID
-        event = capture.call_args.args[1]
-        properties = capture.call_args.args[2]
-        assert event == "settings:chat_channel_priority_updated"
-        assert properties == {"first": "discord", "count": 2}
+        capture.assert_called_once_with(
+            UserId(USER_ID), SettingsChatChannelPriorityUpdated(first="discord", count=2)
+        )
