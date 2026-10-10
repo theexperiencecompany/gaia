@@ -174,6 +174,28 @@ class TestDeadAccountReconciles:
         assert "EXPIRED" in result["error"]
         assert "sign in again" in result["error"]
 
+    async def test_a_dead_grant_with_no_record_asks_for_a_reconnect_not_a_first_connect(
+        self,
+    ) -> None:
+        """The account died mid-call, so "connect Gmail for the first time" would be wrong."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
+        writer = MagicMock()
+
+        with patch(f"{MODULE}.expire_account", AsyncMock()), _ui_chat_turn(writer, expired=False):
+            await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
+
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["expired"] is True
+        assert card["message"] == (
+            "Your Gmail connection needs fresh authorization. Reauthorize to keep using it."
+        )
+
     async def test_the_expiry_is_persisted_before_the_prompt_reads_the_status(self) -> None:
         """Racing the write would show first-time-connect copy for a connection that plainly died — the order is the contract."""
         provider = LangchainProvider()

@@ -262,8 +262,25 @@ def _preamble() -> str:
 def test_the_desk_runs_each_morning_and_on_new_mail_at_most_hourly() -> None:
     assert (
         "It runs each morning on its schedule, and when new mail from a person reaches the "
-        "Primary inbox, at most once an hour."
+        "Primary inbox of any of their Gmail accounts, at most once an hour."
     ) in _preamble()
+
+
+def test_every_gmail_account_is_worked_and_keeps_its_own_cursor() -> None:
+    """A thread id means nothing outside its mailbox, so each thread stays in its account."""
+    guidance = INBOX_DESK_RUN_GUIDANCE
+    assert (
+        "Every connected Gmail account is yours, as CONNECTED INTEGRATIONS lists them: do steps "
+        "2 to 7 for each one unless a Standing rule leaves one out, passing account=<its name> "
+        "to every Gmail call, so a thread is only ever read, drafted and tracked in the account "
+        "it was fetched from."
+    ) in guidance
+    assert "holds the last processed time of each Gmail account, under its name" in guidance
+    assert (
+        "create_tracked_todo(gmail_thread_id, gmail_account=<the account it was fetched from>"
+        in guidance
+    )
+    assert "set each account's last processed time to the" in guidance
 
 
 def test_the_steps_are_defaults_and_mail_they_do_not_fit_gets_judgment() -> None:

@@ -2723,8 +2723,10 @@ class TestConnectComposioIntegration:
     ) -> None:
         seams["record"].return_value = _slack_accounts("connected")
 
-        result = await self._connect()
+        async with captured_wide_event() as event:
+            result = await self._connect()
 
+        assert event["integration"]["reconnect_account"] is False
         assert result.status == "redirect"
         seams["status"].assert_not_awaited()
 
@@ -2756,8 +2758,10 @@ class TestConnectComposioIntegration:
         expired_id = f"ca_{MAX_ACCOUNTS_PER_INTEGRATION - 1}"
         seams["service"].reauthorize_account.return_value["connection_id"] = expired_id
 
-        result = await self._connect(reconnect_account_id=expired_id)
+        async with captured_wide_event() as event:
+            result = await self._connect(reconnect_account_id=expired_id)
 
+        assert event["integration"]["reconnect_account"] is True
         assert result.status == "redirect"
         assert result.redirect_url == "https://composio.dev/reauth"
         seams["service"].reauthorize_account.assert_awaited_once_with(expired_id, "state-token")

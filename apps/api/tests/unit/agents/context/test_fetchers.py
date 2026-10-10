@@ -333,7 +333,7 @@ class TestConnectedIntegrationsManifest:
     @pytest.fixture(autouse=True)
     def single_accounts_by_default(self) -> Iterator[AsyncMock]:
         with patch(
-            "app.agents.context.fetchers.list_multi_account_records", AsyncMock(return_value=[])
+            "app.agents.context.fetchers.list_account_records", AsyncMock(return_value=[])
         ) as lister:
             yield lister
 

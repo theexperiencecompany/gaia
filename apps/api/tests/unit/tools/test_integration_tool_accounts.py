@@ -210,6 +210,7 @@ class TestReconnectMode:
         request.assert_awaited_once_with(
             "gmail", "Gmail", FAKE_USER_ID, mode=ConnectMode.RECONNECT, account=dead
         )
+        record.assert_awaited_once_with(FAKE_USER_ID, "gmail")
 
     async def test_a_named_expired_account_is_the_one_signed_back_in(
         self, seams: tuple[AsyncMock, AsyncMock]

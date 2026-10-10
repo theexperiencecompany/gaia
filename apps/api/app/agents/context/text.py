@@ -106,18 +106,20 @@ EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER = (
     "are always available and are not listed here:"
 )
 
-#: Shown wherever an integration's accounts are listed, only when the user has
-#: connected more than one account to it; single-account users never see it.
+#: Shown wherever an integration's accounts are listed.
 MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
-    "Some integrations have several connected accounts, listed with the integration. That "
-    "list is live: it wins over anything remembered or in your task about which accounts are "
-    "connected, and an account on it never needs connecting again. Tools "
-    "act as the primary account unless you pass `account` to execute with one of those "
-    "names. When the user names an account (an address, a workspace, 'my work email') or "
-    "the conversation makes clear which one they mean, use only that one. Otherwise be "
-    "information complete: a read could be in any of them ('my latest email', 'what is on "
-    "today'), so call the tool for every connected account at once, as parallel tool calls "
-    "in one turn, and say which result came from which. For a write where the user named "
+    "GAIA supports several connected accounts per integration, and each integration above "
+    "lists its accounts. That list is live: it wins over anything remembered or in your task "
+    "about which accounts are connected, and an account on it never needs connecting again. "
+    "Keep every account in mind for the whole task, not just the first call: an answer, a "
+    "summary or anything you set up to track covers all of them unless the user narrowed "
+    "it. Tools act as the primary account unless you pass `account` to execute with one of "
+    "those names. When the user names an account (an address, a workspace, 'my work email') "
+    "or the conversation makes clear which one they mean, use only that one. Otherwise be "
+    "information complete: with several accounts a read could be in any of them ('my latest "
+    "email', 'what is on today'), so call the tool for every connected account at once, as "
+    "parallel tool calls in one turn, and say which result came from which. For a write "
+    "where the user named "
     "no account, use the primary. If the name matches no listed account ('my school email' "
     "with no school account), ask instead of picking the closest. Each result names the "
     f"account it ran as ({RAN_AS_ACCOUNT_KEY}); check it is the one you meant before "
@@ -137,9 +139,11 @@ MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
 
 #: The comms agent sees the same account lists but acts on none of them.
 COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
-    "Some integrations have several connected accounts, listed with the integration. That "
-    "list is live and wins over anything remembered about which accounts are connected; "
-    "never tell the executor a listed account may need connecting. "
+    "GAIA supports several connected accounts per integration, and each integration above "
+    "lists its accounts. That list is live and wins over anything remembered about which "
+    "accounts are connected; never tell the executor a listed account may need connecting. "
+    "Keep all of them in mind: never treat one account as the user's only one, and when you "
+    "answer or report, cover every account the executor used. "
     "Anything about those accounts, using one or renaming them, is executor work: delegate "
     "it with call_executor. Pass on only what the user said about accounts in this message: "
     "if they named one, include it; if they did not, your task names none either (write "

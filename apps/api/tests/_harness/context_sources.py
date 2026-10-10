@@ -141,7 +141,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.agents.context.fetchers.list_multi_account_records",
+                "app.agents.context.fetchers.list_account_records",
                 AsyncMock(return_value=list(sources.multi_account_records)),
             )
         )

@@ -51,7 +51,7 @@ from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.integration_accounts import (
     describe_account,
     get_account_record,
-    list_multi_account_records,
+    list_account_records,
 )
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.onboarding.first_question import seeded_chips
@@ -437,7 +437,7 @@ async def build_connected_integrations_manifest(
 
     The parenthesised id is the integration_id for activate_integration; a
     builtin shadowed by a connected provider gets its own row above the rest.
-    account_guidance follows the rows only when an integration has several accounts.
+    account_guidance follows the rows whenever an integration lists its accounts.
     """
     try:
         items = cast(list[_ConnectedIntegration], await get_connected_integrations_named(user_id))
@@ -452,7 +452,7 @@ async def build_connected_integrations_manifest(
     if not items:
         return ""
     connected: list[_ConnectedIntegration] = _dedupe_by_provider(items)
-    accounts = await _multi_account_rows(user_id)
+    accounts = await _account_rows(user_id)
     lines = [header, *_builtin_overlap_lines(connected)]
     for item in connected:
         iid, name = item["id"], item["name"]
@@ -463,10 +463,10 @@ async def build_connected_integrations_manifest(
     return "\n".join(lines)
 
 
-async def _multi_account_rows(user_id: str) -> dict[str, str]:
-    """' [accounts: a (primary), b]' per integration holding more than one account."""
+async def _account_rows(user_id: str) -> dict[str, str]:
+    """' [accounts: a (primary), b]' per integration with connected accounts on record."""
     try:
-        records = await list_multi_account_records(user_id)
+        records = await list_account_records(user_id)
     except Exception as e:
         log.warning(
             "Could not list integration accounts; manifest rows omit them",

@@ -325,6 +325,21 @@ class TestAccountReconnectPrompt:
             "user to click it, then try again."
         )
 
+    async def test_a_background_run_records_which_account_lost_its_connection(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.RECONNECT, account=self._DEAD
+            )
+
+        assert msg == (
+            "The user's Gmail account work@acme.com lost its connection and must be signed in "
+            f"again. {ACCOUNT_NEEDS_RECONNECT_HINT} This is a background run and no user is "
+            "present to reconnect it, so retrying Gmail this run cannot succeed. Record in your "
+            "result that the Gmail account work@acme.com lost its connection (the user can "
+            f"reconnect it at {_FAKE_FRONTEND}/integrations), then carry on with the rest of "
+            "the task."
+        )
+
     async def test_a_bot_link_signs_that_account_back_in(self) -> None:
         mint = AsyncMock(return_value=_MAGIC_LINK)
         with (

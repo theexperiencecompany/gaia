@@ -373,7 +373,7 @@ class TestIntegrationsManifest:
         with (
             patch("app.agents.context.fetchers.get_connected_integrations_named", connected),
             patch(
-                "app.agents.context.fetchers.list_multi_account_records",
+                "app.agents.context.fetchers.list_account_records",
                 AsyncMock(return_value=[record]),
             ) as multi_account,
         ):
@@ -384,6 +384,34 @@ class TestIntegrationsManifest:
         )
         connected.assert_awaited_once_with("user1")
         multi_account.assert_awaited_once_with("user1")
+
+    @pytest.mark.parametrize(
+        ("tier", "guidance"),
+        [
+            (AgentTier.EXECUTOR, MULTI_ACCOUNT_INSTRUCTION),
+            (AgentTier.COMMS, COMMS_MULTI_ACCOUNT_NOTE),
+        ],
+    )
+    async def test_a_single_account_is_named_and_more_can_be_added(
+        self, tier: AgentTier, guidance: str
+    ) -> None:
+        """Each tier learns which account it is acting on, and that GAIA holds several."""
+        record = _record(make_integration_account("ca_1", label="work@acme.com"))
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named", self._connected()
+            ),
+            patch(
+                "app.agents.context.fetchers.list_account_records",
+                AsyncMock(return_value=[record]),
+            ),
+        ):
+            rendered = await section("integrations_manifest").fetch(ctx(tier))
+
+        assert rendered.endswith(
+            '- Gmail (gmail) [accounts: "work@acme.com" (primary)]\n' + guidance
+        )
+        assert guidance.startswith("GAIA supports several connected accounts per integration")
 
     async def test_an_unknown_user_is_asked_for_no_manifest_at_all(self) -> None:
         connected = self._connected()

@@ -261,6 +261,21 @@ class TestDisconnectIntegration:
         )
         seams.disconnect_all.assert_not_awaited()
 
+    async def test_every_account_left_is_named_with_its_tags(self, seams: Seams) -> None:
+        seams.get_record.return_value = _record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com"),
+            make_integration_account("ca_3", "expired", label="old@acme.com"),
+            primary="ca_1",
+        )
+
+        result = await _disconnect("googlecalendar", "me@gmail.com")
+
+        assert result == (
+            'Disconnected me@gmail.com. Still connected: "work@acme.com" (primary), '
+            '"old@acme.com" (expired).'
+        )
+
     async def test_with_several_accounts_and_none_named_nothing_is_removed(
         self, seams: Seams
     ) -> None:

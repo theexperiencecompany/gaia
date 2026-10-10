@@ -170,8 +170,10 @@ class TestReauthorizeAccount:
             "app.services.composio.composio_service.settings",
             MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
         ):
-            result = await svc.reauthorize_account("ca_work", "tok")
+            async with captured_wide_event() as event:
+                result = await svc.reauthorize_account("ca_work", "tok")
 
+        assert event["composio_connected_account_id"] == "ca_work"
         assert result == {
             "status": "pending",
             "redirect_url": "https://composio.dev/s/abc",

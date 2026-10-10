@@ -11,6 +11,7 @@ from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.integrations.integration_accounts import (
     derive_status,
     event_account_name,
+    list_account_records,
     match_account,
     pick_primary,
     primary_connected_account_id,
@@ -162,6 +163,19 @@ class TestSetAccountNickname:
 
         assert await set_account_nickname(USER_ID, "gmail", "ca_1", "Work") is named
         repo.set_account_nickname.assert_awaited_once_with(USER_ID, "gmail", "ca_1", "Work")
+
+
+class TestListAccountRecords:
+    async def test_every_integration_with_an_account_is_listed_and_empty_ones_are_not(
+        self, repo: MagicMock
+    ) -> None:
+        one = _record(make_integration_account("ca_1"))
+        several = _record(make_integration_account("ca_2"), make_integration_account("ca_3"))
+        empty = _record()
+        repo.list_for_user = AsyncMock(return_value=[one, empty, several])
+
+        assert await list_account_records(USER_ID) == [one, several]
+        repo.list_for_user.assert_awaited_once_with(USER_ID)
 
 
 class TestEventAccountName:

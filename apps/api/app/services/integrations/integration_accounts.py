@@ -96,10 +96,10 @@ async def set_account_nickname(
     )
 
 
-async def list_multi_account_records(user_id: str) -> list[UserIntegrationDocument]:
-    """List the user's integrations that hold more than one account."""
+async def list_account_records(user_id: str) -> list[UserIntegrationDocument]:
+    """List the user's integrations that hold at least one account."""
     records = await user_integration_repository.list_for_user(user_id)
-    return [r for r in records if len(r.accounts) > 1]
+    return [r for r in records if r.accounts]
 
 
 async def event_account_name(

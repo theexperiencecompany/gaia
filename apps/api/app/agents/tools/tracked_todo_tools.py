@@ -29,6 +29,7 @@ from app.agents.tools.tracked_todo_formatting import (
     parse_match,
     render_catalog,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
@@ -47,6 +48,7 @@ from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
+from app.services.integrations.integration_accounts import get_account_record, match_account
 from app.services.todo_activity import agent_actor, record_field_changes
 from app.services.todos.errors import (
     CanvasShapeError,
@@ -111,6 +113,33 @@ def _gmail_thread_ref(gmail_thread_id: str | None) -> ExternalRef | None:
     if not gmail_thread_id:
         return None
     return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
+
+
+async def _owned_gmail_thread_ref(
+    user_id: str, gmail_thread_id: str | None, gmail_account: str | None
+) -> ExternalRef | str | None:
+    """Pin a thread to the account it is in; a string says why it cannot be pinned."""
+    if not gmail_thread_id:
+        return None
+    record = await get_account_record(user_id, GMAIL_INTEGRATION_ID)
+    accounts = record.accounts if record else []
+    names = ", ".join(a.display_name for a in accounts)
+    if gmail_account is not None:
+        account = match_account(record, gmail_account) if record else None
+        if account is None:
+            return f"Error: no Gmail account is named {gmail_account!r}. Its accounts: {names}."
+    elif len(accounts) > 1:
+        return (
+            f"Error: the user has {len(accounts)} Gmail accounts ({names}). Pass gmail_account "
+            "with the one the thread was fetched from."
+        )
+    else:
+        account = accounts[0] if accounts else None
+    return ExternalRef(
+        source=ExternalRefSource.GMAIL_THREAD,
+        id=gmail_thread_id,
+        account=account.connected_account_id if account else None,
+    )
 
 
 async def _references_refusal(
@@ -208,6 +237,11 @@ async def create_tracked_todo(
         "the thread can have only one open todo: if it already has one, that todo "
         "comes back instead, for you to update.",
     ] = None,
+    gmail_account: Annotated[
+        str | None,
+        "With gmail_thread_id: the Gmail account the thread is in, by its listed name, "
+        "the account you fetched it from. Required when the user has several.",
+    ] = None,
     references: Annotated[
         list[str] | None,
         "IDs of the user's other tracked todos this one builds on, usually completed "
@@ -259,6 +293,7 @@ async def create_tracked_todo(
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead.
+    gmail_account: The Gmail account the thread is in; every run reads and drafts there.
     references: IDs of the user's tracked todos this one builds on; its runs read their
                 Learnings. An id that is not one of the user's todos creates nothing.
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
@@ -288,7 +323,9 @@ async def create_tracked_todo(
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
         return SUB_TODO_STANDING_RULES_REFUSAL
 
-    external_ref = _gmail_thread_ref(gmail_thread_id)
+    external_ref = await _owned_gmail_thread_ref(user_id, gmail_thread_id, gmail_account)
+    if isinstance(external_ref, str):
+        return external_ref
     try:
         result = await tracked_todo_service.create_tracked_todo(
             user_id=user_id,
