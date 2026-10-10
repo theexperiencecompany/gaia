@@ -53,6 +53,7 @@ class UnhandledExceptionMiddleware:
                 error_type=type(exc).__name__,
                 error=str(exc),
                 path=parsed.path,
+                exc_info=exc,
             )
             capture_unhandled_exception(Request(scope), exc)
             envelope = internal_error_response()
