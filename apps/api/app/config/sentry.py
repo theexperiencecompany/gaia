@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from typing import Protocol, TypedDict, cast
 
 from loguru import logger as _loguru
+from pydantic import BaseModel
 import sentry_sdk
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
@@ -70,6 +71,23 @@ def _scrub_pii(extra: Mapping[str, object]) -> dict[str, object]:
 _LLM_CALL_SPAN_OPS = frozenset({OP.GEN_AI_CHAT, OP.GEN_AI_PIPELINE})
 
 
+class _TraceContext(BaseModel):
+    """The two fields of an event's trace context that name the span it was captured in."""
+
+    origin: str | None = None
+    op: str | None = None
+
+
+class _EventContexts(BaseModel):
+    trace: _TraceContext = _TraceContext()
+
+
+class _CapturedSpan(BaseModel):
+    """The part of a Sentry event that says which span captured it; other fields are ignored."""
+
+    contexts: _EventContexts = _EventContexts()
+
+
 def _drop_llm_attempt_errors(event: Event, _hint: Hint) -> Event | None:
     """Drop the error LangchainIntegration captures for every failed model call.
 
@@ -77,8 +95,8 @@ def _drop_llm_attempt_errors(event: Event, _hint: Hint) -> Event | None:
     caller reports the failure only once the policy gives up; capturing each
     attempt turned upstream 429s into Sentry errors.
     """
-    trace = event.get("contexts", {}).get("trace", {})
-    if trace.get("origin") == LangchainIntegration.origin and trace.get("op") in _LLM_CALL_SPAN_OPS:
+    trace = _CapturedSpan.model_validate(event).contexts.trace
+    if trace.origin == LangchainIntegration.origin and trace.op in _LLM_CALL_SPAN_OPS:
         return None
     return event
 
@@ -166,7 +184,7 @@ def init_sentry() -> None:
         before_send=_drop_llm_attempt_errors,
     )
     # The API and the ARQ worker share one project; the Promtail service name tells them apart.
-    sentry_sdk.get_global_scope().set_tag("service", env_context()["service"])
+    sentry_sdk.get_global_scope().set_tag("service", env_context().service)
 
     # Bridge Loguru → Sentry for ERROR and CRITICAL records.
     # Without this, log.error() / log.exception() calls are only visible

@@ -66,9 +66,9 @@ def test_app_code_cannot_clobber_the_service_identity(capsys):
     line = json.loads(capsys.readouterr().out.strip())
 
     identity = env_context()
-    assert line["service"] == identity["service"]
-    assert line["env"] == identity["env"]
-    assert line["commit"] == identity["commit"]
+    assert line["service"] == identity.service
+    assert line["env"] == identity.env
+    assert line["commit"] == identity.commit
     # The attempt is preserved, just relocated — never silently dropped.
     assert line["ctx_service"] == line["ctx_env"] == line["ctx_commit"] == "HIJACKED"
 
