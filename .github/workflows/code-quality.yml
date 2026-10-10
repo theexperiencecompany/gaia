@@ -2021,14 +2021,14 @@ jobs:
   # --- PostHog analytics contract -------------------------------------------
   # Reads the LIVE PostHog project (insights on live dashboards, settings, the
   # test-account filter, canonical actions) against the event catalog and
-  # config/posthog/. Path-scoped to the files that define that contract. Not in
-  # quality-gate.needs yet: it needs the POSTHOG_PERSONAL_API_KEY secret, and
-  # without it the script fails loud rather than skipping — add the job to the
-  # gate once the secret exists.
+  # config/posthog/. Path-scoped to the files that define that contract. Never
+  # reused from an earlier pass: it reads live state a dashboard edit can break
+  # between two runs of the same commit.
   analytics-check:
     name: PostHog analytics contract
     needs: [select-runner, changes]
-    if: ${{ !cancelled() && needs.changes.outputs.has_analytics == 'true' }}
+    # A fork's pull_request run gets no secrets, so it skips rather than failing every outside PR.
+    if: ${{ !cancelled() && needs.changes.outputs.has_analytics == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     env:
       GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
@@ -2044,6 +2044,12 @@ jobs:
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
         run: python3 scripts/ci/analytics.py check
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: analytics-check
 
   quality-gate:
     name: Quality gate (required)
@@ -2081,6 +2087,7 @@ jobs:
       - wide-event-conformance
       - dead-code
       - alert-rules
+      - analytics-check
       - suppression-hygiene
       - gitleaks
       - semgrep
@@ -2126,7 +2133,7 @@ jobs:
           # carried would go unmutated (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},go-connect=${{ needs.go-connect.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-audit=${{ needs.python-audit.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},go-connect=${{ needs.go-connect.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-audit=${{ needs.python-audit.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},analytics-check=${{ needs.analytics-check.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
           # reuse-plan's notes, so a reused lane reads as reused rather than untouched.
           REUSED: ${{ needs.changes.outputs.reused }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --reused "$REUSED"
