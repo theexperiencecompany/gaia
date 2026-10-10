@@ -12,12 +12,14 @@ from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.config.settings import settings
+from app.constants.auth import CONNECT_LINK_TTL_MINUTES
 import app.services.connect_link_service as svc
 from app.services.connect_link_service import (
     ConnectLinkBinding,
     build_connect_link_url,
     resolve_and_consume_connect_code,
 )
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture
@@ -64,6 +66,26 @@ class TestConnectLinkCode:
         assert await resolve_and_consume_connect_code(code) == ConnectLinkBinding(
             user_id="user1", integration_id="notion", account_id=None
         )
+
+    async def test_a_link_lives_for_its_ttl_and_its_redemption_names_who_and_what(self) -> None:
+        stored: dict[str, object] = {}
+
+        async def _set(key: str, value: object, ttl: int, model: object) -> bool:
+            stored.update(value=value, ttl=ttl)
+            return True
+
+        with (
+            patch.object(svc, "set_cache", AsyncMock(side_effect=_set)),
+            patch.object(
+                svc, "get_and_delete_cache", AsyncMock(side_effect=lambda *_: stored["value"])
+            ),
+        ):
+            code = _code_from_url(await build_connect_link_url("user1", "gmail"))
+            async with captured_wide_event() as event:
+                await resolve_and_consume_connect_code(code)
+
+        assert stored["ttl"] == CONNECT_LINK_TTL_MINUTES * 60 == 3600
+        assert event["auth"] == {"user_id": "user1", "provider": "gmail"}
 
     async def test_a_reconnect_link_carries_the_account_to_sign_back_in(
         self, fake_store: dict[str, object]
