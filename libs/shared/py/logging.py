@@ -252,6 +252,8 @@ THIRD_PARTY_LOG_LEVEL = os.getenv("LOG_LEVEL_THIRD_PARTY", "WARNING")
 # records are about our process, not about a library's internals.
 _OWNED_LOG_NAMESPACES = ("app", "gaia_shared", "uvicorn", "fastapi", "gunicorn", "livekit")
 
+_OTLP_TRACE_EXPORTER_LOGGER = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
+
 # Short display names for the busiest loggers. Anything unmapped falls back to
 # its top-level package (`aiormq.connection` → `AIORMQ`).
 _LOGGER_DISPLAY_NAMES = {
@@ -740,6 +742,9 @@ def configure_loguru() -> Logger:
 
     for logger_name in _OWNED_LOG_NAMESPACES:
         _route_through_root(logger_name, LOG_CONFIG["level"])
+
+    # Langfuse's OTLP endpoint is a home server that is down on purpose; its export failures are noise.
+    logging.getLogger(_OTLP_TRACE_EXPORTER_LOGGER).setLevel(logging.CRITICAL + 1)
 
     # uvicorn decides whether an access log exists at all, and re-checks that
     # decision per connection with `uvicorn.access`.hasHandlers(): --no-access-log
