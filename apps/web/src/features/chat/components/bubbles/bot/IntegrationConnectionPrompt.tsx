@@ -35,6 +35,7 @@ interface IntegrationConnectCardProps {
   message: string;
   expired?: boolean;
   addAccount?: boolean;
+  connectedAccounts?: string[];
 }
 
 function StatusChip({
@@ -135,6 +136,7 @@ function IntegrationConnectCard({
   message,
   expired,
   addAccount,
+  connectedAccounts,
 }: IntegrationConnectCardProps) {
   const { phase, token, setToken, toolsCount, error, connect } =
     useInlineIntegrationConnect(integration.id);
@@ -175,6 +177,19 @@ function IntegrationConnectCard({
           </div>
         </div>
 
+        {state === "add_account" && connectedAccounts?.length ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-zinc-400">Already connected</span>
+            <div className="flex flex-wrap gap-1.5">
+              {connectedAccounts.map((name) => (
+                <Chip key={name} size="sm" variant="flat">
+                  {name}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {!isConnected && isAvailable && (
           <InlineConnectAction
             message={message}
@@ -196,8 +211,14 @@ function IntegrationConnectCard({
 export default function IntegrationConnectionPrompt({
   integration_connection_required,
 }: IntegrationConnectionPromptProps) {
-  const { integration_id, message, expired, add_account, integration_name } =
-    integration_connection_required;
+  const {
+    integration_id,
+    message,
+    expired,
+    add_account,
+    connected_accounts,
+    integration_name,
+  } = integration_connection_required;
   const { integrations } = useIntegrations();
   const integration = integrations.find((i) => i.id === integration_id);
 
@@ -220,6 +241,7 @@ export default function IntegrationConnectionPrompt({
           message={message}
           expired={expired}
           addAccount={add_account}
+          connectedAccounts={connected_accounts}
         />
       ) : (
         // Catalog still loading: header from the streamed name + spinner, rather

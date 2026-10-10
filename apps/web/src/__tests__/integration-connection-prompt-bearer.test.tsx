@@ -150,10 +150,14 @@ describe("IntegrationConnectionPrompt — adding another account", () => {
           message: "Add another Gmail account.",
           expired: false,
           add_account: true,
+          connected_accounts: ["Work", "me@gmail.com"],
         }}
       />,
     );
 
+    expect(screen.getByText("Already connected")).toBeDefined();
+    expect(screen.getByText("Work")).toBeDefined();
+    expect(screen.getByText("me@gmail.com")).toBeDefined();
     expect(screen.getByText("Connected")).toBeDefined();
     expect(screen.getByText("Add another Gmail account.")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));

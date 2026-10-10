@@ -63,6 +63,8 @@ export interface IntegrationConnectionData {
   integration_name?: string;
   // Adds another account to an integration that stays connected.
   add_account?: boolean;
+  // The accounts already connected, primary first, shown on an add-account card.
+  connected_accounts?: string[];
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";

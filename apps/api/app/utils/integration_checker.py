@@ -88,6 +88,17 @@ def _ask(mode: ConnectMode, expired: bool, name: str) -> _Ask:
     )
 
 
+async def _connected_account_names(user_id: str, integration_id: str) -> list[str]:
+    """Name the accounts already connected, primary first, for a card adding another."""
+    record = await user_integration_repository.get_for_user(user_id, integration_id)
+    if record is None:
+        return []
+    ordered = sorted(
+        record.accounts, key=lambda a: a.connected_account_id != record.primary_account_id
+    )
+    return [a.display_name for a in ordered]
+
+
 async def request_integration_connection(
     integration_id: str,
     integration_name: str,
@@ -111,15 +122,18 @@ async def request_integration_connection(
     # None means no runnable context at all (e.g. the dev direct-invocation
     # endpoints), so there is no stream for a card to travel on.
     if source_category is not None:
+        adding = mode is ConnectMode.ADD_ACCOUNT
         get_stream_writer()(
             {
                 "integration_connection_required": {
                     "integration_id": integration_id,
                     "integration_name": integration_name,
-                    "expired": mode is not ConnectMode.ADD_ACCOUNT
-                    and (expired or mode is ConnectMode.RECONNECT),
-                    "add_account": mode is ConnectMode.ADD_ACCOUNT,
+                    "expired": not adding and (expired or mode is ConnectMode.RECONNECT),
+                    "add_account": adding,
                     "message": ask.card,
+                    "connected_accounts": (
+                        await _connected_account_names(user_id, integration_id) if adding else []
+                    ),
                 }
             }
         )

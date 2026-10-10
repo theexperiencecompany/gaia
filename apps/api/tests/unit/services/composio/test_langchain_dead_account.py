@@ -168,6 +168,7 @@ class TestDeadAccountReconciles:
             "expired": True,
             "add_account": False,
             "message": "Your Gmail connection expired. Sign in again to keep using it.",
+            "connected_accounts": [],
         }
         assert result["successful"] is False
         assert "EXPIRED" in result["error"]

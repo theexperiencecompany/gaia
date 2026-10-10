@@ -9,6 +9,7 @@ import pytest
 from app.constants.integrations import ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from app.utils.integration_checker import request_integration_connection
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 # ---------------------------------------------------------------------------
 # request_integration_connection
@@ -64,6 +65,7 @@ def _graph_run(
         ),
         patch("app.utils.integration_checker.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
+        patch.object(user_integration_repository, "get_for_user", AsyncMock(return_value=None)),
     ):
         mock_settings.FRONTEND_URL = frontend
         yield writer
@@ -228,7 +230,18 @@ class TestAddAccountPrompt:
     async def test_the_card_asks_to_add_an_account_and_is_never_a_reconnect(
         self, expired: bool
     ) -> None:
-        with _graph_run("ui", expired=expired) as writer:
+        record = make_integration_record(
+            make_integration_account("ca_1", label="me@gmail.com"),
+            make_integration_account("ca_2", label="work@acme.com", nickname="Work"),
+            user_id=_USER,
+            primary="ca_2",
+        )
+        with (
+            _graph_run("ui", expired=expired) as writer,
+            patch.object(
+                user_integration_repository, "get_for_user", AsyncMock(return_value=record)
+            ) as lookup,
+        ):
             msg = await request_integration_connection(
                 "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
             )
@@ -239,7 +252,10 @@ class TestAddAccountPrompt:
             "expired": False,
             "add_account": True,
             "message": "Add another Gmail account. Sign in with the account you want to add.",
+            # The primary first, so the card reads the way the user thinks of them.
+            "connected_accounts": ["Work", "me@gmail.com"],
         }
+        lookup.assert_awaited_once_with(_USER, _INTEGRATION_ID)
         assert msg == (
             "The user wants to add another Gmail account; their current accounts stay "
             "connected. A button to add the account has been shown to the user, so do NOT "
@@ -270,6 +286,7 @@ class TestAddAccountPrompt:
         with _graph_run("ui") as writer:
             await request_integration_connection("gmail", "Gmail", "user1")
         assert self._card(writer)["add_account"] is False
+        assert self._card(writer)["connected_accounts"] == []
 
         with _graph_run("ui") as writer:
             await request_integration_connection(

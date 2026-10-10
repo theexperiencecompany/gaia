@@ -32,7 +32,8 @@ export function IntegrationConnectionCard({
   data,
   onConnect,
 }: IntegrationConnectionCardProps) {
-  const { integration_id, message, expired, add_account } = data;
+  const { integration_id, message, expired, add_account, connected_accounts } =
+    data;
   const { integrations, connect } = useIntegrations();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
@@ -134,6 +135,24 @@ export function IntegrationConnectionCard({
               </Text>
             </View>
           </View>
+
+          {state === "add_account" && connected_accounts?.length ? (
+            <View className="mt-3 gap-1.5">
+              <Text className="text-zinc-400 text-xs">Already connected</Text>
+              <View className="flex-row flex-wrap gap-1.5">
+                {connected_accounts.map((name) => (
+                  <Chip
+                    key={name}
+                    size="sm"
+                    variant="soft"
+                    animation="disable-all"
+                  >
+                    <Chip.Label>{name}</Chip.Label>
+                  </Chip>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           {/* Warning + Connect — only when not connected and available */}
           {!isConnected && isAvailable ? (
