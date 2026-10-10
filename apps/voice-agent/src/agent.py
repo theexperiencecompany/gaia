@@ -30,6 +30,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from shared.py.analytics import PostHogAnalytics, UserId
 from shared.py.analytics.catalog.voice import VoiceSessionEnded, VoiceSessionStarted
+from shared.py.analytics.context import analytics_context
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
@@ -39,6 +40,7 @@ from src.constants import (
     MIN_ENDPOINTING_DELAY_S,
     PROMETHEUS_METRICS_PORT,
     PROMETHEUS_MULTIPROC_DIR,
+    VOICE_SESSION_ANALYTICS,
     VOICE_SYSTEM_PROMPT,
     LogTag,
 )
@@ -244,16 +246,17 @@ def _register_session_logging(
         # answers "what happened in this session", PostHog answers "how much do
         # people use voice", so this carries only the usage shape. Outside the
         # log_context: a PostHog failure must not colour the event's outcome.
-        analytics.capture(
-            user,
-            VoiceSessionEnded(
-                user_turns=stats.user_turns,
-                user_speaking_ms=round(stats.user_speaking_ms, 2),
-                tts_characters=summary.tts_characters_count,
-                stt_audio_duration_s=round(summary.stt_audio_duration, 2),
-                tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
-            ),
-        )
+        with analytics_context(VOICE_SESSION_ANALYTICS):
+            analytics.capture(
+                user,
+                VoiceSessionEnded(
+                    user_turns=stats.user_turns,
+                    user_speaking_ms=round(stats.user_speaking_ms, 2),
+                    tts_characters=summary.tts_characters_count,
+                    stt_audio_duration_s=round(summary.stt_audio_duration, 2),
+                    tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
+                ),
+            )
         # One job per process, and LiveKit exits it through multiprocessing,
         # which skips atexit: without this the queued batch is dropped.
         await asyncio.to_thread(analytics.shutdown)
@@ -412,7 +415,8 @@ async def entrypoint(ctx: JobContext) -> None:
         # Attributed to the stable GAIA user id recovered from the room name —
         # the same id the API and web capture against, so a voice session lands
         # on the user's real profile.
-        analytics.capture(user, VoiceSessionStarted(room=ctx.room.name))
+        with analytics_context(VOICE_SESSION_ANALYTICS):
+            analytics.capture(user, VoiceSessionStarted(room=ctx.room.name))
 
         room_start = time.monotonic()
 

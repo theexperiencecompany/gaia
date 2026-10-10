@@ -41,7 +41,7 @@ from app.models.chat_models import ConversationSource, MessageModel, ToolDataEnt
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.wide_events import log
@@ -717,13 +717,13 @@ class TestRunLifecycleAnalytics:
         assert terminal.executor_active_ms is not None
         assert terminal.executor_active_ms >= 0.0
         # A resumed segment re-enters with the same task, so the terminal is keyed on it.
-        assert "dedupe_key" not in mock_capture.call_args_list[0].kwargs
-        assert mock_capture.call_args_list[1].kwargs["dedupe_key"] == "task-1"
+        assert mock_capture.call_args_list[0].kwargs["dedupe"] is None
+        assert mock_capture.call_args_list[1].kwargs["dedupe"].key == "task-1"
 
     async def test_a_run_without_a_task_keys_its_terminal_on_the_stream(self) -> None:
         mock_capture = await self._run_lifecycle("done", "final", task_id=None)
 
-        assert mock_capture.call_args_list[1].kwargs["dedupe_key"] == "stream-1"
+        assert mock_capture.call_args_list[1].kwargs["dedupe"].key == "stream-1"
 
     async def test_failed_on_error_result(self) -> None:
         mock_capture = await self._run_lifecycle("it broke", "error", error_type="RuntimeError")
@@ -2682,23 +2682,21 @@ class TestTheCommsVerdictIsOnTheWideEvent:
 
 
 class TestResolutionAnalyticsIsOnePerUpdate:
-    """One chat:background_update_resolved per update, deduped on the task (or conversation) it resolved."""
+    """One chat:background_update_resolved per update, deduped on the run it resolved."""
 
-    async def test_a_queued_run_dedupes_on_its_task(self) -> None:
-        delivered = await _deliver_run(
-            _run(RunKind.QUEUED, task_id="task-7"), _Seams(comms_text="Done.", source=None)
-        )
+    async def test_a_queued_run_dedupes_on_its_task_and_dispatch_time(self) -> None:
+        run = _run(RunKind.QUEUED, task_id="task-7")
+        delivered = await _deliver_run(run, _Seams(comms_text="Done.", source=None))
 
         assert delivered.capture.call_args.kwargs == {
-            "dedupe_key": "chat_background_update_resolved:task-7"
+            "dedupe": Dedupe(key="task-7", occurred_at=run.dispatched_at)
         }
 
-    async def test_a_taskless_run_dedupes_on_its_conversation(self) -> None:
+    async def test_a_run_with_no_id_is_not_deduped_onto_its_conversation(self) -> None:
+        """Every update in a conversation would otherwise collapse into one row."""
         delivered = await _deliver_run(_run(), _Seams(comms_text="Done.", source=None))
 
-        assert delivered.capture.call_args.kwargs == {
-            "dedupe_key": "chat_background_update_resolved:conv-1"
-        }
+        assert delivered.capture.call_args.kwargs == {"dedupe": None}
 
     async def test_a_web_react_lands_as_a_badge(self) -> None:
         delivered = await _deliver_run(

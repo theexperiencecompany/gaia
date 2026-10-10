@@ -216,13 +216,13 @@ class TestCreateSubscription:
         # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            PaymentCheckoutStarted(quantity=1, source=None, surface="redirect"),
+            PaymentCheckoutStarted(quantity=1, source=None, checkout_flow="redirect"),
         )
 
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
         self, client: AsyncClient
     ):
-        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/surface split."""
+        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/checkout_flow split."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -241,7 +241,7 @@ class TestCreateSubscription:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            PaymentCheckoutStarted(quantity=1, source="payment_retry", surface="redirect"),
+            PaymentCheckoutStarted(quantity=1, source="payment_retry", checkout_flow="redirect"),
         )
 
     async def test_create_subscription_rejects_an_unknown_source(self, client: AsyncClient):
@@ -360,7 +360,7 @@ class TestCreateCheckoutSession:
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             PaymentCheckoutStarted(
-                billing_cycle=PlanDuration.MONTHLY, source="paywall_modal", surface="overlay"
+                billing_cycle=PlanDuration.MONTHLY, source="paywall_modal", checkout_flow="overlay"
             ),
         )
 

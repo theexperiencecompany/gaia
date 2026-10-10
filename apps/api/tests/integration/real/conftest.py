@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
+from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     SUBSCRIPTION_PLAN_CACHE_PREFIX,
@@ -124,7 +125,8 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await providers.areset("postgresql_engine")
 
 
-def _cors_only_middleware(app: FastAPI) -> None:
+def _live_middleware(app: FastAPI) -> None:
+    """CORS plus the analytics context every captured route runs inside, as in production."""
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -132,13 +134,14 @@ def _cors_only_middleware(app: FastAPI) -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(PostHogRequestContextMiddleware)
 
 
 def _create_live_app() -> FastAPI:
     """Build the real GAIA FastAPI app, swapping only the startup stack (see _device_bridge_lifespan) and WorkOS SSO (see HeaderDrivenAuthMiddleware); every other route, dependency, and service function is the real production code."""
     with (
         patch("app.core.app_factory.lifespan", _device_bridge_lifespan),
-        patch("app.core.app_factory.configure_middleware", _cors_only_middleware),
+        patch("app.core.app_factory.configure_middleware", _live_middleware),
     ):
         # Function-local so importing this conftest never builds the app factory's
         # import graph for service tests that never spin up a live server.

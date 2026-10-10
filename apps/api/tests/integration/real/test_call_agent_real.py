@@ -61,9 +61,7 @@ class TestCallAgentReal:
                     gen = call_agent(
                         request=body,
                         conversation_id="call-agent-conv-1",
-                        user=make_authenticated_user(
-                            user_id="6812f0b3c9a14e2b7d5a9101", name="Test"
-                        ),
+                        user=make_authenticated_user(name="Test"),
                     )
 
                     chunks = []
@@ -95,7 +93,7 @@ class TestCallAgentReal:
             gen = call_agent(
                 request=body,
                 conversation_id="call-agent-conv-2",
-                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9102"),
+                user=make_authenticated_user(),
             )
 
             chunks = []

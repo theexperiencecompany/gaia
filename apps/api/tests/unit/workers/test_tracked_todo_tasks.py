@@ -113,11 +113,18 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, users_get
 
 # Analytics attributes a todo run to its owner, so the owner is a real user id.
 OWNER_ID = "6812f0b3c9a14e2b7d5a91cf"
+_GMAIL_ORIGIN = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
 
 
 def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
@@ -269,6 +276,35 @@ class TestExecuteTrackedTodoLock:
 
         assert inner.await_args.args == ("todo-1", None, None)
         assert occurrence_log.warning.call_args.kwargs["task_id"] == "todo-1"
+
+    @pytest.mark.parametrize(
+        ("origin", "trigger_window", "trigger"),
+        [
+            (None, None, Trigger.SCHEDULE),
+            (_GMAIL_ORIGIN, None, Trigger.INTEGRATION_TRIGGER),
+            # A window drain carries no origin of its own, but runs the events triggers held.
+            (None, 1_700_000_000, Trigger.INTEGRATION_TRIGGER),
+        ],
+    )
+    async def test_the_run_is_its_schedules_or_its_triggers(
+        self, origin: TriggerOrigin | None, trigger_window: int | None, trigger: Trigger
+    ):
+        """Whoever armed the todo, its run is the agent acting on its schedule or trigger."""
+        seen: list[AnalyticsContext] = []
+
+        async def _record(*_args: object, **_kwargs: object) -> str:
+            seen.append(current_analytics_context())
+            return "success:todo-1"
+
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
+            patch(f"{MODULE}.trigger_window_end", AsyncMock(return_value=None)),
+            patch(f"{MODULE}._take_trigger_events", AsyncMock(return_value=[_GMAIL_ORIGIN])),
+            patch(f"{MODULE}._execute_todo_with_retry", AsyncMock(side_effect=_record)),
+        ):
+            await execute_tracked_todo({}, "todo-1", origin, trigger_window=trigger_window)
+
+        assert seen == [worker_context(trigger)]
 
     async def test_lock_already_held_skips_and_does_not_release_the_other_holders_lock(self):
         """Deleting a lock this run never acquired would break mutual exclusion."""

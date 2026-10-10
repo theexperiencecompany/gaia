@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.utils.chat_utils import create_conversation
-from tests.factories import make_authenticated_user
+from tests.factories import make_authenticated_user, make_user_id
+
+#: Both conversations belong to one real user, so their ids are compared within that user.
+SAME_USER = make_user_id()
 
 
 @pytest.mark.service
@@ -16,20 +19,21 @@ class TestCreateConversationReal:
 
     async def test_creates_document_in_mongodb(self, real_redis, conversations_collection):
         """create_conversation must insert a document retrievable by conversation_id."""
+        owner = make_user_id()
         with patch(
             "app.utils.chat_utils._generate_description_from_message",
             new=AsyncMock(return_value="Test description"),
         ):
             result = await create_conversation(
                 {"role": "user", "content": "Hello world"},
-                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9103"),
+                user=make_authenticated_user(user_id=owner),
                 selectedTool=None,
                 generate_description=False,
             )
 
         doc = await conversations_collection.find_one({"conversation_id": result.conversation_id})
         assert doc is not None
-        assert doc["user_id"] == "6812f0b3c9a14e2b7d5a9103"
+        assert doc["user_id"] == owner
 
     async def test_conversation_id_is_unique(self, real_redis, conversations_collection):
         """Each call must generate a unique conversation_id."""
@@ -39,13 +43,13 @@ class TestCreateConversationReal:
         ):
             r1 = await create_conversation(
                 {"role": "user", "content": "First"},
-                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9104"),
+                user=make_authenticated_user(user_id=SAME_USER),
                 selectedTool=None,
                 generate_description=False,
             )
             r2 = await create_conversation(
                 {"role": "user", "content": "Second"},
-                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9104"),
+                user=make_authenticated_user(user_id=SAME_USER),
                 selectedTool=None,
                 generate_description=False,
             )

@@ -41,7 +41,13 @@ from app.workers.tasks.workflow_tasks import (
     regenerate_workflow_steps,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+)
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 #: The busy-lock value a fire reserves its conversation with. Tests that drive
@@ -2485,3 +2491,42 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             "workflow_notify_on_completion": True,
             "execution_mode": "background",
         }
+
+
+class TestFireAttribution:
+    """A workflow fire is the agent's work, attributed to what fired it."""
+
+    @pytest.mark.parametrize(
+        ("context", "expected"),
+        [
+            ({"trigger_type": TriggerType.SCHEDULE.value}, ("agent", "schedule", "worker")),
+            (
+                {"trigger_type": TriggerType.INTEGRATION.value},
+                ("agent", "integration_trigger", "worker"),
+            ),
+            # A manual run keeps the user's carried request, acted on by the agent.
+            ({"trigger_type": TriggerType.MANUAL.value}, ("agent", "interactive", "desktop")),
+        ],
+    )
+    async def test_the_fire_runs_as_the_agent_in_its_triggers_context(
+        self, context: dict[str, object], expected: tuple[str, str, str]
+    ) -> None:
+        seen: list[AnalyticsContext] = []
+
+        async def _record(workflow_id: str, fire_context: object) -> str:
+            seen.append(current_analytics_context())
+            return "done"
+
+        users_click = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
+            )
+        )
+        with (
+            analytics_context(users_click),
+            patch("app.workers.tasks.workflow_tasks._execute_workflow_fire", _record),
+        ):
+            await execute_workflow_by_id({}, "wf-1", context)
+
+        [attribution] = [ctx.attribution for ctx in seen]
+        assert (attribution.actor, attribution.trigger, attribution.surface) == expected

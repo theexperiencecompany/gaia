@@ -8,9 +8,8 @@ auxiliary one-shot, browser, success or error all reach PostHog only here.
 
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.db.repositories.users import user_repository
-from app.models.chat_models import SourceCategory
 from app.services.analytics_service import AIFeature, capture
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 
@@ -67,7 +66,6 @@ def capture_llm_call(row: LLMCallDocument) -> None:
         UserId(row.user_id),
         AiLlmCallCompleted(
             feature=str(feature),
-            surface=SourceCategory.from_source(row.channel).value,
             agent_name=row.agent_name,
             background=row.background,
             charge_to_budget=row.charge_to_budget,
@@ -91,5 +89,5 @@ def capture_llm_call(row: LLMCallDocument) -> None:
             workflow_id=row.workflow_id,
             llm_call_id=row.id,
         ),
-        dedupe_key=row.id,
+        dedupe=Dedupe(key=row.id, occurred_at=row.created_at),
     )

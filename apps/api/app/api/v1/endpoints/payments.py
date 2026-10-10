@@ -103,7 +103,7 @@ async def create_subscription_endpoint(
             PaymentCheckoutStarted(
                 quantity=subscription_data.quantity,
                 source=subscription_data.source,
-                surface="redirect",
+                checkout_flow="redirect",
             ),
         )
         return result
@@ -155,7 +155,7 @@ async def create_checkout_session_endpoint(
         PaymentCheckoutStarted(
             billing_cycle=payload.billing_cycle,
             source=payload.source,
-            surface="overlay",
+            checkout_flow="overlay",
         ),
     )
     return pro_checkout.checkout

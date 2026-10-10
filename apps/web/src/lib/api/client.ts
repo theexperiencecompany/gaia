@@ -2,6 +2,7 @@ import { getUserTimezone } from "@shared/api/timezone";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import axios from "axios";
 import { analyticsRequestHeaders } from "@/lib/analytics";
+import { desktopClientHeaders } from "@/lib/electron/api";
 import { toApiOrigin } from "./origin";
 
 /**
@@ -45,11 +46,26 @@ export const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL.replace(
 /** The server root the generated `paths` hang off (see toApiOrigin). */
 export const apiOrigin = toApiOrigin(apiBaseUrl);
 
-/** The headers every request carries, for callers that cannot use axios. */
+/**
+ * The headers every request carries, for callers that cannot use axios. The
+ * client type is on every request, not just chat, so each server event knows
+ * whether it came from the desktop app.
+ */
 export const clientHeaders = (): Record<string, string> => ({
   "x-timezone": getUserTimezone(),
   ...analyticsRequestHeaders(),
+  ...desktopClientHeaders(),
 });
+
+/** Marks a request no user action caused; the server reads it in its attribution middleware. */
+const REQUEST_ORIGIN_HEADER = "X-GAIA-Request-Origin";
+const BACKGROUND_REQUEST_ORIGIN = "background";
+
+/** The origin header for a request: present only on one no user action caused. */
+export const requestOriginHeaders = (
+  background: boolean | undefined,
+): Record<string, string> =>
+  background ? { [REQUEST_ORIGIN_HEADER]: BACKGROUND_REQUEST_ORIGIN } : {};
 
 /**
  * Authenticated axios instance for API calls.

@@ -43,6 +43,12 @@ from app.models.message_models import (
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -731,6 +737,44 @@ class TestCallAgent:
         assert "Error when calling agent" in mock_log.error.call_args.args[0]
         assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
         assert mock_log.error.call_args.kwargs["error"] == "boom"
+
+    @pytest.mark.asyncio
+    async def test_a_users_turn_records_the_comms_run_as_agent_work(self, _no_real_analytics):
+        """Greptile #1337: the run events took the request's actor=user, so agent work read as human activity."""
+
+        async def _failing_stream(*args, **kwargs):
+            yield "data: {}\n\n"
+            raise RuntimeError("graph exploded")
+
+        actors: list[Actor] = []
+        _no_real_analytics.side_effect = lambda *_, **__: actors.append(
+            current_analytics_context().attribution.actor
+        )
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+        patches = _common_patches()
+        with (
+            analytics_context(users_turn),
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_failing_stream(),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="graph exploded"):
+                await _drain(
+                    call_agent(request=_make_request(), conversation_id="conv-1", user=_make_user())
+                )
+            assert current_analytics_context() == users_turn
+
+        assert actors == [Actor.AGENT, Actor.AGENT]
 
     @pytest.mark.asyncio
     async def test_missing_user_id_skips_events(self, _no_real_analytics):

@@ -64,6 +64,8 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.user_models import AuthenticatedUser
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -856,21 +858,24 @@ def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
 
 
+#: What inner code runs under in production: the agent acting in a user's web turn.
+#: Agent, not user, so no unit test emits user:active by accident.
+_UNIT_TEST_ANALYTICS = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+    )
+)
+
+
 @pytest.fixture(autouse=True)
-def _reset_limit_origin() -> Iterator[None]:
-    """Keep a run's limit origin from leaking between tests.
+def _analytics_context() -> Iterator[None]:
+    """Bind the analytics context an entry point would, so a test of inner code can capture.
 
-    arq gives each job its own task, so a job cannot leak into the next one.
-    Tests share one, so a case that marks a background run would otherwise make
-    later cases mail the wrong email.
+    Entry-point tests (the middleware, the ARQ envelope, the workers) bind or
+    derive their own inside it, exactly as production does.
     """
-    yield
-    # Imported here, not at module level: the import chain eagerly pulls in
-    # transformers (~0.85s), a cost collection and no-test workers should
-    # not pay.
-    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
-
-    mark_run_origin(LimitHitOrigin.INTERACTIVE)
+    with analytics_context(_UNIT_TEST_ANALYTICS):
+        yield
 
 
 @pytest.fixture(autouse=True)

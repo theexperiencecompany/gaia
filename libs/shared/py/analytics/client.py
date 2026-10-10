@@ -2,22 +2,67 @@
 
 The API builds its own client through its lazy-provider registry
 (apps/api/app/config/posthog.py); services without that registry, the voice
-agent today, use PostHogAnalytics. Both validate through check_capture and
-build the payload with posthog_properties, so the two cannot drift.
+agent today, use PostHogAnalytics. Both build the payload with prepare_capture, so
+the two cannot drift.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import datetime
 import os
+from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
 from shared.py.analytics.catalog.base import AnalyticsEvent, Surface, VoiceEvent
+from shared.py.analytics.context import current_analytics_context
 from shared.py.analytics.identity import AnalyticsId, PlatformIdentity, UserId
 from shared.py.wide_events import log
 
 DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
+#: Ingestion otherwise moves timestamp by (its clock - sent_at), so a resend lands at another time.
+IGNORE_SENT_AT = "$ignore_sent_at"
+
+
+@dataclass(frozen=True, slots=True)
+class Dedupe:
+    """The fact an event records: its key and when it happened, so every resend is one PostHog row.
+
+    PostHog merges duplicates only when uuid, event, timestamp and distinct_id
+    all match, so both the uuid and the timestamp come from here, never now().
+    """
+
+    key: str
+    occurred_at: datetime
+
+    def __post_init__(self) -> None:
+        """Refuse an empty key or a naive occurrence time."""
+        if not self.key:
+            raise ValueError("Dedupe needs a key")
+        if self.occurred_at.tzinfo is None:
+            raise ValueError("Dedupe.occurred_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class PostHogCapture:
+    """One validated capture, ready to hand to a PostHog client."""
+
+    event: str
+    distinct_id: str
+    properties: dict[str, object]
+    uuid: str | None = None
+    timestamp: datetime | None = None
+
+    def send(self, client: Posthog) -> None:
+        """Enqueue the capture on client."""
+        client.capture(
+            event=self.event,
+            distinct_id=self.distinct_id,
+            properties=self.properties,
+            uuid=self.uuid,
+            timestamp=self.timestamp,
+        )
 
 
 def check_capture(distinct_id: AnalyticsId, event: AnalyticsEvent, owner: Surface) -> None:
@@ -30,9 +75,30 @@ def check_capture(distinct_id: AnalyticsId, event: AnalyticsEvent, owner: Surfac
         raise TypeError(f"{event.event} is a {event.owner} event; {owner} may not emit it")
 
 
-def posthog_properties(event: AnalyticsEvent) -> dict[str, object]:
-    """Build the property payload sent with an event."""
-    return {**event.to_properties(), "timestamp": datetime.now(UTC).isoformat()}
+def prepare_capture(
+    distinct_id: AnalyticsId, event: AnalyticsEvent, owner: Surface, dedupe: Dedupe | None = None
+) -> PostHogCapture:
+    """Validate a capture and stamp it with the bound analytics context and its dedupe identity.
+
+    Raises MissingAnalyticsContextError for an attributed event captured where
+    no entry point bound a context, and ValueError for an at-most-once event
+    captured without the dedupe that keys its gate.
+    """
+    check_capture(distinct_id, event, owner)
+    if event.at_most_once_ttl is not None and dedupe is None:
+        raise ValueError(f"{event.event} fires at most once, so it needs a Dedupe")
+    properties = event.to_properties()
+    if event.base_properties is not None:
+        properties |= current_analytics_context().to_properties()
+    if dedupe is None:
+        return PostHogCapture(event.event, distinct_id.distinct_id, properties)
+    return PostHogCapture(
+        event.event,
+        distinct_id.distinct_id,
+        properties | {IGNORE_SENT_AT: True},
+        uuid=str(uuid5(NAMESPACE_URL, f"{event.event}:{distinct_id.distinct_id}:{dedupe.key}")),
+        timestamp=dedupe.occurred_at,
+    )
 
 
 class PostHogAnalytics:
@@ -60,15 +126,11 @@ class PostHogAnalytics:
 
     def capture(self, distinct_id: AnalyticsId, event: VoiceEvent) -> None:
         """Capture a voice-owned catalog event for distinct_id."""
-        check_capture(distinct_id, event, Surface.VOICE)
+        capture = prepare_capture(distinct_id, event, Surface.VOICE)
         if self._client is None:
             return
         try:
-            self._client.capture(
-                event=event.event,
-                distinct_id=distinct_id.distinct_id,
-                properties=posthog_properties(event),
-            )
+            capture.send(self._client)
         except Exception as e:
             # Analytics must never take down the caller, but the failure is a
             # real gap in the data, so surface it rather than swallowing it.

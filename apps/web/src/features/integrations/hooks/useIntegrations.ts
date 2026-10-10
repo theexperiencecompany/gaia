@@ -7,6 +7,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationQueries } from "../api/queries";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
@@ -73,14 +74,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isPending,
     error,
   } = useQuery({
-    queryKey: integrationKeys.me,
-    queryFn: integrationsApi.getMyIntegrationsSnapshot,
+    ...integrationQueries.snapshot(),
     staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
     enabled: isAuthenticated,
   });
   const { data: integrationStatuses } = useQuery({
-    queryKey: integrationKeys.status,
-    queryFn: integrationsApi.getIntegrationStatuses,
+    ...integrationQueries.statuses(),
     staleTime: 30_000,
     enabled: isAuthenticated,
   });

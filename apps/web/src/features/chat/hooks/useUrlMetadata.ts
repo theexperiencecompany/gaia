@@ -45,12 +45,12 @@ const processBatch = async () => {
   if (urls.length === 0) return;
 
   try {
-    // Single API call for all URLs
-    // Authenticated client: email previews resolve against the user's own
-    // Google contacts, so the endpoint requires the session.
+    // Authenticated: email previews resolve against the user's own contacts.
+    // Fired by rendering a message's links, not by anything the user did.
     const response = await api.post("/api/v1/fetch-url-metadata", {
       body: { urls },
       silent: true,
+      background: true,
     });
 
     // Resolve individual promises with their data

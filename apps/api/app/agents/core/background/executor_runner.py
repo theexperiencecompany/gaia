@@ -73,7 +73,11 @@ from app.constants.executor import (
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
-from app.models.agent_models import AgentConfigurable, AgentConfigurableView
+from app.models.agent_models import (
+    AgentConfigurable,
+    AgentConfigurableView,
+    run_analytics_context,
+)
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
@@ -91,6 +95,7 @@ from app.services.latency_metrics import (
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics.catalog.agents import AgentRunStarted
+from shared.py.analytics.context import analytics_context
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
@@ -110,7 +115,18 @@ async def run_executor_background(
     Never raises — exceptions route through comms as an <executor_error> message.
     A paused run (resume continuing a HIL approval) keeps the busy lock instead of
     delivering, since the thread has pending work until the approval resolves.
+    Attributed to the turn that started the run tree, wherever it is resumed.
     """
+    with analytics_context(run_analytics_context(configurable)):
+        await _run_executor(run, task, configurable, resume)
+
+
+async def _run_executor(
+    run: ExecutorRun,
+    task: str,
+    configurable: AgentConfigurable,
+    resume: Command | None,
+) -> None:
     # This task outlives the spawning request/turn, so it needs its own
     # wide-event boundary or every log.set() (LLM accounting included) is
     # silently discarded. get_trace_id() correlates it back to the dispatcher.
@@ -153,7 +169,7 @@ async def run_executor_background(
         # One lifecycle per run segment; a resumed run re-enters here. Opened before
         # keep_alive so a lost liveness write is a failed run, not an untracked one.
         with agent_run_lifecycle(
-            run.user.user_id, _run_props(run), dedupe_key=run.task_id or run.stream_id
+            run.user.user_id, _run_props(run), dedupe=run.analytics_dedupe
         ) as lifecycle:
             alive = await keep_alive(
                 run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")

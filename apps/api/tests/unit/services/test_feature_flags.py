@@ -1,12 +1,15 @@
 """Unit tests for app/services/feature_flags.py."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import ServerSelectionTimeoutError
 import pytest
+import time_machine
 
 from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
 from app.config.settings import CommonSettings, ProductionSettings, settings as app_settings
+from app.constants.analytics import ANALYTICS_DAY_TIMEZONE
 from app.constants.error_codes import FEATURE_KILLED
 from app.constants.feature_flags import (
     FEATURE_KILLED_FIX,
@@ -27,8 +30,9 @@ from app.services.feature_flags import (
     set_user_flag,
 )
 from app.utils.errors import AppError
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.settings import FeatureFlagEvaluated
+from shared.py.analytics.context import MissingAnalyticsContextError
 from tests.helpers import captured_wide_event
 
 USER_ID = "64abc123def4567890abcdef"
@@ -123,7 +127,7 @@ class TestEvaluationEvent:
                 flag="HIL_LEDGER", enabled=True, fallback_reason="flag_unevaluated"
             ),
         )
-        assert call.kwargs["dedupe_key"].startswith(f"feature-flag-evaluated:HIL_LEDGER:{USER_ID}:")
+        assert call.kwargs["dedupe"].key.startswith("HIL_LEDGER:flag_unevaluated:")
 
     async def test_fail_open_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
@@ -255,22 +259,6 @@ class TestClientLookup:
             assert _get_posthog_client() is None
 
 
-class TestTrackingNeverBreaksEvaluation:
-    async def test_capture_failure_still_returns_live_value(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.return_value = True
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-
-    async def test_capture_failure_still_returns_fallback(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-
-
 class TestHelpersWithoutUser:
     async def test_code_mode_none_user_is_default(self, evaluated: MagicMock) -> None:
         assert await is_code_mode_enabled(None) is False
@@ -285,15 +273,18 @@ class TestRegistry:
     def test_flag_keys_unique(self) -> None:
         assert len({f.value for f in FeatureFlag}) == len(list(FeatureFlag))
 
-    async def test_dedupe_key_carries_today(
+    async def test_the_once_a_day_gate_is_keyed_and_stamped_on_the_ist_day(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        from datetime import UTC, datetime
-
         mock_client.get_feature_flag.return_value = None
-        await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
-        key = evaluated.call_args.kwargs["dedupe_key"]
-        assert key.endswith(datetime.now(UTC).date().isoformat())
+        with time_machine.travel(datetime(2026, 10, 8, 20, 0, tzinfo=UTC), tick=False):
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
+
+        # 20:00 UTC is already Oct 9 in IST, the project's day.
+        day_start = datetime(2026, 10, 9, tzinfo=ANALYTICS_DAY_TIMEZONE)
+        assert evaluated.call_args.kwargs["dedupe"] == Dedupe(
+            key="HIL_LEDGER:flag_unevaluated:2026-10-09", occurred_at=day_start
+        )
 
 
 class TestClientPassthrough:
@@ -423,19 +414,13 @@ class TestLogContract:
                 error_type="TimeoutError",
             )
 
-    async def test_tracking_failure_logs_debug_with_cause(
+    async def test_an_evaluation_outside_a_bound_context_fails_loud(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        evaluated.side_effect = RuntimeError("telemetry down")
-        with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-            mock_log.debug.assert_called_once_with(
-                "Feature flag evaluation event skipped",
-                flag="HIL_LEDGER",
-                error="telemetry down",
-                error_type="RuntimeError",
-            )
+        evaluated.side_effect = MissingAnalyticsContextError("no entry point bound a context")
+        with pytest.raises(MissingAnalyticsContextError, match="no entry point bound a context"):
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
 
     async def test_dedupe_clock_is_utc(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         from datetime import UTC, datetime as real_datetime
@@ -671,7 +656,7 @@ class TestKillSwitch:
         _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True})
         await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
 
-        choice_key, killed_key = (call.kwargs["dedupe_key"] for call in evaluated.call_args_list)
+        choice_key, killed_key = (call.kwargs["dedupe"].key for call in evaluated.call_args_list)
         assert choice_key != killed_key
 
 

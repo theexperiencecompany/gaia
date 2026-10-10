@@ -51,6 +51,7 @@ from app.services.workflow.service import (
 )
 from app.services.workflow.validators import WorkflowValidator
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import get_trace_id, wide_task
 from tests.helpers import users_get
 
@@ -821,7 +822,14 @@ class TestQueueService:
             "generate_workflow_steps",
             FAKE_WORKFLOW_ID,
             FAKE_USER_ID,
+            _job_id=None,
+            _queue_name=None,
+            _defer_until=None,
+            _defer_by=None,
+            _expires=None,
+            _job_try=None,
             _gaia_trace_id=trace_id,
+            _gaia_analytics_context=current_analytics_context().model_dump(mode="json"),
         )
 
     async def test_queue_workflow_execution(self):

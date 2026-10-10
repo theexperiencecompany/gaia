@@ -28,6 +28,7 @@ from app.models.agent_config import (
     get_user_id,
     read_agent_configurable,
     read_run_metadata,
+    run_analytics_context,
 )
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
@@ -56,6 +57,7 @@ __all__ = [
     "get_user_id",
     "read_agent_configurable",
     "read_run_metadata",
+    "run_analytics_context",
     "config_agent_name",
     "current_run_config",
     "runtime_configurable",

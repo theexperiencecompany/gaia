@@ -96,7 +96,7 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # `dedupe_key` prevents a retried POST from re-counting the milestone.
+        # Once per user: the atomic gate above returned early on a retried POST.
         # The typed need is free text (only presence travels); profession goes
         # onto the person profile so cohorts can cut by it.
         analytics_user = UserId(user_id)
@@ -106,7 +106,6 @@ async def complete_onboarding(
                 needs=sorted(need.value for need in onboarding_data.needs),
                 has_other_need=bool(onboarding_data.other_need),
             ),
-            dedupe_key=user_id,
         )
         identify_user(
             analytics_user,

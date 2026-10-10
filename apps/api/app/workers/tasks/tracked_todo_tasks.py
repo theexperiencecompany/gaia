@@ -84,7 +84,9 @@ from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
 #: The surface a paywalled tracked-todo run is attributed to in the funnel.
@@ -152,17 +154,21 @@ async def execute_tracked_todo(
     if not acquired:
         return await _handle_held_lock(todo_id, origin, coalesced or [])
 
+    # The run is its schedule's or its trigger's (a window drain included), whoever armed it.
+    is_trigger_run = origin is not None or trigger_window is not None
+    fired_by = worker_context(Trigger.INTEGRATION_TRIGGER if is_trigger_run else Trigger.SCHEDULE)
     try:
-        if origin is None and trigger_window is None:
-            return await _execute_todo_with_retry(
-                todo_id, None, parse_occurrence_stamp(scheduled_for, todo_id)
-            )
-        events = await _take_trigger_events(todo_id, origin, coalesced or [])
-        if not events:
-            return f"skipped:{todo_id} (no held trigger events)"
-        # A trigger run is not an occurrence of the schedule, so it is never stale.
-        first, *rest = events
-        return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
+        with analytics_context(fired_by):
+            if origin is None and trigger_window is None:
+                return await _execute_todo_with_retry(
+                    todo_id, None, parse_occurrence_stamp(scheduled_for, todo_id)
+                )
+            events = await _take_trigger_events(todo_id, origin, coalesced or [])
+            if not events:
+                return f"skipped:{todo_id} (no held trigger events)"
+            # A trigger run is not an occurrence of the schedule, so it is never stale.
+            first, *rest = events
+            return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
     finally:
         await _release_run_lock(pool, todo_id)
 

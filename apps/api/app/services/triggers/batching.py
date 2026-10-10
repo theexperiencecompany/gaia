@@ -18,6 +18,7 @@ by its window is a missed meeting.
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import json
+from typing import TypedDict
 from uuid import uuid4
 
 from redis.exceptions import RedisError
@@ -53,6 +54,12 @@ TRIGGER_BATCH_TTL_FLOOR_SECONDS = 60 * 60
 PER_EMAIL_FALLBACK_WINDOW_SECONDS = 24 * 60 * 60
 
 
+class BatchDrainKwargs(TypedDict, total=False):
+    """The keyword arguments a drain job's task takes; named, so none can shadow an enqueue control."""
+
+    trigger_window: int
+
+
 @dataclass(frozen=True)
 class BatchDrainJob:
     """The ARQ job that drains a batch; its job_id is what dedupes a window's enqueues."""
@@ -60,7 +67,7 @@ class BatchDrainJob:
     function: str
     args: tuple[object, ...]
     job_id: str
-    kwargs: Mapping[str, object] = field(default_factory=dict)
+    kwargs: BatchDrainKwargs = field(default_factory=BatchDrainKwargs)
 
 
 def coalesce_window_seconds(trigger_config: TriggerConfig) -> int:
