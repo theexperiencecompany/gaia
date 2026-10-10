@@ -5,6 +5,7 @@ excluded paths, agent-only paths, session refresh cookie setting,
 and the _authenticate_session helper.
 """
 
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -21,10 +22,12 @@ from app.api.v1.middleware.auth import (
     WorkOSAuthMiddleware,
     get_current_user,
 )
+from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.analytics_service import capture_event
 from tests.helpers import captured_wide_event
 
 
@@ -751,6 +754,65 @@ class TestPostHogRequestContextIdentity:
 
         assert TestClient(app).get("/notes").status_code == 200
         assert seen["distinct_id"] == GAIA_USER_ID
+
+
+class TestPostHogSessionJoin:
+    """The browser's X-PostHog-Session-Id lands on every server event of its request.
+
+    Without it a server event joins no session, so replay cannot show the
+    click that caused it.
+    """
+
+    @staticmethod
+    def _app(user: AuthenticatedUser | None) -> FastAPI:
+        app = FastAPI()
+
+        class _Authenticate(BaseHTTPMiddleware):
+            async def dispatch(
+                self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
+                if user is not None:
+                    request.state.user = user
+                return await call_next(request)
+
+        app.add_middleware(PostHogRequestContextMiddleware)
+        app.add_middleware(_Authenticate)
+
+        @app.post("/notes")
+        async def notes() -> dict:
+            capture_event(GAIA_USER_ID, "notes:created")
+            return {"ok": True}
+
+        return app
+
+    def test_session_header_reaches_an_authenticated_capture(
+        self, posthog_events: list[dict[str, object]]
+    ) -> None:
+        client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
+
+        client.post("/notes", headers={POSTHOG_SESSION_HEADER: "sess-1"})
+
+        [event] = posthog_events
+        assert event["distinct_id"] == GAIA_USER_ID
+        assert event["properties"]["$session_id"] == "sess-1"
+
+    def test_session_header_reaches_an_explicit_capture_on_an_unauthenticated_route(
+        self, posthog_events: list[dict[str, object]]
+    ) -> None:
+        client = TestClient(self._app(None))
+
+        client.post("/notes", headers={POSTHOG_SESSION_HEADER: "sess-2"})
+
+        [event] = posthog_events
+        assert event["properties"]["$session_id"] == "sess-2"
+
+    def test_no_header_means_no_session(self, posthog_events: list[dict[str, object]]) -> None:
+        client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
+
+        client.post("/notes")
+
+        [event] = posthog_events
+        assert "$session_id" not in event["properties"]
 
 
 class TestDevBypassWithoutAMongoUser:

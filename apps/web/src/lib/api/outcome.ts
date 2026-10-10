@@ -30,7 +30,7 @@ const DEFAULT_ERROR_MESSAGES: Record<HttpMethod, string> = {
 /** No response arrived at all — a network failure, a timeout, an abort. */
 const TRANSPORT_FAILURE_STATUS = 0;
 
-const HTTP_UNAUTHORIZED = 401;
+export const HTTP_UNAUTHORIZED = 401;
 
 /**
  * Whether the app-shell error handler already showed UI for this failure.

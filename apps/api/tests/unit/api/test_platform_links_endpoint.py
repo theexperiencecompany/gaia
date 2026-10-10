@@ -563,7 +563,7 @@ class TestDisconnectPlatform:
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
             patch("app.services.platform_link_service.redis_cache") as mock_cache,
-            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
+            patch("app.services.platform_link_service.capture_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -572,7 +572,7 @@ class TestDisconnectPlatform:
         assert resp.json()["status"] == "disconnected"
         mock_redis.delete.assert_called_once_with("bot_user:discord:DISC999")
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
+            FAKE_USER_ID, AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
         )
 
     @pytest.mark.asyncio

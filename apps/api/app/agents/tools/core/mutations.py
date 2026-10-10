@@ -19,20 +19,16 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
-from app.services.analytics_service import capture_context_event
+from app.models.agent_models import read_agent_configurable, read_run_metadata
+from app.services.analytics_service import capture_event
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
 def user_id_from_config(config: RunnableConfig | None) -> str | None:
     """The run's user id from configurable or metadata, else None."""
-    configurable = agent_configurable(config) if config else {}
-    metadata = config.get("metadata", {}) if config else {}
-    user_id = configurable.get("user_id") or metadata.get("user_id")
-    if not isinstance(user_id, str):
-        return None
-    return user_id.strip() or None
+    user_id = read_agent_configurable(config).user_id or read_run_metadata(config).user_id
+    return (user_id or "").strip() or None
 
 
 def define_mutation_tool(
@@ -78,7 +74,7 @@ def define_mutation_tool(
             return f"Error: {name} did not complete ({type(e).__name__})."
 
         if event is not None:
-            capture_context_event(event, {"area": area})
+            capture_event(user_id, event, {"area": area})
         if resync is not None:
             resync(user_id)
         return result

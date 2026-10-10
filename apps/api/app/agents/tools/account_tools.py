@@ -19,7 +19,7 @@ from app.services.account_settings import (
     set_notification_channels,
     set_preferences,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
@@ -155,10 +155,6 @@ async def _manage_linked_account(
         return "\n".join(parts)
 
     await disconnect_platform_account(user_id, platform)
-    capture_context_event(
-        AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED,
-        {"area": "linked_accounts"},
-    )
     schedule_account_sync(user_id)
     log.set(action="disconnect", platform=platform)
     return (

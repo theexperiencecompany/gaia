@@ -1,6 +1,6 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
@@ -12,7 +12,7 @@ R = TypeVar("R")
 
 from fastapi import HTTPException
 from langgraph.config import get_stream_writer
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
@@ -26,6 +26,7 @@ from app.config.rate_limits import (
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
+from app.models.agent_config import read_run_metadata
 from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
@@ -85,22 +86,6 @@ class RateLimitDetail(TypedDict, total=False):
 _RATE_LIMIT_DETAIL: TypeAdapter[RateLimitDetail] = TypeAdapter(RateLimitDetail)
 
 
-class _RunMetadata(BaseModel):
-    """The ``metadata`` of a run's ``RunnableConfig``, read only for its user."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
-
-
-class _RunConfig(BaseModel):
-    """A run's ``RunnableConfig``, read only for its metadata."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    metadata: _RunMetadata = Field(default_factory=_RunMetadata)
-
-
 class _TokenUsage(BaseModel):
     """A tool's dict result, read only for the tokens it reports using."""
 
@@ -158,10 +143,10 @@ def _resolve_context(kwargs: dict[str, object]) -> UserRateLimitContext | None:
     # Decoration-time validation in with_rate_limiting guarantees a `config`
     # parameter; it carries LangGraph's RunnableConfig mapping.
     config = kwargs.get(_CONFIG_PARAM)
-    if not context and config:
+    if not context and isinstance(config, Mapping):
         # Extract from RunnableConfig
         context = {
-            "user_id": _RunConfig.model_validate(config).metadata.user_id,
+            "user_id": read_run_metadata(config).user_id,
             # Always user-initiated: no producer writes an "initiator" into a
             # run's configurable, so this is the only value it could be.
             # Backend callers announce via user_context (the branch above).

@@ -1,6 +1,7 @@
 import { getUserTimezone } from "@shared/api/timezone";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import axios from "axios";
+import { analyticsRequestHeaders } from "@/lib/analytics";
 import { toApiOrigin } from "./origin";
 
 /**
@@ -47,6 +48,7 @@ export const apiOrigin = toApiOrigin(apiBaseUrl);
 /** The headers every request carries, for callers that cannot use axios. */
 export const clientHeaders = (): Record<string, string> => ({
   "x-timezone": getUserTimezone(),
+  ...analyticsRequestHeaders(),
 });
 
 /**
@@ -56,17 +58,17 @@ export const clientHeaders = (): Record<string, string> => ({
 export const apiauth = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
-  headers: clientHeaders(),
 });
 
-// Keep the timezone header current even if it changes during the session.
-const updateTimezoneHeader = (config: InternalAxiosRequestConfig) => {
-  config.headers["x-timezone"] = getUserTimezone();
+// Recomputed per request: the timezone can change mid-session, and the
+// PostHog session only exists once analytics has loaded at idle.
+const refreshClientHeaders = (config: InternalAxiosRequestConfig) => {
+  config.headers.set(clientHeaders());
 
   return config;
 };
 
-apiauth.interceptors.request.use(updateTimezoneHeader);
+apiauth.interceptors.request.use(refreshClientHeaders);
 
 /** Surfaces API error UI (login modal, paywall, rate-limit toasts). */
 export type ApiErrorHandler = (

@@ -256,6 +256,9 @@ def _register_session_logging(
                     "tokens_used": summary.llm_prompt_tokens + summary.llm_completion_tokens,
                 },
             )
+        # One job per process, and LiveKit exits it through multiprocessing,
+        # which skips atexit: without this the queued batch is dropped.
+        await asyncio.to_thread(analytics.shutdown)
 
     ctx.add_shutdown_callback(log_session_end)
 

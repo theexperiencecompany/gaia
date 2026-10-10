@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.runnables.config import RunnableConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 import pytest
 
 from app.agents.tools.core.mutations import define_mutation_tool, user_id_from_config
@@ -40,11 +40,8 @@ def make_probe(
 
 @pytest.fixture(autouse=True)
 def _quiet():
-    with (
-        patch(f"{MODULE}.log"),
-        patch(f"{MODULE}.capture_context_event") as capture,
-    ):
-        yield capture
+    with patch(f"{MODULE}.log"):
+        yield
 
 
 async def test_apply_receives_config_user_id_and_schema_kwargs() -> None:
@@ -116,7 +113,7 @@ async def test_unexpected_error_is_logged_and_reported_not_raised() -> None:
         args_model=ProbeArgs,
         apply=apply,
     )
-    with patch(f"{MODULE}.log") as log_mock, patch(f"{MODULE}.capture_context_event"):
+    with patch(f"{MODULE}.log") as log_mock:
         result = await probe.ainvoke({"value": 1}, config=CONFIG)
 
     assert result == "Error: probe_fail did not complete (RuntimeError)."
@@ -130,27 +127,26 @@ async def test_unexpected_error_is_logged_and_reported_not_raised() -> None:
     )
 
 
-async def test_event_captures_only_after_success(_quiet) -> None:
+async def test_event_captures_only_after_success_on_the_run_owner(
+    posthog_events: list[dict[str, object]],
+) -> None:
+    """Executor runs have no request context, so the event must name the owner itself."""
+
     async def failing(user_id: str, *, value: int) -> str:
         raise RuntimeError("no")
 
-    await make_probe(failing).ainvoke({"value": 1}, config=CONFIG)
-    _quiet.assert_not_called()
+    await make_probe(failing, event="account:test_event").ainvoke({"value": 1}, config=CONFIG)
+    assert posthog_events == []
 
     async def succeeding(user_id: str, *, value: int) -> str:
         return "ok"
 
-    probe = define_mutation_tool(
-        name="probe_event",
-        area="test_area",
-        description="probe",
-        args_model=ProbeArgs,
-        apply=succeeding,
-        event="account:test_event",
-    )
-    with patch(f"{MODULE}.capture_context_event") as capture:
-        await probe.ainvoke({"value": 1}, config=CONFIG)
-    capture.assert_called_once_with("account:test_event", {"area": "test_area"})
+    await make_probe(succeeding, event="account:test_event").ainvoke({"value": 1}, config=CONFIG)
+
+    [event] = posthog_events
+    assert event["event"] == "account:test_event"
+    assert event["distinct_id"] == "user-1"
+    assert event["properties"]["area"] == "test_area"
 
 
 async def test_resync_schedules_after_success_only() -> None:
@@ -230,11 +226,15 @@ class TestUserIdFromConfig:
         # `configurable` (the workflow/silent-run shape) must not explode.
         assert user_id_from_config({"configurable": {}}) is None
 
-    def test_none_and_non_string_user_ids_are_rejected(self) -> None:
+    def test_absent_user_ids_are_none(self) -> None:
         assert user_id_from_config(None) is None
         assert user_id_from_config({}) is None
-        assert user_id_from_config({"metadata": {"user_id": 123}}) is None
         assert user_id_from_config({"metadata": {"user_id": None}}) is None
+
+    def test_a_non_string_user_id_fails_loud(self) -> None:
+        """A non-string id is a broken config builder, not an anonymous caller."""
+        with pytest.raises(ValidationError):
+            user_id_from_config({"metadata": {"user_id": 123}})
 
     def test_whitespace_only_user_id_becomes_none_and_valid_ids_are_stripped(self) -> None:
         assert user_id_from_config({"metadata": {"user_id": "   "}}) is None
@@ -254,7 +254,7 @@ async def test_unknown_schema_keys_are_dropped_before_apply_sees_them() -> None:
 
 
 async def test_event_and_resync_fire_together_exactly_once_on_success() -> None:
-    with patch(f"{MODULE}.capture_context_event") as capture:
+    with patch(f"{MODULE}.capture_event") as capture:
         resync_calls: list[str] = []
 
         async def apply(user_id: str, *, value: int) -> str:
@@ -271,5 +271,5 @@ async def test_event_and_resync_fire_together_exactly_once_on_success() -> None:
         )
         await probe.ainvoke({"value": 1}, config=CONFIG)
 
-    capture.assert_called_once_with("test:event", {"area": "combo_area"})
+    capture.assert_called_once_with("user-1", "test:event", {"area": "combo_area"})
     assert resync_calls == ["user-1"]

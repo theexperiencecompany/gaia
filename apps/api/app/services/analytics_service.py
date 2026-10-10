@@ -242,7 +242,6 @@ class AnalyticsEvents(StrEnum):
 
     # Account-center mutations made through the agent's account tools
     ACCOUNT_SETTING_CHANGED = "account:setting_changed"
-    ACCOUNT_PLATFORM_DISCONNECTED = "account:platform_disconnected"
 
     # Human-in-the-loop approvals
     APPROVAL_DECIDED = "approval:decided"

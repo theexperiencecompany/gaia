@@ -115,7 +115,7 @@ export abstract class BaseBotAdapter {
   /** Map of registered unified commands, keyed by command name. */
   protected commands: Map<string, BotCommand> = new Map();
 
-  /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
+  /** Server-side PostHog analytics. No-op when POSTHOG_PROJECT_TOKEN is absent. */
   protected analytics: Analytics = new Analytics(undefined);
 
   /**
@@ -159,6 +159,7 @@ export abstract class BaseBotAdapter {
    * Emits one canonical `bot_boot` wide event covering the whole sequence, so a bot that dies
    * during startup says why — with a duration and an outcome — instead of silence.
    */
+  // evlog-map-disable-next-line audit -- "token" is the PostHog project token read from config; boot authenticates nobody
   async boot(commands: BotCommand[]): Promise<void> {
     this.logger = createBotLogger(this.platform, "base-adapter");
 
@@ -176,7 +177,7 @@ export abstract class BaseBotAdapter {
           this.config.gaiaApiKey,
           this.config.gaiaFrontendUrl,
         );
-        this.analytics = new Analytics(this.config.posthogApiKey);
+        this.analytics = new Analytics(this.config.posthogProjectToken);
 
         for (const cmd of commands) {
           this.commands.set(cmd.name, cmd);

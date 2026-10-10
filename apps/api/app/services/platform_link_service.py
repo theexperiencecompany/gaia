@@ -34,7 +34,7 @@ from app.models.platform_models import (
     PlatformLinkResult,
 )
 from app.models.user_models import PlatformLinkRecord, UserDocument
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
 from app.services.photon.photon_client import (
@@ -435,7 +435,8 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
         actor=user_id,
         provider=platform,
     )
-    capture_context_event(
+    capture_event(
+        user_id,
         AnalyticsEvents.INTEGRATION_DISCONNECTED,
         {"integration_id": platform},
     )

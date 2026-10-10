@@ -53,13 +53,13 @@ export interface AnalyticsContext {
 export class Analytics {
   private readonly client: PostHog | null;
 
-  constructor(apiKey: string | undefined, host?: string) {
-    if (!apiKey) {
+  constructor(projectToken: string | undefined, host?: string) {
+    if (!projectToken) {
       this.client = null;
       return;
     }
 
-    this.client = new PostHog(apiKey, {
+    this.client = new PostHog(projectToken, {
       // Configurable for the same reason the web app's /ingest rewrites are:
       // pinning the region here would ship an EU or self-hosted deployment's
       // data to the US cloud, across a data-residency boundary.
