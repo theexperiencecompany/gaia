@@ -682,6 +682,11 @@ def test_the_loop_alert_fires_when_any_row_uses_more_than_its_whole_budget() -> 
     assert alert["insight"] == LOOP_SPEC["insight"]["id"]
 
 
+def test_the_loop_insight_description_fits_posthogs_limit() -> None:
+    """Regression: a 428-character description made the first real sync-loop-alert --apply 400."""
+    assert len(LOOP_SPEC["insight"]["description"]) <= analytics.POSTHOG_INSIGHT_DESCRIPTION_MAX
+
+
 def test_a_live_loop_alert_equal_to_the_catalog_has_no_diff(catalog: Any) -> None:
     insight, alert = _live_loop(catalog)
     assert analytics.loop_alert_diff(catalog, LOOP_SPEC, insight, alert) == []

@@ -87,6 +87,8 @@ LOOP_TIMEZONE = "Asia/Kolkata"
 # Also the HAVING floor: a lower one lists every active user's one user:active (budget 1),
 # and an alert errors once its rows reach the query's row limit.
 LOOP_BUDGET_USED_LIMIT = 1
+# PostHog rejects a longer insight description with a 400 (max_length).
+POSTHOG_INSIGHT_DESCRIPTION_MAX = 400
 
 # Events and properties the PostHog SDKs and LLM tracing own ($pageview, $ai_generation, $host).
 SDK_PREFIX = "$"
