@@ -933,7 +933,7 @@ async def _run_stopped_call(check: BudgetCheck, reset_at: datetime) -> tuple[lis
     with (
         patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
-        patch.object(accounting, "get_stream_writer", lambda: frames.append),
+        patch.object(accounting, "current_stream_writer", lambda: frames.append),
         patch.object(accounting, "get_reset_time", _reset),
     ):
         await mw.awrap_model_call(_model_request(), AsyncMock())
@@ -975,15 +975,11 @@ async def test_the_budget_stop_card_offers_a_paid_user_no_upgrade() -> None:
 async def test_a_missing_stream_writer_never_breaks_the_stop() -> None:
     # Workflows, bots and voice run with no stream to write to; the stop text
     # still has to come back.
-    def _no_writer() -> Any:
-        raise RuntimeError("no stream writer in this context")
-
     mw = LLMAccountingMiddleware(agent_name="a")
     check = BudgetCheck("Daily cap reached.", 999.0, PlanType.FREE)
     with (
         patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
-        patch.object(accounting, "get_stream_writer", _no_writer),
     ):
         response = await mw.awrap_model_call(_model_request(), AsyncMock())
 

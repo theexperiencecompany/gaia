@@ -6,7 +6,8 @@ from typing import Any, TypedDict, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
+from langgraph.types import StreamWriter
 
 from app.constants.agents import AgentTag
 from app.constants.comms import CommsDirectiveKind
@@ -60,6 +61,7 @@ __all__ = [
     "run_analytics_context",
     "config_agent_name",
     "current_run_config",
+    "current_stream_writer",
     "runtime_configurable",
 ]
 
@@ -119,6 +121,24 @@ def current_run_config() -> RunnableConfig:
         return get_config()
     except RuntimeError:
         return RunnableConfig()
+
+
+def _drop_stream_chunk(_chunk: object) -> None:
+    """Discard a custom-stream chunk written where no graph run is listening."""
+
+
+def current_stream_writer() -> StreamWriter:
+    """Return the graph run's custom-stream writer, or one that drops writes outside a run.
+
+    Tools also run off-graph: the sandbox route and ticket redeem invoke them under a
+    synthesized config with no Pregel runtime (KeyError), background code with no
+    runnable context at all (RuntimeError). A stream chunk is UI only; the tool's
+    return value still carries the data.
+    """
+    try:
+        return get_stream_writer()
+    except (KeyError, RuntimeError):
+        return _drop_stream_chunk
 
 
 def config_agent_name(config: RunnableConfig | None) -> str:

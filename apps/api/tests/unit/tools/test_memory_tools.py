@@ -103,7 +103,7 @@ def _make_document(
 def stream() -> Iterator[MagicMock]:
     """Capture the memory_data events the tools emit to the frontend."""
     writer = MagicMock()
-    with patch(f"{MODULE}.get_stream_writer", return_value=writer):
+    with patch(f"{MODULE}.current_stream_writer", return_value=writer):
         yield writer
 
 
@@ -128,7 +128,7 @@ class TestStreamMemoryData:
 
     def test_a_non_runtime_error_is_not_swallowed(self) -> None:
         with (
-            patch(f"{MODULE}.get_stream_writer", side_effect=ValueError("boom")),
+            patch(f"{MODULE}.current_stream_writer", side_effect=ValueError("boom")),
             pytest.raises(ValueError),
         ):
             _stream_memory_data({"action": "add"})

@@ -80,7 +80,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=RuntimeError("stream closed"))
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -98,7 +98,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -117,7 +117,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -145,7 +145,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=lambda *a, **k: None)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             await follow_up_actions_node(state, config, _make_store())
@@ -177,7 +177,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -213,7 +213,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -265,7 +265,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -299,7 +299,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
@@ -343,7 +343,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -377,7 +377,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=failing_second_write)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -401,7 +401,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(

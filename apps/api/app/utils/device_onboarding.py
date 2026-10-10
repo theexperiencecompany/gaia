@@ -10,7 +10,7 @@ approves a pairing code itself.
 
 from typing import cast
 
-from langgraph.config import get_config, get_stream_writer
+from langgraph.config import get_config
 
 from app.constants.device_bridge import (
     CLI_INSTALL_COMMANDS,
@@ -18,7 +18,7 @@ from app.constants.device_bridge import (
     DEVICE_PAIR_COMMAND,
     DEVICE_UP_COMMAND,
 )
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.chat_models import SourceCategory
 from app.services.device.device_service import build_device_approve_url
 
@@ -36,7 +36,7 @@ def request_device_onboarding() -> str:
     """Show the device-onboarding card (install + pair) and return the agent copy."""
     source_category = _current_source_category()
     if source_category is not None:
-        get_stream_writer()(
+        current_stream_writer()(
             {
                 "device_onboarding_required": {
                     "install_commands": CLI_INSTALL_COMMANDS,
@@ -75,7 +75,7 @@ def request_device_approval(user_code: str) -> str:
     approve_url = build_device_approve_url(code)
     source_category = _current_source_category()
     if source_category is not None:
-        get_stream_writer()(
+        current_stream_writer()(
             {
                 "device_approval_required": {
                     "approve_url": approve_url,

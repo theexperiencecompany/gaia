@@ -17,7 +17,6 @@ import time
 
 from e2b import AsyncSandbox
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
@@ -28,7 +27,12 @@ from app.agents.workspace.paths import (
     session_dir,
 )
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
-from app.models.agent_models import get_user_id, read_agent_configurable, read_run_metadata
+from app.models.agent_models import (
+    current_stream_writer,
+    get_user_id,
+    read_agent_configurable,
+    read_run_metadata,
+)
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
@@ -126,11 +130,9 @@ async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
 
 
 def safe_emit(event: Mapping[str, object], *, session_id: str | None = None) -> None:
-    """Emit a custom stream event, swallowing 'no writer' errors silently.
+    """Emit a custom stream event; a failed write is logged, never fails the tool.
 
-    Tools are invoked both during live chat (writer present) and during
-    silent/background runs (no writer). Don't fail the tool just because
-    nobody is listening. When `session_id` is given it is stamped into the
+    When `session_id` is given it is stamped into the
     artifact/bash/file payloads so the frontend can route the event to the
     right conversation.
     """
@@ -140,11 +142,7 @@ def safe_emit(event: Mapping[str, object], *, session_id: str | None = None) -> 
             if isinstance(payload, dict):
                 payload.setdefault("session_id", session_id)
     try:
-        writer = get_stream_writer()
-    except Exception:
-        return
-    try:
-        writer(event)
+        current_stream_writer()(event)
     except Exception as e:
         log.debug("Stream writer failed silently", error_type=type(e).__name__)
 

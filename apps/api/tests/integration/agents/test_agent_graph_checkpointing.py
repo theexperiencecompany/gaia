@@ -113,7 +113,7 @@ def _follow_up_io_patches() -> list:
             return_value={"tool_names": []},
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=lambda _: None,
         ),
     ]

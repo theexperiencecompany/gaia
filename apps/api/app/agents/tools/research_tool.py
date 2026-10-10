@@ -4,7 +4,6 @@ from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, ConfigDict
 
@@ -18,7 +17,7 @@ from app.constants.search import (
 )
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.templates.docstrings.research_tool_docs import (
     DEEP_RESEARCH,
     RESEARCH_INSTRUCTIONS,
@@ -211,7 +210,7 @@ async def deep_research(
     focus_areas = focus_areas or []
     get_user_id(config)  # a run that names no user is refused before any fetch
 
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     start_time = time.time()
     if depth not in (1, 2, 3):
         return {

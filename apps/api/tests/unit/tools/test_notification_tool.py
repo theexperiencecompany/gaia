@@ -61,7 +61,7 @@ def _make_notification(
 class TestGetNotifications:
     """Tests for the get_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_happy_path(
         self,
@@ -100,7 +100,7 @@ class TestGetNotifications:
             ),
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_service_error(
         self,
@@ -118,7 +118,7 @@ class TestGetNotifications:
         assert "DB error" in result["error"]
         assert result["notifications"] == []
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_forwards_all_filters(
         self,
@@ -149,7 +149,7 @@ class TestGetNotifications:
         assert filters.limit == 7
         assert filters.offset == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_streams_notification_data(
         self,
@@ -181,7 +181,7 @@ class TestGetNotifications:
 class TestSearchNotifications:
     """Tests for the search_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_happy_path_title_match(
         self,
@@ -213,7 +213,7 @@ class TestSearchNotifications:
             FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_search_body_match(
         self,
@@ -238,7 +238,7 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     async def test_empty_query_returns_error(
         self,
         mock_writer_factory: MagicMock,
@@ -256,7 +256,7 @@ class TestSearchNotifications:
         assert "error" in result
         assert "cannot be empty" in result["error"]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_limit_applied(
         self,
@@ -282,7 +282,7 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_forwards_fetch_filters(
         self,
