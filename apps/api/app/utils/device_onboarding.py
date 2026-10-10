@@ -8,28 +8,25 @@ surfaced to the user on the authenticated approval page; the agent never
 approves a pairing code itself.
 """
 
-from typing import cast
-
-from langgraph.config import get_config
-
 from app.constants.device_bridge import (
     CLI_INSTALL_COMMANDS,
+    CLI_NPM_INSTALL_COMMAND,
     DEVICE_BRIDGE_DOCS_URL,
     DEVICE_PAIR_COMMAND,
     DEVICE_UP_COMMAND,
 )
-from app.models.agent_models import agent_configurable, current_stream_writer
+from app.models.agent_models import (
+    current_run_config,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.chat_models import SourceCategory
 from app.services.device.device_service import build_device_approve_url
 
 
 def _current_source_category() -> str | None:
     """Read the source category (ui/bot/bg) from the active graph run, or None."""
-    try:
-        config = get_config()
-    except RuntimeError:
-        return None
-    return cast(str | None, agent_configurable(config).get("source_category"))
+    return read_agent_configurable(current_run_config()).source_category
 
 
 def request_device_onboarding() -> str:
@@ -58,7 +55,7 @@ def request_device_onboarding() -> str:
             "approve_device_pairing with that code."
         )
     return (
-        f"Ask the user to install the GAIA CLI with `{CLI_INSTALL_COMMANDS['npm']}` "
+        f"Ask the user to install the GAIA CLI with `{CLI_NPM_INSTALL_COMMAND}` "
         f"(Node 20+, macOS/Linux/Windows-WSL2), run `{DEVICE_PAIR_COMMAND}`, and paste the "
         f"code it prints so you can call approve_device_pairing. Full guide: "
         f"{DEVICE_BRIDGE_DOCS_URL}"

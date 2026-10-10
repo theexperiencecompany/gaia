@@ -6,20 +6,25 @@ From conversation context and tool usage.
 import time
 from typing import cast
 
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolCall
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
 from app.agents.core.integration_capabilities import (
+    UserIntegrationCapabilities,
     get_user_integration_capabilities,
 )
 from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable, config_agent_name, current_stream_writer
+from app.models.agent_models import (
+    config_agent_name,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.latency_metrics import observe_graph_node
@@ -49,8 +54,8 @@ async def generate_follow_up_actions(
     Returns an empty list on any failure (never raises).
     """
     if user_id:
-        capabilities = await get_user_integration_capabilities(user_id)
-        tool_names = capabilities.get("tool_names", [])
+        capabilities: UserIntegrationCapabilities = await get_user_integration_capabilities(user_id)
+        tool_names = capabilities["tool_names"]
     else:
         # Fallback to all tools if user_id not available
         tool_registry = await get_tool_registry()
@@ -140,7 +145,7 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
         _safe_write_actions(writer, [])
         return state
 
-    user_id = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -180,11 +185,12 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
             last_human = i
             break
 
+    call: ToolCall
     for message in messages[last_human + 1 :]:
-        tool_calls = getattr(message, "tool_calls", None) or []
-        for tc in tool_calls:
-            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-            if name == CALL_EXECUTOR_NAME:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in message.tool_calls:
+            if call["name"] == CALL_EXECUTOR_NAME:
                 return True
     return False
 
