@@ -4,9 +4,12 @@
   "actions": [
     {
       "name": "Active user (human)",
-      "description": "SINGLE SOURCE for 'active user' across all dashboards — reference this action, never re-list events. A human did something: opened the app (user:session_resumed), logged in, sent a chat message (web/desktop/bot), or messaged a bot. Excludes background/agent/system events and anonymous pageviews. Will be replaced by the server-side user:active event (one per user per day, emitted with last_active_at) — edit THIS action then, and every tile follows.",
+      "description": "SINGLE SOURCE for 'active user' across all dashboards — reference this action, never re-list events. user:active is the server's one-per-user-per-IST-day signal; the four proxies (session resumed, logged in, chat message submitted, bot message received) keep history before it shipped readable. Excludes background/agent/system events and anonymous pageviews.",
       "tags": ["canonical"],
       "steps": [
+        {
+          "event": "user:active"
+        },
         {
           "event": "user:session_resumed"
         },

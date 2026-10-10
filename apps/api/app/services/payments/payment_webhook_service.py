@@ -8,7 +8,7 @@ from standardwebhooks.webhooks import Webhook
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.payments import WEBHOOK_ROW_WAIT_MAX
+from app.constants.payments import SUBSCRIPTION_UNCHANGED_MESSAGE, WEBHOOK_ROW_WAIT_MAX
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.models.payment_models import ProcessedWebhookUpdate
 from app.models.webhook_models import (
@@ -410,7 +410,7 @@ class PaymentWebhookService:
             case SubscriptionEventOutcome.APPLIED:
                 return WebhookProcessingStatus.PROCESSED, SUBSCRIPTION_APPLIED_MESSAGES[kind]
             case SubscriptionEventOutcome.UNCHANGED:
-                return WebhookProcessingStatus.PROCESSED, "Subscription already in this state"
+                return WebhookProcessingStatus.PROCESSED, SUBSCRIPTION_UNCHANGED_MESSAGE
             case SubscriptionEventOutcome.STALE:
                 return WebhookProcessingStatus.IGNORED, "Stale event"
             case SubscriptionEventOutcome.NO_OWNER:

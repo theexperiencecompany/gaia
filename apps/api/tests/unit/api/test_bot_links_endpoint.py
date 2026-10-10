@@ -1172,6 +1172,18 @@ class TestPersistFirstContact:
         assert reply_at.utcoffset() == timedelta(0)
         assert reply_at - opener_at == timedelta(milliseconds=100)
 
+    async def test_the_opener_is_marked_as_first_contact_since_no_chat_turn_ran_for_it(self):
+        """Reconciliation tells it from a submitted message, which it otherwise looks identical to, by this flag alone."""
+        body = RedeemLinkCodeRequest(**REDEEM_BODY, first_message=OWN_MESSAGE)
+        with (
+            patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1"),
+            patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
+        ):
+            await _persist_first_contact(LINKED_USER_ID, body, BUBBLES)
+
+        opener, reply = update.await_args.args[0].messages
+        assert (opener.first_contact, reply.first_contact) == (True, None)
+
     async def test_a_link_that_carried_no_message_writes_no_user_turn(self):
         """A Telegram deep link is a tap, not a sentence; the canned opener must not be stored as a message the user never sent."""
         with (

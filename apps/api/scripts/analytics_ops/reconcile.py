@@ -7,6 +7,7 @@ ledger. PostHog is read unfiltered, so both sides include test accounts.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pymongo.database import Database
 
 from app.constants.chat import ConversationSource
+from app.constants.payments import SUBSCRIPTION_UNCHANGED_MESSAGE
 from app.models.payment_models import SubscriptionStatus
 from app.models.webhook_models import DodoWebhookEventType, WebhookProcessingStatus
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
@@ -40,8 +42,9 @@ COST_TOLERANCE = 0.005
 LLM_GENERATION_EVENT = "$ai_generation"
 # Conversations no human typed into: the agent's own scheduled and background turns.
 NON_HUMAN_SOURCES = frozenset({ConversationSource.WORKFLOW_SYSTEM, ConversationSource.BACKGROUND})
-# Before conversations carried a source every one of them was a web conversation.
-DEFAULT_SOURCE = ConversationSource.WEB
+# Web and desktop conversations are both stored without a source, so each side counts them as one.
+WEB_AND_DESKTOP = "web+desktop"
+UNSOURCED_CLIENTS = frozenset({ConversationSource.WEB.value, ConversationSource.DESKTOP.value})
 
 # Each PostHog transition event against the Dodo delivery type that causes it.
 WEBHOOK_EVENTS: dict[str, DodoWebhookEventType] = {
@@ -59,9 +62,16 @@ STATE_CHANGE_KEYS: dict[DodoWebhookEventType, str] = {
     # Activation and cancellation happen once per subscription; a repeat report changes nothing.
     DodoWebhookEventType.SUBSCRIPTION_ACTIVE: "subscription_id",
     DodoWebhookEventType.SUBSCRIPTION_CANCELLED: "subscription_id",
-    # Each renewal is a new period of the same subscription, so every delivery is a change.
+    # Each renewal is a new period of the same subscription, so every applied delivery is a change.
     DodoWebhookEventType.SUBSCRIPTION_RENEWED: "webhook_id",
 }
+# Dodo's first-period renewal, seconds after activation, finds the row already in that state and fires nothing.
+UNCHANGED_RENEWAL: Document = {
+    "event_type": DodoWebhookEventType.SUBSCRIPTION_RENEWED.value,
+    "message": SUBSCRIPTION_UNCHANGED_MESSAGE,
+}
+# An in-app cancel gets no Dodo webhook; the row's flag and the time the reducer applied it record it.
+IN_APP_CANCELS_SOURCE = "subscriptions cancel_at_next_billing_date by last_event_at"
 COUNTED_EVENTS = (UserSignedUp.event, SupportFormSubmitted.event, *WEBHOOK_EVENTS)
 
 # Every events query is bounded by the same half-open UTC window, passed as {start} and {end}.
@@ -139,6 +149,10 @@ class Signals:
     subscribers_now: int
 
 
+def _bucket(source: str) -> str:
+    return WEB_AND_DESKTOP if source in UNSOURCED_CLIENTS else source
+
+
 def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
     """Read every signal from PostHog, unfiltered, over window."""
     span = window.hogql_values()
@@ -148,12 +162,11 @@ def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
             EVENT_COUNTS_HOGQL, {**span, "events": list(COUNTED_EVENTS)}
         )
     }
-    messages = {
-        str(source): int(str(count))
-        for source, count in posthog.hogql(
-            MESSAGES_HOGQL, {**span, "event": ChatMessageSubmitted.event}
-        )
-    }
+    messages: Counter[str] = Counter()
+    for source, count in posthog.hogql(
+        MESSAGES_HOGQL, {**span, "event": ChatMessageSubmitted.event}
+    ):
+        messages[_bucket(str(source))] += int(str(count))
     ((one_shot, generations),) = posthog.hogql(
         LLM_COST_HOGQL,
         {**span, "llm_event": AiLlmCallCompleted.event, "generation_event": LLM_GENERATION_EVENT},
@@ -164,7 +177,7 @@ def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
         support_requests=counts.get(SupportFormSubmitted.event, 0),
         subscriptions_started=counts.get(SubscriptionActivated.event, 0),
         billing={event: counts.get(event, 0) for event in WEBHOOK_EVENTS},
-        messages_by_source=messages,
+        messages_by_source=dict(messages),
         llm_cost_usd=float(str(one_shot or 0)) + float(str(generations or 0)),
         subscribers_now=int(str(subscribed)),
     )
@@ -173,23 +186,24 @@ def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
 def human_messages_by_source(db: Database[Document], window: Window) -> dict[str, int]:
     """Count user-typed messages per conversation source, by each message's own date."""
     pipeline: list[Document] = [
-        {"$match": {"messages.type": "user"}},
+        {"$match": {"messages.type": "user", "is_system_generated": {"$ne": True}}},
         {"$unwind": "$messages"},
-        {"$match": {"messages.type": "user"}},
+        # A first-contact message was stored at account linking, with no chat turn behind it.
+        {"$match": {"messages.type": "user", "messages.first_contact": {"$ne": True}}},
         {
             "$project": {
-                "source": {"$ifNull": ["$source", DEFAULT_SOURCE.value]},
+                "source": {"$ifNull": ["$source", WEB_AND_DESKTOP]},
                 "date": {"$toDate": "$messages.date"},
             }
         },
         {"$match": {"date": window.mongo_range()}},
         {"$group": {"_id": "$source", "count": {"$sum": 1}}},
     ]
-    return {
-        str(row["_id"]): int(str(row["count"]))
-        for row in db.conversations.aggregate(pipeline)
-        if row["_id"] not in NON_HUMAN_SOURCES
-    }
+    counts: Counter[str] = Counter()
+    for row in db.conversations.aggregate(pipeline):
+        if row["_id"] not in NON_HUMAN_SOURCES:
+            counts[_bucket(str(row["_id"]))] += int(str(row["count"]))
+    return dict(counts)
 
 
 def _state_changes(db: Database[Document], window: Window) -> dict[str, int]:
@@ -208,6 +222,7 @@ def _state_changes(db: Database[Document], window: Window) -> dict[str, int]:
             "$match": {
                 "processed_at": window.mongo_range(),
                 "status": WebhookProcessingStatus.PROCESSED.value,
+                "$nor": [UNCHANGED_RENEWAL],
             }
         },
         {"$group": {"_id": {"type": "$event_type", "change": change_key}}},
@@ -216,6 +231,24 @@ def _state_changes(db: Database[Document], window: Window) -> dict[str, int]:
     return {
         str(row["_id"]): int(str(row["count"])) for row in db.processed_webhooks.aggregate(pipeline)
     }
+
+
+def _cancelled_subscriptions(db: Database[Document], window: Window) -> int:
+    """Count subscriptions cancelled in window, through Dodo's webhook or in the app."""
+    by_webhook = db.processed_webhooks.distinct(
+        STATE_CHANGE_KEYS[DodoWebhookEventType.SUBSCRIPTION_CANCELLED],
+        {
+            "event_type": DodoWebhookEventType.SUBSCRIPTION_CANCELLED.value,
+            "processed_at": window.mongo_range(),
+            "status": WebhookProcessingStatus.PROCESSED.value,
+        },
+    )
+    # A later applied event (expiry, plan change) overwrites last_event_at; that surfaces as drift, never a false match.
+    in_app = db.subscriptions.distinct(
+        "dodo_subscription_id",
+        {"cancel_at_next_billing_date": True, "last_event_at": window.mongo_range()},
+    )
+    return len({*by_webhook, *in_app})
 
 
 def _ledger_cost(db: Database[Document], window: Window) -> float:
@@ -235,7 +268,8 @@ def mongo_signals(db: Database[Document], window: Window) -> Signals:
         signups=db.users.count_documents(in_window),
         support_requests=db.support_requests.count_documents(in_window),
         subscriptions_started=db.subscriptions.count_documents(in_window),
-        billing={event: webhooks.get(kind.value, 0) for event, kind in WEBHOOK_EVENTS.items()},
+        billing={event: webhooks.get(kind.value, 0) for event, kind in WEBHOOK_EVENTS.items()}
+        | {SubscriptionCancelled.event: _cancelled_subscriptions(db, window)},
         messages_by_source=human_messages_by_source(db, window),
         llm_cost_usd=_ledger_cost(db, window),
         subscribers_now=len(
@@ -266,7 +300,8 @@ def compare(posthog: Signals, truth: Signals) -> list[Row]:
             event,
             posthog.billing[event],
             truth.billing[event],
-            f"processed_webhooks {WEBHOOK_EVENTS[event].value} by {STATE_CHANGE_KEYS[WEBHOOK_EVENTS[event]]}",
+            f"processed_webhooks {WEBHOOK_EVENTS[event].value} by {STATE_CHANGE_KEYS[WEBHOOK_EVENTS[event]]}"
+            + (f" + {IN_APP_CANCELS_SOURCE}" if event == SubscriptionCancelled.event else ""),
         )
         for event in WEBHOOK_EVENTS
     ]

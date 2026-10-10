@@ -10455,6 +10455,8 @@ export interface components {
             filename?: string | null;
             /** Filetype */
             filetype?: string | null;
+            /** First Contact */
+            first_contact?: boolean | null;
             /** Follow Up Actions */
             follow_up_actions?: string[] | null;
             image_data?: components["schemas"]["ImageData"] | null;
@@ -10514,6 +10516,8 @@ export interface components {
             filename?: string | null;
             /** Filetype */
             filetype?: string | null;
+            /** First Contact */
+            first_contact?: boolean | null;
             /** Follow Up Actions */
             follow_up_actions?: string[] | null;
             image_data?: components["schemas"]["ImageData"] | null;

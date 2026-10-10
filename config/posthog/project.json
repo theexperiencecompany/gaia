@@ -15,6 +15,10 @@
       {
         "key": "NOT ifNull(lower(properties.$raw_user_agent) ILIKE '%googlebot%' OR lower(properties.$raw_user_agent) ILIKE '%bingbot%' OR lower(properties.$raw_user_agent) ILIKE '%duckduckbot%' OR lower(properties.$raw_user_agent) ILIKE '%slurp%' OR lower(properties.$raw_user_agent) ILIKE '%crawler%', false)",
         "type": "hogql"
+      },
+      {
+        "key": "distinct_id != 'system'",
+        "type": "hogql"
       }
     ],
     "test_account_filters_default_checked": true,

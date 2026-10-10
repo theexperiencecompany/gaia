@@ -11,6 +11,7 @@ import pytest
 from scripts.analytics_ops.mongo import Document
 from scripts.analytics_ops.reconcile import Window, mongo_signals
 
+from app.constants.payments import SUBSCRIPTION_UNCHANGED_MESSAGE
 from tests.helpers import worker_mongo_db_name
 
 WINDOW = Window(datetime(2026, 9, 8, tzinfo=UTC), datetime(2026, 10, 8, tzinfo=UTC))
@@ -65,7 +66,52 @@ def test_messages_count_user_turns_by_their_own_date_per_source(db: Database[Doc
         ]
     )
 
-    assert mongo_signals(db, WINDOW).messages_by_source == {"web": 2, "telegram": 1}
+    assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 2, "telegram": 1}
+
+
+def test_web_and_desktop_are_one_bucket_since_neither_stores_a_source(
+    db: Database[Document],
+) -> None:
+    db.conversations.insert_many(
+        [
+            {"messages": [_message("user", INSIDE)]},
+            {"source": "web", "messages": [_message("user", INSIDE)]},
+            {"source": "desktop", "messages": [_message("user", INSIDE)]},
+        ]
+    )
+
+    assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 3}
+
+
+def test_a_system_generated_conversations_user_turns_are_not_human(
+    db: Database[Document],
+) -> None:
+    db.conversations.insert_many(
+        [
+            # A workflow run's conversation, stored without a source.
+            {"is_system_generated": True, "messages": [_message("user", INSIDE)]},
+            {"is_system_generated": False, "messages": [_message("user", INSIDE)]},
+        ]
+    )
+
+    assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 1}
+
+
+def test_the_linking_message_written_as_first_contact_is_not_a_submitted_turn(
+    db: Database[Document],
+) -> None:
+    db.conversations.insert_one(
+        {
+            "source": "whatsapp",
+            "messages": [
+                {**_message("user", INSIDE), "first_contact": True},
+                _message("bot", INSIDE),
+                _message("user", INSIDE),
+            ],
+        }
+    )
+
+    assert mongo_signals(db, WINDOW).messages_by_source == {"whatsapp": 1}
 
 
 def test_billing_counts_only_processed_deliveries_in_the_window(db: Database[Document]) -> None:
@@ -173,3 +219,51 @@ def test_billing_counts_each_state_change_once_not_each_delivery(db: Database[Do
         "subscription:renewed": 2,
         "subscription:cancelled": 1,
     }
+
+
+def test_a_renewal_the_reducer_found_already_applied_is_not_a_renewal(
+    db: Database[Document],
+) -> None:
+    db.processed_webhooks.insert_many(
+        [
+            _delivery("r1", "subscription.renewed", subscription_id="sub_1"),
+            # Dodo's first-period renewal seconds after activation changes nothing and fires nothing.
+            {
+                **_delivery("r2", "subscription.renewed", subscription_id="sub_2"),
+                "message": SUBSCRIPTION_UNCHANGED_MESSAGE,
+            },
+        ]
+    )
+
+    assert mongo_signals(db, WINDOW).billing["subscription:renewed"] == 1
+
+
+def _subscription(dodo_id: str, *, cancel_scheduled: bool, last_event_at: datetime) -> Document:
+    return {
+        "dodo_subscription_id": dodo_id,
+        "status": "active",
+        "cancel_at_next_billing_date": cancel_scheduled,
+        "last_event_at": last_event_at,
+    }
+
+
+def test_cancellations_count_in_app_and_webhook_cancels_once_per_subscription(
+    db: Database[Document],
+) -> None:
+    db.processed_webhooks.insert_many(
+        [
+            _delivery("c1", "subscription.cancelled", subscription_id="sub_hook"),
+            _delivery("c2", "subscription.cancelled", subscription_id="sub_both"),
+        ]
+    )
+    db.subscriptions.insert_many(
+        [
+            # An in-app cancel gets no Dodo webhook: only the row's flag and event time record it.
+            _subscription("sub_both", cancel_scheduled=True, last_event_at=INSIDE),
+            _subscription("sub_app", cancel_scheduled=True, last_event_at=INSIDE),
+            _subscription("sub_old", cancel_scheduled=True, last_event_at=BEFORE),
+            _subscription("sub_renewing", cancel_scheduled=False, last_event_at=INSIDE),
+        ]
+    )
+
+    assert mongo_signals(db, WINDOW).billing["subscription:cancelled"] == 3

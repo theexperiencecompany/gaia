@@ -53,7 +53,7 @@ def _truth(**overrides: object) -> Signals:
             "subscription:renewed": 0,
             "subscription:cancelled": 0,
         },
-        messages_by_source={"web": 306, "telegram": 88},
+        messages_by_source={"web+desktop": 306, "telegram": 88},
         llm_cost_usd=18.5,
         subscribers_now=14,
     )
@@ -100,7 +100,20 @@ class TestPostHogSide:
 
         [values] = [v for q, v in reader.queries if q == MESSAGES_HOGQL]
         assert values["event"] == "chat:message_submitted"
-        assert signals.messages_by_source == {"web": 306, "telegram": 88}
+        assert signals.messages_by_source == {"web+desktop": 306, "telegram": 88}
+
+    def test_web_and_desktop_messages_are_one_bucket_as_mongo_cannot_tell_them_apart(
+        self,
+    ) -> None:
+        reader = _reader()
+        reader.answers = {
+            **reader.answers,
+            MESSAGES_HOGQL: [["web", 261], ["desktop", 23], ["telegram", 88]],
+        }
+
+        signals = posthog_signals(reader, WINDOW)
+
+        assert signals.messages_by_source == {"web+desktop": 284, "telegram": 88}
 
     def test_llm_spend_adds_one_shot_calls_and_graph_generations(self) -> None:
         reader = _reader()
@@ -133,7 +146,7 @@ class TestCompare:
         assert [row.signal for row in rows if not row.matches] == ["signups"]
 
     def test_a_source_only_one_side_saw_is_a_row_of_its_own(self) -> None:
-        truth = _truth(messages_by_source={"web": 306, "telegram": 88, "discord": 2})
+        truth = _truth(messages_by_source={"web+desktop": 306, "telegram": 88, "discord": 2})
 
         rows = compare(posthog_signals(_reader(), WINDOW), truth)
 

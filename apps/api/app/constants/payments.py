@@ -17,6 +17,10 @@ CHECKOUT_SESSION_SCAN_LIMIT = 10
 # Past this age it is not coming, and redelivery only masks that.
 WEBHOOK_ROW_WAIT_MAX = timedelta(hours=1)
 
+# The ledger message of a subscription delivery the reducer found already applied;
+# analytics reconciliation reads it to leave out deliveries that changed nothing.
+SUBSCRIPTION_UNCHANGED_MESSAGE = "Subscription already in this state"
+
 
 class SubscriptionWorkflowSync(StrEnum):
     """Which way a billing change moves the user's automation.

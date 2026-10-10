@@ -320,6 +320,44 @@ def test_the_probe_passes_otherwise(filtered: int, unfiltered: int) -> None:
     assert analytics.probe_failure(filtered=filtered, unfiltered=unfiltered) is None
 
 
+class _CachingQueryApi:
+    """The /query/ endpoint as PostHog serves it: a repeated query returns the cached rows unless refreshed."""
+
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+        self.cache: dict[str, Any] = {}
+
+    def request(self, method: str, path: str, body: Any = None) -> dict[str, Any]:
+        key = json.dumps(body["query"], sort_keys=True)
+        if body.get("refresh") != "force_blocking" and key in self.cache:
+            return self.cache[key]
+        self.cache[key] = {"results": list(self.rows)}
+        return self.cache[key]
+
+
+def test_a_hogql_read_after_a_write_sees_the_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: a cached read listed 5 just-merged persons as unmerged, so a re-run would merge them again."""
+    client = analytics.PostHog("https://us.posthog.com", 1, "phx_test")
+    api = _CachingQueryApi([["a@x.io", "person-1"]])
+    monkeypatch.setattr(client, "_request", api.request)
+
+    assert client.hogql("SELECT 1") == [["a@x.io", "person-1"]]
+    api.rows = [["a@x.io", "person-2"]]
+
+    assert client.hogql("SELECT 1") == [["a@x.io", "person-2"]]
+
+
+def test_the_probe_reads_the_filter_as_it_is_now(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = analytics.PostHog("https://us.posthog.com", 1, "phx_test")
+    api = _CachingQueryApi([{"count": 51.0}])
+    monkeypatch.setattr(client, "_request", api.request)
+
+    assert client.probe(filter_test_accounts=True) == 51
+    api.rows = [{"count": 0.0}]
+
+    assert client.probe(filter_test_accounts=True) == 0
+
+
 @pytest.mark.parametrize("filter_test_accounts", [True, False])
 def test_the_probe_asks_a_trends_query_the_way_a_tile_does(
     monkeypatch: pytest.MonkeyPatch, filter_test_accounts: bool
@@ -345,7 +383,8 @@ def test_the_probe_asks_a_trends_query_the_way_a_tile_does(
                     "series": [{"kind": "EventsNode", "event": "user:signed_up", "math": "total"}],
                     "dateRange": {"date_from": "-7d"},
                     "filterTestAccounts": filter_test_accounts,
-                }
+                },
+                "refresh": "force_blocking",
             },
         )
     ]
