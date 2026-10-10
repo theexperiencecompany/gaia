@@ -14,6 +14,7 @@ from app.services.integrations.integration_accounts import (
     match_account,
     pick_primary,
     primary_connected_account_id,
+    set_account_nickname,
 )
 from app.services.triggers.base import primary_account_for_trigger
 from app.utils.errors import AppError
@@ -150,6 +151,17 @@ class TestPrimaryConnectedAccountId:
             meta={"toolkit": "NOT_A_TOOLKIT"},
         )
         repo.get_for_user.assert_not_awaited()
+
+
+class TestSetAccountNickname:
+    async def test_it_names_that_account_on_that_users_record(
+        self, repo: MagicMock, fake_redis: object
+    ) -> None:
+        named = _record(make_integration_account("ca_1", nickname="Work"))
+        repo.set_account_nickname = AsyncMock(return_value=named)
+
+        assert await set_account_nickname(USER_ID, "gmail", "ca_1", "Work") is named
+        repo.set_account_nickname.assert_awaited_once_with(USER_ID, "gmail", "ca_1", "Work")
 
 
 class TestEventAccountName:

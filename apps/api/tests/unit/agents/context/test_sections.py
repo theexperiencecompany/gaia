@@ -369,20 +369,21 @@ class TestIntegrationsManifest:
             make_integration_account("ca_1", label="work@acme.com"),
             make_integration_account("ca_2", label="me@gmail.com"),
         )
+        connected = self._connected()
         with (
-            patch(
-                "app.agents.context.fetchers.get_connected_integrations_named", self._connected()
-            ),
+            patch("app.agents.context.fetchers.get_connected_integrations_named", connected),
             patch(
                 "app.agents.context.fetchers.list_multi_account_records",
                 AsyncMock(return_value=[record]),
-            ),
+            ) as multi_account,
         ):
             rendered = await section("integrations_manifest").fetch(ctx(tier))
 
         assert rendered.endswith(
             '- Gmail (gmail) [accounts: "work@acme.com" (primary), "me@gmail.com"]\n' + guidance
         )
+        connected.assert_awaited_once_with("user1")
+        multi_account.assert_awaited_once_with("user1")
 
     async def test_an_unknown_user_is_asked_for_no_manifest_at_all(self) -> None:
         connected = self._connected()

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.services.composio import proxy_client
 from app.services.composio.account_scope import account_scope
@@ -225,11 +226,26 @@ class TestProxyRequestSync:
     def test_sdk_failure_is_a_502_carrying_the_request_identity(self) -> None:
         composio = _make_composio()
         composio.tools.proxy.side_effect = ConnectionError("boom")
-        with _patch_primary(), _patch_composio(composio):
+        with (
+            _patch_primary(),
+            _patch_composio(composio),
+            patch("app.services.composio.proxy_client.log") as mock_log,
+        ):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="POST")
                 )
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.COMPOSIO} composio.tools.proxy raised",
+            user_id="u1",
+            toolkit="GMAIL",
+            method="POST",
+            endpoint="/x",
+            error="boom",
+            error_type="ConnectionError",
+        )
+        assert exc.value.message == "Composio tools.proxy failed: boom"
+        assert exc.value.why == "SDK or transport error while calling the provider"
         assert exc.value.status_code == 502
         assert exc.value.meta == {
             "toolkit": "GMAIL",
@@ -241,10 +257,11 @@ class TestProxyRequestSync:
     def test_an_account_composio_no_longer_holds_is_reported_as_gone(self) -> None:
         """Seen live: the tool path never recognised this 404, so the agent retried a dead account."""
         composio = _make_composio()
-        composio.tools.proxy.side_effect = make_composio_not_found(
+        not_found = make_composio_not_found(
             {"error": {"code": 606, "slug": "ConnectedAccount_ResourceNotFound"}},
             'Connected account "ca_gone" not found',
         )
+        composio.tools.proxy.side_effect = not_found
         with _patch_primary("ca_gone"), _patch_composio(composio):
             with pytest.raises(ConnectedAccountGoneError) as exc:
                 proxy_request_sync(
@@ -252,12 +269,14 @@ class TestProxyRequestSync:
                 )
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
         assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.meta == {"cause": str(not_found)}
 
     def test_any_other_composio_404_stays_a_loud_502(self) -> None:
         composio = _make_composio()
-        composio.tools.proxy.side_effect = make_composio_not_found(
+        not_found = make_composio_not_found(
             {"error": {"code": 1404, "slug": "Tool_NotFound"}}, "Tool not found"
         )
+        composio.tools.proxy.side_effect = not_found
         with _patch_primary(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
@@ -265,6 +284,8 @@ class TestProxyRequestSync:
                 )
         assert not isinstance(exc.value, ConnectedAccountGoneError)
         assert exc.value.status_code == 502
+        assert exc.value.message == f"Composio tools.proxy failed: {not_found}"
+        assert exc.value.meta["exception"] == str(not_found)
 
     def test_request_identity_is_recorded_on_the_wide_event(self) -> None:
         log.reset()

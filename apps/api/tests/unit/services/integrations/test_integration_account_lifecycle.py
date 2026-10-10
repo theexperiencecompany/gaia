@@ -207,6 +207,7 @@ class TestUpdateAccount:
             USER_ID, "gmail", "ca_1", nickname="  Work  ", rename=True, make_primary=False
         )
 
+        seams.name.assert_awaited_once_with(USER_ID, "gmail", "ca_1", "Work")
         assert [(a.connected_account_id, a.nickname) for a in result.accounts] == [
             ("ca_1", "Work"),
             ("ca_2", None),

@@ -96,6 +96,21 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         get_settings()
 
 
+def test_composio_overrides_refuse_production_and_say_why(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}')
+
+    with pytest.raises(RuntimeError) as exc:
+        get_settings()
+
+    assert str(exc.value) == (
+        "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+        "it points integrations at a non-production Composio project."
+    )
+
+
 @pytest.mark.parametrize(
     ("env_var", "value"),
     [

@@ -278,6 +278,54 @@ class TestAddAccountPrompt:
         assert self._card(writer)["add_account"] is False
 
 
+class TestExactCopyPerMode:
+    """The agent acts on these sentences, so each mode's wording is pinned whole."""
+
+    async def test_a_first_connect_on_ui(self) -> None:
+        with _graph_run("ui"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert msg == (
+            "Gmail needs to be connected. A connect button has been shown to the user, so do "
+            "NOT include any URL in your reply, the UI card handles it. Ask the user to click "
+            "it, then try again."
+        )
+
+    async def test_an_expired_connection_on_ui(self) -> None:
+        with _graph_run("ui", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert msg.endswith(
+            "Do NOT tell them to connect Gmail for the first time. A reconnect button has been "
+            "shown to the user, so do NOT include any URL in your reply, the UI card handles "
+            "it. Ask the user to click it, then try again."
+        )
+
+    async def test_a_requested_reconnect_in_the_background(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. This is a background run and no user is present to reconnect "
+            "it, so retrying PostHog this run cannot succeed. Record in your result that the "
+            "PostHog connection needs a refresh (the user can reconnect it at "
+            f"{_FAKE_FRONTEND}/integrations), then carry on with the rest of the task."
+        )
+
+    async def test_adding_an_account_in_the_background(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection(
+                "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
+            )
+        assert msg == (
+            "The user wants to add another Gmail account; their current accounts stay "
+            "connected. This is a background run and no user is present to add another "
+            "account to it, so retrying Gmail this run cannot succeed. Record in your result "
+            "that another Gmail account was not added (the user can add another account to it "
+            f"at {_FAKE_FRONTEND}/integrations), then carry on with the rest of the task."
+        )
+
+
 class TestBackgroundRunPrompt:
     """A background run has nobody to click a card or a link, so it must not wait to retry."""
 

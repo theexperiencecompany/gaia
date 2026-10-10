@@ -561,12 +561,13 @@ class TestActivateIntegrationTool:
                 f"{_MOD}._activate_tools",
                 new=AsyncMock(return_value=(40, ["query_json"], [], "")),
             ),
-            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=True)),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=True)) as several,
             patch(f"{_MOD}._activation_context", new=context),
         ):
             call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
             result = await activate_integration.ainvoke(call, run_cfg)
 
+        several.assert_awaited_once_with("gmail", "u1")
         assert self._bound(result) == [
             "query_json",
             "rename_integration_account",

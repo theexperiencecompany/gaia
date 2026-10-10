@@ -26,6 +26,7 @@ from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.constants.execute import EXECUTE_TOOL_NAME
 
 MODULE = "app.agents.tools.execute.execute_tool"
+SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CONFIG = {"configurable": {"user_id": USER_ID}}
 
@@ -327,8 +328,14 @@ class TestExecuteToolCall:
             ),
             ("plain text", "ran_as_account: Work\nplain text"),
             ([1, 2], json.dumps({"ran_as_account": "Work", "result": [1, 2]})),
+            # Provider data carries datetimes JSON cannot encode natively.
+            (
+                {"sent_at": SENT_AT},
+                json.dumps({"ran_as_account": "Work", "sent_at": str(SENT_AT)}),
+            ),
+            ([SENT_AT], json.dumps({"ran_as_account": "Work", "result": [str(SENT_AT)]})),
         ],
-        ids=["structured", "text", "other"],
+        ids=["structured", "text", "other", "structured_with_a_date", "other_with_a_date"],
     )
     async def test_with_several_accounts_the_model_is_told_which_one_answered(
         self, output: object, rendered: str

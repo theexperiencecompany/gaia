@@ -83,3 +83,5 @@ class TestConnectedAccountGoneError:
             "Reconnect the GMAIL account",
         )
         assert error.message == "The GMAIL connected account no longer exists"
+        assert error.why == "Composio has no connected account with the id this call ran as"
+        assert error.meta == {"cause": "Connected account not found"}

@@ -233,6 +233,7 @@ class TestDeadAccountReconciles:
 
         with (
             patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            patch(f"{MODULE}.log") as mock_log,
             _ui_chat_turn(MagicMock()),
         ):
             result = await asyncio.to_thread(
@@ -243,6 +244,7 @@ class TestDeadAccountReconciles:
             "user-1", "gmail", "ca_gone", trigger="tool_execution", reason=str(gone)
         )
         assert result["successful"] is False
+        assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
 
     async def test_with_another_account_still_live_it_names_the_dead_one_and_shows_no_card(
         self,

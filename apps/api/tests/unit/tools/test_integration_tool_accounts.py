@@ -9,6 +9,7 @@ import pytest
 from app.agents.tools.integration_tool import check_integrations_status, connect_integration
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, ConnectMode
 from app.models.integration_models import IntegrationAccountStatus
+from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -79,6 +80,25 @@ class TestConnectModes:
         )
         record.assert_awaited_once_with(FAKE_USER_ID, "gmail")
         request.assert_not_awaited()
+
+    async def test_a_connected_integration_with_no_account_record_lists_none(
+        self, seams: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
+        _, record, _ = seams
+        record.return_value = None
+
+        async with captured_wide_event() as event:
+            result = await self._connect("gmail")
+
+        assert result == (
+            "✅ Gmail is already connected. To add another account, "
+            "call connect_integration with mode='add_account'."
+        )
+        assert event["tool"] == {
+            "name": "connect_integration",
+            "action": "connect",
+            "mode": "connect",
+        }
 
     async def test_add_account_on_a_connected_integration_shows_the_add_card(
         self, seams: tuple[AsyncMock, AsyncMock, AsyncMock]
@@ -155,6 +175,18 @@ class TestConnectModes:
 
 
 class TestCheckIntegrationsStatusAccounts:
+    async def test_a_composio_integration_with_no_account_record_lists_no_accounts(self) -> None:
+        with (
+            patch(f"{MODULE}.check_single_integration_status", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_integration("gmail", "Gmail", composio=True)]),
+            patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)),
+        ):
+            result = await check_integrations_status.ainvoke(
+                {"integration_names": ["gmail"]}, config=_cfg()
+            )
+
+        assert result == "Gmail: ✅ Connected"
+
     async def test_a_multi_account_integration_reports_each_account(self) -> None:
         record = make_integration_record(
             make_integration_account("ca_1"),
