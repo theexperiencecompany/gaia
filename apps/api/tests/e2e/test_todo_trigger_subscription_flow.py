@@ -126,7 +126,7 @@ class TestSubscribeThroughTheGraph:
                 register_triggers=AsyncMock(return_value=[]),
                 unregister_triggers=AsyncMock(return_value=True),
             ),
-            patch(f"{_SERVICE}.capture_event"),
+            patch(f"{_SERVICE}.capture"),
         ):
             messages = await self._run(script, thread_config, in_memory_store, memory_saver)
 
@@ -209,7 +209,7 @@ class TestSubscribeThroughTheGraph:
                 register_triggers=AsyncMock(return_value=[]),
                 unregister_triggers=AsyncMock(return_value=True),
             ),
-            patch(f"{_SERVICE}.capture_event"),
+            patch(f"{_SERVICE}.capture"),
         ):
             messages = await self._run(script, thread_config, in_memory_store, memory_saver)
 

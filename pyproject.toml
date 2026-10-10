@@ -378,6 +378,16 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# The only modules allowed to import the PostHog SDK (banned-api above): the two
+# capture paths, the client's construction and shutdown, the request context
+# captures inherit identity from, flag evaluation, and LLM-generation tracing.
+"apps/api/app/services/analytics_service.py" = ["TID251"]  # the API's one capture path
+"libs/shared/py/analytics/client.py" = ["TID251"]  # the shared capture path voice uses
+"apps/api/app/config/posthog.py" = ["TID251"]  # builds the client; emits nothing
+"apps/api/app/core/lifespan.py" = ["TID251"]  # shuts the client down; emits nothing
+"apps/api/app/api/v1/middleware/auth.py" = ["TID251"]  # binds the request session for capture
+"apps/api/app/services/feature_flags.py" = ["TID251"]  # flag evaluation is a separate PostHog product
+"apps/api/tests/**" = ["TID251"]  # tests assert against the SDK's own context and handler types
 # Docstrings in these trees are runtime data, not documentation: route handler
 # docstrings are the OpenAPI descriptions (apps/api/openapi.json is generated
 # from them and drift-gated), @tool bodies are the model-facing tool
@@ -590,6 +600,11 @@ known-first-party = ["app", "shared", "apps", "libs"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "parents"
+
+# One door to PostHog: events go through the typed capture in
+# shared.py.analytics / app.services.analytics_service, never the SDK directly.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"posthog".msg = "Capture through app.services.analytics_service.capture (or shared.py.analytics.PostHogAnalytics) with a catalog event; only the analytics modules may import the PostHog SDK."
 
 [tool.ruff.lint.pylint]
 max-args = 6

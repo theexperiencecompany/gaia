@@ -18,7 +18,6 @@ from app.constants.log_tags import LogTag
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import AnalyticsEvents, SubscriptionPlan
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.subscription_events import (
     DESIRED_STATE,
@@ -33,6 +32,13 @@ from app.services.payments.subscription_events import (
     resolve_subscription_owner,
     resume_paywall_pauses_safely,
     send_welcome_email_safely,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    SubscriptionActivated,
+    SubscriptionCancelled,
+    SubscriptionExpired,
+    SubscriptionRenewed,
 )
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
@@ -181,11 +187,8 @@ class TestRecovery:
         )
         assert written["last_event_at"] == datetime.fromisoformat(RECOVERED_AT)
         mock_track_subscription.assert_called_once()
-        assert mock_track_subscription.call_args.kwargs["user_id"] == FAKE_USER_ID
-        assert (
-            mock_track_subscription.call_args.kwargs["event_type"]
-            == AnalyticsEvents.SUBSCRIPTION_ACTIVATED
-        )
+        assert mock_track_subscription.call_args.args[0] == UserId(FAKE_USER_ID)
+        assert isinstance(mock_track_subscription.call_args.args[1], SubscriptionActivated)
 
 
 def _dodo_subscription(status: str) -> Subscription:
@@ -248,10 +251,7 @@ class TestScheduledCancelNeverDowngradesEarly:
         # One cancellation, captured where it was recorded — the webhook that
         # follows finds the state already written (see TestIdempotency).
         mock_track_subscription.assert_called_once()
-        assert (
-            mock_track_subscription.call_args.kwargs["event_type"]
-            == AnalyticsEvents.SUBSCRIPTION_CANCELLED
-        )
+        assert isinstance(mock_track_subscription.call_args.args[1], SubscriptionCancelled)
 
 
 # ============================================================================
@@ -323,11 +323,15 @@ class TestActivationCreatesTheRow:
         await _apply(SubscriptionEventKind.ACTIVATED)
 
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(name="Pro", amount=9.99, currency="USD"),
-            properties={"amount_charged_pre_tax": 9.99, "currency_charged": "USD"},
+            UserId(FAKE_USER_ID),
+            SubscriptionActivated(
+                subscription_id="sub_xyz789",
+                plan_name="Pro",
+                amount=9.99,
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+            ),
         )
         mock_webhook_send_email.assert_awaited_once_with(
             user_name="Alice", user_email=FAKE_EMAIL, user_id=FAKE_USER_ID
@@ -372,9 +376,9 @@ class TestActivationCreatesTheRow:
         """Regression: a 100%-discount subscriber's 0 was dropped, so revenue sums lost them."""
         await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
 
-        kwargs = mock_track_subscription.call_args.kwargs
-        assert kwargs["plan"].amount == 0
-        assert kwargs["properties"]["amount_charged_pre_tax"] == 0
+        event = mock_track_subscription.call_args.args[1]
+        assert event.amount == 0
+        assert event.amount_charged_pre_tax == 0
 
     async def test_a_localised_subscription_reports_its_own_currency(
         self,
@@ -388,12 +392,9 @@ class TestActivationCreatesTheRow:
             SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=57284, currency="ZAR"
         )
 
-        kwargs = mock_track_subscription.call_args.kwargs
-        assert kwargs["plan"] == SubscriptionPlan(name="Pro", amount=572.84, currency="ZAR")
-        assert kwargs["properties"] == {
-            "amount_charged_pre_tax": 572.84,
-            "currency_charged": "ZAR",
-        }
+        event = mock_track_subscription.call_args.args[1]
+        assert (event.amount, event.currency) == (572.84, "ZAR")
+        assert (event.amount_charged_pre_tax, event.currency_charged) == (572.84, "ZAR")
 
     async def test_falls_back_to_the_customer_email_to_find_the_owner(
         self,
@@ -537,10 +538,10 @@ class TestTransitionsDriveTheSideEffects:
         assert written["cancelled_at"] == "2025-03-02T00:00:00Z"
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
-            subscription_id="sub_xyz789",
-            properties={"product_id": "prod_abc123", "billing_interval": "month"},
+            UserId(FAKE_USER_ID),
+            SubscriptionCancelled(
+                subscription_id="sub_xyz789", product_id="prod_abc123", billing_interval="month"
+            ),
         )
 
     async def test_a_scheduled_cancel_keeps_the_workflows_running(
@@ -577,9 +578,7 @@ class TestTransitionsDriveTheSideEffects:
         assert _written_fields(mock_webhook_subscription_repository)["status"] == "expired"
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
-            subscription_id="sub_xyz789",
+            UserId(FAKE_USER_ID), SubscriptionExpired(subscription_id="sub_xyz789")
         )
 
     async def test_a_plan_change_touches_neither_workflows_nor_analytics(
@@ -874,6 +873,14 @@ class TestResolveSubscriptionOwner:
         assert owner == FAKE_USER_ID
         mock_webhook_users_collection.get_by_email.assert_not_awaited()
 
+    async def test_an_empty_stamped_owner_falls_back_to_the_customer_email(
+        self, mock_webhook_users_collection
+    ) -> None:
+        owner = await resolve_subscription_owner(_sub_data(metadata={"user_id": ""}))
+
+        assert owner == FAKE_USER_ID
+        mock_webhook_users_collection.get_by_email.assert_awaited_once()
+
     async def test_an_unknown_customer_email_belongs_to_nobody(
         self, mock_webhook_users_collection
     ) -> None:
@@ -964,11 +971,13 @@ class TestResultsNameTheOwnerAndTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
-            subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(currency="USD"),
-            properties={"amount_charged_pre_tax": 9.99, "currency_charged": "USD"},
+            UserId(FAKE_USER_ID),
+            SubscriptionRenewed(
+                subscription_id="sub_xyz789",
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+            ),
         )
 
     async def test_a_stale_event_still_names_the_owner(

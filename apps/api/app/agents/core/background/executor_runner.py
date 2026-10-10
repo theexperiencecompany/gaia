@@ -90,6 +90,7 @@ from app.services.latency_metrics import (
 )
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
@@ -191,7 +192,10 @@ async def run_executor_background(
                     task_id=run.task_id,
                     stream_id=run.stream_id,
                 )
-                lifecycle.terminal_properties = {"queued": queued, **timing_fields}
+                lifecycle.queued = queued
+                lifecycle.queue_wait_ms = queue_wait_ms
+                lifecycle.executor_ttft_ms = ttft_ms
+                lifecycle.executor_active_ms = active_ms
                 lifecycle.paused = result_type == EXECUTOR_PAUSED
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
@@ -205,16 +209,14 @@ async def run_executor_background(
                     await release_resume_dispatch(run.conversation_id)
 
 
-def _run_props(run: ExecutorRun) -> dict[str, str]:
-    """Build the lifecycle props shared by the start and terminal events."""
-    props: dict[str, str] = {
-        "agent": "executor",
-        "mode": "background",
-        "conversation_id": run.conversation_id,
-    }
-    if run.task_id:
-        props["task_id"] = run.task_id
-    return props
+def _run_props(run: ExecutorRun) -> AgentRunStarted:
+    """Build the start event; its props are the ones the terminal event carries too."""
+    return AgentRunStarted(
+        agent="executor",
+        mode="background",
+        conversation_id=run.conversation_id,
+        task_id=run.task_id or None,
+    )
 
 
 def _timing_fields(

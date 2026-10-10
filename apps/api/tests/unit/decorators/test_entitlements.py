@@ -16,11 +16,13 @@ from app.decorators.entitlements import (
     require_active_subscription,
 )
 from app.models.payment_models import PlanType
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaywallBlocked
 
 pytestmark = pytest.mark.unit
 
 ENT = "app.decorators.entitlements"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 # require_subscription resolves the caller via app.core.request_context.resolve_caller,
 # which reads get_authenticated_user from its own module — not re-imported into
 # entitlements.py — so tests patch it at the source.
@@ -48,8 +50,8 @@ class TestIsPaid:
             ) as cached,
             patch(f"{ENT}.payment_service.get_user_subscription_status") as fresh,
         ):
-            assert await is_paid("u1") is True
-        cached.assert_awaited_once_with("u1")
+            assert await is_paid(USER_ID) is True
+        cached.assert_awaited_once_with(USER_ID)
         fresh.assert_not_called()
 
     async def test_a_cached_free_is_confirmed_from_the_row_and_the_stale_key_dropped(
@@ -65,9 +67,9 @@ class TestIsPaid:
             ) as fresh,
             patch(f"{ENT}.invalidate_plan_cache", new_callable=AsyncMock) as invalidate,
         ):
-            assert await is_paid("u1") is True
-        fresh.assert_awaited_once_with("u1")
-        invalidate.assert_awaited_once_with("u1")
+            assert await is_paid(USER_ID) is True
+        fresh.assert_awaited_once_with(USER_ID)
+        invalidate.assert_awaited_once_with(USER_ID)
 
     async def test_a_free_user_is_refused_and_the_cache_left_alone(self) -> None:
         with (
@@ -80,7 +82,7 @@ class TestIsPaid:
             ),
             patch(f"{ENT}.invalidate_plan_cache", new_callable=AsyncMock) as invalidate,
         ):
-            assert await is_paid("u1") is False
+            assert await is_paid(USER_ID) is False
         invalidate.assert_not_awaited()
 
 
@@ -94,10 +96,10 @@ class TestRequireActiveSubscription:
             ) as plan,
             patch(f"{ENT}.payment_service.create_pro_checkout", new=checkout_mock),
         ):
-            await require_active_subscription("u1", feature="chat")  # must not raise
+            await require_active_subscription(USER_ID, feature="chat")  # must not raise
         checkout_mock.assert_not_called()
         # The plan read is for THIS user; a lost id would read some default tier.
-        plan.assert_awaited_once_with("u1")
+        plan.assert_awaited_once_with(USER_ID)
 
     async def test_a_cached_free_is_confirmed_from_the_row_before_blocking(self) -> None:
         """The gate runs the same is_paid rule as every other surface."""
@@ -111,11 +113,11 @@ class TestRequireActiveSubscription:
                 AsyncMock(return_value=MagicMock(plan_type=PlanType.PRO)),
             ),
             patch(f"{ENT}.invalidate_plan_cache", new_callable=AsyncMock) as invalidate,
-            patch(f"{ENT}.capture_event") as mock_capture,
+            patch(f"{ENT}.capture") as mock_capture,
         ):
-            await require_active_subscription("u1", feature="chat")  # must not raise
+            await require_active_subscription(USER_ID, feature="chat")  # must not raise
 
-        invalidate.assert_awaited_once_with("u1")
+        invalidate.assert_awaited_once_with(USER_ID)
         mock_capture.assert_not_called()
 
     async def test_free_user_gets_the_exact_402_wire_contract(self) -> None:
@@ -128,7 +130,7 @@ class TestRequireActiveSubscription:
             patch(f"{ENT}.log") as mock_log,
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
-                await require_active_subscription("u1", feature="chat_stream_endpoint")
+                await require_active_subscription(USER_ID, feature="chat_stream_endpoint")
 
         exc = exc_info.value
         assert exc.status_code == 402
@@ -140,7 +142,7 @@ class TestRequireActiveSubscription:
         }
         mock_log.warning.assert_called_once_with(
             "Subscription required, blocking request",
-            user={"id": "u1"},
+            user={"id": USER_ID},
             payment={"operation": "paywall_gate", "feature": "chat_stream_endpoint"},
         )
 
@@ -155,7 +157,7 @@ class TestRequireActiveSubscription:
             patch(f"{ENT}.payment_service.create_pro_checkout", new=checkout_mock),
         ):
             with pytest.raises(SubscriptionRequiredException):
-                await require_active_subscription("u1", feature="chat")
+                await require_active_subscription(USER_ID, feature="chat")
 
         checkout_mock.assert_not_awaited()
 
@@ -168,7 +170,7 @@ class TestRequireActiveSubscription:
             patch(f"{ENT}.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
-                await require_active_subscription("u1", feature="chat")
+                await require_active_subscription(USER_ID, feature="chat")
 
         assert exc_info.value.detail["discount_code"] == "SAVE20"
         assert exc_info.value.detail["checkout_url"] is None
@@ -180,16 +182,12 @@ class TestRequireActiveSubscription:
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.FREE),
             ),
-            patch(f"{ENT}.capture_event") as mock_capture,
+            patch(f"{ENT}.capture") as mock_capture,
         ):
             with pytest.raises(SubscriptionRequiredException):
-                await require_active_subscription("u1", feature="get_token")
+                await require_active_subscription(USER_ID, feature="get_token")
 
-        mock_capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.PAYWALL_BLOCKED,
-            {"feature": "get_token"},
-        )
+        mock_capture.assert_called_once_with(UserId(USER_ID), PaywallBlocked(feature="get_token"))
 
     async def test_pro_user_is_never_captured_as_blocked(self) -> None:
         with (
@@ -197,8 +195,8 @@ class TestRequireActiveSubscription:
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.PRO),
             ),
-            patch(f"{ENT}.capture_event") as mock_capture,
+            patch(f"{ENT}.capture") as mock_capture,
         ):
-            await require_active_subscription("u1", feature="get_token")
+            await require_active_subscription(USER_ID, feature="get_token")
 
         mock_capture.assert_not_called()

@@ -18,7 +18,7 @@ from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.outbound_delivery import (
     OutboundResult,
     notify_account_linked,
@@ -30,6 +30,8 @@ from app.services.platform_link_service import (
     PlatformLinkService,
     link_conflict_error,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 
@@ -105,12 +107,10 @@ async def complete_platform_link(
         schedule_account_sync(user_id)
         if result.is_new_link:
             # Only a link that did not exist a moment ago is a connection, so an
-            # idempotent re-link never captures. capture_event, not the context one:
-            # the bot route has no session identity to inherit.
-            capture_event(
-                user_id,
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": platform, "is_new_link": result.is_new_link},
+            # idempotent re-link never captures.
+            capture(
+                UserId(user_id),
+                IntegrationConnected(integration_id=platform, is_new_link=result.is_new_link),
             )
     except Exception as e:
         raise PostLinkSideEffectError(

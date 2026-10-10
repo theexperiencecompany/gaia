@@ -1,5 +1,6 @@
 "use client";
 
+import { parseUserId } from "@gaia/shared/analytics/identity";
 import { ApiError } from "@shared/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RedirectType, redirect, useSearchParams } from "next/navigation";
@@ -11,12 +12,7 @@ import {
 } from "@/features/auth/hooks/useCurrentUser";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
-import {
-  ANALYTICS_EVENTS,
-  identifyUser,
-  resetUser,
-  trackEvent,
-} from "@/lib/analytics";
+import { identifyUser, resetUser, track } from "@/lib/analytics";
 import { HTTP_UNAUTHORIZED } from "@/lib/api/outcome";
 
 // Exactly-once guard for the OAuth login analytics event — module scope so it
@@ -44,7 +40,7 @@ const useFetchUser = () => {
 
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
-      identifyUser(data.user_id, {
+      identifyUser(parseUserId(data.user_id), {
         email: data.email ?? undefined,
         name: data.name ?? undefined,
         timezone: data.timezone ?? undefined,
@@ -63,7 +59,7 @@ const useFetchUser = () => {
       sessionStorage.getItem(SESSION_RESUMED_KEY);
 
     if (!isAuthRedirectPage && !hasTrackedSessionResumed) {
-      trackEvent(ANALYTICS_EVENTS.USER_SESSION_RESUMED, {
+      track("user:session_resumed", {
         method: "wos_session_cookie",
         has_completed_onboarding: data.onboarding?.completed ?? false,
       });

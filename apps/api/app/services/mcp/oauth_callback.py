@@ -7,9 +7,11 @@ recovery, the code exchange and the bookkeeping that follows it.
 from dataclasses import dataclass
 
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import MCPClient
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 KNOWN_OAUTH_ERRORS = frozenset(
@@ -129,7 +131,7 @@ async def complete_oauth(
             error_type=type(clear_err).__name__,
         )
     await invalidate_user_integration_caches(user_id)
-    capture_context_event(
-        AnalyticsEvents.INTEGRATION_CONNECTED,
-        {"integration_id": integration_id, "connection_method": "oauth"},
+    capture(
+        UserId(user_id),
+        IntegrationConnected(integration_id=integration_id, connection_method="oauth"),
     )

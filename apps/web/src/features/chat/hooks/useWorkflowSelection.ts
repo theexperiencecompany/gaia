@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import { FEATURE_DISCOVERED_WORKFLOWS_KEY } from "@/features/chat/constants";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useSelectedWorkflow } from "@/stores/composerStore";
 import type {
   SelectedWorkflowData,
@@ -63,7 +63,7 @@ export const useWorkflowSelection = () => {
 
         if (!hasTrackedFeatureDiscovered) {
           // workflow.title is user-authored free text — intentionally not sent.
-          trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
+          track("feature:discovered", {
             feature: "workflows",
           });
 

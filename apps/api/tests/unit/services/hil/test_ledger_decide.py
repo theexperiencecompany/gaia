@@ -22,7 +22,6 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
-from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -40,16 +39,21 @@ from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
 
 MODULE = "app.services.hil.ledger_decide"
 RUNNER = "app.agents.core.background.executor_runner"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OTHER_USER_ID = "6812f0b3c9a14e2b7d5a91c2"
+THIRD_USER_ID = "6812f0b3c9a14e2b7d5a91c9"
 
 
 def _row(**overrides: Any) -> MagicMock:
     row = MagicMock()
     row.approval_id = "ap_abc"
     row.conversation_id = "conv-1"
-    row.user_id = "u1"
+    row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
     row.args = {"to": "b@x"}
     row.summary = "Send it"
@@ -87,7 +91,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         assert outcome.prior_state == LedgerState.PENDING
@@ -97,7 +101,7 @@ class TestDecideLedger:
             "ap_abc",
             LedgerState.PENDING,
             LedgerState.APPROVED,
-            decided_by="u1",
+            decided_by=USER_ID,
             feedback=None,
         )
         deliver.assert_awaited_once()
@@ -117,7 +121,7 @@ class TestDecideLedger:
             ),
             patch.object(ledger_decide, "_wake_agent", new=AsyncMock()) as wake,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         wake.assert_awaited_once_with(repo.get_by_approval_id.return_value, "APPROVED", None)
@@ -131,7 +135,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is False
         assert outcome.state == LedgerState.APPROVED
@@ -148,7 +152,9 @@ class TestDecideLedger:
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
             patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+            )
 
         assert outcome.committed is True
         assert outcome.state == LedgerState.DENIED
@@ -156,7 +162,7 @@ class TestDecideLedger:
             "ap_abc",
             LedgerState.PENDING,
             LedgerState.DENIED,
-            decided_by="u1",
+            decided_by=USER_ID,
             feedback="nope",
         )
         deliver.assert_not_awaited()
@@ -170,7 +176,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         assert outcome.queued is True
@@ -185,7 +191,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is False
         assert outcome.stale is True
@@ -199,14 +205,13 @@ class TestDecideLedger:
             patch(f"{MODULE}.approval_ledger_repository", new=_repo(None)),
             pytest.raises(ApprovalRequestNotFoundError),
         ):
-            await decide_ledger("ap_nope", user_id="u1", kind="approve", v=None)
+            await decide_ledger("ap_nope", user_id=USER_ID, kind="approve", v=None)
 
 
 @pytest.mark.unit
 class TestDecisionSubmittedEvent:
     async def test_approve_emits_event_with_user_id(self) -> None:
         """Same attribution rule as revoke: the decide path resolves its user from the row, so the event must carry that id explicitly."""
-        from app.services.analytics_service import AnalyticsEvents
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
@@ -215,23 +220,22 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event") as capture,
+            patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         capture.assert_called_once()
-        user_id, event, props = capture.call_args.args
-        assert user_id == "u1"
-        assert event == AnalyticsEvents.HIL_DECISION_SUBMITTED
-        assert props["approval_id"] == "ap_abc"
-        assert props["decision"] == "approved"
-        assert props["ledger_version"] == 4
-        assert props["card_age_seconds"] is not None
-        assert props["card_age_seconds"] < 60
+        user_id, event = capture.call_args.args
+        assert user_id == UserId(USER_ID)
+        assert isinstance(event, HilDecisionSubmitted)
+        assert event.approval_id == "ap_abc"
+        assert event.decision == "approved"
+        assert event.ledger_version == 4
+        assert event.card_age_seconds is not None
+        assert event.card_age_seconds < 60
 
     async def test_deny_emits_deny_decision(self) -> None:
-        from app.services.analytics_service import AnalyticsEvents
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
@@ -240,12 +244,12 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event") as capture,
+            patch.object(ledger_decide, "capture") as capture,
         ):
-            await decide_ledger("ap_abc", user_id="u1", kind="deny", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", v=3)
 
-        assert capture.call_args.args[1] == AnalyticsEvents.HIL_DECISION_SUBMITTED
-        assert capture.call_args.args[2]["decision"] == "denied"
+        assert isinstance(capture.call_args.args[1], HilDecisionSubmitted)
+        assert capture.call_args.args[1].decision == "denied"
 
     async def test_uncommitted_decisions_emit_nothing(self) -> None:
         """Stale-v and lost-CAS returns decided nothing — an event would count attempts as successes."""
@@ -257,9 +261,9 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "approval_ledger_repository", new=stale_repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event") as capture,
+            patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=99)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=99)
 
         assert outcome.committed is False
         capture.assert_not_called()
@@ -270,9 +274,9 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "approval_ledger_repository", new=lost_repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event") as capture,
+            patch.object(ledger_decide, "capture") as capture,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is False
         capture.assert_not_called()
@@ -289,12 +293,12 @@ class TestConversationFlagSync:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event"),
+            patch.object(ledger_decide, "capture"),
             patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
         ):
-            await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
-        sync.assert_awaited_once_with("conv-1", "u1")
+        sync.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_revoke_refreshes_the_sidebar_flag(self) -> None:
         from app.services.hil import ledger_decide
@@ -305,14 +309,14 @@ class TestConversationFlagSync:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event"),
+            patch.object(ledger_decide, "capture"),
             patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
         ):
             await revoke_ticket(
-                "ap_abc", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+                "ap_abc", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
             )
 
-        sync.assert_awaited_once_with("conv-1", "u1")
+        sync.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_refused_revoke_syncs_nothing(self) -> None:
         """A revoke that changed nothing must not touch the flag — the row's state (and any flag it implies) is exactly as it was."""
@@ -324,7 +328,7 @@ class TestConversationFlagSync:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event"),
+            patch.object(ledger_decide, "capture"),
             patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
             pytest.raises(ApprovalRequestForbiddenError),
         ):
@@ -349,7 +353,7 @@ class TestDecideHardening:
             patch(f"{MODULE}.approval_ledger_repository", new=repo),
             pytest.raises(ApprovalRequestForbiddenError),
         ):
-            await decide_ledger("ap_abc", user_id="u1", kind="approve", v=None)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=None)
 
         repo.transition.assert_not_awaited()
 
@@ -365,7 +369,9 @@ class TestDecideHardening:
             patch(f"{MODULE}._deliver_verdict", new=AsyncMock()) as deliver,
             patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+            )
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
@@ -398,7 +404,7 @@ class TestDecideHardening:
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
             patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.queued is True
         deliver.assert_not_awaited()
@@ -460,7 +466,7 @@ class TestRedeemExecution:
 
     def _redeem_kwargs(self) -> dict[str, Any]:
         return {
-            "user_id": "u1",
+            "user_id": USER_ID,
             "conversation_id": "conv-1",
             "caller": "executor_conv-1",
         }
@@ -505,7 +511,7 @@ class TestRedeemExecution:
             result = await redeem_approved("ap_abc", **self._redeem_kwargs())
 
         assert result.state.value == "executed"
-        sync.assert_awaited_once_with("conv-1", "u1")
+        sync.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_redeem_failed_transition_still_returns_state(self) -> None:
         from app.models.hil_models import LedgerState as LS
@@ -549,14 +555,14 @@ class TestRedeemIdentity:
         ):
             await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
 
         config = dispatch.await_args.kwargs["config"]
-        assert config["configurable"]["user_id"] == "u1"
-        assert config["metadata"]["user_id"] == "u1"
+        assert config["configurable"]["user_id"] == USER_ID
+        assert config["metadata"]["user_id"] == USER_ID
 
 
 @pytest.mark.unit
@@ -579,7 +585,7 @@ class TestRedeemTerminalStates:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -609,7 +615,7 @@ class TestRedeemTerminalStates:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -638,7 +644,7 @@ class TestRedeemTerminalStates:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -653,7 +659,7 @@ class TestRedeemTerminalStates:
 class TestRevokeTicket:
     def _revoke_kwargs(self) -> dict[str, Any]:
         return {
-            "user_id": "u1",
+            "user_id": USER_ID,
             "conversation_id": "conv-1",
             "caller": "executor_conv-1",
         }
@@ -676,7 +682,6 @@ class TestRevokeTicket:
 
     async def test_revoke_emits_event_with_user_id(self) -> None:
         """The revoke event must attribute to the row's user — an anonymous capture would strand it outside the user's funnel, silently."""
-        from app.services.analytics_service import AnalyticsEvents
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import revoke_ticket
 
@@ -685,18 +690,13 @@ class TestRevokeTicket:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
-            patch.object(ledger_decide, "capture_event") as capture,
+            patch.object(ledger_decide, "capture") as capture,
         ):
             await revoke_ticket("ap_abc", **self._revoke_kwargs())
 
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.HIL_REVOKED,
-            {
-                "approval_id": "ap_abc",
-                "ledger_version": 4,
-                "revoker": "executor_conv-1",
-            },
+            UserId(USER_ID),
+            HilRevoked(approval_id="ap_abc", ledger_version=4, revoker="executor_conv-1"),
         )
 
     async def test_revoke_wrong_conversation_looks_absent(self) -> None:
@@ -710,7 +710,7 @@ class TestRevokeTicket:
         ):
             text = await revoke_ticket(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="other-conv",
                 caller="executor_other-conv",
             )
@@ -766,7 +766,7 @@ class TestRevokeTicket:
         ):
             text = await revoke_ticket(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="worker-unrelated",
             )
@@ -791,7 +791,7 @@ class TestApproveDeliversToExecutor:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
@@ -814,7 +814,7 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         resume.assert_awaited_once_with(row)
@@ -830,7 +830,7 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
-            await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         # Dispatch is unconditional; the no-owner row returns before any claim.
         resume.assert_awaited_once()
@@ -847,7 +847,9 @@ class TestApproveResumesBackgroundOwner:
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
             patch.object(ledger_decide, "record_owner_deny", new=AsyncMock()) as record,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+            )
 
         assert outcome.committed is True
         assert outcome.state == LedgerState.DENIED
@@ -871,7 +873,7 @@ class TestApproveResumesBackgroundOwner:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -899,13 +901,13 @@ class TestApproveResumesBackgroundOwner:
         ):
             first = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
             second = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -929,7 +931,7 @@ class TestApproveResumesBackgroundOwner:
         ):
             await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="other-conv",
                 caller="executor_other-conv",
             )
@@ -947,7 +949,7 @@ class TestApproveResumesBackgroundOwner:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -973,7 +975,7 @@ class TestConditionalApproveBecomesDeny:
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()) as verdict,
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id="u1", kind="approve", feedback="cc finance", v=3
+                "ap_abc", user_id=USER_ID, kind="approve", feedback="cc finance", v=3
             )
 
         assert outcome.committed is True
@@ -982,7 +984,7 @@ class TestConditionalApproveBecomesDeny:
             "ap_abc",
             LedgerState.PENDING,
             LedgerState.DENIED,
-            decided_by="u1",
+            decided_by=USER_ID,
             feedback="cc finance",
         )
         deliver.assert_not_awaited()
@@ -998,7 +1000,7 @@ class TestConditionalApproveBecomesDeny:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         assert outcome.state == LedgerState.APPROVED
@@ -1020,7 +1022,7 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
@@ -1044,7 +1046,7 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="approve", v=3)
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome.committed is True
 
@@ -1062,7 +1064,9 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
         ):
-            outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
+            outcome = await decide_ledger(
+                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", v=3
+            )
 
         assert outcome.committed is True
         assert outcome.state == LedgerState.DENIED
@@ -1076,7 +1080,7 @@ class TestCancelLedgerApprovals:
 
         mine = _row(approval_id="ap_mine")
         approved = _row(approval_id="ap_ticket", state=LedgerState.APPROVED)
-        foreign = _row(approval_id="ap_theirs", user_id="u2")
+        foreign = _row(approval_id="ap_theirs", user_id=OTHER_USER_ID)
         repo = _repo()
         repo.list_open = AsyncMock(return_value=[mine, approved, foreign])
         repo.transition = AsyncMock(return_value=True)
@@ -1085,7 +1089,7 @@ class TestCancelLedgerApprovals:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()) as tombstone,
         ):
-            cancelled = await cancel_ledger_approvals("conv-1", "u1")
+            cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
 
         assert cancelled == ["ap_mine"]
         repo.transition.assert_awaited_once_with(
@@ -1104,7 +1108,7 @@ class TestCancelLedgerApprovals:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()) as tombstone,
         ):
-            cancelled = await cancel_ledger_approvals("conv-1", "u1")
+            cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
 
         assert cancelled == []
         tombstone.assert_not_awaited()
@@ -1140,7 +1144,7 @@ class TestRevokeSettlesSessionFrame:
                         GatedApproval(
                             approval_id="ap_abc",
                             stream_id=stream_id,
-                            user_id="u1",
+                            user_id=USER_ID,
                             conversation_id="conv-1",
                             tool_call=GatedCall(
                                 name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}
@@ -1185,7 +1189,7 @@ class TestRedeemSettlesTerminalFrame:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -1218,7 +1222,7 @@ class TestRedeemSettlesTerminalFrame:
         ):
             result = await redeem_approved(
                 "ap_abc",
-                user_id="u1",
+                user_id=USER_ID,
                 conversation_id="conv-1",
                 caller="executor_conv-1",
             )
@@ -1234,7 +1238,7 @@ def _doc(**overrides: Any) -> ApprovalLedgerDocument:
     fields: dict[str, Any] = {
         "approval_id": "ap_1",
         "conversation_id": "conv-1",
-        "user_id": "u1",
+        "user_id": USER_ID,
         "fingerprint": "fp",
         "tool_name": "GMAIL_SEND_EMAIL",
         "args": {"to": "b@x"},
@@ -1289,7 +1293,7 @@ def seams() -> Iterator[LedgerSeams]:
     websocket.broadcast_to_user = AsyncMock()
     with (
         patch(f"{MODULE}.approval_ledger_repository", new=repo),
-        patch(f"{MODULE}.capture_event") as capture,
+        patch(f"{MODULE}.capture") as capture,
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}._publish_entry", new=AsyncMock()) as publish_entry,
         patch(f"{MODULE}.settle_session_approval_frame") as settle_frame,
@@ -1349,7 +1353,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_stale_version_refreshes_without_writing(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(state=LedgerState.PENDING, v=4)
 
-        outcome = await decide_ledger("ap_1", user_id="u1", kind="approve", v=3)
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", v=3)
 
         assert outcome == LedgerDecision(
             committed=False,
@@ -1379,7 +1383,7 @@ class TestDecideLedgerOutcomes:
 
         seams.repo.transition.side_effect = _lose
 
-        outcome = await decide_ledger("ap_1", user_id="u1", kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         assert outcome == LedgerDecision(
             committed=False, approval_id="ap_1", prior_state=LedgerState.PENDING, state=state
@@ -1389,14 +1393,14 @@ class TestDecideLedgerOutcomes:
     async def test_whitespace_feedback_is_no_condition(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        outcome = await decide_ledger("ap_1", user_id="u1", kind="approve", feedback="   ")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", feedback="   ")
 
         assert outcome.state is LedgerState.APPROVED
 
     async def test_a_conditional_approve_is_recorded_as_a_deny(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve", feedback="cc finance")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", feedback="cc finance")
 
         seams.log.set.assert_any_call(
             hil={"approval_id": "ap_1", "decision": "deny", "tool": "GMAIL_SEND_EMAIL"}
@@ -1405,7 +1409,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_committed_approve_is_one_exact_decision(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
 
-        outcome = await decide_ledger("ap_1", user_id="u1", kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         assert outcome == LedgerDecision(
             committed=True,
@@ -1417,7 +1421,7 @@ class TestDecideLedgerOutcomes:
         seams.log.set.assert_any_call(
             hil={"approval_id": "ap_1", "decision": "approve", "tool": "GMAIL_SEND_EMAIL"}
         )
-        assert seams.capture.call_args.args[2]["card_age_seconds"] is None
+        assert seams.capture.call_args.args[1].card_age_seconds is None
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "approved", None)
         stalled_cutoff, conversation = seams.repo.list_stalled_executing.await_args.args
         assert conversation == "conv-1"
@@ -1427,11 +1431,11 @@ class TestDecideLedgerOutcomes:
     async def test_the_ticket_names_its_age_and_the_redeem_call(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=datetime.now(UTC) - timedelta(hours=2, minutes=5))
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         seams.deliver.assert_awaited_once_with(
             "conv-1",
-            AuthenticatedUser(user_id="u1"),
+            AuthenticatedUser(user_id=USER_ID),
             "APPROVAL_READY ap_1: the user approved Send it (2h5m old). Run it now with "
             'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result. '
             "If it is no longer needed, say so instead of running it.",
@@ -1440,7 +1444,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_ticket_with_no_birth_time_says_so(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         assert "Send it (unknown age)." in seams.deliver.await_args.args[2]
 
@@ -1450,7 +1454,7 @@ class TestDecideLedgerOutcomes:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         errors = _warned(seams.log.error)
         assert errors[
@@ -1469,30 +1473,30 @@ class TestDecideLedgerOutcomes:
         row = _doc()
         seams.rows["ap_1"] = row
 
-        await decide_ledger("ap_1", user_id="u1", kind="deny", feedback="nope")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope")
 
         seams.deliver.assert_awaited_once_with(
             "conv-1",
-            AuthenticatedUser(user_id="u1"),
+            AuthenticatedUser(user_id=USER_ID),
             f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}",
         )
         seams.record_deny.assert_awaited_once_with(row, "nope")
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "denied", "nope")
         seams.persist.assert_awaited_once_with(
-            "conv-1", user_id="u1", approval_id="ap_1", status="denied"
+            "conv-1", user_id=USER_ID, approval_id="ap_1", status="denied"
         )
 
     async def test_a_bare_deny_carries_no_preview(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id="u1", kind="deny")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny")
 
         assert seams.deliver.await_args.args[2] == f"DECISION ap_1=DENIED Send it{_DENY_TAIL}"
 
     async def test_a_long_deny_reason_is_clipped_for_the_agent(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
-        await decide_ledger("ap_1", user_id="u1", kind="deny", feedback="n" * 600)
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="n" * 600)
 
         assert seams.deliver.await_args.args[2] == (
             f"DECISION ap_1=DENIED Send it :: {'n' * 500}{_DENY_TAIL}"
@@ -1504,7 +1508,7 @@ class TestDecideLedgerOutcomes:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id="u1", kind="deny", feedback="nope")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope")
 
         errors = _warned(seams.log.error)
         assert errors[
@@ -1523,7 +1527,7 @@ class TestDecideLedgerOutcomes:
     ) -> None:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a", "ap_b"])
 
-        outcome = await decide_ledger("ap_1", user_id="u1", kind="approve")
+        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         assert outcome.queued is True
         assert _inbox_lines(seams) == [
@@ -1563,10 +1567,10 @@ class TestPublishLedgerDecision:
         assert entry.data.feedback == "stored words"
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", status, "stored words")
         seams.persist.assert_awaited_once_with(
-            "conv-1", user_id="u1", approval_id="ap_1", status=status
+            "conv-1", user_id=USER_ID, approval_id="ap_1", status=status
         )
         seams.broadcast.assert_awaited_once_with(
-            user_id="u1",
+            user_id=USER_ID,
             message={
                 "type": "hil_approval_decided",
                 "data": {
@@ -1635,7 +1639,7 @@ class TestPublishLedgerDecision:
             "stream-1", "ap_1", "revoked", drop_if_unpublished=True
         )
         seams.persist.assert_awaited_once_with(
-            "conv-1", user_id="u1", approval_id="ap_1", status="revoked"
+            "conv-1", user_id=USER_ID, approval_id="ap_1", status="revoked"
         )
         message = seams.broadcast.await_args.kwargs["message"]
         assert (message["data"]["status"], message["data"]["feedback"]) == ("revoked", None)
@@ -1647,7 +1651,7 @@ class TestTheInboxWake:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
         seams.redis.client = None
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         seams.inbox.assert_not_called()
         errors = _warned(seams.log.error)
@@ -1659,7 +1663,7 @@ class TestTheInboxWake:
         seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
         seams.inbox.return_value.append.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         errors = _warned(seams.log.error)
         assert errors[f"{LogTag.HIL} Ledger wake failed; outcome lives on the row only"] == {
@@ -1671,7 +1675,7 @@ class TestTheInboxWake:
     async def test_a_long_result_is_clipped_in_the_wake(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(blocked_by=["x" * 600])
 
-        await decide_ledger("ap_1", user_id="u1", kind="approve")
+        await decide_ledger("ap_1", user_id=USER_ID, kind="approve")
 
         text = _inbox_lines(seams)[0][1]
         assert text == f"DECISIONS: ap_1=QUEUED Send it :: {('waiting on ' + 'x' * 600)[:500]}"
@@ -1698,11 +1702,11 @@ class TestDecideLedgerBatchOutcomes:
             for i in range(1, 7)
         ]
         with patch(f"{MODULE}.decide_ledger", new=AsyncMock(side_effect=results)) as decide:
-            outcomes = await decide_ledger_batch("u1", items)
+            outcomes = await decide_ledger_batch(USER_ID, items)
 
         assert [c.args for c in decide.await_args_list] == [(f"ap_{i}",) for i in range(1, 7)]
         assert [c.kwargs for c in decide.await_args_list] == [
-            {"user_id": "u1", "kind": item.decision, "feedback": item.feedback, "v": item.v}
+            {"user_id": USER_ID, "kind": item.decision, "feedback": item.feedback, "v": item.v}
             for item in items
         ]
         assert outcomes == [
@@ -1722,7 +1726,7 @@ class TestDecideLedgerBatchOutcomes:
                 "approval_id": "ap_3",
                 "error": "mongo down",
                 "error_type": "RuntimeError",
-                "user_id": "u1",
+                "user_id": USER_ID,
             }
         }
 
@@ -1730,7 +1734,9 @@ class TestDecideLedgerBatchOutcomes:
 @pytest.mark.unit
 class TestRedeemOutcomes:
     async def _redeem(self, caller: str = "executor_conv-1") -> RedeemResult:
-        return await redeem_approved("ap_1", user_id="u1", conversation_id="conv-1", caller=caller)
+        return await redeem_approved(
+            "ap_1", user_id=USER_ID, conversation_id="conv-1", caller=caller
+        )
 
     async def test_an_already_settled_ticket_is_refused_with_its_state(
         self, seams: LedgerSeams
@@ -1756,10 +1762,10 @@ class TestRedeemOutcomes:
         )
         seams.repo.claim_executing.assert_awaited_once_with("ap_1")
         seams.dispatch.assert_awaited_once_with(
-            user_id="u1",
+            user_id=USER_ID,
             tool_name="GMAIL_SEND_EMAIL",
             data={"to": "b@x"},
-            config={"user": "u1"},
+            config={"user": USER_ID},
         )
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "executed")
 
@@ -1824,7 +1830,7 @@ class TestRedeemOutcomes:
         assert _warned(seams.log.error)[
             f"{LogTag.HIL} Ticket redeem raised; reconciled as UNKNOWN, never retried"
         ] == {"approval_id": "ap_1", "error_type": "RuntimeError"}
-        seams.sync_flag.assert_awaited_once_with("conv-1", "u1")
+        seams.sync_flag.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_a_provider_timeout_is_unknown_never_retried(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(state=LedgerState.APPROVED)
@@ -1870,7 +1876,7 @@ class TestRedeemOutcomes:
 @pytest.mark.unit
 class TestRevokeMessages:
     async def _revoke(self, caller: str = "gmail_conv-1") -> str:
-        return await revoke_ticket("ap_1", user_id="u1", conversation_id="conv-1", caller=caller)
+        return await revoke_ticket("ap_1", user_id=USER_ID, conversation_id="conv-1", caller=caller)
 
     async def test_a_decided_row_cannot_be_revoked(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(state=LedgerState.APPROVED)
@@ -1932,7 +1938,7 @@ class TestCancelLedgerApprovalsSweep:
     ) -> None:
         rows = [
             _doc(approval_id="ap_ok", state=LedgerState.APPROVED),
-            _doc(approval_id="ap_other", user_id="u2"),
+            _doc(approval_id="ap_other", user_id=OTHER_USER_ID),
             _doc(approval_id="ap_lost"),
             _doc(approval_id="ap_1", v=7),
         ]
@@ -1940,7 +1946,7 @@ class TestCancelLedgerApprovalsSweep:
         seams.rows["ap_1"] = _doc(v=8, state=LedgerState.REVOKED, proposing_run_id="stream-2")
         seams.repo.transition.side_effect = lambda approval_id, *_: approval_id == "ap_1"
 
-        cancelled = await cancel_ledger_approvals("conv-1", "u1")
+        cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
 
         assert cancelled == ["ap_1"]
         seams.repo.list_open.assert_awaited_once_with("conv-1")
@@ -1948,11 +1954,10 @@ class TestCancelLedgerApprovalsSweep:
             "stream-2", "ap_1", "revoked", drop_if_unpublished=True
         )
         seams.capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.HIL_REVOKED,
-            {"approval_id": "ap_1", "ledger_version": 8, "revoker": "cancelled-run"},
+            UserId(USER_ID),
+            HilRevoked(approval_id="ap_1", ledger_version=8, revoker="cancelled-run"),
         )
-        seams.sync_flag.assert_awaited_once_with("conv-1", "u1")
+        seams.sync_flag.assert_awaited_once_with("conv-1", USER_ID)
 
 
 @pytest.mark.unit
@@ -1960,7 +1965,9 @@ class TestReconcileStalled:
     async def test_a_stalled_row_goes_unknown_settles_and_wakes_with_a_warning(
         self, seams: LedgerSeams
     ) -> None:
-        stalled = _doc(state=LedgerState.EXECUTING, user_id="u9", proposing_run_id="stream-3")
+        stalled = _doc(
+            state=LedgerState.EXECUTING, user_id=THIRD_USER_ID, proposing_run_id="stream-3"
+        )
         seams.repo.list_stalled_executing.return_value = [stalled]
 
         await reconcile_conversation_ledger("conv-1")
@@ -1982,7 +1989,7 @@ class TestReconcileStalled:
                 AgentTag.HIL_DECISION,
             )
         ]
-        seams.sync_flag.assert_awaited_once_with("conv-1", "u9")
+        seams.sync_flag.assert_awaited_once_with("conv-1", THIRD_USER_ID)
 
 
 @pytest.mark.unit

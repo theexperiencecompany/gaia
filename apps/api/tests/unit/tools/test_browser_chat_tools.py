@@ -32,7 +32,6 @@ from app.schemas.browser_job import (
     BrowserJobStatus,
     BrowserJobStopped,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_stop
 from app.services.browser.handoff import (
     await_handoff,
@@ -48,6 +47,8 @@ from app.services.browser.jobs import (
     set_latest_job,
     take_job_messages,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
@@ -57,7 +58,7 @@ _FINISHED = BrowserJobFinished(
     result=BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
 )
 
-USER = "user-1"
+USER = "6812f0b3c9a14e2b7d5a91cc"
 CONVERSATION = "conv-1"
 REASON = "Sign in to finish the booking"
 
@@ -265,7 +266,7 @@ class TestStopBrowserTask:
         await _running("job-dm", "conv-dm")
         handoff_id = await _paused("job-g", dm)
 
-        with patch.object(chat_tools, "capture_event") as capture:
+        with patch.object(chat_tools, "capture") as capture:
             async with captured_wide_event() as event:
                 await _say(stop_browser_task, {}, _turn("conv-dm", conversation_source="telegram"))
 
@@ -275,9 +276,7 @@ class TestStopBrowserTask:
         assert isinstance(await done_state("job-g"), BrowserJobStopped)
         assert await done_state("job-dm") is None
         capture.assert_called_once_with(
-            USER,
-            AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-            {"decision": "cancel", "with_note": False},
+            UserId(USER), BrowserHandoffResolved(decision="cancel", with_note=False)
         )
         assert (event["browser"]["job_id"], event["browser"]["stopped_from_chat"]) == (
             "job-g",

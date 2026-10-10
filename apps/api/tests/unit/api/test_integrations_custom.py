@@ -10,8 +10,9 @@ from app.models.integration_models import (
     Integration,
     UpdateCustomIntegrationRequest,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.integrations.publish_service import PublishError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 
 # __init__.py: prefix="/integrations", custom.py router mounted at /custom
 BASE = "/api/v1/integrations/custom"
@@ -59,7 +60,7 @@ class TestCreateCustomIntegration:
             patch(
                 f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
             ) as mock_create,
-            patch(f"{_CUSTOM}.capture_context_event") as mock_capture,
+            patch(f"{_CUSTOM}.capture") as mock_capture,
         ):
             mock_mcp.return_value = MagicMock()
             mock_create.return_value = (
@@ -81,8 +82,7 @@ class TestCreateCustomIntegration:
             "error": None,
         }
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "i1", "auth_type": "none"},
+            UserId(FAKE_USER_ID), IntegrationConnected(integration_id="i1", auth_type="none")
         )
 
     async def test_create_bearer_integration_captures_auth_type(self, client: AsyncClient) -> None:
@@ -92,7 +92,7 @@ class TestCreateCustomIntegration:
             patch(
                 f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
             ) as mock_create,
-            patch(f"{_CUSTOM}.capture_context_event") as mock_capture,
+            patch(f"{_CUSTOM}.capture") as mock_capture,
         ):
             mock_mcp.return_value = MagicMock()
             mock_create.return_value = (
@@ -103,8 +103,7 @@ class TestCreateCustomIntegration:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "i1", "auth_type": "bearer"},
+            UserId(FAKE_USER_ID), IntegrationConnected(integration_id="i1", auth_type="bearer")
         )
 
         mock_mcp.assert_awaited_once_with(user_id=FAKE_USER_ID)

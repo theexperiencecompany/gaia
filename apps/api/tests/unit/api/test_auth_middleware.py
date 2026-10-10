@@ -27,7 +27,9 @@ from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.analytics_service import capture_event
+from app.services.analytics_service import capture
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import NotesCreated
 from tests.helpers import captured_wide_event
 
 
@@ -780,7 +782,7 @@ class TestPostHogSessionJoin:
 
         @app.post("/notes")
         async def notes() -> dict:
-            capture_event(GAIA_USER_ID, "notes:created")
+            capture(UserId(GAIA_USER_ID), NotesCreated())
             return {"ok": True}
 
         return app

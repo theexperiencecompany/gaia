@@ -13,6 +13,8 @@ rule to a message still streaming.
 
 import re
 
+from pydantic import TypeAdapter, ValidationError
+
 from app.constants.comms import (
     EMOJI_TAG,
     LEGACY_REACT_KEYWORD,
@@ -27,6 +29,7 @@ from app.utils.message_breaks import (
     split_message_bubbles,
     strip_partial_message_break,
 )
+from shared.py.analytics.catalog.properties import Emoji
 from shared.py.wide_events import log
 
 # One line, no DOTALL: a directive never spans lines, so a multi-line reply can
@@ -42,6 +45,15 @@ _DIRECTIVE_OPENINGS = (
 )
 # A streamed tail that may still turn into a bubble break, down to a lone "<".
 _BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
+_EMOJI = TypeAdapter(Emoji)
+
+
+def _is_emoji(payload: str) -> bool:
+    try:
+        _EMOJI.validate_python(payload)
+    except ValidationError:
+        return False
+    return True
 
 
 def _bubble_directive(bubble: str) -> CommsDirective | None:
@@ -52,8 +64,8 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
     keyword, payload = match.group(1).upper(), match.group(2).strip()
     if keyword == SILENCE_TAG:
         return CommsDirective(CommsDirectiveKind.SILENCE, payload)
-    # A reaction with no emoji is meaningless: the bubble stays text.
-    return CommsDirective(CommsDirectiveKind.REACT, payload) if payload else None
+    # A reaction that is not one emoji (empty, or a word) is meaningless: the bubble stays text.
+    return CommsDirective(CommsDirectiveKind.REACT, payload) if _is_emoji(payload) else None
 
 
 def _could_become_directive(bubble: str) -> bool:

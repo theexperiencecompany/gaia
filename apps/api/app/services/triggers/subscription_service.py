@@ -31,7 +31,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.todo_activity import record_activity
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
@@ -40,6 +40,12 @@ from app.services.triggers.subscription_validation import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    SubscriptionFailureReason,
+    TodosSubscriptionFailed,
+    TodosSubscriptionRegistered,
+)
 from shared.py.wide_events import log
 
 DEFAULT_COOLDOWN_SECONDS = 900
@@ -91,13 +97,8 @@ async def register_subscription(
         trigger_name=trigger_name,
     )
 
-    def _fail(reason: str, message: str) -> SubscriptionError:
-        # A webhook/worker path has no request context, so the id is explicit.
-        capture_event(
-            user_id,
-            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
-            {"trigger_name": trigger_name, "reason": reason},
-        )
+    def _fail(reason: SubscriptionFailureReason, message: str) -> SubscriptionError:
+        capture(UserId(user_id), TodosSubscriptionFailed(trigger_name=trigger_name, reason=reason))
         return SubscriptionError(message)
 
     handler = get_handler_by_name(trigger_name)
@@ -175,17 +176,16 @@ async def register_subscription(
         # redundant.
         await _release_unstored_registration(todo_id, user_id, subscription)
         return stored, outcome, False
-    capture_event(
-        user_id,
-        AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
-        {
-            "trigger_name": trigger_name,
-            "action": action.value,
-            "resolution": subscription.resolution.value,
-            "condition_count": len(outcome.conditions),
-            "repaired": bool(outcome.repairs),
-            "cooldown_seconds": cooldown_seconds,
-        },
+    capture(
+        UserId(user_id),
+        TodosSubscriptionRegistered(
+            trigger_name=trigger_name,
+            action=action.value,
+            resolution=subscription.resolution.value,
+            condition_count=len(outcome.conditions),
+            repaired=bool(outcome.repairs),
+            cooldown_seconds=cooldown_seconds,
+        ),
     )
     await record_activity(
         todo_id,

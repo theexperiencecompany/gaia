@@ -58,7 +58,7 @@ from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
@@ -83,6 +83,8 @@ from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.wide_events import log
 
 #: The surface a paywalled tracked-todo run is attributed to in the funnel.
@@ -417,9 +419,7 @@ async def _pause_unpaid(
 ) -> str:
     """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
     log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
-    capture_event(
-        doc.user_id, AnalyticsEvents.PAYWALL_BLOCKED, {"feature": PAYWALL_FEATURE_TRACKED_TODO}
-    )
+    capture(UserId(doc.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_TRACKED_TODO))
     await todo_repository.update(
         doc.id,
         user_id=doc.user_id,

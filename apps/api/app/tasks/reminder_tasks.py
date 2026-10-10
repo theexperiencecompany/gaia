@@ -10,10 +10,13 @@ from app.models.reminder_models import (
     StaticReminderPayload,
 )
 from app.models.scheduler_models import TaskOutcome
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.notification_service import notification_service
 from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaywallBlocked
+from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
 #: The surface name a paywalled reminder is attributed to in the funnel. Matches
@@ -133,11 +136,7 @@ async def execute_reminder_by_agent(
         # Same event every HTTP/bot paywall block fires; this gate skips instead
         # of going through require_active_subscription, so without it the funnel
         # could not see reminders lost to the wall.
-        capture_event(
-            reminder.user_id,
-            AnalyticsEvents.PAYWALL_BLOCKED,
-            {"feature": PAYWALL_FEATURE_REMINDER},
-        )
+        capture(UserId(reminder.user_id), PaywallBlocked(feature=PAYWALL_FEATURE_REMINDER))
         return TaskOutcome.ENTITLEMENT_BLOCKED
 
     try:
@@ -147,10 +146,9 @@ async def execute_reminder_by_agent(
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
         log.info("Reminder executed successfully", reminder_id=reminder.id, agent=reminder.agent)
-        capture_event(
-            reminder.user_id,
-            AnalyticsEvents.REMINDER_COMPLETED,
-            {"reminder_id": reminder.id, "agent": reminder.agent.value},
+        capture(
+            UserId(reminder.user_id),
+            ReminderCompleted(reminder_id=reminder.id, agent=reminder.agent.value),
         )
         return TaskOutcome.EXECUTED
     except Exception as e:

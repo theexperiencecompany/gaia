@@ -25,10 +25,15 @@ from app.models.webhook_models import (
     DodoWebhookPayload,
     WebhookProcessingStatus,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.payments.discount_codes import get_discount_codes
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    PaymentCheckoutStarted,
+    SubscriptionCancellationRequested,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -93,13 +98,13 @@ async def create_subscription_endpoint(
             resource=str(subscription_data.product_id) if subscription_data.product_id else None,
             provider="dodo",
         )
-        capture_context_event(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {
-                "quantity": subscription_data.quantity,
-                "source": subscription_data.source,
-                "surface": "redirect",
-            },
+        capture(
+            UserId(user_id),
+            PaymentCheckoutStarted(
+                quantity=subscription_data.quantity,
+                source=subscription_data.source,
+                surface="redirect",
+            ),
         )
         return result
     except HTTPException:
@@ -145,13 +150,13 @@ async def create_checkout_session_endpoint(
         resource=pro_checkout.plan.dodo_product_id,
         provider="dodo",
     )
-    capture_context_event(
-        AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-        {
-            "billing_cycle": payload.billing_cycle,
-            "source": payload.source,
-            "surface": "overlay",
-        },
+    capture(
+        UserId(user_id),
+        PaymentCheckoutStarted(
+            billing_cycle=payload.billing_cycle,
+            source=payload.source,
+            surface="overlay",
+        ),
     )
     return pro_checkout.checkout
 
@@ -182,7 +187,7 @@ async def cancel_subscription_endpoint(
             actor=user_id,
             provider="dodo",
         )
-        capture_context_event(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
+        capture(UserId(user_id), SubscriptionCancellationRequested())
         return result
     except HTTPException:
         raise
@@ -282,10 +287,9 @@ async def handle_dodo_webhook(
         # below is driven by what GAIA managed to do with the event.
         webhook_data: DodoWebhookPayload = json.loads(payload)
 
-        log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
-
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
+        log.set_ns("payment", event_type=result.event_type)
 
         log.audit(
             "payment webhook processed",

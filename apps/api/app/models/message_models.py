@@ -7,6 +7,7 @@ from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.workflow_models import WorkflowStep
+from shared.py.analytics.catalog.properties import Identifier
 
 SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 
@@ -38,7 +39,8 @@ class FileData(BaseModel):
 class SelectedWorkflowData(BaseModel):
     """Workflow the user attached to a message for execution."""
 
-    id: str
+    # Workflow ids are generated slugs (wf_<hex>); chat:message_submitted carries this one.
+    id: Identifier
     title: str
     description: str
     prompt: str | None = None
@@ -75,8 +77,9 @@ class MessageRequestWithHistory(BaseModel):
     messages: list[MessageDict]
     fileIds: list[str] | None = []
     fileData: list[FileData] | None = []
-    selectedTool: str | None = None
-    toolCategory: str | None = None
+    # Identifier-shaped so chat:message_submitted can carry them; a bad one 422s before any work.
+    selectedTool: Identifier | None = None
+    toolCategory: Identifier | None = None
     selectedWorkflow: SelectedWorkflowData | None = None
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None

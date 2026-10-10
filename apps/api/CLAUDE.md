@@ -215,20 +215,9 @@ and the OpenAPI schema:
 
 ## Analytics (PostHog)
 
-Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The one API-specific decision:
+Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The API emits only through `capture(distinct_id, event, dedupe_key=None)` in `app/services/analytics_service.py`: `distinct_id` is a `UserId`/`PlatformIdentity` and `event` a `ServerEvent` model from `libs/shared/py/analytics/catalog/`. Every call names its user explicitly, whether it runs in a route, a webhook, a bot route or an ARQ task, so no event depends on request context to find its person. Importing the PostHog SDK anywhere else is a ruff `TID251` error.
 
-**`capture_context_event(event, props)` vs `capture_event(user_id, event, props)`** — both live in `app/services/analytics_service.py`.
-
-`capture_context_event` sends **no `distinct_id`**. It relies entirely on the contextvar identity that `PostHogRequestContextMiddleware` (`app/api/v1/middleware/auth.py`) sets, and that middleware only identifies a request that `WorkOSAuthMiddleware` already authenticated. Use it in ordinary authenticated route handlers, where it keeps the user id out of every call site.
-
-Use `capture_event(user_id, ...)` — explicitly — whenever the handler resolves its user from something other than a session:
-
-- OAuth / platform-link callbacks (the third party redirects the browser back with no session cookie)
-- Bot routes (`require_bot_api_key`, user resolved via `PlatformLinkService`)
-- Payment and provider webhooks
-- ARQ worker tasks and any background/fire-and-forget path — there is no request at all
-
-Getting this wrong is silent: the event is still captured, just attributed to a fresh anonymous person, so it never appears in that user's funnel. Nothing fails, no test goes red unless it asserts the id. **Assert the `distinct_id` in the test** — the mutation gate kills call-count-only assertions anyway.
+In tests, assert the whole call: `mock_capture.assert_called_once_with(UserId(USER_ID), EmailSent(...))`. Models compare by value, so the id and every property are checked.
 
 ## Service Layer
 

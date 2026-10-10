@@ -59,7 +59,7 @@ class TestTheTaskOwnsNeitherThePhaseNorTheEvent:
 
     async def test_no_completion_event_is_captured_here(self, pipeline: AsyncMock) -> None:
         """complete_onboarding emits the milestone; a second emitter would double-count Gmail connects."""
-        with patch("app.services.analytics_service.capture_event") as capture:
+        with patch("app.services.analytics_service.capture") as capture:
             await process_onboarding_intelligence_task({}, USER)
 
         capture.assert_not_called()

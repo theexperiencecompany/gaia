@@ -37,7 +37,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.analytics_service import AnalyticsEvents, SubscriptionPlan
 from app.services.payments import payment_service as payment_service_module
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.subscription_events import (
@@ -45,6 +44,8 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     SubscriptionEventResult,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import SubscriptionActivated
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
@@ -1252,11 +1253,15 @@ class TestVerifyPaymentCompletion:
         assert doc.created_at.tzinfo is not None
         assert doc.updated_at == doc.created_at
         materialize_mocks.track_activation.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            subscription_id="sub_from_checkout",
-            plan=SubscriptionPlan(name="Pro", amount=300.0, currency="USD"),
-            properties={"amount_charged_pre_tax": 300.0, "currency_charged": "USD"},
+            UserId(FAKE_USER_ID),
+            SubscriptionActivated(
+                subscription_id="sub_from_checkout",
+                plan_name="Pro",
+                amount=300.0,
+                currency="USD",
+                amount_charged_pre_tax=300.0,
+                currency_charged="USD",
+            ),
         )
         materialize_mocks.send_email.assert_awaited_once()
 

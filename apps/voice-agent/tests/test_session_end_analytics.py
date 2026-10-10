@@ -12,9 +12,12 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 from livekit.agents import AgentSession, JobContext
+import pytest
 from src.agent import _register_session_logging
+from src.utils import user_id_from_room
 
-from shared.py.analytics import PostHogAnalytics, VoiceAnalyticsEvents
+from shared.py.analytics import PostHogAnalytics, UserId
+from shared.py.analytics.catalog.voice import VoiceSessionEnded
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -31,7 +34,12 @@ def _run_session_end(analytics: MagicMock) -> None:
     identity = {"room": ctx.room.name, "user_id": USER_ID, "job_id": "job-1"}
 
     _register_session_logging(
-        cast(JobContext, ctx), cast(AgentSession, session), identity, "trace-1", analytics
+        cast(JobContext, ctx),
+        cast(AgentSession, session),
+        identity,
+        "trace-1",
+        analytics,
+        UserId(USER_ID),
     )
     for callback in callbacks:
         asyncio.run(callback("room_deleted"))
@@ -43,5 +51,20 @@ def test_session_end_is_captured_then_the_client_is_shut_down() -> None:
     _run_session_end(analytics)
 
     analytics.capture.assert_called_once()
-    assert analytics.capture.call_args.args[:2] == (USER_ID, VoiceAnalyticsEvents.SESSION_ENDED)
+    distinct_id, event = analytics.capture.call_args.args
+    assert distinct_id == UserId(USER_ID)
+    assert isinstance(event, VoiceSessionEnded)
     assert [call[0] for call in analytics.method_calls] == ["capture", "shutdown"]
+
+
+def test_a_minted_room_names_its_user() -> None:
+    assert user_id_from_room(f"voice_session_{USER_ID}_0f3a9c") == UserId(USER_ID)
+
+
+@pytest.mark.parametrize(
+    "room",
+    ["playground", f"voice_{USER_ID}", f"voice_session_{USER_ID}_", "voice_session_bob_0f3a9c"],
+)
+def test_a_room_the_token_endpoint_did_not_mint_is_refused_before_the_session(room: str) -> None:
+    with pytest.raises(ValueError):
+        user_id_from_room(room)

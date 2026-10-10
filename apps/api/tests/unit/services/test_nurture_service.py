@@ -13,6 +13,7 @@ from app.constants.nurture import (
     NURTURE_MIN_DAYS_BETWEEN_EMAILS,
     NurtureStep,
 )
+from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.nurture.service import (
     _process_user,
@@ -22,7 +23,10 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
@@ -39,31 +43,35 @@ def _step(**overrides) -> NurtureStep:
     return NurtureStep(**fields)
 
 
+def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
+    return NurtureHistoryEntry(step="step_a", at=at, status=status)
+
+
 class TestWithinFrequencyCaps:
     def test_empty_history_allows_send(self) -> None:
         assert _within_frequency_caps([], NOW) is True
 
     def test_ignores_non_sent_entries(self) -> None:
-        history = [{"status": "skipped", "at": NOW.replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SKIPPED, NOW.replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is True
 
     def test_blocks_after_weekly_cap(self) -> None:
         history = [
-            {"status": "sent", "at": (NOW - timedelta(days=d)).replace(tzinfo=None)}
+            _entry(NurtureStepStatus.SENT, (NOW - timedelta(days=d)).replace(tzinfo=None))
             for d in (1, 2, 3)
         ]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_under_weekly_cap_but_blocks_recent_send(self) -> None:
-        history = [{"status": "sent", "at": (NOW - timedelta(hours=1)).replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SENT, (NOW - timedelta(hours=1)).replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_when_last_send_is_old_enough(self) -> None:
         history = [
-            {
-                "status": "sent",
-                "at": (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
-            }
+            _entry(
+                NurtureStepStatus.SENT,
+                (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
+            )
         ]
         assert _within_frequency_caps(history, NOW) is True
 
@@ -232,7 +240,7 @@ class TestSendStep:
 class TestProcessUser:
     def _user(self, **overrides) -> UserDocument:
         fields = dict(
-            id="u-1",
+            id=USER_ID,
             email="u@example.com",
             created_at="2026-05-30T12:00:00Z",
             notification_channel_prefs={},
@@ -249,31 +257,41 @@ class TestProcessUser:
             assert await _process_user(self._user(email=None), NOW) is False
 
     async def test_sends_and_records_on_success(self) -> None:
-        user = self._user()
+        sent = _entry(NurtureStepStatus.SENT, datetime(2026, 5, 20, 12, 0))
+        user = self._user(nurture={"completed_steps": ["welcome"], "history": [sent.model_dump()]})
+        step = _step()
         with (
             patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
             patch(
                 "app.services.nurture.service.normalize_channel_preferences",
                 return_value={"email": True},
             ),
-            patch("app.services.nurture.service._within_frequency_caps", return_value=True),
+            patch(
+                "app.services.nurture.service._within_frequency_caps", return_value=True
+            ) as mock_caps,
             patch(
                 "app.services.nurture.service._select_step",
                 new_callable=AsyncMock,
-                return_value=_step(),
-            ),
+                return_value=step,
+            ) as mock_select,
             patch("app.services.nurture.service._send_step", new_callable=AsyncMock) as mock_send,
             patch(
                 "app.services.nurture.service._record_step", new_callable=AsyncMock
             ) as mock_record,
-            patch("app.services.nurture.service.capture_event") as mock_capture,
+            patch("app.services.nurture.service.capture") as mock_capture,
         ):
             result = await _process_user(user, NOW)
 
         assert result is True
-        mock_send.assert_awaited_once()
-        mock_record.assert_awaited_once()
-        mock_capture.assert_called_once()
+        mock_caps.assert_called_once_with([sent], NOW)
+        mock_select.assert_awaited_once_with(user, 2, {"welcome"}, NOW)
+        mock_send.assert_awaited_once_with(user, step)
+        mock_record.assert_awaited_once_with(
+            USER_ID, "first_win", NOW, status=NurtureStepStatus.SENT
+        )
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID), NurtureEmailSent(step="first_win", day_offset=1)
+        )
 
 
 class TestRunNurtureSequence:

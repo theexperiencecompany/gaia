@@ -12,9 +12,11 @@ from fastapi import HTTPException
 
 from app.config.settings import settings
 from app.models.payment_models import PlanType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.payments.payment_service import payment_service
 from app.services.payments.plan_cache import invalidate_plan_cache
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import PaywallBlocked
 from shared.py.wide_events import log
 
 P = ParamSpec("P")
@@ -84,8 +86,5 @@ async def require_active_subscription(user_id: str, feature: str) -> None:
         user={"id": user_id},
         payment={"operation": "paywall_gate", "feature": feature},
     )
-    # capture_event, not capture_context_event: bot routes and worker paths
-    # reach this with no authenticated request context to attribute to, and an
-    # anonymous paywall block never joins the user's funnel.
-    capture_event(user_id, AnalyticsEvents.PAYWALL_BLOCKED, {"feature": feature})
+    capture(UserId(user_id), PaywallBlocked(feature=feature))
     raise SubscriptionRequiredException()

@@ -9,7 +9,9 @@ auxiliary one-shot, browser, success or error all reach PostHog only here.
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.db.repositories.users import user_repository
 from app.models.chat_models import SourceCategory
-from app.services.analytics_service import AIFeature, AnalyticsEvents, capture_event
+from app.services.analytics_service import AIFeature, capture
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 
 #: The two graph tiers; any other ``agent_name`` is a per-integration subagent.
@@ -61,34 +63,33 @@ def capture_llm_call(row: LLMCallDocument) -> None:
     if feature is AIFeature.UNATTRIBUTED:
         log.error("llm_call_unmapped_label", label=row.agent_name, model=row.model_requested)
 
-    capture_event(
-        row.user_id,
-        AnalyticsEvents.AI_LLM_CALL_COMPLETED,
-        {
-            "feature": str(feature),
-            "surface": SourceCategory.from_source(row.channel).value,
-            "agent_name": row.agent_name,
-            "background": row.background,
-            "charge_to_budget": row.charge_to_budget,
-            "model": row.model_requested,
-            "model_served": row.model_served,
-            "provider": row.provider,
-            "input_tokens": row.input_tokens,
-            "output_tokens": row.output_tokens,
-            "cached_tokens": row.cached_tokens,
-            "reasoning_tokens": row.reasoning_tokens,
-            "total_tokens": row.input_tokens + row.output_tokens,
-            "cost_usd": row.cost_usd,
-            "cost_source": row.cost_source,
-            "status": row.status,
-            "error_family": row.error_family,
-            "finish_reason": row.finish_reason,
-            "duration_ms": row.duration_ms,
-            "channel": row.channel,
-            "generation_id": row.generation_id,
-            "conversation_id": row.conversation_id,
-            "workflow_id": row.workflow_id,
-            "llm_call_id": row.id,
-        },
+    capture(
+        UserId(row.user_id),
+        AiLlmCallCompleted(
+            feature=str(feature),
+            surface=SourceCategory.from_source(row.channel).value,
+            agent_name=row.agent_name,
+            background=row.background,
+            charge_to_budget=row.charge_to_budget,
+            model=row.model_requested,
+            model_served=row.model_served,
+            provider=row.provider,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            cached_tokens=row.cached_tokens,
+            reasoning_tokens=row.reasoning_tokens,
+            total_tokens=row.input_tokens + row.output_tokens,
+            cost_usd=row.cost_usd,
+            cost_source=row.cost_source,
+            status=row.status,
+            error_family=row.error_family,
+            finish_reason=row.finish_reason,
+            duration_ms=row.duration_ms,
+            channel=row.channel,
+            generation_id=row.generation_id,
+            conversation_id=row.conversation_id,
+            workflow_id=row.workflow_id,
+            llm_call_id=row.id,
+        ),
         dedupe_key=row.id,
     )

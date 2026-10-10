@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import pytest
 
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
+from app.constants.log_tags import LogTag
 from app.services.oauth.oauth_state_service import (
     create_oauth_state,
     is_safe_redirect_path,
@@ -277,6 +278,7 @@ class TestValidateAndConsumeOAuthState:
         assert result is None
 
     async def test_incomplete_state_data_missing_user_id_returns_none(self, mock_redis_client):
+        """The warning tells a malformed state apart from an expired one."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
                 "user_id": "",
@@ -285,9 +287,13 @@ class TestValidateAndConsumeOAuthState:
             }
         )
 
-        result = await validate_and_consume_oauth_state("token_abc")
+        with patch("app.services.oauth.oauth_state_service.log") as mock_log:
+            result = await validate_and_consume_oauth_state("token_abc")
 
         assert result is None
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.OAUTH} Incomplete OAuth state data for token"
+        )
 
     async def test_incomplete_state_data_missing_redirect_path_returns_none(
         self, mock_redis_client

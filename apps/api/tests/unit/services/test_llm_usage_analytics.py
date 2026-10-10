@@ -1,6 +1,6 @@
 """Unit tests for app/services/llm_usage_analytics.py.
 
-The PostHog client is mocked, never capture_event itself: a wrong distinct_id
+The PostHog client is mocked, never capture itself: a wrong distinct_id
 is the failure mode that matters, and mocking the helper would hide it.
 """
 
@@ -15,13 +15,14 @@ import pytest
 
 from app.constants.llm import DEFAULT_MODEL_NAME
 from app.db.repositories.llm_calls import LLMCallDocument
-from app.services.analytics_service import AIFeature, AnalyticsEvents
+from app.services.analytics_service import AIFeature
 from app.services.llm_usage_analytics import (
     _MEMORY_LABEL_PREFIX,
     capture_llm_call,
     feature_for_label,
     llm_feature,
 )
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 
 USER = "6a40d2f0c1b2a3d4e5f60718"
 
@@ -193,7 +194,30 @@ def test_the_event_is_attributed_to_the_rows_user(posthog: Any) -> None:
     capture_llm_call(_row())
     call = _captured(posthog)
     assert call["distinct_id"] == USER
-    assert call["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+    assert call["event"] == AiLlmCallCompleted.event
+
+
+def test_the_rows_upstream_timing_and_context_ids_reach_the_event(posthog: Any) -> None:
+    capture_llm_call(
+        _row(
+            provider="anthropic",
+            finish_reason="length",
+            duration_ms=812.5,
+            conversation_id="conv-9",
+            workflow_id="wf-3",
+        )
+    )
+    props = _captured(posthog)["properties"]
+    assert {
+        key: props[key]
+        for key in ("provider", "finish_reason", "duration_ms", "conversation_id", "workflow_id")
+    } == {
+        "provider": "anthropic",
+        "finish_reason": "length",
+        "duration_ms": 812.5,
+        "conversation_id": "conv-9",
+        "workflow_id": "wf-3",
+    }
 
 
 def test_the_event_carries_the_rows_tokens_cost_and_attribution(posthog: Any) -> None:
@@ -253,7 +277,7 @@ def test_an_error_row_says_it_failed_and_why(posthog: Any) -> None:
 def test_the_event_is_keyed_by_the_ledger_row(posthog: Any) -> None:
     """One row is one event: a replayed emit collapses, two real calls (two rows) never do."""
     capture_llm_call(_row(id="row-42"))
-    expected = uuid5(NAMESPACE_URL, f"{AnalyticsEvents.AI_LLM_CALL_COMPLETED}:{USER}:row-42")
+    expected = uuid5(NAMESPACE_URL, f"{AiLlmCallCompleted.event}:{USER}:row-42")
     assert _captured(posthog)["uuid"] == str(expected)
 
 
@@ -292,7 +316,7 @@ def test_a_mapped_label_logs_no_error(posthog: Any) -> None:
 
 
 def test_the_event_carries_no_message_content(posthog: Any) -> None:
-    """Counts, flags and ids only: the ledger row holds no text, so neither does its event."""
+    """Counts, flags and ids only, and a None field is left out rather than sent as null."""
     capture_llm_call(_row())
     assert set(_captured(posthog)["properties"]) == {
         "feature",
@@ -302,7 +326,6 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "charge_to_budget",
         "model",
         "model_served",
-        "provider",
         "input_tokens",
         "output_tokens",
         "cached_tokens",
@@ -311,13 +334,8 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "cost_usd",
         "cost_source",
         "status",
-        "error_family",
-        "finish_reason",
-        "duration_ms",
         "channel",
         "generation_id",
-        "conversation_id",
-        "workflow_id",
         "llm_call_id",
         "timestamp",
     }

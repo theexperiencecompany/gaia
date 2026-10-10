@@ -596,6 +596,13 @@ jobs:
           node scripts/ci/checks.mjs api-schema
           echo "::endgroup::"
           echo "### API schema — ✅ in sync" >> "$GITHUB_STEP_SUMMARY"
+      - name: Regenerate the analytics catalog types and fail on drift
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs analytics-catalog"' ERR
+          echo "::group::analytics-catalog regenerate + diff"
+          node scripts/ci/checks.mjs analytics-catalog
+          echo "::endgroup::"
+          echo "### Analytics catalog — ✅ in sync" >> "$GITHUB_STEP_SUMMARY"
       - name: No hand-written twin of an API schema type
         run: |
           trap 'echo "::error::repro: node scripts/ci/checks.mjs api-schema-types"' ERR

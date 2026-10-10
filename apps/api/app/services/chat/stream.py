@@ -55,11 +55,7 @@ from app.models.stream_events import (
     MainResponseCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import (
-    AnalyticsEvents,
-    AnalyticsProperties,
-    capture_event,
-)
+from app.services.analytics_service import capture
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
@@ -92,6 +88,12 @@ from app.utils.stream_utils import (
     ReasoningEvent,
     absorb_reasoning_delta,
     reconstruct_subagent_groups,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatTurnReacted,
 )
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -408,14 +410,9 @@ async def _run_chat_stream(
             status="cancelled" if state.is_cancelled else "success",
         )
         if user_id:
-            capture_event(
-                user_id,
-                (
-                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
-                    if state.is_cancelled
-                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
-                ),
-                _turn_completion_props(
+            capture(
+                UserId(user_id),
+                _turn_ended_event(
                     body, state, conversation_id, source, is_new_conversation=is_new_conversation
                 ),
                 dedupe_key=stream_id,
@@ -434,31 +431,27 @@ async def _run_chat_stream(
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
-def _turn_completion_props(
+def _turn_ended_event(
     body: MessageRequestWithHistory,
     state: _StreamState,
     conversation_id: str,
     source: str | None,
     *,
     is_new_conversation: bool,
-) -> AnalyticsProperties:
-    """Properties for the turn's terminal analytics event; timings only once measured."""
-    props: dict[str, object] = {
-        "conversation_id": conversation_id,
-        "voice_mode": body.voice_mode,
-        "is_new_conversation": is_new_conversation,
-        "delegated": state.delegated,
-        "queued": state.queued,
-    }
-    if state.ttft_ms is not None:
-        props["ttft_ms"] = state.ttft_ms
-    if state.e2e_ack_ms is not None:
-        props["e2e_ack_ms"] = state.e2e_ack_ms
-    if state.e2e_full_ms is not None:
-        props["e2e_full_ms"] = state.e2e_full_ms
-    if source:
-        props["source"] = source
-    return props
+) -> ChatMessageCompleted | ChatMessageCancelled:
+    """Build the turn's terminal analytics event, cancelled or completed; timings only once measured."""
+    event_type = ChatMessageCancelled if state.is_cancelled else ChatMessageCompleted
+    return event_type(
+        conversation_id=conversation_id,
+        voice_mode=body.voice_mode,
+        is_new_conversation=is_new_conversation,
+        delegated=state.delegated,
+        queued=state.queued,
+        ttft_ms=state.ttft_ms,
+        e2e_ack_ms=state.e2e_ack_ms,
+        e2e_full_ms=state.e2e_full_ms,
+        source=source or None,
+    )
 
 
 def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
@@ -1014,11 +1007,7 @@ async def _persist_turn(
         reacts_to_message_id=state.reacts_to_message_id,
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
-        capture_event(
-            user.user_id,
-            AnalyticsEvents.CHAT_TURN_REACTED,
-            {"emoji": state.complete_message},
-        )
+        capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))
     state.saved = True
 
 

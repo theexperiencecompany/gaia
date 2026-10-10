@@ -58,6 +58,15 @@
       "command": "node scripts/ci/checks.mjs api-schema"
     },
     {
+      "name": "analytics-catalog",
+      "ci_job": "api-schema",
+      "scope": "^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\\.lock$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs analytics-catalog"
+    },
+    {
       "name": "doc-comments",
       "ci_job": "doc-comments",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",

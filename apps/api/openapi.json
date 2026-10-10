@@ -1860,6 +1860,7 @@
           "source_browser": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3081,6 +3082,26 @@
         ],
         "title": "ConditionOperator",
         "type": "string"
+      },
+      "ConfirmedSocialProfile": {
+        "description": "A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "url"
+        ],
+        "title": "ConfirmedSocialProfile",
+        "type": "object"
       },
       "ConnectIntegrationRequest": {
         "description": "Request to connect an integration.",
@@ -8582,6 +8603,7 @@
             "type": "string"
           },
           "tool_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -10276,6 +10298,7 @@
           "selectedTool": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -10297,6 +10320,7 @@
           "toolCategory": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -14096,7 +14120,7 @@
             "type": "object"
           },
           "tool_name": {
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -14457,6 +14481,7 @@
             "type": "string"
           },
           "id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -14500,6 +14525,7 @@
             "type": "string"
           },
           "id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -14541,6 +14567,7 @@
           "client": {
             "maxLength": 20,
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
@@ -14566,6 +14593,7 @@
           "platform": {
             "maxLength": 60,
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -15271,7 +15299,7 @@
         "properties": {
           "profiles": {
             "items": {
-              "$ref": "#/components/schemas/SocialProfile"
+              "$ref": "#/components/schemas/ConfirmedSocialProfile"
             },
             "title": "Profiles",
             "type": "array"
@@ -18642,7 +18670,7 @@
         "properties": {
           "voice_id": {
             "description": "Catalog voice id to use for voice mode",
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Voice Id",
             "type": "string"
           }
@@ -20588,6 +20616,7 @@
             "name": "tool_name",
             "required": true,
             "schema": {
+              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
               "title": "Tool Name",
               "type": "string"
             }
@@ -39058,6 +39087,7 @@
             "name": "voice_id",
             "required": true,
             "schema": {
+              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
               "title": "Voice Id",
               "type": "string"
             }

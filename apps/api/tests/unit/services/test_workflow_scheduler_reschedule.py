@@ -29,7 +29,7 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: WORKFLOW_EXECUTED never reaches a real PostHog."""
-    with patch("app.workers.tasks.workflow_tasks.capture_event"):
+    with patch("app.workers.tasks.workflow_tasks.capture"):
         yield
 
 

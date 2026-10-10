@@ -22,14 +22,14 @@ class TestCreateConversationReal:
         ):
             result = await create_conversation(
                 {"role": "user", "content": "Hello world"},
-                user=make_authenticated_user(user_id="create-user-1"),
+                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9103"),
                 selectedTool=None,
                 generate_description=False,
             )
 
         doc = await conversations_collection.find_one({"conversation_id": result.conversation_id})
         assert doc is not None
-        assert doc["user_id"] == "create-user-1"
+        assert doc["user_id"] == "6812f0b3c9a14e2b7d5a9103"
 
     async def test_conversation_id_is_unique(self, real_redis, conversations_collection):
         """Each call must generate a unique conversation_id."""
@@ -39,13 +39,13 @@ class TestCreateConversationReal:
         ):
             r1 = await create_conversation(
                 {"role": "user", "content": "First"},
-                user=make_authenticated_user(user_id="create-user-2"),
+                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9104"),
                 selectedTool=None,
                 generate_description=False,
             )
             r2 = await create_conversation(
                 {"role": "user", "content": "Second"},
-                user=make_authenticated_user(user_id="create-user-2"),
+                user=make_authenticated_user(user_id="6812f0b3c9a14e2b7d5a9104"),
                 selectedTool=None,
                 generate_description=False,
             )

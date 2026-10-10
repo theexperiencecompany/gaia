@@ -3,12 +3,15 @@
 import { RaisedButton } from "@/components/ui/raised-button";
 
 import type { CheckoutSource } from "../api/pricingApi";
-import { usePricingCardCta } from "../hooks/usePricingCardCta";
+import {
+  type PricingCardTier,
+  usePricingCardCta,
+} from "../hooks/usePricingCardCta";
 import type { PlanViewerState } from "../types";
 import { CheckoutConfirming } from "./CheckoutConfirming";
 
 interface PricingCardCtaProps {
-  title: string;
+  planTier: PricingCardTier;
   price: number;
   durationIsMonth: boolean;
   planId?: string;
@@ -17,7 +20,7 @@ interface PricingCardCtaProps {
 }
 
 export function PricingCardCta({
-  title,
+  planTier,
   price,
   durationIsMonth,
   planId,
@@ -32,7 +35,7 @@ export function PricingCardCta({
     paymentError,
     onGetStarted,
   } = usePricingCardCta({
-    title,
+    planTier,
     price,
     durationIsMonth,
     planId,

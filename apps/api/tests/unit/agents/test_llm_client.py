@@ -100,8 +100,8 @@ from app.constants.llm import (
     ReasoningLevel,
 )
 from app.core.lazy_loader import ProviderRegistry
-from app.services.analytics_service import AnalyticsEvents
 from app.services.llm_metering import LLMCallContext
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
 
@@ -113,6 +113,7 @@ from tests.helpers import create_fake_llm
 # about what gets BOOKED, not about the ledger row, so they share one minimal
 # context; the row it produces is covered in test_llm_metering_ledger.py.
 _CLIENT = "app.agents.llm.client"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
@@ -891,7 +892,7 @@ class TestAinvokeLlm:
         primary = self._runnable(result=AIMessage(content="ok"))
         config = RunnableConfig(
             configurable={
-                "user_id": "u1",
+                "user_id": USER_ID,
                 "conversation_id": "conv-1",
                 "thread_id": "executor_conv-1",
                 "workflow_id": "wf-1",
@@ -983,7 +984,7 @@ class TestOneInvocationPerCall:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(
-                configurable={"user_id": "u1", "provider": "openrouter", "root_request_id": "r1"}
+                configurable={"user_id": USER_ID, "provider": "openrouter", "root_request_id": "r1"}
             ),
             label="comms_agent",
             options=LLMInvokeOptions(meter_auxiliary=False),
@@ -1018,7 +1019,7 @@ class TestFallbackHandover:
         """The sticky key must be bound on the runnable, not left in config — a config-carried session_id is dropped before the wire."""
         primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
         fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
-        config = RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"})
         messages = [HumanMessage(content="hi")]
 
         result = await ainvoke_llm(primary, messages, config=config, fallback=fallback)
@@ -1146,7 +1147,7 @@ class TestMemoryLaneProviderSelection:
         mock_aux_runnable: MagicMock,
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-aux")
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         options = StructuredCallOptions(temperature=0.4, timeout=9.0, max_attempts=1)
 
@@ -1205,7 +1206,7 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
         structured = mock_memory_llm.return_value.with_structured_output.return_value
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1240,7 +1241,7 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         """Delegates to ainvoke_structured, whose LLMNotConfiguredError names the fix; extraction's callers catch exactly that type."""
         mock_structured.return_value = _Extracted(fact="delegated")
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1549,7 +1550,7 @@ class TestRecordAuxiliaryUsage:
         completed = [
             c.kwargs
             for c in posthog.capture.call_args_list
-            if c.kwargs["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+            if c.kwargs["event"] == AiLlmCallCompleted.event
         ]
         assert len(completed) == 1
         props = completed[0]["properties"]
@@ -1569,7 +1570,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "follow_up_actions",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-abc123"),
             )
@@ -1658,7 +1659,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1673,7 +1674,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1686,7 +1687,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1702,7 +1703,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1722,7 +1723,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1744,13 +1745,13 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
 
         assert rec.call_args.kwargs == {
-            "user_id": "user-1",
+            "user_id": USER_ID,
             "model_name": "gemini",
             "usage": {
                 "input_tokens": 100,
@@ -1773,7 +1774,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1795,7 +1796,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1844,11 +1845,11 @@ class TestAuxiliaryMeteringWiring:
             await ainvoke_llm(
                 primary,
                 [HumanMessage(content="hi")],
-                config=RunnableConfig(configurable={"user_id": "user-9"}),
+                config=RunnableConfig(configurable={"user_id": USER_ID}),
                 label="memory_extraction",
             )
 
-        assert rec.call_args.kwargs["user_id"] == "user-9"
+        assert rec.call_args.kwargs["user_id"] == USER_ID
 
     async def test_unattributed_spend_is_warned_about_with_its_label(self) -> None:
         """The warning is the only trail to which helper leaked its user_id, so the label must be on the recorded event, not just the message."""
@@ -1873,12 +1874,12 @@ class TestAuxiliaryMeteringWiring:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=RunnableConfig(configurable={"user_id": "user-9"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         forwarded = primary.ainvoke.call_args.kwargs["config"]
-        assert forwarded["configurable"] == {"user_id": "user-9"}
+        assert forwarded["configurable"] == {"user_id": USER_ID}
 
 
 class TestAinvokeStructured:
@@ -2438,7 +2439,7 @@ class TestFallbackRunCarriesTheCallLabel:
             RunnableLambda(_primary),
             "hi",
             fallback=RunnableLambda(_fallback),
-            config=cast(RunnableConfig, {"configurable": {"user_id": "u1"}}),
+            config=cast(RunnableConfig, {"configurable": {"user_id": USER_ID}}),
             options=LLMInvokeOptions(
                 max_attempts=1,
                 fallback_config=cast(RunnableConfig, {"configurable": {"provider": "gemini"}}),
@@ -2448,7 +2449,7 @@ class TestFallbackRunCarriesTheCallLabel:
 
         assert result.content == "from-fallback"
         assert primary_seen.get("metadata", {}).get("llm_label") == "memory_extraction"
-        assert primary_seen["configurable"] == {"user_id": "u1"}
+        assert primary_seen["configurable"] == {"user_id": USER_ID}
         assert fallback_seen.get("metadata", {}).get("llm_label") == "memory_extraction"
         assert fallback_seen["configurable"] == {"provider": "gemini"}
 
@@ -2472,7 +2473,7 @@ class TestFallbackKeepsItsLanesStickySession:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
@@ -2487,7 +2488,7 @@ class TestFallbackKeepsItsLanesStickySession:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
@@ -2690,7 +2691,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "memory-u1"}),
             fallback=fallback,
         )
 
@@ -2706,7 +2707,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
@@ -2835,7 +2836,7 @@ class TestAuxiliaryCostSource:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(cost=0.008),
             )
@@ -2857,7 +2858,7 @@ class TestAuxiliaryCostSource:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(cost=0.008),
             )
@@ -2873,7 +2874,7 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.log") as mock_log,
         ):
             await _record_auxiliary_usage(
-                handler, "memory_extraction", "u1", context=_AUX_CONTEXT, facts=ResponseFacts()
+                handler, "memory_extraction", USER_ID, context=_AUX_CONTEXT, facts=ResponseFacts()
             )
 
         assert rec.call_args.kwargs["provider_cost"] is None
@@ -2917,7 +2918,7 @@ class TestAuxiliaryGenerationIdAttribution:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-its-own"),
             )
@@ -2937,7 +2938,7 @@ class TestAuxiliaryGenerationIdAttribution:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-one-of-them"),
             )
@@ -2960,14 +2961,14 @@ class TestAuxiliaryGenerationIdAttribution:
                 _record_auxiliary_usage(
                     self._handler(gemini={"input_tokens": 10, "output_tokens": 2}),
                     "memory:extraction",
-                    "u1",
+                    USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="memory:extraction"),
                     facts=ResponseFacts(generation_id="gen-extraction"),
                 ),
                 _record_auxiliary_usage(
                     self._handler(gemini={"input_tokens": 7, "output_tokens": 3}),
                     "follow_up_actions",
-                    "u1",
+                    USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="follow_up_actions"),
                     facts=ResponseFacts(generation_id="gen-followup"),
                 ),
@@ -3014,7 +3015,9 @@ class TestFailedCallsReachTheLedger:
         """A failed call has no reply, so the row names only the intended model — and needs the surface to tell an outage from one broken client."""
         primary = self._runnable(TimeoutError("no answer"))
         primary.model_name = "deepseek/deepseek-v4-flash"
-        config = RunnableConfig(configurable={"user_id": "u1", "conversation_source": "telegram"})
+        config = RunnableConfig(
+            configurable={"user_id": USER_ID, "conversation_source": "telegram"}
+        )
 
         with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
             with pytest.raises(TimeoutError):
@@ -3194,7 +3197,7 @@ class TestAuxiliaryResponseFacts:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-1", provider="Baidu", finish_reason="stop"),
             )

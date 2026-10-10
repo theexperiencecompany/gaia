@@ -26,6 +26,7 @@ from app.constants.executor import (
 from app.models.user_models import AuthenticatedUser
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop, jobs as jobs_mod
+from shared.py.analytics.catalog.agents import AgentRunFailed, AgentRunStarted
 from tests.browser_factories import make_browser_job_state
 
 
@@ -162,7 +163,7 @@ class TestALivenessFailureIsAFailedRun:
         run = ExecutorRun(
             stream_id="stream-1",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="u1"),
+            user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
             kind=RunKind.LIVE,
             task_id="task-1",
             user_message_id=None,
@@ -170,15 +171,14 @@ class TestALivenessFailureIsAFailedRun:
         )
         with (
             patch.object(er, "keep_alive", AsyncMock(side_effect=ConnectionError("down"))),
-            patch("app.services.analytics_service.capture_event") as capture,
+            patch("app.services.analytics_service.capture") as capture,
             pytest.raises(ConnectionError),
         ):
             await er.run_executor_background(run=run, task="do the thing", configurable={})
 
-        assert [(c.args[1], c.args[2].get("reason")) for c in capture.call_args_list] == [
-            ("agent:run_started", None),
-            ("agent:run_failed", "ConnectionError"),
-        ]
+        assert [
+            (type(c.args[1]), getattr(c.args[1], "reason", None)) for c in capture.call_args_list
+        ] == [(AgentRunStarted, None), (AgentRunFailed, "ConnectionError")]
 
 
 @pytest.mark.unit

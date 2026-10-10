@@ -12,7 +12,7 @@ import {
   SALUTATION_FALLBACK,
 } from "@/features/chat/components/interface/founder-letter/content";
 import { useDiscountCodes } from "@/features/pricing/hooks/useDiscountCodes";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
@@ -61,8 +61,8 @@ export function useFounderLetter(hidden: boolean) {
     if (!discountCodesFetched || !shownOnMount.current || shownTracked.current)
       return;
     shownTracked.current = true;
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_SHOWN, {
-      discount_code: discountCode,
+    track("founder_letter:shown", {
+      discount_code: discountCode ?? undefined,
     });
   }, [discountCodesFetched, discountCode]);
 
@@ -71,9 +71,9 @@ export function useFounderLetter(hidden: boolean) {
     window.localStorage.setItem(LETTER_OPENED_KEY, "1");
     setHasOpened(true);
     setIsLetterOpen(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_OPENED, {
+    track("founder_letter:opened", {
       first_open: firstOpen,
-      discount_code: discountCode,
+      discount_code: discountCode ?? undefined,
       discount_percent: DISCOUNT_PERCENT,
     });
   }, [discountCode]);
@@ -82,8 +82,8 @@ export function useFounderLetter(hidden: boolean) {
   const dismissLetter = useCallback(() => {
     window.localStorage.setItem(LETTER_DISMISSED_KEY, "1");
     setDismissed(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISMISSED, {
-      discount_code: discountCode,
+    track("founder_letter:dismissed", {
+      discount_code: discountCode ?? undefined,
     });
   }, [discountCode]);
 
@@ -114,8 +114,8 @@ export function useFounderLetter(hidden: boolean) {
       textarea.remove();
     }
     setCopied(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_CODE_COPIED, {
-      discount_code: discountCode,
+    track("founder_letter:code_copied", {
+      discount_code: discountCode ?? undefined,
     });
     toast.success(`Code ${discountCode} copied, it's yours`);
     window.setTimeout(() => setCopied(false), 2000);
@@ -123,7 +123,7 @@ export function useFounderLetter(hidden: boolean) {
 
   const claimOffer = useCallback(() => {
     if (discountCode === null) return;
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED, {
+    track("founder_letter:discount_cta_clicked", {
       discount_code: discountCode,
       discount_percent: DISCOUNT_PERCENT,
     });

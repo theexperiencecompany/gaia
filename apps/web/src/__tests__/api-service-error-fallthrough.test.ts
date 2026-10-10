@@ -12,8 +12,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { API_REQUEST_FAILED: "api:request_failed" },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 import { apiService } from "@/lib/api/service";

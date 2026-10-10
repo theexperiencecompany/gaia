@@ -40,8 +40,16 @@ from app.models.memory_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import (
+    MemoryCleared,
+    MemoryCreated,
+    MemoryDocumentUpdated,
+    MemoryItemDeleted,
+    MemoryUpdated,
+)
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
@@ -245,7 +253,7 @@ async def update_memory_document(
     result = await memory_engine.update_document(user_id, doc_type, request.content)
 
     log.set(memory=MemoryContext(operation="update_document", version=result.version))
-    capture_context_event(AnalyticsEvents.MEMORY_DOCUMENT_UPDATED)
+    capture(UserId(user_id), MemoryDocumentUpdated())
     return result
 
 
@@ -290,7 +298,7 @@ async def create_memory(
 
     entry = retained.entry
     log.set(memory=MemoryContext(operation="create", memory_id=entry.id, success=True))
-    capture_context_event(AnalyticsEvents.MEMORY_CREATED)
+    capture(UserId(user_id), MemoryCreated())
     return CreateMemoryResponse(
         success=True,
         memory_id=entry.id,
@@ -346,7 +354,7 @@ async def update_memory(
     entry = await memory_engine.update_memory(user_id, memory_id, request.content)
 
     log.set(memory=MemoryContext(operation="update", new_memory_id=entry.id, version=entry.version))
-    capture_context_event(AnalyticsEvents.MEMORY_UPDATED)
+    capture(UserId(user_id), MemoryUpdated())
     return entry
 
 
@@ -372,7 +380,7 @@ async def delete_memory(
     if not success:
         log.warning("memory_not_found", operation="delete", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found")
-    capture_context_event(AnalyticsEvents.MEMORY_ITEM_DELETED, {"memory_id": memory_id})
+    capture(UserId(user_id), MemoryItemDeleted(memory_id=memory_id))
     return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
 
 
@@ -387,7 +395,7 @@ async def clear_all_memories(
 
     deleted = await memory_engine.delete_all(user_id)
 
-    capture_context_event(AnalyticsEvents.MEMORY_CLEARED, {"deleted_count": deleted})
+    capture(UserId(user_id), MemoryCleared(deleted_count=deleted))
     log.set(
         memory=MemoryContext(
             operation="delete_all",

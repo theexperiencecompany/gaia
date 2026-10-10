@@ -9,7 +9,7 @@ import NextError from "next/error";
 import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
   recoverFromChunkError,
@@ -42,7 +42,7 @@ function GlobalErrorView({ error }: GlobalErrorProps) {
     // Full diagnostics go through Sentry/captureException above; error
     // message/stack can carry user content, so analytics only gets the stable
     // type and digest.
-    trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
+    track("error:occurred", {
       error_type: "global_error",
       digest: error.digest,
     });

@@ -29,7 +29,6 @@ from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services import llm_metering
-from app.services.analytics_service import AnalyticsEvents
 from app.services.llm_metering import (
     LLMCallContext,
     TokenUsage,
@@ -39,6 +38,7 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import WorkflowContext, log
 
 CONVERSATION = "8f2a1c4e-0b3d-4a71-9c62-5d8e1f0a7b34"
@@ -767,10 +767,10 @@ async def test_every_ledger_row_is_mirrored_by_one_event_keyed_by_the_row() -> N
 
     posthog.capture.assert_called_once()
     call = posthog.capture.call_args.kwargs
-    assert call["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+    assert call["event"] == AiLlmCallCompleted.event
     assert call["distinct_id"] == VALID_USER
     assert call["uuid"] == str(
-        uuid5(NAMESPACE_URL, f"{AnalyticsEvents.AI_LLM_CALL_COMPLETED}:{VALID_USER}:row-7")
+        uuid5(NAMESPACE_URL, f"{AiLlmCallCompleted.event}:{VALID_USER}:row-7")
     )
     assert call["properties"]["cost_usd"] == 0.0037
 

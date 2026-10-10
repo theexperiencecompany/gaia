@@ -295,6 +295,14 @@ class TestSetToolOverride:
     """PUT /api/v1/approvals/tools/{tool_name}."""
 
     @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
+    async def test_a_tool_name_that_is_not_an_id_is_refused_before_the_override(
+        self, mock_set: AsyncMock, client: AsyncClient
+    ):
+        resp = await client.put(f"{APPROVALS_BASE}/tools/send email", json={"ask": True})
+        assert resp.status_code == 422
+        mock_set.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
     async def test_force_ask(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = _prefs(mode="auto", tool_overrides={"email_send": True})
         with patch("app.api.v1.endpoints.approvals.log") as log:

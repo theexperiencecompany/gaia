@@ -27,9 +27,9 @@ import pytest
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
-from app.services.analytics_service import AnalyticsEvents
 from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
+from shared.py.analytics.catalog.billing import PaywallBlocked
 
 pytestmark = pytest.mark.e2e
 
@@ -145,7 +145,7 @@ class TestStaticReminderFiresEndToEnd:
                     new_callable=AsyncMock,
                 )
             )
-            stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             result = await _make_scheduler().process_task_execution(reminder.id)
 
         assert result.success is True
@@ -170,7 +170,7 @@ class TestStaticReminderFiresEndToEnd:
                     new_callable=AsyncMock,
                 )
             )
-            stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             scheduler = _make_scheduler()
             first = await scheduler.process_task_execution(reminder.id)
             second = await scheduler.process_task_execution(reminder.id)
@@ -198,7 +198,7 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
                     new_callable=AsyncMock,
                 )
             )
-            capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture_event"))
+            capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             rearm = stack.enter_context(
                 patch.object(ReminderScheduler, "reschedule_task", new_callable=AsyncMock)
             )
@@ -222,7 +222,7 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
         plat_m.assert_not_awaited()
         assert store.statuses == [ScheduledTaskStatus.PAUSED]
         paywall_events = [
-            c for c in capture.call_args_list if c.args[1] == AnalyticsEvents.PAYWALL_BLOCKED
+            c for c in capture.call_args_list if isinstance(c.args[1], PaywallBlocked)
         ]
         assert len(paywall_events) == 1
         # Activation put it back on its own schedule, in its own zone.

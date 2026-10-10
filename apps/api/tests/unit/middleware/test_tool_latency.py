@@ -57,14 +57,14 @@ async def _invoke(
     invoke_fn: Any,
 ) -> Any:
     state = {"messages": []}
-    config: dict[str, Any] = {"configurable": {"user_id": "user-1"}}
+    config: dict[str, Any] = {"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}}
     with (
         patch("app.agents.middleware.executor.create_tool_call_request"),
         patch(
             "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
             return_value=MagicMock(),
         ),
-        patch("app.agents.middleware.executor.capture_event"),
+        patch("app.agents.middleware.executor.capture"),
     ):
         return await executor.wrap_tool_invocation(tool_call, tool, state, config, None, invoke_fn)
 

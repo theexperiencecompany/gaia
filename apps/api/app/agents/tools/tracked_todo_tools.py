@@ -63,6 +63,7 @@ from app.services.triggers.subscription_service import (
 )
 from app.services.triggers.subscription_validation import validate_scope
 from app.utils.canvas_vector_utils import search_canvas_context
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 _NOTIFY_ON_RUN_DESC = (
@@ -625,7 +626,8 @@ async def list_trigger_fields(
 async def subscribe_todo_to_trigger(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo that should watch for this event"],
-    trigger_name: Annotated[str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
+    # Identifier-typed: a slug analytics cannot carry fails the args schema before registering.
+    trigger_name: Annotated[Identifier, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
     action: Annotated[
         str,
         "What to do when it fires: 'execute' (run the todo with the event in its "

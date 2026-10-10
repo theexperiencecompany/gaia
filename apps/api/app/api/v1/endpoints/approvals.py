@@ -18,7 +18,7 @@ from app.schemas.hil_schemas import (
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.feature_flags import is_hil_ledger_enabled
 from app.services.hil.ledger_decide import decide_ledger, decide_ledger_batch
 from app.services.hil.preferences import (
@@ -30,6 +30,9 @@ from app.services.hil.resolution import (
     resolve_approval,
     resolve_approvals_batch,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals")
@@ -96,7 +99,7 @@ async def post_approval_decision(
         scope=payload.scope,
     )
     log.set(hil={"resolved": True})
-    capture_context_event(AnalyticsEvents.APPROVAL_DECIDED, {"decision": payload.decision})
+    capture(UserId(user_id), ApprovalDecided(decision=payload.decision))
     return ApprovalDecisionResponse(success=True)
 
 
@@ -130,13 +133,13 @@ async def post_batch_decision(
         [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
     )
     log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
-    capture_context_event(
-        AnalyticsEvents.APPROVAL_DECIDED,
-        {
-            "batch": True,
-            "decisions": len(payload.decisions),
-            "resolved": sum(1 for o in outcomes if o.resolved),
-        },
+    capture(
+        UserId(user_id),
+        ApprovalDecided(
+            batch=True,
+            decisions=len(payload.decisions),
+            resolved=sum(1 for o in outcomes if o.resolved),
+        ),
     )
     return BatchApprovalDecisionResponse(outcomes=outcomes)
 
@@ -169,7 +172,7 @@ async def put_preferences(
 
 @router.put("/tools/{tool_name}")
 async def set_tool_approval(
-    tool_name: str,
+    tool_name: Identifier,
     payload: SetToolOverrideRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:

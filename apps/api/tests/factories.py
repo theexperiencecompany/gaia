@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from bson import ObjectId
 from composio.types import Tool
 
 from app.models.user_models import AuthenticatedUser
@@ -16,7 +17,7 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
     Built as a WorkOS session; overrides are AuthenticatedUser fields.
     """
     defaults: dict[str, Any] = {
-        "user_id": str(uuid4()),
+        "user_id": str(ObjectId()),
         "auth_provider": "workos",
         "email": "test@example.com",
         "name": "Test User",
@@ -29,7 +30,7 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
 
 def make_user(**overrides) -> dict:
     defaults = {
-        "user_id": str(uuid4()),
+        "user_id": str(ObjectId()),
         "email": "test@example.com",
         "name": "Test User",
         "created_at": datetime.now(UTC).isoformat(),
@@ -44,7 +45,7 @@ def make_user(**overrides) -> dict:
 def make_conversation(user_id: str | None = None, **overrides) -> dict:
     defaults = {
         "conversation_id": str(uuid4()),
-        "user_id": user_id or str(uuid4()),
+        "user_id": user_id or str(ObjectId()),
         "description": "Test conversation",
         "messages": [],
         "created_at": datetime.now(UTC).isoformat(),
@@ -122,7 +123,7 @@ def make_config(
     **overrides,
 ) -> dict:
     configurable = {
-        "user_id": user_id or str(uuid4()),
+        "user_id": user_id or str(ObjectId()),
         "thread_id": thread_id or str(uuid4()),
     }
     configurable.update(overrides.pop("configurable", {}))
@@ -149,7 +150,7 @@ def make_integration(provider: str, **overrides) -> dict:
     defaults = {
         "integration_id": str(uuid4()),
         "provider": provider,
-        "user_id": str(uuid4()),
+        "user_id": str(ObjectId()),
         "status": "active",
         "credentials": {
             "access_token": f"test_token_{uuid4().hex[:8]}",

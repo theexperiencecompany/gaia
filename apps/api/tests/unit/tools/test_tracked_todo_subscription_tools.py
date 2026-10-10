@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.core.graph_builder import build_graph
@@ -470,6 +471,19 @@ class TestSubscribe:
             )
 
         assert "each condition needs" in out
+        register.assert_not_awaited()
+
+    async def test_a_trigger_name_that_is_not_a_slug_fails_the_args_schema(self) -> None:
+        register, _ = self._register()
+        with (
+            patch(f"{_MOD}.register_subscription", register),
+            pytest.raises(ValidationError, match="trigger_name"),
+        ):
+            await subscribe_todo_to_trigger.ainvoke(
+                {"todo_id": TODO_ID, "trigger_name": "new gmail message", "action": "execute"},
+                config=_config(),
+            )
+
         register.assert_not_awaited()
 
     async def test_no_user_id_is_refused(self) -> None:

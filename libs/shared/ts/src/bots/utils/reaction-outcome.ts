@@ -5,6 +5,8 @@
  * same `bot:reaction_delivered` shape; only ATTACHED means the reaction landed.
  */
 
+import type { EventProperties } from "../../analytics";
+
 export const REACTION_OUTCOME = {
   /** The platform accepted the reaction. */
   ATTACHED: "attached",
@@ -42,20 +44,11 @@ const REACTION_DELIVERY = {
   FALLBACK_TEXT: "fallback_text",
 } as const;
 
-/** A type alias, not an interface: PostHog properties need its implicit index signature. */
-type ReactionDeliveredProperties = {
-  success: true;
-  surface: ReactionSurface;
-  delivery: (typeof REACTION_DELIVERY)[keyof typeof REACTION_DELIVERY];
-  /** Why the emoji went out as text instead; absent when it attached. */
-  reason?: Exclude<ReactionOutcome, typeof REACTION_OUTCOME.ATTACHED>;
-};
-
 /** The `bot:reaction_delivered` properties for one reaction attempt. */
 export function reactionDeliveredProperties(
   outcome: ReactionOutcome,
   surface: ReactionSurface,
-): ReactionDeliveredProperties {
+): EventProperties["bot:reaction_delivered"] {
   if (outcome === REACTION_OUTCOME.ATTACHED) {
     return { success: true, surface, delivery: REACTION_DELIVERY.NATIVE };
   }

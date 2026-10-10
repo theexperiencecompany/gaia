@@ -29,6 +29,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.decorators.entitlements import PAYWALL_MESSAGE
 from app.models.payment_models import PlanType
+from shared.py.analytics.catalog.billing import PaywallBlocked
 from tests.conftest import FAKE_USER, _create_test_app
 
 pytestmark = pytest.mark.e2e
@@ -124,7 +125,7 @@ class TestLapsedUserSeesThePaywallContract:
                 new_callable=AsyncMock,
                 return_value=_free_status(),
             ),
-            patch(f"{ENT}.capture_event") as capture,
+            patch(f"{ENT}.capture") as capture,
         ):
             response = await gated_client.get("/api/v1/todos")
 
@@ -135,6 +136,28 @@ class TestLapsedUserSeesThePaywallContract:
         # Minted on intent, never on refusal — clients already handle null.
         assert body["checkout_url"] is None
         capture.assert_called_once()
+
+    async def test_the_paywall_records_the_route_template_not_the_raw_path(
+        self, gated_client: AsyncClient
+    ) -> None:
+        """A raw path can carry an email or an id; the 402 must not become a 503 over its analytics."""
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new_callable=AsyncMock,
+                return_value=PlanType.FREE,
+            ),
+            patch(
+                f"{ENT}.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_free_status(),
+            ),
+            patch(f"{ENT}.capture") as capture,
+        ):
+            response = await gated_client.get("/api/v1/todos/someone@example.com")
+
+        assert response.status_code == 402
+        assert capture.call_args.args[1] == PaywallBlocked(feature="/api/v1/todos/{todo_id}")
 
     async def test_free_paths_stay_open(self, gated_client: AsyncClient) -> None:
         """The way out of the paywall cannot itself be paywalled."""

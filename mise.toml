@@ -384,6 +384,10 @@ run = "dagger call -s test-python"
 description = "Export apps/api/openapi.json and regenerate the TypeScript API types in libs/shared/ts/src/api/generated (CI fails when either drifts)"
 run = "node scripts/ci/checks.mjs api-schema --write"
 
+[tasks."analytics:types"]
+description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
+run = "node scripts/ci/checks.mjs analytics-catalog --write"
+
 [tasks."test:python:hermetic"]
 description = "Run the hermetic API suite (no Docker, no network) — must finish within the fast-suite budget"
 run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"

@@ -39,7 +39,7 @@ def _offline_seams() -> Iterator[MagicMock]:
             "app.services.todos.inbox_desk.get_connected_integration_ids",
             AsyncMock(return_value={GMAIL_INTEGRATION_ID}),
         ),
-        patch("app.services.todos.inbox_desk.capture_event") as capture,
+        patch("app.services.todos.inbox_desk.capture") as capture,
         patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.schedule_user_todos_sync"),
         patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),

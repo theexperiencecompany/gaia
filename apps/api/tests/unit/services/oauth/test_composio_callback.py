@@ -6,21 +6,25 @@ in tests/unit/api/test_oauth_endpoint.py.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bson import ObjectId
 from fastapi import BackgroundTasks
 import pytest
 from tests.factories import make_integration_config
 
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents
 from app.services.oauth.composio_callback import (
     ConnectionCompleted,
     ConnectionRejected,
     complete_composio_connection,
     stored_connected_account_id,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 
 MODULE = "app.services.oauth.composio_callback"
-STATE = {"user_id": "uid1", "integration_id": "gmail", "redirect_path": "/integrations"}
+USER_ID = "507f1f77bcf86cd799439011"
+OTHER_USER_ID = "507f1f77bcf86cd799439012"
+STATE = {"user_id": USER_ID, "integration_id": "gmail", "redirect_path": "/integrations"}
 
 
 @pytest.fixture
@@ -56,7 +60,7 @@ def mock_handle():
 
 @pytest.fixture
 def mock_capture():
-    with patch(f"{MODULE}.capture_event") as capture:
+    with patch(f"{MODULE}.capture") as capture:
         yield capture
 
 
@@ -65,7 +69,7 @@ def background_tasks() -> BackgroundTasks:
     return BackgroundTasks()
 
 
-def _account(user_id: str | None = "uid1", config_id: str = "config1") -> MagicMock:
+def _account(user_id: str | ObjectId | None = USER_ID, config_id: str = "config1") -> MagicMock:
     account = MagicMock()
     account.auth_config.id = config_id
     account.user_id = user_id
@@ -88,7 +92,7 @@ class TestStoredConnectedAccountId:
         result = await stored_connected_account_id(STATE)
 
         assert result == "acc_from_initiate"
-        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
+        mock_repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
         mock_log.set_ns.assert_called_once_with(
             "oauth", connected_account_id_source="stored_record"
         )
@@ -97,7 +101,7 @@ class TestStoredConnectedAccountId:
         result = await stored_connected_account_id(STATE)
 
         assert result is None
-        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
+        mock_repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
         mock_log.set_ns.assert_called_once_with("oauth", connected_account_id_source="missing")
 
     async def test_a_record_without_an_account_id_is_missing_too(self, mock_repo, mock_log):
@@ -119,7 +123,7 @@ class TestCompleteComposioConnectionRejections:
         mock_composio.get_connected_account_by_id.return_value = None
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionRejected(reason="account_not_found")
@@ -137,7 +141,7 @@ class TestCompleteComposioConnectionRejections:
         mock_composio.get_connected_account_by_id.return_value = _account(user_id=None)
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionRejected(reason="user_missing")
@@ -154,7 +158,7 @@ class TestCompleteComposioConnectionRejections:
         mock_composio.get_connected_account_by_id.return_value = _account(config_id="config1")
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionRejected(reason="config_missing")
@@ -174,20 +178,20 @@ class TestCompleteComposioConnectionRejections:
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
     ):
         """Refuse another user's account, but name both parties in the event so the attempt is traceable."""
-        mock_composio.get_connected_account_by_id.return_value = _account(user_id="uid_other")
+        mock_composio.get_connected_account_by_id.return_value = _account(user_id=OTHER_USER_ID)
         mock_config.return_value = _integration()
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionRejected(reason="user_mismatch")
-        mock_log.set.assert_called_once_with(user={"id": "uid_other"})
+        mock_log.set.assert_called_once_with(user={"id": OTHER_USER_ID})
         mock_log.set_ns.assert_called_once_with("oauth", provider="google", integration_id="gmail")
         mock_log.error.assert_called_once_with(
             f"{LogTag.OAUTH} User ID mismatch between state and account",
-            state_user_id="uid1",
-            account_user_id="uid_other",
+            state_user_id=USER_ID,
+            account_user_id=OTHER_USER_ID,
             connected_account_id="acc1",
         )
         mock_handle.assert_not_awaited()
@@ -200,38 +204,34 @@ class TestCompleteComposioConnectionSuccess:
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
     ):
         mock_composio.get_connected_account_by_id.return_value = _account(
-            user_id="uid1", config_id="config1"
+            user_id=USER_ID, config_id="config1"
         )
         integration = _integration()
         mock_config.return_value = integration
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionCompleted(
-            user_id="uid1", integration_id="gmail", provider="google"
+            user_id=USER_ID, integration_id="gmail", provider="google"
         )
         mock_composio.get_connected_account_by_id.assert_called_once_with("acc1")
         mock_config.assert_called_once_with("config1")
         mock_handle.assert_awaited_once_with(
-            user_id="uid1",
+            user_id=USER_ID,
             integration_config=integration,
             background_tasks=background_tasks,
             connected_account_id="acc1",
         )
-        # Explicit user id: Composio redirects the browser here without a WorkOS
-        # session, so a context capture would land on an anonymous profile.
         mock_capture.assert_called_once_with(
-            "uid1",
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "gmail", "provider": "google"},
+            UserId(USER_ID), IntegrationConnected(integration_id="gmail", provider="google")
         )
-        mock_log.set.assert_called_once_with(user={"id": "uid1"})
+        mock_log.set.assert_called_once_with(user={"id": USER_ID})
         mock_log.set_ns.assert_called_once_with("oauth", provider="google", integration_id="gmail")
         mock_log.info.assert_called_once_with(
             f"{LogTag.OAUTH} Composio connection successful",
-            user_id="uid1",
+            user_id=USER_ID,
             integration_id="gmail",
             connected_account_id="acc1",
         )
@@ -241,25 +241,23 @@ class TestCompleteComposioConnectionSuccess:
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
     ):
         """Compare and record the account's user id as text, as the state token carries it."""
-        mock_composio.get_connected_account_by_id.return_value = _account(user_id=1234)
+        mock_composio.get_connected_account_by_id.return_value = _account(user_id=ObjectId(USER_ID))
         mock_config.return_value = _integration()
 
         outcome = await complete_composio_connection(
-            "acc1", expected_user_id="1234", background_tasks=background_tasks
+            "acc1", expected_user_id=USER_ID, background_tasks=background_tasks
         )
 
         assert outcome == ConnectionCompleted(
-            user_id="1234", integration_id="gmail", provider="google"
+            user_id=USER_ID, integration_id="gmail", provider="google"
         )
-        mock_log.set.assert_called_once_with(user={"id": "1234"})
+        mock_log.set.assert_called_once_with(user={"id": USER_ID})
         mock_handle.assert_awaited_once_with(
-            user_id="1234",
+            user_id=USER_ID,
             integration_config=mock_config.return_value,
             background_tasks=background_tasks,
             connected_account_id="acc1",
         )
         mock_capture.assert_called_once_with(
-            "1234",
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "gmail", "provider": "google"},
+            UserId(USER_ID), IntegrationConnected(integration_id="gmail", provider="google")
         )

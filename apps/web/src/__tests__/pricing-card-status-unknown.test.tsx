@@ -13,11 +13,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-    PRICING_PLAN_SELECTED: "pricing:plan_selected",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({

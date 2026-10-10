@@ -25,8 +25,8 @@ from app.core.lazy_loader import providers
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.helpers.agent_helpers import AgentIdentity, build_agent_config
 from app.services import llm_metering
-from app.services.analytics_service import AnalyticsEvents
 from app.services.cost_budget import BudgetCheck
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from tests.helpers import BindableToolsFakeModel
 from tests.integration.agents.test_comms_agent_flow import (
     _common_patches,
@@ -110,9 +110,7 @@ async def test_a_graph_call_emits_exactly_one_completed_event_carrying_the_ledge
 
     ledger.assert_awaited_once()
     row: LLMCallDocument = ledger.await_args.args[0]
-    completed = [
-        c for c in _captured(posthog) if c["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
-    ]
+    completed = [c for c in _captured(posthog) if c["event"] == AiLlmCallCompleted.event]
     assert len(completed) == 1
     assert completed[0]["properties"]["cost_usd"] == row.cost_usd == _PROVIDER_COST
     assert completed[0]["distinct_id"] == row.user_id
@@ -126,4 +124,4 @@ async def test_a_graph_call_reaches_posthog_through_no_second_emitter() -> None:
 
     await _run_one_turn(posthog, AsyncMock(side_effect=_store))
 
-    assert [c["event"] for c in _captured(posthog)] == [AnalyticsEvents.AI_LLM_CALL_COMPLETED]
+    assert [c["event"] for c in _captured(posthog)] == [AiLlmCallCompleted.event]

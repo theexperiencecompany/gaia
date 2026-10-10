@@ -15,18 +15,20 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.notes_models import NoteModel
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import NotesCreated, NotesDeleted, NotesUpdated
+from tests.conftest import FAKE_USER
 
 NOTES_BASE = "/api/v1/notes"
-ANALYTICS_PATCH = "app.api.v1.endpoints.notes.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.notes.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -271,7 +273,7 @@ class TestNoteAnalytics:
                 json={"content": "<p>Test note</p>", "plaintext": "Test note"},
             )
         assert response.status_code == 201
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_CREATED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesCreated())
 
     @patch(
         "app.api.v1.endpoints.notes.update_note",
@@ -285,7 +287,7 @@ class TestNoteAnalytics:
                 json={"content": "<p>Updated</p>", "plaintext": "Updated"},
             )
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_UPDATED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesUpdated())
 
     @patch(
         "app.api.v1.endpoints.notes.delete_note",
@@ -296,4 +298,4 @@ class TestNoteAnalytics:
         with patch(ANALYTICS_PATCH) as mock_capture:
             response = await client.delete(f"{NOTES_BASE}/note-001")
         assert response.status_code == 204
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_DELETED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesDeleted())

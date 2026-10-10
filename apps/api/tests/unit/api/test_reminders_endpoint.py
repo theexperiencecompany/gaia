@@ -13,7 +13,8 @@ import pytest
 import time_machine
 
 from app.models.reminder_models import ReminderDocument
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import ReminderCreated, ReminderDeleted
 from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
@@ -22,16 +23,16 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1/reminders"
 USER_ID = FAKE_USER.user_id
-ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture"
 REMINDER_REPO = "app.services.reminder_service.reminder_repository"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -162,9 +163,7 @@ class TestReminderAnalytics:
             resp = await client.post(API, json=_create_payload())
 
         assert resp.status_code == 201
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": False}
-        )
+        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderCreated(is_recurring=False))
 
     async def test_create_recurring_reminder_captures_is_recurring(
         self, client: AsyncClient
@@ -187,9 +186,7 @@ class TestReminderAnalytics:
             resp = await client.post(API, json={**_create_payload(), "repeat": "0 9 * * *"})
 
         assert resp.status_code == 201
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": True}
-        )
+        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderCreated(is_recurring=True))
 
     async def test_cancel_captures_reminder_deleted(self, client: AsyncClient) -> None:
         with (
@@ -203,7 +200,7 @@ class TestReminderAnalytics:
             resp = await client.delete(f"{API}/rem_1")
 
         assert resp.status_code == 204
-        mock_capture.assert_called_once_with(AnalyticsEvents.REMINDER_DELETED)
+        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderDeleted())
 
 
 # ===========================================================================

@@ -39,7 +39,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.todos.todo_service import ProjectService, TodoService, todo_responses
@@ -47,6 +47,14 @@ from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import (
+    ProjectsCreated,
+    ProjectsDeleted,
+    ProjectsUpdated,
+    TodosToggled,
+    TodosUpdated,
+)
 from shared.py.wide_events import TodoContext, log
 
 router = APIRouter()
@@ -192,7 +200,7 @@ async def bulk_update_todos(
     )
     try:
         result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"bulk_count": len(request.todo_ids)})
+        capture(UserId(user.user_id), TodosUpdated(bulk_count=len(request.todo_ids)))
         return result
     except AppError:
         raise
@@ -219,7 +227,7 @@ async def bulk_move_todos(
     )
     try:
         result = await TodoService.bulk_move_todos(request, user.user_id)
-        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"bulk_count": len(result.success)})
+        capture(UserId(user.user_id), TodosUpdated(bulk_count=len(result.success)))
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -267,7 +275,7 @@ async def bulk_complete_todos(
     )
     try:
         result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture_context_event(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": len(todo_ids)})
+        capture(UserId(user.user_id), TodosToggled(bulk_count=len(todo_ids)))
         return result
     except Exception as e:
         raise HTTPException(
@@ -541,7 +549,7 @@ async def create_project(
     log.set(user={"id": user.user_id}, todo={"operation": "create_project"})
     try:
         result = await ProjectService.create_project(project, user.user_id)
-        capture_context_event(AnalyticsEvents.PROJECT_CREATED)
+        capture(UserId(user.user_id), ProjectsCreated())
         return result
     except Exception as e:
         raise HTTPException(
@@ -564,7 +572,7 @@ async def update_project(
     )
     try:
         result = await ProjectService.update_project(project_id, updates, user.user_id)
-        capture_context_event(AnalyticsEvents.PROJECT_UPDATED)
+        capture(UserId(user.user_id), ProjectsUpdated())
         return result
     except ValueError as e:
         raise HTTPException(
@@ -594,7 +602,7 @@ async def delete_project(
     )
     try:
         await ProjectService.delete_project(project_id, user.user_id)
-        capture_context_event(AnalyticsEvents.PROJECT_DELETED)
+        capture(UserId(user.user_id), ProjectsDeleted())
     except ValueError as e:
         raise HTTPException(
             status_code=(
@@ -635,7 +643,7 @@ async def create_subtask(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
-        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
+        capture(UserId(user.user_id), TodosUpdated(is_subtask=True))
         (response,) = await todo_responses(user.user_id, [updated_todo])
         return response
     except HTTPException:
@@ -677,7 +685,7 @@ async def update_subtask(
         if not any(s.id == subtask_id for s in updated_todo.subtasks):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
+        capture(UserId(user.user_id), TodosUpdated(is_subtask=True))
         (response,) = await todo_responses(user.user_id, [updated_todo])
         return response
     except HTTPException:
@@ -712,7 +720,7 @@ async def delete_subtask(
         if any(s.id == subtask_id for s in updated_todo.subtasks):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"is_subtask": True})
+        capture(UserId(user.user_id), TodosUpdated(is_subtask=True))
         (response,) = await todo_responses(user.user_id, [updated_todo])
         return response
     except HTTPException:
@@ -757,9 +765,8 @@ async def toggle_subtask_completion(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
 
-        capture_context_event(
-            AnalyticsEvents.TODO_TOGGLED,
-            {"is_subtask": True, "completed": not subtask.completed},
+        capture(
+            UserId(user.user_id), TodosToggled(is_subtask=True, completed=not subtask.completed)
         )
         (response,) = await todo_responses(user.user_id, [updated_todo])
         return response

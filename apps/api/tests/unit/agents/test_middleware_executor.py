@@ -30,13 +30,16 @@ from app.agents.middleware.executor import (
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.override.langgraph_bigtool.utils import State
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """TOOL_USED events are asserted through this mock and never reach a real PostHog client."""
-    with patch("app.agents.middleware.executor.capture_event") as mock_capture:
+    with patch("app.agents.middleware.executor.capture") as mock_capture:
         yield mock_capture
 
 
@@ -58,7 +61,7 @@ def _make_state(**overrides: Any) -> State:
 def _make_config(**overrides: Any) -> RunnableConfig:
     cfg: dict[str, Any] = {
         "configurable": {
-            "user_id": "user_123",
+            "user_id": USER_ID,
             "thread_id": "thread_abc",
         },
     }
@@ -737,9 +740,10 @@ class TestWrapToolInvocation:
 
         assert result.content == "tool result"
         _no_real_analytics.assert_called_once()
-        assert _no_real_analytics.call_args.args[0] == "user_123"
-        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
-        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool", "via": "bound"}
+        assert _no_real_analytics.call_args.args == (
+            UserId(USER_ID),
+            ToolUsed(tool_name="test_tool", via="bound"),
+        )
 
     async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}

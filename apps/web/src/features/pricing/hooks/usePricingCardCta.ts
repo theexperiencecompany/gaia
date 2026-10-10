@@ -1,8 +1,9 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { CheckoutSource } from "../api/pricingApi";
 import { writePendingCheckout } from "../lib/pendingCheckout";
@@ -13,11 +14,15 @@ import {
 import type { PlanViewerState } from "../types";
 import { useDodoPayments } from "./useDodoPayments";
 
+/** The tier a pricing card sells; the card's display title is copy, this is the analytics value. */
+export type PricingCardTier =
+  EventProperties["pricing:plan_selected"]["plan_tier"];
+
 interface PricingCardCtaInput {
+  planTier: PricingCardTier;
   /** Where this checkout is started from; rides to the server for funnel
    * attribution and decides where Dodo sends the browser afterwards. */
   checkoutSource?: CheckoutSource;
-  title: string;
   price: number;
   durationIsMonth: boolean;
   planId: string | undefined;
@@ -36,7 +41,7 @@ interface PricingCardCta {
 
 /** Everything the pricing card's call to action needs to decide and do. */
 export function usePricingCardCta({
-  title,
+  planTier,
   price,
   durationIsMonth,
   planId,
@@ -57,9 +62,9 @@ export function usePricingCardCta({
   const router = useRouter();
 
   const onGetStarted = async () => {
-    trackEvent(ANALYTICS_EVENTS.PRICING_PLAN_SELECTED, {
-      plan_title: title,
+    track("pricing:plan_selected", {
       plan_id: planId,
+      plan_tier: planTier,
       price,
       is_monthly: durationIsMonth,
       is_current_plan: isCurrentPlan,

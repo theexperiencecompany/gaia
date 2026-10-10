@@ -181,21 +181,20 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Every user-facing feature ships an event.** A feature nobody can measure is a feature nobody can tell is working — treat a missing capture the same as a missing log line, not as a nice-to-have. Add it in the same change as the feature.
 
-**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: add it to the event enum for your surface, which is the single source of truth and what keeps the four surfaces from drifting.
+**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: every event is one Pydantic model in the **event catalog**, `libs/shared/py/analytics/catalog/` (one module per domain). The model names the event, its owning surface (`ServerEvent` / `WebEvent` / `BotEvent` / `VoiceEvent`) and its properties; a free-text `str` property cannot be defined. `mise analytics:types` generates the TypeScript names and props (`libs/shared/ts/src/analytics/generated/`), and CI fails on drift. Only the owning surface's capture accepts an event, so one action has one emitter by construction.
 
-| Surface | Helper | Event names |
-|---|---|---|
-| API (Python) | `capture_event(user_id, ...)` / `capture_context_event(...)` — `app/services/analytics_service.py` | `AnalyticsEvents` (same file) |
-| Web (React) | `trackEvent(...)` — `apps/web/src/lib/analytics.ts` | `ANALYTICS_EVENTS` (same file) |
-| Bots (Node) | `Analytics` — `libs/shared/ts/src/analytics/` | `BOT_EVENTS` (`analytics/events/bots.ts`) |
-| Voice / other Python services | `PostHogAnalytics` — `libs/shared/py/analytics.py` | `VoiceAnalyticsEvents` (same file) |
+| Surface | Capture |
+|---|---|
+| API (Python) | `capture(UserId(...), CatalogEvent(...))` — `app/services/analytics_service.py` |
+| Web (React) | `track("domain:action", { ...props })` — `apps/web/src/lib/analytics.ts` |
+| Bots (Node) | `Analytics.capture(analyticsId, "bot:...", { ...props })` — `libs/shared/ts/src/analytics/` |
+| Voice / other Python services | `PostHogAnalytics.capture(UserId(...), CatalogEvent(...))` — `libs/shared/py/analytics/` |
 
 ### Identity — one person, one profile
 
 `distinct_id` is **always GAIA's stable user id** (the Mongo user id). Never an email, never a platform handle, never a WorkOS id. Any other key creates a second profile for the same human, and cross-surface funnels silently stop joining — the failure is invisible in code review and only shows up as wrong numbers.
 
-- Authenticated API requests get this for free: `PostHogRequestContextMiddleware` identifies the context, and `capture_context_event` inherits it.
-- **A route excluded from auth MUST pass the id explicitly with `capture_event(user_id, ...)`.** OAuth callbacks, platform-link callbacks, bot routes and webhooks all resolve their user from state or a link record rather than a session cookie, so the request context has nobody to attribute to and the event lands on an anonymous profile. This is a real bug that shipped — see `oauth.py::composio_callback` and `platform_auth.py`.
+- Every capture takes an `AnalyticsId`: a `UserId` (constructible only from a valid Mongo ObjectId) or a `PlatformIdentity` (`<platform>:<id>`, unlinked bot users only). A raw string, an email or `"system"` fails at type-check and at runtime. There is no context-inherited capture: OAuth callbacks, bot routes, webhooks and ARQ jobs once landed on anonymous profiles that way.
 - Bots resolve the linked GAIA id via `BaseBotAdapter.resolveDistinctId` and fall back to `"<platform>:<platformUserId>"` only while the account is unlinked; linking emits an `alias` so the pre-link history merges rather than stranding a ghost profile.
 
 ### Properties — no PII

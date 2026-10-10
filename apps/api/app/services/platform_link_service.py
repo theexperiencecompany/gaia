@@ -34,7 +34,7 @@ from app.models.platform_models import (
     PlatformLinkResult,
 )
 from app.models.user_models import PlatformLinkRecord, UserDocument
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
 from app.services.photon.photon_client import (
@@ -43,6 +43,8 @@ from app.services.photon.photon_client import (
     unregister_shared_user,
 )
 from app.utils.errors import AppError, create_error
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
 
 
@@ -435,11 +437,7 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
         actor=user_id,
         provider=platform,
     )
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_DISCONNECTED,
-        {"integration_id": platform},
-    )
+    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
 
     if platform_user_id:
         cache_key = f"bot_user:{platform}:{platform_user_id}"

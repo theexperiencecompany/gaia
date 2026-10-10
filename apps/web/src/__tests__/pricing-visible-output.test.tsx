@@ -24,12 +24,7 @@ import type {
 } from "@/features/pricing/api/pricingApi";
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-    PRICING_PLAN_SELECTED: "pricing:plan_selected",
-    NAVIGATION_SIDEBAR_CLICKED: "navigation:sidebar_clicked",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({

@@ -7,6 +7,7 @@ import pytest
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
+from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -312,7 +313,7 @@ class TestChatStreamEndpoint:
         call_kwargs = mock_start_stream.call_args.kwargs
         assert "stream_id" in call_kwargs
         assert call_kwargs["conversation_id"] == "conv-test-123"
-        assert call_kwargs["user_id"] == "integration-test-user-1"
+        assert call_kwargs["user_id"] == FAKE_USER.user_id
 
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
@@ -407,6 +408,81 @@ class TestChatStreamEndpoint:
             json={"messages": []},  # no 'message' key
         )
         assert response.status_code == 422
+
+
+_WORKFLOW = {"title": "Morning brief", "description": "Daily digest", "steps": []}
+
+
+@pytest.mark.integration
+class TestChatStreamSelectionIsValidatedBeforeTheTurnStarts:
+    """A selection the analytics catalog cannot carry is refused up front, never after the turn started."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    @pytest.fixture
+    def stream_mocks(self):
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock
+            ) as start_stream,
+            patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ) as spawn,
+            patch("app.api.v1.endpoints.chat.redis_cache") as cache,
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_make_subscription_mock(),
+            ),
+        ):
+            cache.redis = MagicMock()
+            yield start_stream, spawn
+
+    @pytest.mark.parametrize(
+        "selection",
+        [
+            {"selectedTool": "send email"},
+            {"selectedTool": "GMAIL_SEND_EMAIL", "toolCategory": "Google Calendar"},
+            {"selectedWorkflow": {**_WORKFLOW, "id": "wf 1"}},
+        ],
+    )
+    async def test_an_untrackable_selection_is_a_422_before_any_stream_work(
+        self, selection, stream_mocks, test_client
+    ):
+        start_stream, spawn = stream_mocks
+
+        response = await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, **selection})
+
+        assert response.status_code == 422
+        start_stream.assert_not_called()
+        spawn.assert_not_called()
+
+    async def test_a_real_selection_starts_the_turn(self, stream_mocks, test_client):
+        start_stream, spawn = stream_mocks
+        selection = {
+            "selectedTool": "GMAIL_SEND_EMAIL",
+            "toolCategory": "gmail",
+            "selectedWorkflow": {**_WORKFLOW, "id": "wf_3f2a9c1b7d4e"},
+        }
+
+        response = await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, **selection})
+
+        assert response.status_code == 200
+        start_stream.assert_called_once()
+        spawn.assert_called_once()
 
 
 @pytest.mark.integration

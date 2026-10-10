@@ -23,7 +23,6 @@ from app.models.playbook_models import PlaybookRunStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import DeactivationReason, TriggerType, WorkflowStep
-from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut
 from app.services.workflow.notifications import (
@@ -41,17 +40,21 @@ from app.workers.tasks.workflow_tasks import (
     process_workflow_generation_task,
     regenerate_workflow_steps,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 #: The busy-lock value a fire reserves its conversation with. Tests that drive
 #: ``execute_workflow_as_chat`` directly stand in for the fire that took it.
 RESERVATION = ":fire-task-1"
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: WORKFLOW_CREATED events are asserted through this mock and never reach a real PostHog client."""
-    with patch("app.workers.tasks.workflow_tasks.capture_event") as mock_capture:
+    with patch("app.workers.tasks.workflow_tasks.capture") as mock_capture:
         yield mock_capture
 
 
@@ -71,7 +74,7 @@ def _onboarded_user():
 
 def _make_workflow(
     workflow_id: str | None = None,
-    user_id: str = "user_abc",
+    user_id: str = USER_ID,
     title: str = "Daily Standup",
     steps: list | None = None,
     is_todo_workflow: bool = False,
@@ -109,11 +112,11 @@ def _no_analytics():
     """Neutralize the analytics capture on workflow-conversation creation.
 
     The generation task creates the workflow's conversation via
-    create_system_conversation, which captures CONVERSATION_CREATED
-    through capture_event — the PostHog provider is not registered in this
+    create_system_conversation, which captures chat:conversation_created
+    through capture — the PostHog provider is not registered in this
     test module's import chain, so the call must be mocked.
     """
-    with patch("app.services.conversation_service.capture_event"):
+    with patch("app.services.conversation_service.capture"):
         yield
 
 
@@ -454,9 +457,8 @@ class TestExecuteWorkflowById:
 
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
-            workflow.user_id,
-            AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+            UserId(workflow.user_id),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule"),
         )
 
     async def test_integration_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
@@ -491,9 +493,8 @@ class TestExecuteWorkflowById:
 
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
-            workflow.user_id,
-            AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "integration"},
+            UserId(workflow.user_id),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="integration"),
         )
 
     async def test_explicit_trigger_type_wins_over_trigger_data(self, ctx, _no_real_analytics):
@@ -534,9 +535,8 @@ class TestExecuteWorkflowById:
 
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
-            workflow.user_id,
-            AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+            UserId(workflow.user_id),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule"),
         )
 
     async def test_manual_execution_does_not_capture_workflow_executed(
@@ -656,7 +656,7 @@ class TestProcessWorkflowGenerationTask:
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439011"
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
 
         mock_todo_result = MagicMock()
@@ -690,17 +690,16 @@ class TestProcessWorkflowGenerationTask:
         )
 
         _no_real_analytics.assert_called_once()
-        assert _no_real_analytics.call_args.args[0] == user_id
-        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.WORKFLOW_CREATED
-        assert _no_real_analytics.call_args.args[2] == {
-            "workflow_id": workflow.id,
-            "steps_count": len(workflow.steps),
-            "is_todo_workflow": True,
-        }
+        assert _no_real_analytics.call_args.args == (
+            UserId(user_id),
+            WorkflowCreated(
+                workflow_id=workflow.id, steps_count=len(workflow.steps), is_todo_workflow=True
+            ),
+        )
 
     async def test_workflow_creation_returns_none_raises(self, ctx):
         todo_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
@@ -722,7 +721,7 @@ class TestProcessWorkflowGenerationTask:
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439012"
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
 
         with (
@@ -750,7 +749,7 @@ class TestProcessWorkflowGenerationTask:
 
     async def test_websocket_failure_event_sent_on_exception(self, ctx):
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         mock_ws = AsyncMock()
         mock_ws.broadcast_to_user = AsyncMock()
@@ -782,7 +781,7 @@ class TestProcessWorkflowGenerationTask:
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439013"
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
         mock_todo_result = MagicMock()
         mock_todo_result.modified_count = 1
@@ -827,7 +826,7 @@ class TestRegenerateWorkflowSteps:
 
     async def test_successful_regeneration_returns_success(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
@@ -838,7 +837,7 @@ class TestRegenerateWorkflowSteps:
 
     async def test_exception_propagates(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock(
@@ -849,7 +848,7 @@ class TestRegenerateWorkflowSteps:
 
     async def test_force_different_tools_default_is_true(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
@@ -872,7 +871,7 @@ class TestGenerateWorkflowSteps:
 
     async def test_successful_generation_returns_success(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(workflow_id=workflow_id, is_todo_workflow=False)
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
@@ -886,7 +885,7 @@ class TestGenerateWorkflowSteps:
 
     async def test_todo_workflow_sends_websocket_event(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
         todo_id = str(uuid4())
         workflow = _make_workflow(
             workflow_id=workflow_id,
@@ -916,7 +915,7 @@ class TestGenerateWorkflowSteps:
 
     async def test_non_todo_workflow_does_not_send_websocket(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(
             workflow_id=workflow_id,
             is_todo_workflow=False,
@@ -942,7 +941,7 @@ class TestGenerateWorkflowSteps:
 
     async def test_exception_propagates(self, ctx):
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock(side_effect=RuntimeError("LLM error"))
@@ -978,7 +977,7 @@ class TestExecuteWorkflowAsChat:
         ) as reset:
             yield reset
 
-    def _make_workflow(self, workflow_id: str | None = None, user_id: str = "user_abc"):
+    def _make_workflow(self, workflow_id: str | None = None, user_id: str = USER_ID):
         wf = MagicMock()
         wf.id = workflow_id or str(ObjectId())
         wf.user_id = user_id
@@ -1270,7 +1269,7 @@ class TestWorkflowNotificationSenders:
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
                 conversation_id="conv_xyz",
-                user_id="user_abc",
+                user_id=USER_ID,
             )
 
         mock_notif.create_notification.assert_awaited_once()
@@ -1301,7 +1300,7 @@ class TestWorkflowNotificationSenders:
             await send_workflow_failure_notification(
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
-                user_id="user_abc",
+                user_id=USER_ID,
             )
 
         mock_notif.create_notification.assert_awaited_once()
@@ -1643,7 +1642,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_workflow_created_with_no_steps_raises_app_error(self, ctx):
         """If workflow is created but has zero steps, an AppError is raised."""
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
         # Override steps to empty list directly (the helper uses `or` which
         # would replace [] with a default step)
@@ -1669,7 +1668,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_workflow_created_no_steps_error_message_none(self, ctx):
         """If workflow has no steps and error_message is None, 'unknown error' is used."""
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
         workflow.steps = []
         workflow.error_message = None
@@ -1693,7 +1692,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_websocket_broadcast_failure_on_success_does_not_raise(self, ctx):
         """When the websocket broadcast fails during the success path, the function still returns success."""
         todo_id = "507f1f77bcf86cd799439014"
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
 
         mock_todo_result = MagicMock()
@@ -1724,7 +1723,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_clear_flag_failure_on_exception_does_not_mask_error(self, ctx):
         """When clear_workflow_generating_flag fails during exception handling, the original exception is still raised."""
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
@@ -1745,7 +1744,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_websocket_failure_event_broadcast_fails_gracefully(self, ctx):
         """When the failure websocket broadcast itself fails, the original exception is still raised."""
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         mock_ws = MagicMock()
         mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WS broadcast error"))
@@ -1769,7 +1768,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_description_with_content_includes_details_section(self, ctx):
         """When description is provided, the prompt contains a **Details:** section."""
         todo_id = "507f1f77bcf86cd799439015"
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(user_id=user_id)
 
         mock_todo_result = MagicMock()
@@ -1806,7 +1805,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
     async def test_workflow_with_no_id_raises(self, ctx):
         """If workflow.id is falsy after creation, it raises AppError."""
         todo_id = str(ObjectId())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = MagicMock()
         workflow.id = None
 
@@ -1842,7 +1841,7 @@ class TestGenerateWorkflowStepsAdditional:
     async def test_get_workflow_returns_none_no_websocket_sent(self, ctx):
         """When get_workflow returns None, no websocket event is sent."""
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         mock_ws = AsyncMock()
         mock_ws.broadcast_to_user = AsyncMock()
@@ -1865,7 +1864,7 @@ class TestGenerateWorkflowStepsAdditional:
     async def test_todo_workflow_without_source_todo_id_no_websocket(self, ctx):
         """A todo workflow with source_todo_id=None does not trigger websocket."""
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
         workflow = _make_workflow(
             workflow_id=workflow_id,
             is_todo_workflow=True,
@@ -1893,7 +1892,7 @@ class TestGenerateWorkflowStepsAdditional:
     async def test_websocket_failure_on_todo_workflow_does_not_raise(self, ctx):
         """When the WebSocket broadcast fails for a todo workflow, the function still returns success."""
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
         todo_id = str(uuid4())
         workflow = _make_workflow(
             workflow_id=workflow_id,
@@ -1934,7 +1933,7 @@ class TestRegenerateWorkflowStepsAdditional:
     async def test_force_different_tools_false_passed_through(self, ctx):
         """When force_different_tools=False, the service gets False."""
         workflow_id = str(uuid4())
-        user_id = "user_abc"
+        user_id = USER_ID
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
@@ -2090,10 +2089,8 @@ class TestTheByIdTaskThreadsItsIdsThrough:
             seams.enter(stack)
             await execute_workflow_by_id({}, workflow.id)
 
-        captured = [
-            entry.args[1] for entry in _no_real_analytics.call_args_list if len(entry.args) > 1
-        ]
-        assert AnalyticsEvents.WORKFLOW_EXECUTED not in captured
+        captured = [type(entry.args[1]) for entry in _no_real_analytics.call_args_list]
+        assert WorkflowExecuted not in captured
 
     async def test_a_scheduled_fire_claims_the_occurrence_it_was_armed_for(self):
         """ARQ cannot cancel a deferred job, so the claim is pinned to the occurrence — an unpinned claim runs a workflow at a time it was rescheduled away from."""
@@ -2137,9 +2134,8 @@ class TestTheByIdTaskThreadsItsIdsThrough:
             await execute_workflow_by_id({}, workflow.id, {"trigger_data": {"events": []}})
 
         _no_real_analytics.assert_any_call(
-            workflow.user_id,
-            AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": TriggerType.INTEGRATION.value},
+            UserId(workflow.user_id),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type=TriggerType.INTEGRATION.value),
         )
 
 
@@ -2384,7 +2380,7 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
     def _workflow(self):
         wf = MagicMock()
         wf.id = str(ObjectId())
-        wf.user_id = "user_abc"
+        wf.user_id = USER_ID
         wf.title = "Morning Briefing"
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
