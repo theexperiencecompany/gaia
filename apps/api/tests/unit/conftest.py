@@ -60,7 +60,10 @@ def sentry_events() -> Iterator[list[Event]]:
     yield transport.events
     for handler_id in added_sinks:
         loguru_logger.remove(handler_id)
-    sentry_sdk.get_global_scope().set_client(None)
+    # init_sentry's tags live on the global scope; left there, a later test reads them as its own.
+    global_scope = sentry_sdk.get_global_scope()
+    global_scope.clear()
+    global_scope.set_client(None)
 
 
 @pytest.fixture

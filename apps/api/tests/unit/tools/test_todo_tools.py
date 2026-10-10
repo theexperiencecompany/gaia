@@ -50,3 +50,35 @@ async def test_an_empty_plan_says_it_starts_on_nothing() -> None:
     update, _ = await _plan([])
 
     assert update["messages"][0].content == "Created plan with 0 tasks. Starting: none"
+
+
+async def test_an_update_moves_a_task_and_adds_a_new_one() -> None:
+    update_tasks = create_todo_tools()[1]
+    todos = [
+        {"id": "t1", "content": "Draft", "status": "in_progress", "created_at": "2026-01-01"},
+    ]
+    with patch(WRITER, return_value=MagicMock()):
+        command = await update_tasks.coroutine(
+            updates=[{"task_id": "t1", "status": "completed"}, {"content": "Send it"}],
+            tool_call_id="call-2",
+            todos=todos,
+        )
+
+    updated = command.update["todos"]
+    assert [(t["content"], t["status"]) for t in updated] == [
+        ("Draft", "completed"),
+        ("Send it", "pending"),
+    ]
+    assert command.update["messages"][0].content == "Updated tasks: t1→completed; added: Send it"
+    assert todos[0]["status"] == "in_progress"
+
+
+async def test_an_update_naming_an_unknown_task_lists_the_real_ids() -> None:
+    update_tasks = create_todo_tools()[1]
+    todos = [{"id": "t1", "content": "Draft", "status": "pending", "created_at": "2026-01-01"}]
+
+    command = await update_tasks.coroutine(
+        updates=[{"task_id": "t9", "status": "completed"}], tool_call_id="call-3", todos=todos
+    )
+
+    assert command.update["messages"][0].content.endswith("Current task ids: t1")
