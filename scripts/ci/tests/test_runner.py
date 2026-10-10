@@ -107,3 +107,45 @@ def test_the_select_runner_composite_passes_select_as_an_argument() -> None:
     action = (SCRIPT.parent.parent.parent / ".github/actions/select-runner/action.yml").read_text()
     assert 'SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.sh"' in action
     assert 'bash "$SCRIPT" select' in action
+
+
+def heal_venv(venv: Path) -> None:
+    subprocess.run(
+        ["bash", str(SCRIPT), "heal-venv", str(venv)], capture_output=True, timeout=30, check=True
+    )
+
+
+def test_a_venv_whose_interpreter_link_dangles_is_removed(tmp_path: Path) -> None:
+    venv = tmp_path / ".venv-voice-agent"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").symlink_to(tmp_path / "uninstalled" / "python3.12")
+
+    heal_venv(venv)
+
+    assert not venv.exists()
+
+
+def test_a_leftover_dir_with_no_interpreter_is_removed(tmp_path: Path) -> None:
+    """The runner's shape: uv refuses a dir with neither pyvenv.cfg nor bin/python."""
+    venv = tmp_path / ".venv-voice-agent"
+    (venv / "lib").mkdir(parents=True)
+
+    heal_venv(venv)
+
+    assert not venv.exists()
+
+
+def test_a_venv_with_a_runnable_interpreter_is_kept(tmp_path: Path) -> None:
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").symlink_to(Path(os.environ.get("SHELL", "/bin/sh")).resolve())
+
+    heal_venv(venv)
+
+    assert (venv / "bin" / "python").exists()
+
+
+def test_an_absent_venv_is_left_for_uv_to_create(tmp_path: Path) -> None:
+    heal_venv(tmp_path / ".venv")
+
+    assert not (tmp_path / ".venv").exists()
