@@ -6,7 +6,6 @@ user_id from auth_credentials.
 """
 
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 import datetime
 import json
 import math
@@ -81,6 +80,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
 from app.services.storage.juicefs import write_session_file_sync
+from app.utils.concurrency import ContextThreadPoolExecutor
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -352,7 +352,7 @@ def _aggregate_pages(
         )
 
     try:
-        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+        with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             first_page = True
             while True:
                 data = _fetch_list_page(
@@ -751,7 +751,7 @@ def _aggregate_threads(
         )
 
     try:
-        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+        with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             for thread_id, views in executor.map(fetch, request.thread_ids):
                 remaining = cap - len(flat_views)
                 if remaining <= 0:

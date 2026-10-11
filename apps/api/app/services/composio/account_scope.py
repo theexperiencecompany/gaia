@@ -12,6 +12,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from composio.types import ToolExecuteParams
+
+from app.config.oauth_config import get_integration_by_toolkit
 from app.models.agent_config import ComposioAccountSelection
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.utils.concurrency import run_on_captured_loop
@@ -51,3 +54,16 @@ def scoped_connected_account_id(user_id: str, toolkit: str) -> str:
         primary_connected_account_id(user_id, toolkit),
         timeout=_PRIMARY_LOOKUP_TIMEOUT_SECONDS,
     )
+
+
+def pin_connected_account(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
+    """Name the account a native tool call acts as, so Composio never picks one of several itself.
+
+    A before-execute modifier. Catalog toolkits with no GAIA integration hold no
+    accounts of ours to choose from.
+    """
+    del tool  # the modifier signature Composio calls
+    user_id = params.get("user_id")
+    if user_id and get_integration_by_toolkit(toolkit) is not None:
+        params["connected_account_id"] = scoped_connected_account_id(user_id, toolkit)
+    return params

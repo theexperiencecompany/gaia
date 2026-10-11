@@ -9,10 +9,12 @@ await it, the captured loop can.
 """
 
 import asyncio
+from contextvars import ContextVar
 
 import pytest
 
 from app.utils.concurrency import (
+    ContextThreadPoolExecutor,
     capture_running_loop,
     reset_captured_loop,
     run_on_captured_loop,
@@ -91,3 +93,18 @@ class TestRunOnCapturedLoop:
             "run_on_captured_loop called from the server loop itself; await the "
             "coroutine directly instead of blocking the loop it runs on."
         )
+
+
+_scope: ContextVar[str | None] = ContextVar("test_scope", default=None)
+
+
+class TestContextThreadPoolExecutor:
+    def test_every_task_sees_the_submitting_threads_context(self) -> None:
+        token = _scope.set("ca_work")
+        try:
+            with ContextThreadPoolExecutor(max_workers=2) as pool:
+                seen = list(pool.map(lambda _: _scope.get(), range(4)))
+        finally:
+            _scope.reset(token)
+
+        assert seen == ["ca_work"] * 4

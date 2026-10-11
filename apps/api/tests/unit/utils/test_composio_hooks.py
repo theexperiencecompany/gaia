@@ -422,7 +422,7 @@ class TestMasterHooks:
 def scoped_account() -> Iterator[MagicMock]:
     """Pin the account the call is scoped to; its Mongo-backed lookup is not the subject here."""
     with patch(
-        "app.utils.composio_hooks.registry.scoped_connected_account_id",
+        "app.services.composio.account_scope.scoped_connected_account_id",
         MagicMock(return_value="ca_primary"),
     ) as resolve:
         yield resolve

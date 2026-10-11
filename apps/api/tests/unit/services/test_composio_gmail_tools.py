@@ -20,12 +20,14 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.constants.offload import OFFLOAD_RESULT_KEY
+from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     FetchMessagesInput,
     FetchThreadInput,
 )
+from app.services.composio import account_scope as account_scope_module
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
@@ -1815,3 +1817,53 @@ class TestTheInlineBudgetCountsEachSeparator:
     def test_one_char_short_and_the_last_message_does_not_fit(self) -> None:
         with patch("app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS", 23):
             assert _count_inline_fit(_TWO_TEN_CHAR_MESSAGES) == 1
+
+
+class TestTheScopedAccountReachesEveryRequest:
+    """A fetch fans its per-message and per-thread reads out to worker threads.
+
+    The account a call is scoped to lives in a context variable; a worker that
+    lost it would ask the primary for another mailbox's ids and get Gmail's 404.
+    """
+
+    @staticmethod
+    def _recording(serve: Callable[[ProxyRequest], dict[str, Any]], seen: list[str | None]):
+        def record(request: ProxyRequest) -> dict[str, Any]:
+            selection = account_scope_module.current_selection("gmail")
+            seen.append(selection.connected_account_id if selection else None)
+            return serve(request)
+
+        return record
+
+    def test_every_message_read_runs_as_the_scoped_account(self, mock_proxy: MagicMock) -> None:
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                return {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+            return TestFetchMessages._make_message_response()
+
+        seen: list[str | None] = []
+        mock_proxy.side_effect = self._recording(serve, seen)
+        work = ComposioAccountSelection(toolkit="gmail", connected_account_id="ca_work")
+
+        with account_scope_module.account_scope(work):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(timeframe="today", body_processing="none"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert seen == ["ca_work"] * 4
+
+    def test_every_thread_read_runs_as_the_scoped_account(self, mock_proxy: MagicMock) -> None:
+        seen: list[str | None] = []
+        mock_proxy.side_effect = self._recording(TestTheThreadRead()._threads(count=1), seen)
+        work = ComposioAccountSelection(toolkit="gmail", connected_account_id="ca_work")
+
+        with account_scope_module.account_scope(work):
+            _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1", "thread-2"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert seen == ["ca_work", "ca_work"]

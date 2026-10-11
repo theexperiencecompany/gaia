@@ -357,6 +357,17 @@ class TestComposioConnectionEvents:
         ) as pause:
             yield pause
 
+    @pytest.fixture(autouse=True)
+    def pause_watches(self):
+        """Mock the todo-watch pause at the same seam, for the same reason."""
+        with patch.object(
+            _endpoint(),
+            "pause_watches_for_expired_account",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as pause_watches:
+            yield pause_watches
+
     async def _post(self, real_redis, payload: dict, *, webhook_id: str):
         body = json.dumps(payload).encode()
         timestamp = "2025-01-01T00:00:00Z"
@@ -407,7 +418,7 @@ class TestComposioConnectionEvents:
         )
 
     async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_announcement(
-        self, real_redis, pause
+        self, real_redis, pause, pause_watches
     ):
         # The endpoint owns the pause because `integration_expiry` cannot import
         # the workflow layer, and the titles are what turn the reconnect
@@ -440,6 +451,9 @@ class TestComposioConnectionEvents:
                 await asyncio.sleep(0)
 
         pause.assert_awaited_once_with("507f1f77bcf86cd799439011", "notion")
+        pause_watches.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", "notion", "ca_xxxxxxxxxxxx", integration_expired=True
+        )
         assert announce.await_args.args[3] == ["Morning digest", "Invoice filing"]
 
     async def test_the_toolkit_slug_resolves_the_integration_when_the_auth_config_does_not(

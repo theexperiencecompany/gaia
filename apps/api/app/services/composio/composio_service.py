@@ -23,6 +23,7 @@ from app.models.trigger_config import TriggerConfig
 # that builds a Composio client, not just where an entrypoint imports app.patches.
 # Without the user_id-injection patch, custom tools 500 with "Missing user_id in auth_credentials".
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
+from app.services.composio.account_scope import pin_connected_account
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
@@ -39,6 +40,8 @@ from shared.py.wide_events import log
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 COMPOSIO_SERVICE_PROVIDER = "composio_service"
+# For a direct tools.execute, which runs no hook pipeline: pins the account all the same.
+PIN_ACCOUNT_MODIFIER = before_execute(pin_connected_account)
 
 
 class _ComposioEventTotals(BaseModel):

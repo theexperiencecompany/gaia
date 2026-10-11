@@ -43,9 +43,10 @@ def execute_tool(
     user_id: str,
     output_model: type[BaseModel] | None = None,
 ) -> object:
-    """Execute a Composio tool directly (bypasses hook pipeline) and return its raw data payload; raises if the call fails."""
+    """Execute a Composio tool directly (no hook pipeline, but pinned to the scoped account) and return its raw data payload; raises if the call fails."""
     # Deferred import: heavy Composio SDK service stack loads only when context enrichment executes a tool
     from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
+        PIN_ACCOUNT_MODIFIER,
         get_composio_service,
     )
 
@@ -57,6 +58,7 @@ def execute_tool(
             arguments=params,
             user_id=user_id,
             dangerously_skip_version_check=True,
+            modifiers=[PIN_ACCOUNT_MODIFIER],
         )
     )
 

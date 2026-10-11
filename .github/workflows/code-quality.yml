@@ -1368,6 +1368,8 @@ jobs:
           if [ -n "$VOICE" ]; then
             # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
             # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
+            # A persisted venv whose interpreter is gone is refused by uv, not rebuilt: drop it.
+            [ -x .venv-voice-agent/bin/python ] || rm -rf .venv-voice-agent
             UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
           fi
           echo "::endgroup::"
