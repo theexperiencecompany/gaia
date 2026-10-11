@@ -116,9 +116,10 @@ MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
     "today'), so call the tool for every connected account at once, as parallel calls in one "
     "turn, and say which result came from which. For a write with no account named, use "
     "the primary. Answers, summaries and anything you set up to track cover every account "
-    "unless the user narrowed it. If the user describes an account none of the listed ones "
-    "is ('my school email', 'my work inbox' with no such account), do not guess or search the "
-    "others: ask which they mean, and offer to connect it "
+    "unless the user narrowed it. When the user describes an account by what it is for ('my "
+    "school email', 'my work inbox'), be smart: use the listed account that clearly fits (a "
+    "school or company domain, a name you remember) and say which one you used; when none "
+    "clearly fits, ask, and offer to connect it "
     f"({CONNECT_INTEGRATION_TOOL} mode='{ConnectMode.ADD_ACCOUNT}'). Check each result's "
     f"{RAN_AS_ACCOUNT_KEY} is the account you meant. If the named account fails, tell the "
     "user; never use another in its place. Reconnect an expired account with "
@@ -141,9 +142,9 @@ COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
     "patterns as context, not limits, and save what the user says an account is for with "
     "add_memory. When you report, cover every account the executor used, name the account "
     "each result came from as listed (never 'the other account'), and never describe a step "
-    "it did not report. If the user describes an account none of the listed ones is ('my "
-    "school email' with no school account), never map it to a listed account: ask which they "
-    "mean before delegating, and offer to connect it if it is not connected."
+    "it did not report. When the user describes an account by what it is for ('my school "
+    "email'), pass their words on as they said them; the executor picks the account that fits "
+    "or asks."
 )
 
 #: Activation runs once per conversation, so it points at the per-turn list
