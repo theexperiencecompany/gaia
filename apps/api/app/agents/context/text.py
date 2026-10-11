@@ -116,16 +116,17 @@ MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
     "today'), so call the tool for every connected account at once, as parallel calls in one "
     "turn, and say which result came from which. For a write with no account named, use "
     "the primary. Answers, summaries and anything you set up to track cover every account "
-    "unless the user narrowed it. If a name matches no account ('my school email' with no "
-    "school account), ask instead of picking the closest. Check each result's "
+    "unless the user narrowed it. If the user describes an account none of the listed ones "
+    "is ('my school email', 'my work inbox' with no such account), do not guess or search the "
+    "others: ask which they mean, and offer to connect it "
+    f"({CONNECT_INTEGRATION_TOOL} mode='{ConnectMode.ADD_ACCOUNT}'). Check each result's "
     f"{RAN_AS_ACCOUNT_KEY} is the account you meant. If the named account fails, tell the "
     "user; never use another in its place. Reconnect an expired account with "
     f"{CONNECT_INTEGRATION_TOOL} mode='{ConnectMode.RECONNECT}' and that account, add one "
     f"with mode='{ConnectMode.ADD_ACCOUNT}', remove one with {DISCONNECT_INTEGRATION_TOOL}, "
     f"change the default with {SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL}. Rename a generic account "
     f"({RENAME_INTEGRATION_ACCOUNT_TOOL}) once you learn whose it is, and save how the user "
-    "uses each account with add_memory. When the user mentions an account that is not "
-    f"connected (a work inbox, a second calendar), offer to add it (mode='{ConnectMode.ADD_ACCOUNT}')."
+    "uses each account with add_memory."
 )
 
 #: The comms agent sees the same account lists but acts on none of them.
@@ -138,9 +139,11 @@ COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
     "address), and it never steers the executor away from an account, even one you remember "
     "failing; an earlier request or agenda item never names one. Pass remembered usage "
     "patterns as context, not limits, and save what the user says an account is for with "
-    "add_memory. When you report, cover every account the executor used, say which result "
-    "came from which, and never describe a step it did not report. When the user mentions an "
-    "account that is not connected, offer to connect it."
+    "add_memory. When you report, cover every account the executor used, name the account "
+    "each result came from as listed (never 'the other account'), and never describe a step "
+    "it did not report. If the user describes an account none of the listed ones is ('my "
+    "school email' with no school account), never map it to a listed account: ask which they "
+    "mean before delegating, and offer to connect it if it is not connected."
 )
 
 #: Activation runs once per conversation, so it points at the per-turn list
