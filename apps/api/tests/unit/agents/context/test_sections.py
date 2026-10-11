@@ -412,7 +412,7 @@ class TestIntegrationsManifest:
         assert rendered.endswith(
             '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, primary)]\n' + guidance
         )
-        assert guidance.startswith("GAIA supports several connected accounts per integration")
+        assert guidance.startswith("GAIA supports several accounts per integration")
 
     async def test_an_unknown_user_is_asked_for_no_manifest_at_all(self) -> None:
         connected = self._connected()
