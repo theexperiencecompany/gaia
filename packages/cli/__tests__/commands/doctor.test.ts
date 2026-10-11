@@ -126,6 +126,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "workos",
+        needs_setup: true,
         plans_seeded: false,
         has_admin_account: false,
         billing_enabled: false,
@@ -151,6 +152,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "workos",
+        needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: true,
@@ -167,6 +169,11 @@ describe("evaluateSetupReadiness", () => {
   it("treats any configured provider as the provider lane being ready", () => {
     const items = evaluateSetupReadiness(
       {
+        auth_mode: "local",
+        needs_setup: false,
+        plans_seeded: true,
+        has_admin_account: true,
+        billing_enabled: false,
         providers: {
           ollama: { configured: true },
           openrouter: { configured: false },
@@ -183,7 +190,14 @@ describe("evaluateSetupReadiness", () => {
     // A Tavily key alone leaves chat unusable — the server agrees
     // (_needs_setup counts only the four LLM lanes).
     const items = evaluateSetupReadiness(
-      { providers: { tavily: { configured: true } } },
+      {
+        auth_mode: "local",
+        needs_setup: true,
+        plans_seeded: true,
+        has_admin_account: true,
+        billing_enabled: false,
+        providers: { tavily: { configured: true } },
+      },
       3000,
     );
     expect(
@@ -198,6 +212,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "local",
+        needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,
@@ -214,6 +229,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "local",
+        needs_setup: true,
         plans_seeded: true,
         has_admin_account: false,
         billing_enabled: false,
@@ -404,6 +420,7 @@ describe("checkSetupReadiness", () => {
     stubFetch(async () =>
       okResponse({
         auth_mode: "workos",
+        needs_setup: true,
         plans_seeded: false,
         has_admin_account: true,
         billing_enabled: false,
@@ -432,6 +449,7 @@ describe("checkSetupReadiness", () => {
     stubFetch(async () =>
       okResponse({
         auth_mode: "workos",
+        needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: true,
@@ -456,6 +474,7 @@ describe("checkSetupReadiness", () => {
     stubFetch(async () =>
       okResponse({
         auth_mode: "local",
+        needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,
