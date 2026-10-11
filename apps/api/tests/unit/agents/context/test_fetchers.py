@@ -370,7 +370,7 @@ class TestConnectedIntegrationsManifest:
 
         assert manifest == (
             "HEADER:\n"
-            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, primary), '
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, default), '
             '"me@gmail.com" (id ca_2, expired)]\n'
             "- GitHub (github)\n"
             "GUIDE"

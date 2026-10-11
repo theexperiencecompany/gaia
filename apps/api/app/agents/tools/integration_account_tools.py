@@ -95,7 +95,7 @@ async def _set_primary_integration_account(user_id: str, integration_id: str, ac
         await _connected_accounts(user_id, integration_id), integration_id, account
     )
     await update_account(user_id, integration_id, target.id, make_primary=True)
-    return f"{target.display_name} is now the primary {integration_id} account."
+    return f"{target.display_name} is now the default {integration_id} account."
 
 
 async def _disconnect_single_connection(user_id: str, integration_id: str) -> str:
@@ -157,8 +157,8 @@ set_primary_integration_account = define_mutation_tool(
     name=SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,
     area="integration_accounts",
     description=(
-        "Make one of the user's connected accounts on an integration the primary one. The "
-        "primary is used when a call names no account, and its triggers are the ones "
+        "Make one of the user's connected accounts on an integration the default one. The "
+        "default is used when a call names no account, and its triggers are the ones "
         "watched. Use it only when the user asks to change which account is the default."
     ),
     args_model=IntegrationAccountArgs,
@@ -172,7 +172,7 @@ disconnect_integration = define_mutation_tool(
         "Disconnect an integration, or one account of it, when the user asks to remove, "
         "disconnect or unlink it. For an integration with several accounts, pass the account "
         "the user meant; the others stay connected, and the oldest working one becomes "
-        "primary if the primary is removed. Removing the last account disconnects the "
+        "the default if the default is removed. Removing the last account disconnects the "
         "integration."
     ),
     args_model=DisconnectIntegrationArgs,

@@ -42,13 +42,13 @@ def match_account(record: UserIntegrationDocument, name: str) -> IntegrationAcco
 
 
 def describe_account(account: IntegrationAccount, primary_id: str | None) -> str:
-    """One account as the agent sees it: its names, then its id and primary/expired tags."""
+    """One account as the agent sees it: its names, then its id and default/expired tags."""
     # Quoted, so a model passing one as `account` copies the name and not the tags after it.
     # A nickname hides the address the user may name the account by, so both are names.
     names = [account.display_name, *([account.label] if account.nickname else [])]
     tags = [f"id {account.id}"]
     if account.id == primary_id:
-        tags.append("primary")
+        tags.append("default")
     if account.status != "connected":
         tags.append("expired")
     return " or ".join(f'"{name}"' for name in names) + f" ({', '.join(tags)})"
