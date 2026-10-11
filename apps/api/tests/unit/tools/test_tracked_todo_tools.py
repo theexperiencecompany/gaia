@@ -1797,7 +1797,7 @@ class TestCreateThreadTrackedTodo:
     def gmail_accounts(self) -> Iterator[AsyncMock]:
         """Stub the user's Gmail accounts; none on record unless a test says so."""
         with patch(
-            "app.agents.tools.tracked_todo_tools.get_account_record",
+            "app.services.todos.account_refs.get_account_record",
             AsyncMock(return_value=None),
         ) as lookup:
             yield lookup

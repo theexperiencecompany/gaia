@@ -14,7 +14,7 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX
+from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
@@ -225,6 +225,15 @@ class UserIntegration(BaseModel):
     connected_at: datetime | None = Field(None, description="When OAuth/auth was completed")
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class ConnectStep(BaseModel):
+    """A connect connect_integration starts; account is the expired one a reconnect signs back in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mode: ConnectMode
+    account: IntegrationAccount | None = None
 
 
 class UserIntegrationDocument(UserScopedDocument):

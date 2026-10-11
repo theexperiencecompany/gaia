@@ -4,7 +4,7 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
-from typing import Annotated, NamedTuple, cast
+from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -14,9 +14,6 @@ from pydantic import BaseModel, ConfigDict
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
-    DISCONNECT_INTEGRATION_TOOL,
-    INTEGRATION_STATUS_EXPIRED,
-    MAX_ACCOUNTS_PER_INTEGRATION,
     MAX_AVAILABLE_FOR_LLM,
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
@@ -33,9 +30,9 @@ from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
     AuthType,
+    ConnectStep,
     CreateCustomIntegrationRequest,
     Integration,
-    IntegrationAccount,
     IntegrationInfo,
     ListIntegrationsResult,
     SuggestedIntegration,
@@ -47,15 +44,14 @@ from app.services.device.device_service import (
     list_device_servers,
     list_devices as list_devices_service,
 )
+from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
 )
 from app.services.integrations.integration_accounts import (
-    at_account_limit,
     describe_account,
     get_account_record,
-    match_account,
 )
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
@@ -301,75 +297,6 @@ async def suggest_integrations(
     )
 
 
-class _Connect(NamedTuple):
-    mode: ConnectMode
-    # The expired account a reconnect signs back in, in place.
-    account: IntegrationAccount | None = None
-
-
-async def _reconnect_step(
-    integration: OAuthIntegration, user_id: str, account: str | None
-) -> _Connect | str:
-    """Pick the expired account a reconnect signs back in, or say why there is none."""
-    record = await get_account_record(user_id, integration.id)
-    if record is None or not record.accounts:
-        return _Connect(ConnectMode.CONNECT)
-    expired = [a for a in record.accounts if a.status == INTEGRATION_STATUS_EXPIRED]
-    if account is not None:
-        target = match_account(record, account)
-        if target is None:
-            names = ", ".join(a.display_name for a in record.accounts)
-            return f"No {integration.name} account is named {account!r}. Its accounts: {names}."
-        if target.status != INTEGRATION_STATUS_EXPIRED:
-            return f"✅ {integration.name} account {target.display_name} is connected and working."
-        return _Connect(ConnectMode.RECONNECT, target)
-    if len(expired) == 1:
-        return _Connect(ConnectMode.RECONNECT, expired[0])
-    if expired:
-        names = ", ".join(a.display_name for a in expired)
-        return (
-            f"Several {integration.name} accounts lost their connection ({names}). Ask the user "
-            "which to reconnect, then pass it as account."
-        )
-    names = ", ".join(a.display_name for a in record.accounts)
-    return (
-        f"✅ Every {integration.name} account is connected and working ({names}), so there is "
-        f"nothing to reconnect. To add another, use mode='{ConnectMode.ADD_ACCOUNT}'."
-    )
-
-
-async def _connect_step(
-    integration: OAuthIntegration, user_id: str, mode: ConnectMode, account: str | None
-) -> _Connect | str:
-    """The connect to start for one integration, or why none starts."""
-    if mode is ConnectMode.RECONNECT:
-        if integration.composio_config is None:
-            return _Connect(mode)
-        return await _reconnect_step(integration, user_id, account)
-    if not await check_single_integration_status(integration.id, user_id):
-        return _Connect(ConnectMode.CONNECT)
-    if integration.composio_config is None:
-        if mode is ConnectMode.ADD_ACCOUNT:
-            return f"{integration.name} connects a single account; it cannot have several."
-        return f"✅ {integration.name} is already connected!"
-    record = await get_account_record(user_id, integration.id)
-    if mode is ConnectMode.ADD_ACCOUNT:
-        if at_account_limit(record):
-            return (
-                f"{integration.name} already has {MAX_ACCOUNTS_PER_INTEGRATION} accounts, the "
-                f"most allowed. One must be disconnected ({DISCONNECT_INTEGRATION_TOOL}) or, if "
-                f"expired, reconnected (mode='{ConnectMode.RECONNECT}') first."
-            )
-        return _Connect(mode)
-    names = ", ".join(a.display_name for a in record.accounts) if record else ""
-    listed = f" ({names})" if names else ""
-    return (
-        f"✅ {integration.name} is already connected{listed}. If the user wants another "
-        f"account, call {CONNECT_INTEGRATION_TOOL} with mode='{ConnectMode.ADD_ACCOUNT}'; if "
-        "you're not sure they do, ask them."
-    )
-
-
 @tool
 @with_doc(CONNECT_INTEGRATION)
 async def connect_integration(
@@ -407,7 +334,7 @@ async def connect_integration(
         writer = get_stream_writer()
 
         results = []
-        connections_to_initiate: list[tuple[OAuthIntegration, _Connect]] = []
+        connections_to_initiate: list[tuple[OAuthIntegration, ConnectStep]] = []
 
         for integration_id in integration_ids:
             integration = next(
@@ -427,8 +354,8 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            step = await _connect_step(integration, user_id, mode, account)
-            if isinstance(step, _Connect):
+            step = await connect_step(integration, user_id, mode, account)
+            if isinstance(step, ConnectStep):
                 connections_to_initiate.append((integration, step))
             else:
                 results.append(step)

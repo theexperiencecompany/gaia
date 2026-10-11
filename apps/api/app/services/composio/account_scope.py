@@ -12,14 +12,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from composio import before_execute
 from composio.types import ToolExecuteParams
 
 from app.config.oauth_config import get_integration_by_toolkit
+from app.constants.integrations import PRIMARY_ACCOUNT_LOOKUP_TIMEOUT_SECONDS
 from app.models.agent_config import ComposioAccountSelection
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.utils.concurrency import run_on_captured_loop
-
-_PRIMARY_LOOKUP_TIMEOUT_SECONDS = 10.0
 
 _selected_account: ContextVar[ComposioAccountSelection | None] = ContextVar(
     "composio_selected_account", default=None
@@ -52,7 +52,7 @@ def scoped_connected_account_id(user_id: str, toolkit: str) -> str:
         return selection.connected_account_id
     return run_on_captured_loop(
         primary_connected_account_id(user_id, toolkit),
-        timeout=_PRIMARY_LOOKUP_TIMEOUT_SECONDS,
+        timeout=PRIMARY_ACCOUNT_LOOKUP_TIMEOUT_SECONDS,
     )
 
 
@@ -67,3 +67,7 @@ def pin_connected_account(tool: str, toolkit: str, params: ToolExecuteParams) ->
     if user_id and get_integration_by_toolkit(toolkit) is not None:
         params["connected_account_id"] = scoped_connected_account_id(user_id, toolkit)
     return params
+
+
+# For a direct tools.execute, which runs no hook pipeline: pins the account all the same.
+PIN_ACCOUNT_MODIFIER = before_execute(pin_connected_account)

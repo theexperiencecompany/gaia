@@ -456,7 +456,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -489,7 +489,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -523,7 +523,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -562,7 +562,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -592,7 +592,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -611,7 +611,7 @@ class TestConnectIntegration:
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -648,7 +648,9 @@ class TestConnectIntegration:
 
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(
+        "app.services.integrations.connect_steps.check_integration_status", new_callable=AsyncMock
+    )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -677,7 +679,9 @@ class TestConnectIntegration:
 
     @pytest.mark.regression
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(
+        "app.services.integrations.connect_steps.check_integration_status", new_callable=AsyncMock
+    )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -741,7 +745,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         side_effect=RuntimeError("err"),
     )

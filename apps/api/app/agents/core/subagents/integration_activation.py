@@ -45,7 +45,8 @@ from app.services.integration_instructions_service import get_instructions
 from app.services.integrations.integration_accounts import get_account_record
 from shared.py.wide_events import log
 
-# Bound with an integration that has several accounts, so they are callable at once.
+# Account-management tools: activating an integration the user has several accounts on
+# binds them immediately, so renaming, re-defaulting or removing one needs no tool search.
 ACCOUNT_TOOLS = (
     RENAME_INTEGRATION_ACCOUNT_TOOL,
     SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL,

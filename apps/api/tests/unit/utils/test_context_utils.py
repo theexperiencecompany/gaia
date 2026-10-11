@@ -10,8 +10,7 @@ from pydantic import BaseModel
 import pytest
 
 from app.models.agent_config import ComposioAccountSelection
-from app.services.composio.account_scope import account_scope
-from app.services.composio.composio_service import PIN_ACCOUNT_MODIFIER
+from app.services.composio.account_scope import PIN_ACCOUNT_MODIFIER, account_scope
 from app.utils.context_utils import execute_tool, fetch_all_providers, resolve_providers
 
 # Patch targets — these are lazy (inline) imports inside the production code,

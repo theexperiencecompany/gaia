@@ -8,8 +8,6 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
-    DispatchErrorKind,
     ToolExecutionResult,
 )
 from app.agents.tools.execute.resolver import ResolvedTool
@@ -25,6 +23,7 @@ from app.constants.execute import (
     SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
 )
+from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.schemas.errors import ErrorEnvelope
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token

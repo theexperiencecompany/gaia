@@ -26,7 +26,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command, interrupt
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.agents.tools.execute.dispatch import DispatchError, _validate_args
+from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
@@ -36,6 +36,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.agent_models import AgentConfigurable, SubagentResumeItem
+from app.models.execute_models import DispatchError
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,

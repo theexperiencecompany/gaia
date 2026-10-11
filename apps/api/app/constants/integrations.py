@@ -187,3 +187,8 @@ covering connect -> instruct in plain English -> GAIA automates it],
   "faqs": [{faq_count} objects {{"question": natural user question, "answer": 1-3 sentences}}]
 }}
 """
+
+# Lazy-provider name of the Composio service singleton.
+COMPOSIO_SERVICE_PROVIDER = "composio_service"
+# Bound on the Mongo read that resolves a user's primary account for an unscoped call.
+PRIMARY_ACCOUNT_LOOKUP_TIMEOUT_SECONDS = 10.0

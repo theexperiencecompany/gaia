@@ -15,8 +15,6 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
-    DispatchErrorKind,
     ToolExecutionResult,
     ToolSpace,
     _dispatch_ticket,
@@ -24,6 +22,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.models.execute_models import DispatchError, DispatchErrorKind
 
 MODULE = "app.agents.tools.execute.execute_tool"
 SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)

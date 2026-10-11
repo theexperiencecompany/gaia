@@ -196,7 +196,9 @@ class TestSubscribe:
         )
         with (
             patch(f"{_MOD}.register_subscription", register),
-            patch(f"{_MOD}.get_account_record", AsyncMock(return_value=record)) as lookup,
+            patch(
+                "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
+            ) as lookup,
         ):
             await subscribe_todo_to_trigger.coroutine(
                 config=_config(),
@@ -214,7 +216,9 @@ class TestSubscribe:
         record = make_integration_record(make_integration_account("acct_work"), user_id=USER_ID)
         with (
             patch(f"{_MOD}.register_subscription", register),
-            patch(f"{_MOD}.get_account_record", AsyncMock(return_value=record)),
+            patch(
+                "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
+            ),
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(),

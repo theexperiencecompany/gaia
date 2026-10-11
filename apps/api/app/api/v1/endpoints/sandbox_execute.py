@@ -18,7 +18,6 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
     ToolSpace,
     dispatch_config_for,
     dispatch_tool,
@@ -30,6 +29,7 @@ from app.constants.execute import (
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
 )
 from app.db.redis import redis_cache
+from app.models.execute_models import DispatchError
 from app.services.sandbox.execute_token import SandboxExecuteClaims, verify_execute_token
 from app.utils.errors import AppError
 from shared.py.analytics.catalog.properties import Identifier

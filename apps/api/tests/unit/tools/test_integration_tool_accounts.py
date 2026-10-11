@@ -44,8 +44,13 @@ class TestConnectModes:
                     _integration("posthog", "PostHog", composio=False),
                 ],
             ),
-            patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock) as check,
-            patch(f"{MODULE}.get_account_record", new_callable=AsyncMock) as record,
+            patch(
+                "app.services.integrations.connect_steps.check_integration_status",
+                new_callable=AsyncMock,
+            ) as check,
+            patch(
+                "app.services.integrations.connect_steps.get_account_record", new_callable=AsyncMock
+            ) as record,
             patch(
                 f"{MODULE}.request_integration_connection",
                 new_callable=AsyncMock,
@@ -181,7 +186,9 @@ class TestReconnectMode:
                     _integration("posthog", "PostHog", composio=False),
                 ],
             ),
-            patch(f"{MODULE}.get_account_record", new_callable=AsyncMock) as record,
+            patch(
+                "app.services.integrations.connect_steps.get_account_record", new_callable=AsyncMock
+            ) as record,
             patch(
                 f"{MODULE}.request_integration_connection",
                 new_callable=AsyncMock,

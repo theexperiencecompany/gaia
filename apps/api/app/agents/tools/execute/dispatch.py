@@ -15,7 +15,6 @@ model's mistake to correct.
 import asyncio
 from collections.abc import Container
 from dataclasses import dataclass
-from enum import StrEnum
 import json
 from typing import Any, TypedDict, cast
 
@@ -24,30 +23,22 @@ from langchain_core.tools import BaseTool
 from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError
 
+from app.agents.tools.execute.account_choice import choose_account, tool_used, with_account
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
-from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.execute import (
     TICKET_APPROVE_NAME,
     TICKET_NAMES,
     TICKET_REVOKE_NAME,
 )
-from app.constants.integrations import ConnectMode
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
-from app.models.agent_config import ComposioAccountSelection
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.models.integration_models import UserIntegrationDocument
+from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.services.analytics_service import capture
-from app.services.integrations.integration_accounts import (
-    get_account_record,
-    match_account,
-    primary_account,
-)
 from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
-from app.utils.integration_checker import request_integration_connection
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
+from shared.py.analytics.catalog.agents import ToolExecuteFailed
 from shared.py.wide_events import log, spawn_logged_task
 
 # Health metric of the proxy migration: invalid_args/ok is the
@@ -63,31 +54,6 @@ _EXECUTE_DISPATCH_TOTAL = _register_once(
 )
 
 
-class DispatchErrorKind(StrEnum):
-    UNKNOWN_TOOL = "unknown_tool"
-    INVALID_ARGS = "invalid_args"
-    # An internal tool reached a surface (the sandbox route) that only runs
-    # integration tools — internal tools need graph runtime and stay in-graph.
-    INTERNAL_TOOL = "internal_tool"
-    # A registered tool outside the calling agent's tool space (a subagent
-    # reaching for another integration's tools).
-    OUT_OF_SCOPE = "out_of_scope"
-    # `account` names no connected account of the tool's integration, or names
-    # one on a tool that has no accounts to choose between.
-    UNKNOWN_ACCOUNT = "unknown_account"
-    # The chosen account's grant died while another account still works.
-    ACCOUNT_EXPIRED = "account_expired"
-    # The tool did not return within the host's bound. Its own outcome is
-    # unknown, so this is the one failure a retry can duplicate.
-    TIMEOUT = "timeout"
-
-
-class DispatchError(BaseModel):
-    kind: DispatchErrorKind
-    detail: str
-    hint: str
-
-
 class ToolExecutionResult(BaseModel):
     """Outcome of one proxied tool run; ``output`` is the tool's own payload."""
 
@@ -99,97 +65,6 @@ class ToolExecutionResult(BaseModel):
     error: DispatchError | None = None
     # The account the call ran as, named only when the user has several on that integration.
     account: str | None = None
-
-
-@dataclass(frozen=True)
-class _AccountChoice:
-    selection: ComposioAccountSelection
-    display_name: str
-    is_primary: bool
-    account_count: int
-
-
-def _account_names(record: UserIntegrationDocument) -> str:
-    return ", ".join(
-        f'"{a.display_name}" ({"expired" if a.status != "connected" else "connected"})'
-        for a in record.accounts
-    )
-
-
-async def _choose_account(
-    user_id: str | None, tool_name: str, account: str | None
-) -> _AccountChoice | DispatchError | None:
-    """The connected account a Composio tool call acts as; None leaves the call unpinned.
-
-    Unpinned covers non-Composio tools and integrations with no accounts on
-    record, where the tool's own not-connected path (the connect card) answers.
-    """
-    integration = get_integration_by_tool_slug(tool_name)
-    composio_config = integration.composio_config if integration else None
-    if integration is None or composio_config is None or not user_id:
-        if account:
-            return DispatchError(
-                kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
-                detail=f"'{tool_name}' has no connected accounts to choose between.",
-                hint="Retry without `account`.",
-            )
-        return None
-    record = await get_account_record(user_id, integration.id)
-    if record is None or not record.accounts:
-        return None
-    chosen = match_account(record, account) if account else primary_account(record)
-    if chosen is None:
-        return DispatchError(
-            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
-            detail=f"No connected {integration.name} account is called '{account}'.",
-            hint=(
-                f"If the user meant one of these, pass it as `account`: {_account_names(record)}. "
-                "Otherwise ask them which account they meant."
-            ),
-        )
-    live = [a for a in record.accounts if a.status == "connected"]
-    if chosen.status != "connected" and live:
-        return DispatchError(
-            kind=DispatchErrorKind.ACCOUNT_EXPIRED,
-            detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",
-            # Same card a call that finds the account dead at Composio shows.
-            hint=await request_integration_connection(
-                integration.id,
-                integration.name,
-                user_id,
-                mode=ConnectMode.RECONNECT,
-                account=chosen,
-            ),
-        )
-    return _AccountChoice(
-        selection=ComposioAccountSelection(
-            toolkit=composio_config.toolkit, connected_account_id=chosen.connected_account_id
-        ),
-        display_name=chosen.display_name,
-        is_primary=chosen.id == record.primary_account_id,
-        account_count=len(record.accounts),
-    )
-
-
-def _tool_used(tool_name: str, choice: _AccountChoice | None) -> ToolUsed:
-    if choice is None:
-        return ToolUsed(tool_name=tool_name, via="execute")
-    return ToolUsed(
-        tool_name=tool_name,
-        via="execute",
-        account_count=choice.account_count,
-        account_is_primary=choice.is_primary,
-    )
-
-
-def _with_account(config: RunnableConfig, choice: _AccountChoice | None) -> RunnableConfig:
-    if choice is None:
-        return config
-    metadata = {
-        **(config.get("metadata") or {}),
-        "composio_account": choice.selection.model_dump(mode="json"),
-    }
-    return {**config, "metadata": metadata}
 
 
 class _TicketData(TypedDict, total=False):
@@ -263,7 +138,7 @@ async def _admit(
     data: dict[str, object],
     account: str | None,
     space: ToolSpace,
-) -> tuple[dict[str, object], _AccountChoice | None] | DispatchError:
+) -> tuple[dict[str, object], AccountChoice | None] | DispatchError:
     """Return the validated args and the account to act as, or why the call may not run."""
     refusal = _refusal(resolved, space)
     if refusal is not None:
@@ -274,7 +149,7 @@ async def _admit(
             f"{LogTag.TOOL} execute: args failed schema validation", tool_name=resolved.name
         )
         return validated
-    choice = await _choose_account(user_id, resolved.name, account)
+    choice = await choose_account(user_id, resolved.name, account)
     if isinstance(choice, DispatchError):
         log.warning(f"{LogTag.TOOL} execute: account not usable", tool_name=resolved.name)
         return choice
@@ -356,7 +231,7 @@ async def dispatch_tool(
     bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
     try:
         async with asyncio.timeout(bound):
-            output = await tool.ainvoke(validated, config=_with_account(config, choice))
+            output = await tool.ainvoke(validated, config=with_account(config, choice))
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have
         # applied it after we stopped waiting. Bounded here so the model gets
@@ -391,7 +266,7 @@ async def dispatch_tool(
         # The one TOOL_USED per proxied run, attributed to the real tool with
         # via="execute" (the middleware emitter skips calls named execute for
         # this reason: one action, one event, one emitter).
-        capture(UserId(user_id), _tool_used(resolved_name, choice))
+        capture(UserId(user_id), tool_used(resolved_name, choice))
 
     account = choice.display_name if choice is not None and choice.account_count > 1 else None
     return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output, account=account)

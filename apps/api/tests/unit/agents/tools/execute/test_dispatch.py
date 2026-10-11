@@ -15,8 +15,6 @@ from pydantic import BaseModel, Field, field_validator
 import pytest
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
-    DispatchErrorKind,
     ToolExecutionResult,
     ToolSpace,
     dispatch_config_for,
@@ -25,6 +23,7 @@ from app.agents.tools.execute.dispatch import (
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import ConnectMode
+from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
@@ -52,7 +51,9 @@ def _tool(name: str = "GMAIL_SEND_EMAIL", schema: object = _SendEmailArgs) -> Ma
 @pytest.fixture(autouse=True)
 def account_record() -> Iterator[AsyncMock]:
     """Pin the user's accounts on the tool's integration; none on record by default."""
-    with patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as lookup:
+    with patch(
+        "app.agents.tools.execute.account_choice.get_account_record", AsyncMock(return_value=None)
+    ) as lookup:
         yield lookup
 
 
@@ -63,7 +64,8 @@ RECONNECT_PROMPT = "A reconnect button has been shown to the user."
 def reconnect_prompt() -> Iterator[AsyncMock]:
     """Stand in for the reconnect card; its copy is pinned in test_integration_checker."""
     with patch(
-        f"{MODULE}.request_integration_connection", AsyncMock(return_value=RECONNECT_PROMPT)
+        "app.agents.tools.execute.account_choice.request_integration_connection",
+        AsyncMock(return_value=RECONNECT_PROMPT),
     ) as prompt:
         yield prompt
 
@@ -268,7 +270,7 @@ class TestAccountChoice:
         account_record.return_value = _gmail_accounts(WORK, PERSONAL)
         tool = _tool()
         with patch(
-            f"{MODULE}.get_integration_by_tool_slug",
+            "app.agents.tools.execute.account_choice.get_integration_by_tool_slug",
             return_value=get_integration_by_id("perplexity"),
         ):
             result = await _dispatch_send("Personal", tool)

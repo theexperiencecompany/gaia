@@ -7,8 +7,11 @@ import httpx
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT, GMAIL_INTEGRATION_ID
-from app.services.composio import composio_service
+from app.constants.integrations import (
+    COMPOSIO_ACCOUNT_LIST_LIMIT,
+    COMPOSIO_SERVICE_PROVIDER,
+    GMAIL_INTEGRATION_ID,
+)
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -760,7 +763,7 @@ class TestGetComposioService:
 
             assert get_composio_service() == mock_svc
         # The same name @lazy_provider registered the service under.
-        mock_providers.get.assert_called_once_with(composio_service.COMPOSIO_SERVICE_PROVIDER)
+        mock_providers.get.assert_called_once_with(COMPOSIO_SERVICE_PROVIDER)
 
     def test_raises_when_none(self):
         with patch("app.services.composio.composio_service.providers") as mock_providers:
