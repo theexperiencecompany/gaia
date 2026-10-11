@@ -57,6 +57,13 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 WORKDIR /app/apps/web
+# Bound the Node heap for the production build. Next.js fans static rendering
+# out across every core, and on a 6-8 GB self-host box the combined heaps OOM
+# mid-compile (measured: SIGKILL building gaia-web on a 6 GB host). The cap
+# only forces earlier GC — output is identical, and big CI builders can raise
+# it per build. Workers inherit NODE_OPTIONS, so one variable covers all.
+ARG NEXT_BUILD_MAX_OLD_SPACE_MB=3072
+ENV NODE_OPTIONS=--max-old-space-size=${NEXT_BUILD_MAX_OLD_SPACE_MB}
 RUN pnpm build
 
 # ===================================
