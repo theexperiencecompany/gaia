@@ -16,12 +16,14 @@ from app.config.oauth_config import get_integration_by_id
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
 from app.scripts.migrate_integration_accounts import (
+    _LegacyRecord,
     _Plan,
     _plan,
     connect_args_with_mode,
     migrate_connect_approvals,
 )
 from app.services.hil.fingerprint import approval_fingerprint
+from tests.integration_account_factories import make_integration_account, provider_account_id
 
 EMAILS = {
     "ca_old": "me@gmail.com",
@@ -30,6 +32,8 @@ EMAILS = {
     "ca_work_old": "work@acme.com",
     "ca_dead": "me@gmail.com",
     "ca_abandoned": "me@gmail.com",
+    provider_account_id("acct_work"): "work@acme.com",
+    provider_account_id("acct_me"): "me@gmail.com",
 }
 
 
@@ -66,6 +70,25 @@ def gaia_ids() -> Iterator[None]:
         yield
 
 
+def _record(
+    stored_id: str | None,
+    status: str,
+    tracked: list[IntegrationAccount],
+    primary: str | None,
+) -> _LegacyRecord:
+    return _LegacyRecord.model_validate(
+        {
+            "_id": ObjectId(),
+            "user_id": "u1",
+            "integration_id": "gmail",
+            "status": status,
+            "connected_account_id": stored_id,
+            "accounts": tracked,
+            "primary_account_id": primary,
+        }
+    )
+
+
 def _primary_provider_id(plan: _Plan) -> str | None:
     """Return the Composio account behind the plan's primary, which GAIA names by its own id."""
     return next((a.connected_account_id for a in plan.keep if a.id == plan.primary), None)
@@ -79,10 +102,8 @@ def _gmail() -> OAuthIntegration:
 
 async def test_reconnect_leftovers_of_one_identity_collapse_to_the_stored_account() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_old",
-        "connected",
+        _record("ca_old", "connected", [], None),
         [_account("ca_old", created="2026-01-01"), _account("ca_new", created="2026-02-01")],
     )
 
@@ -93,10 +114,8 @@ async def test_reconnect_leftovers_of_one_identity_collapse_to_the_stored_accoun
 
 async def test_two_real_mailboxes_both_survive_with_the_stored_one_primary() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_work",
-        "connected",
+        _record("ca_work", "connected", [], None),
         [_account("ca_old", created="2026-01-01"), _account("ca_work", created="2026-03-01")],
     )
 
@@ -110,10 +129,8 @@ async def test_two_real_mailboxes_both_survive_with_the_stored_one_primary() -> 
 
 async def test_dead_and_abandoned_accounts_are_revoked_but_a_disabled_one_is_left_alone() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_old",
-        "connected",
+        _record("ca_old", "connected", [], None),
         [
             _account("ca_old"),
             _account("ca_dead", status="EXPIRED"),
@@ -128,10 +145,8 @@ async def test_dead_and_abandoned_accounts_are_revoked_but_a_disabled_one_is_lef
 
 async def test_without_the_stored_account_the_newest_of_an_identity_is_kept() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_gone",
-        "connected",
+        _record("ca_gone", "connected", [], None),
         [_account("ca_old", created="2026-01-01"), _account("ca_new", created="2026-02-01")],
     )
 
@@ -143,7 +158,7 @@ async def test_without_the_stored_account_the_newest_of_an_identity_is_kept() ->
 async def test_an_expired_integration_keeps_its_dead_account_so_reconnect_is_offered() -> None:
     before = datetime.now(UTC)
     plan = await _plan(
-        "u1", _gmail(), "ca_dead", "expired", [_account("ca_dead", status="EXPIRED")]
+        _gmail(), _record("ca_dead", "expired", [], None), [_account("ca_dead", status="EXPIRED")]
     )
     after = datetime.now(UTC)
 
@@ -165,10 +180,8 @@ async def test_the_kept_account_carries_the_identity_read_as_the_record_owner(
 ) -> None:
     gmail = _gmail()
     plan = await _plan(
-        "u1",
         gmail,
-        "ca_old",
-        "connected",
+        _record("ca_old", "connected", [], None),
         [
             _account("ca_old", created="2026-01-01"),
             _account("ca_new", created="2026-02-01"),
@@ -200,10 +213,8 @@ async def test_an_account_whose_identity_is_unreadable_is_kept_alone_and_reporte
 
     identity.side_effect = profile
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_old",
-        "connected",
+        _record("ca_old", "connected", [], None),
         [_account("ca_old", created="2026-01-01"), _account("ca_new", created="2026-02-01")],
     )
 
@@ -220,10 +231,8 @@ async def test_an_account_whose_identity_is_unreadable_is_kept_alone_and_reporte
 
 async def test_the_duplicates_of_every_identity_are_revoked() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_old",
-        "connected",
+        _record("ca_old", "connected", [], None),
         [
             _account("ca_old", created="2026-01-01"),
             _account("ca_work_old", created="2026-01-15"),
@@ -238,10 +247,8 @@ async def test_the_duplicates_of_every_identity_are_revoked() -> None:
 
 async def test_an_expired_integration_with_a_live_account_left_revokes_its_dead_one() -> None:
     plan = await _plan(
-        "u1",
         _gmail(),
-        "ca_dead",
-        "expired",
+        _record("ca_dead", "expired", [], None),
         [_account("ca_dead", status="EXPIRED"), _account("ca_new", created="2026-02-01")],
     )
 
@@ -252,12 +259,80 @@ async def test_an_expired_integration_with_a_live_account_left_revokes_its_dead_
 
 async def test_an_expired_integration_whose_account_composio_dropped_keeps_nothing() -> None:
     plan = await _plan(
-        "u1", _gmail(), "ca_gone", "expired", [_account("ca_off", status="INACTIVE")]
+        _gmail(), _record("ca_gone", "expired", [], None), [_account("ca_off", status="INACTIVE")]
     )
 
     assert plan.keep == []
     assert plan.revoke == []
     assert plan.primary is None
+
+
+async def test_a_record_that_gained_accounts_keeps_them_and_folds_in_its_live_legacy_one() -> None:
+    work = make_integration_account("acct_work", label="Work").model_copy(
+        update={"connected_at": datetime(2025, 12, 1, tzinfo=UTC)}
+    )
+    plan = await _plan(
+        _gmail(),
+        _record("ca_old", "connected", [work], "acct_work"),
+        [_account(work.connected_account_id, created="2025-12-01"), _account("ca_old")],
+    )
+
+    assert [(a.id, a.connected_account_id, a.label) for a in plan.keep] == [
+        ("acct_work", work.connected_account_id, "Work"),
+        ("acct_1", "ca_old", "me@gmail.com"),
+    ]
+    assert plan.revoke == []
+    assert plan.primary == "acct_work"
+
+
+async def test_untracked_copies_of_every_tracked_identity_are_revoked() -> None:
+    me = make_integration_account("acct_me")
+    work = make_integration_account("acct_work")
+    plan = await _plan(
+        _gmail(),
+        _record("ca_old", "connected", [me, work], "acct_me"),
+        [
+            _account("ca_old"),
+            _account(me.connected_account_id, created="2026-02-01"),
+            _account("ca_work_old", created="2026-03-01"),
+            _account(work.connected_account_id, created="2026-04-01"),
+        ],
+    )
+
+    assert plan.keep == [me, work]
+    assert plan.revoke == ["ca_old", "ca_work_old"]
+    assert plan.primary == "acct_me"
+
+
+async def test_a_tracked_account_composio_reports_dead_stays_as_gaia_has_it() -> None:
+    expired = make_integration_account("acct_work", "expired")
+    plan = await _plan(
+        _gmail(),
+        _record("ca_old", "connected", [expired], "acct_work"),
+        [_account("ca_old"), _account(expired.connected_account_id, status="EXPIRED")],
+    )
+
+    assert [a.id for a in plan.keep] == ["acct_1", "acct_work"]
+    assert plan.keep[1] == expired
+    assert plan.revoke == []
+    assert plan.primary == "acct_work"
+
+
+async def test_unnamed_accounts_are_numbered_after_the_tracked_ones() -> None:
+    first = make_integration_account("acct_first", label="Gmail account 2").model_copy(
+        update={"connected_at": datetime(2025, 12, 1, tzinfo=UTC)}
+    )
+    plan = await _plan(
+        _gmail(),
+        _record(None, "connected", [first], "acct_first"),
+        [
+            _account(first.connected_account_id, created="2025-12-01"),
+            _account("ca_unnamed_a", created="2026-02-01"),
+            _account("ca_unnamed_b", created="2026-03-01"),
+        ],
+    )
+
+    assert [a.label for a in plan.keep] == ["Gmail account 2", "Gmail account 3", "Gmail account 4"]
 
 
 @pytest.mark.parametrize(

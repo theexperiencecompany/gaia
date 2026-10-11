@@ -17,6 +17,10 @@ Per Composio integration document this:
 - revokes the rest (live duplicates, expired, failed, abandoned) on Composio;
   INACTIVE accounts were switched off on purpose and are left untouched;
 - writes accounts + primary_account_id and drops the legacy field;
+- on a record that gained accounts before this ran (a connect after the deploy),
+  keeps those accounts and their GAIA ids as they are, folds the legacy account
+  in only when it is live and not one of their identities, and revokes nothing
+  they track;
 - subscribes every kept account to the integration's account-level triggers
   and re-registers workflow triggers on the primary.
 
@@ -70,7 +74,7 @@ _UNTOUCHED = frozenset({"INACTIVE"})
 
 
 class _LegacyRecord(BaseModel):
-    """A user_integrations document as it stood before accounts: one stored account id."""
+    """A user_integrations document still carrying the single stored account id, with any accounts it gained."""
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
 
@@ -79,6 +83,8 @@ class _LegacyRecord(BaseModel):
     integration_id: str
     status: str = "created"
     connected_account_id: str | None = None
+    accounts: list[IntegrationAccount] = Field(default_factory=list)
+    primary_account_id: str | None = None
 
 
 @dataclass
@@ -106,13 +112,11 @@ async def _identity(user_id: str, integration: OAuthIntegration, account_id: str
 
 
 async def _plan(
-    user_id: str,
-    integration: OAuthIntegration,
-    stored_id: str | None,
-    record_status: str,
-    composio_accounts: list[Item],
+    integration: OAuthIntegration, record: _LegacyRecord, composio_accounts: list[Item]
 ) -> _Plan:
     plan = _Plan()
+    user_id, stored_id, tracked = record.user_id, record.connected_account_id, record.accounts
+    held = {a.connected_account_id: a for a in tracked}
     live = sorted(
         (a for a in composio_accounts if a.status == _LIVE and not a.is_disabled),
         key=lambda a: datetime.fromisoformat(a.created_at),
@@ -124,21 +128,29 @@ async def _plan(
         key = repr(sorted(identity.items())) if identity else account.id
         by_identity.setdefault(key, []).append((account, identity))
 
+    taken = {a.label for a in tracked}
     for group in by_identity.values():
+        if any(a.id in held for a, _ in group):
+            plan.revoke += [a.id for a, _ in group if a.id not in held]
+            continue
         chosen, identity = next(((a, i) for a, i in group if a.id == stored_id), group[-1])
+        label = account_label(integration, identity, taken)
+        taken.add(label)
         plan.keep.append(
             IntegrationAccount(
                 id=new_account_id(),
                 connected_account_id=chosen.id,
                 identity=identity,
-                label=account_label(integration, identity, {k.label for k in plan.keep}),
+                label=label,
                 connected_at=datetime.fromisoformat(chosen.created_at),
             )
         )
         plan.revoke += [a.id for a, _ in group if a.id != chosen.id]
 
+    # Every account the record tracks stays as GAIA has it, live on Composio or not.
+    plan.keep += tracked
     kept_ids = {k.connected_account_id for k in plan.keep}
-    if not plan.keep and record_status == "expired" and stored_id:
+    if not plan.keep and record.status == "expired" and stored_id:
         stored = next((a for a in composio_accounts if a.id == stored_id), None)
         if stored is not None:
             plan.keep.append(
@@ -161,7 +173,9 @@ async def _plan(
     ]
     plan.keep.sort(key=lambda a: a.connected_at)
     # The legacy record named its account by Composio's id; the primary is now GAIA's.
-    stored_primary = next((k.id for k in plan.keep if k.connected_account_id == stored_id), None)
+    stored_primary = record.primary_account_id or next(
+        (k.id for k in plan.keep if k.connected_account_id == stored_id), None
+    )
     plan.primary = pick_primary(plan.keep, stored_primary)
     return plan
 
@@ -174,7 +188,6 @@ async def _migrate_document(
     apply: bool,
 ) -> None:
     user_id = doc.user_id
-    stored_id = doc.connected_account_id
     composio = get_composio_service()
     listing = await asyncio.to_thread(
         composio.composio.connected_accounts.list,
@@ -182,7 +195,7 @@ async def _migrate_document(
         auth_config_ids=[auth_config_id],
         limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
     )
-    plan = await _plan(user_id, integration, stored_id, doc.status, listing.items)
+    plan = await _plan(integration, doc, listing.items)
 
     totals.documents += 1
     totals.accounts_kept += len(plan.keep)
@@ -205,13 +218,16 @@ async def _migrate_document(
         primary_account_id=plan.primary,
         status=derive_status(plan.keep) if plan.keep else "created",
     )
+    already_subscribed = {a.connected_account_id for a in doc.accounts}
     for account in plan.keep:
+        if account.connected_account_id in already_subscribed:
+            continue
         if account.status == "connected" and integration.associated_triggers:
             await composio.handle_subscribe_trigger(
                 user_id, account.connected_account_id, integration.associated_triggers
             )
     # Workflow triggers sat on whichever account Composio picked, possibly one just revoked.
-    if plan.primary is not None:
+    if plan.primary is not None and plan.primary != doc.primary_account_id:
         await resync_primary_bound_triggers(user_id, integration)
 
 
@@ -279,7 +295,10 @@ async def _run(args: argparse.Namespace) -> None:
     cursor = user_integrations.find(
         {
             "integration_id": {"$in": list(composio_integrations)},
-            "accounts.0": {"$exists": False},
+            "$or": [
+                {"accounts.0": {"$exists": False}},
+                {"connected_account_id": {"$exists": True}},
+            ],
         }
     )
     async for raw in cursor:
