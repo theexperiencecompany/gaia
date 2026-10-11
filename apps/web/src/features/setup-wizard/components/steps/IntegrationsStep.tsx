@@ -24,7 +24,11 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { SetupStatus } from "@/features/settings/api/providersApi";
 import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
-import { MOTION_FADE_UP, TOOL_PROVIDER_CARDS } from "../../constants";
+import {
+  MOTION_FADE_UP,
+  TOOL_PROVIDER_CARDS,
+  WIZARD_EXCLUDED_TOOL_KEYS,
+} from "../../constants";
 import { ProviderSetupCard } from "../ProviderSetupCard";
 
 const MAX_SUGGESTED = 6;
@@ -138,7 +142,12 @@ export function IntegrationsStep({ status, onSaved }: IntegrationsStepProps) {
           configured later in Settings.
         </p>
         <div className="space-y-2">
-          {TOOL_PROVIDER_CARDS.map((config) => (
+          {TOOL_PROVIDER_CARDS.filter(
+            (config) =>
+              !(WIZARD_EXCLUDED_TOOL_KEYS as readonly string[]).includes(
+                config.key,
+              ),
+          ).map((config) => (
             <ProviderSetupCard
               key={config.key}
               config={config}

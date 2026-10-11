@@ -221,17 +221,36 @@ function OllamaOneClick({
   const [ollamaOutcome, setOllamaOutcome] =
     useState<ReturnType<typeof useProviderSetup>["outcome"]>(null);
   const [ollamaError, setOllamaError] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
 
   const handleOllamaOneClick = async () => {
     setOllamaBusy(true);
     setOllamaOutcome(null);
     setOllamaError(null);
+    setOllamaModels([]);
+    const body = {
+      base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
+      model: config.defaultModel || OLLAMA_ONE_CLICK.model,
+    };
     try {
-      await providersApi.upsertProvider("ollama", {
-        base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
-        model: config.defaultModel || OLLAMA_ONE_CLICK.model,
+      // Probe first, save second: an unreachable endpoint must not flip the
+      // wizard to "ready".
+      const test = await providersApi.testProvider("ollama", body);
+      if (!test.ok) {
+        setOllamaOutcome({
+          ok: false,
+          detail: test.detail,
+          modelCount: test.models?.length ?? 0,
+        });
+        return;
+      }
+      await providersApi.upsertProvider("ollama", body);
+      setOllamaModels(test.models ?? []);
+      setOllamaOutcome({
+        ok: true,
+        detail: test.detail,
+        modelCount: test.models?.length ?? 0,
       });
-      setOllamaOutcome({ ok: true, detail: "Saved", modelCount: 0 });
       onSaved();
     } catch (err) {
       setOllamaError(
@@ -246,6 +265,18 @@ function OllamaOneClick({
     if (ollamaError) return getProviderErrorHint(ollamaError, "ollama");
     if (ollamaOutcome && !ollamaOutcome.ok)
       return getProviderErrorHint(ollamaOutcome.detail, "ollama");
+    if (ollamaOutcome?.ok && ollamaModels.length > 0) {
+      const wanted = config.defaultModel || OLLAMA_ONE_CLICK.model;
+      const pulled = ollamaModels.some(
+        (m) =>
+          m === wanted || m.endsWith(`:${wanted}`) || wanted.endsWith(`:${m}`),
+      );
+      if (!pulled)
+        return (
+          `Connected, but ${wanted} isn't pulled yet — ` +
+          `run ollama pull ${wanted}, then chat.`
+        );
+    }
     return null;
   })();
 

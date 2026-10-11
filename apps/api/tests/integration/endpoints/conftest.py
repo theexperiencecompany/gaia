@@ -9,8 +9,6 @@ namespace, so no test touches Mongo or Redis. Fakes mirror the real APIs
 HTTP probes use respx, the repo-wide pattern for mocking httpx.
 """
 
-from typing import Any
-
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
@@ -21,7 +19,6 @@ from app.api.v1.endpoints import setup as setup_module
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
 from app.models.auth_models import LocalCredentialDocument
-from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import ProviderConfig
 
@@ -70,24 +67,6 @@ class FakeProviderService:
         self.invalidated.append(provider)
 
 
-class FakeInstanceSettingsRepository:
-    """Key to JSON-value docs; find_by_key yields a real document model."""
-
-    def __init__(self) -> None:
-        self.docs: dict[str, dict[str, Any]] = {}
-
-    def reset(self) -> None:
-        self.docs.clear()
-
-    async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
-        value = self.docs.get(key)
-        return InstanceSettingsDocument(key=key, value=value) if value is not None else None
-
-    async def upsert_value(self, key: str, value: dict[str, Any]) -> InstanceSettingsDocument:
-        self.docs[key] = dict(value)
-        return InstanceSettingsDocument(key=key, value=dict(value))
-
-
 class FakeLocalCredentialsRepository:
     """The single locally-registered admin account (or none).
 
@@ -122,7 +101,6 @@ class FakeSeedState:
 
 
 provider_service = FakeProviderService()
-instance_settings_repo = FakeInstanceSettingsRepository()
 local_credentials_repo = FakeLocalCredentialsRepository()
 seed_state = FakeSeedState()
 
@@ -144,7 +122,6 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_module, "upsert_provider_config", provider_service.upsert)
     monkeypatch.setattr(setup_module, "delete_provider_config", provider_service.delete)
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)
-    monkeypatch.setattr(setup_module, "instance_settings_repository", instance_settings_repo)
     monkeypatch.setattr(setup_module, "local_credentials_repository", local_credentials_repo)
     monkeypatch.setattr(
         instance_admin_module, "local_credentials_repository", local_credentials_repo
@@ -157,7 +134,6 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _reset_fake_state() -> None:
     provider_service.reset()
-    instance_settings_repo.reset()
     local_credentials_repo.reset()
     seed_state.reset()
 

@@ -136,8 +136,9 @@ const ExistingRepoStep: React.FC<{
 const FinishedStep: React.FC<{
   setupMode?: SetupMode;
   portOverrides?: Record<number, number>;
+  stillStarting?: boolean;
   onConfirm: () => void;
-}> = ({ setupMode, portOverrides, onConfirm }) => {
+}> = ({ setupMode, portOverrides, stillStarting, onConfirm }) => {
   useInput((_input, key) => {
     if (key.return) {
       onConfirm();
@@ -157,14 +158,24 @@ const FinishedStep: React.FC<{
         padding={1}
       >
         <Text bold color="green">
-          GAIA is Running!
+          {stillStarting ? "GAIA is starting…" : "GAIA is Running!"}
         </Text>
 
         <Box marginTop={1}>
-          <Text color="green">✓ All services started</Text>
+          <Text color="green">
+            {stillStarting
+              ? "Containers are up but not answering yet"
+              : "✓ All services started"}
+          </Text>
         </Box>
 
         <Box marginTop={1} flexDirection="column">
+          <Text>
+            Finish setup in your browser:{" "}
+            <Text color="cyan" bold>
+              http://localhost:{webPort}/setup
+            </Text>
+          </Text>
           <Text>
             Web:{" "}
             <Text color="cyan" bold>
@@ -181,7 +192,7 @@ const FinishedStep: React.FC<{
 
         <Box marginTop={1}>
           <Text color="gray">
-            gaia logs · gaia stop · gaia status · gaia setup
+            gaia logs · gaia stop · gaia status · gaia doctor
           </Text>
         </Box>
 
@@ -1330,6 +1341,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         <FinishedStep
           setupMode={state.data.setupMode}
           portOverrides={state.data.portOverrides}
+          stillStarting={state.data.stillStarting === true}
           onConfirm={() => store.submitInput("exit")}
         />
       )}

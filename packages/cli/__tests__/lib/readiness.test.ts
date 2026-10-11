@@ -5,8 +5,8 @@ import {
   READINESS_TIMEOUT_MS,
   waitForServices,
   waitForUpReadiness,
-} from "../../../src/commands/up/readiness.js";
-import { createStore } from "../../../src/ui/store.js";
+} from "../../src/lib/readiness.js";
+import { createStore } from "../../src/ui/store.js";
 
 beforeEach(() => {
   vi.useFakeTimers();

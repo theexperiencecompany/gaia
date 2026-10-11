@@ -15047,20 +15047,6 @@
         "title": "SetToolOverrideRequest",
         "type": "object"
       },
-      "SetupCompleteBody": {
-        "properties": {
-          "step": {
-            "minLength": 1,
-            "title": "Step",
-            "type": "string"
-          }
-        },
-        "required": [
-          "step"
-        ],
-        "title": "SetupCompleteBody",
-        "type": "object"
-      },
       "SetupStatusResponse": {
         "description": "``GET /setup/status`` \u2014 what the first-run wizard branches on.",
         "properties": {
@@ -35571,73 +35557,6 @@
           }
         },
         "summary": "Get Provider Catalog",
-        "tags": [
-          "Setup",
-          "Setup"
-        ]
-      }
-    },
-    "/api/v1/setup/complete": {
-      "post": {
-        "description": "Mark one wizard step done in the instance-settings ``setup`` doc.\n\nMutates shared instance state \u2014 admin-only like the rest of the surface.",
-        "operationId": "setup_complete_setup_step",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupCompleteBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "boolean"
-                  },
-                  "title": "Response Setup Complete Setup Step",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Complete Setup Step",
         "tags": [
           "Setup",
           "Setup"

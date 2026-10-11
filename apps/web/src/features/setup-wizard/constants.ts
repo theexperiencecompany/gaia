@@ -158,11 +158,17 @@ export const SEARCH_PROVIDER_CARD: ProviderCardConfig = {
 };
 
 /**
- * Tool / integration keys configured like tavily — a single credential with
- * no endpoint or model. Not rendered by a wizard step today; exported so the
- * wizard and Settings share one catalog (mirrors the tail of
- * CREDENTIAL_PROVIDERS in app/constants/providers.py).
+ * Tool / integration keys the wizard offers — a single credential each, no
+ * endpoint or model. google_oauth and cloudinary are deliberately absent: a
+ * pasted key alone cannot make them work (Google also needs its client id,
+ * Cloudinary its cloud name + secret, all env-only), so offering them here
+ * would report "Connected" for a dead integration. They stay configurable in
+ * Settings, where the cards say what else they need.
  */
+export const WIZARD_EXCLUDED_TOOL_KEYS = [
+  "google_oauth",
+  "cloudinary",
+] as const;
 export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
   {
     key: "composio",

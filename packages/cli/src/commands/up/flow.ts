@@ -26,11 +26,11 @@ import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
 import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
+import { waitForUpReadiness } from "../../lib/readiness.js";
 import { startServices } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
-import { waitForUpReadiness } from "./readiness.js";
 
 const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 

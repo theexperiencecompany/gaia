@@ -29,7 +29,6 @@ from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
     FAKE_USER_ID,
-    instance_settings_repo,
     local_credentials_repo,
     provider_service,
     seed_state,
@@ -668,19 +667,12 @@ class TestInstanceAdminGuard:
         assert resp.status_code == 403
         assert "internal.test" not in resp.text
 
-    async def test_complete_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
-        resp = await nonadmin_client.post(f"{API}/complete", json={"step": "providers"})
-        assert resp.status_code == 403
-        assert instance_settings_repo.docs == {}
-
     async def test_admin_allowed_on_every_guarded_route(self, client: AsyncClient) -> None:
         put = await client.put(f"{API}/providers/ollama", json={"base_url": "http://o"})
         assert put.status_code == 200
         assert (await client.get(f"{API}/providers")).status_code == 200
         probe = await client.post(f"{API}/providers/ollama/test", json={"api_key": "k"})
         assert probe.status_code == 200
-        done = await client.post(f"{API}/complete", json={"step": "providers"})
-        assert done.status_code == 200
 
     async def test_guard_denies_when_env_is_not_selfhost(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -699,34 +691,12 @@ class TestInstanceAdminGuard:
         assert resp.status_code == 403
 
 
-class TestCompleteStep:
-    async def test_persists_step_into_instance_settings(self, client: AsyncClient) -> None:
-        resp = await client.post(f"{API}/complete", json={"step": "providers"})
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
-        assert instance_settings_repo.docs["setup"]["steps"] == {"providers": True}
-
-    async def test_steps_merge_across_calls(self, client: AsyncClient) -> None:
-        await client.post(f"{API}/complete", json={"step": "account"})
-        await client.post(f"{API}/complete", json={"step": "providers"})
-        assert instance_settings_repo.docs["setup"]["steps"] == {
-            "account": True,
-            "providers": True,
-        }
-
-    async def test_blank_step_rejected(self, client: AsyncClient) -> None:
-        resp = await client.post(f"{API}/complete", json={"step": ""})
-        assert resp.status_code == 422
-        assert instance_settings_repo.docs == {}
-
-
 class TestAuthContract:
     @pytest.mark.parametrize(
         "path",
         [
             "/providers/{provider}",
             "/providers/{provider}/test",
-            "/complete",
         ],
     )
     async def test_protected_routes_depend_on_get_current_user(self, path: str) -> None:
@@ -738,7 +708,6 @@ class TestAuthContract:
             "/providers",
             "/providers/{provider}",
             "/providers/{provider}/test",
-            "/complete",
         ],
     )
     async def test_guarded_routes_depend_on_instance_admin(self, path: str) -> None:

@@ -4318,28 +4318,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/setup/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Complete Setup Step
-         * @description Mark one wizard step done in the instance-settings ``setup`` doc.
-         *
-         *     Mutates shared instance state — admin-only like the rest of the surface.
-         */
-        post: operations["setup_complete_setup_step"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/setup/providers": {
         parameters: {
             query?: never;
@@ -13031,11 +13009,6 @@ export interface components {
             /** Ask */
             ask?: boolean | null;
         };
-        /** SetupCompleteBody */
-        SetupCompleteBody: {
-            /** Step */
-            step: string;
-        };
         /**
          * SetupStatusResponse
          * @description ``GET /setup/status`` — what the first-run wizard branches on.
@@ -16246,7 +16219,6 @@ export type SendEmailRequest = components['schemas']['SendEmailRequest'];
 export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
-export type SetupCompleteBody = components['schemas']['SetupCompleteBody'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
@@ -27825,59 +27797,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderCatalogResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    setup_complete_setup_step: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupCompleteBody"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
                 };
             };
             /** @description Unprocessable Entity */

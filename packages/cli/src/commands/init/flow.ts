@@ -12,6 +12,7 @@ import {
   runPortChecks,
 } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
+import { waitForUpReadiness } from "../../lib/readiness.js";
 import {
   findRepoRoot,
   runCommand,
@@ -278,8 +279,20 @@ export async function runInitFlow(
     });
 
     store.updateData("setupMode", setupMode);
+
+    // Compose returning is not the stack answering — wait like `gaia up`;
+    // on timeout the finish screen says so, exit stays 0.
+    const apiPort = portOverrides[8000] ?? 8000;
+    const webPort = portOverrides[3000] ?? 3000;
+    const readiness = await waitForUpReadiness(store, { apiPort, webPort });
+    store.updateData("stillStarting", !readiness.ready);
+
     store.setStep("Finished");
-    store.setStatus("Setup complete! GAIA is running.");
+    store.setStatus(
+      readiness.ready
+        ? "Setup complete! GAIA is running."
+        : "Containers are up but not answering yet — give it a minute, then open the setup link below.",
+    );
     await store.waitForInput("exit");
     return;
   }

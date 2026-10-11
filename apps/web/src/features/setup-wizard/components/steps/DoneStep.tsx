@@ -1,9 +1,8 @@
 /**
- * Wizard step 4 — summary of everything configured, marks the wizard
- * complete (POST /setup/complete {step:"wizard"}), and hands the user off
- * to chat. The celebratory "ready" card + starter prompts make the empty
- * chat feel intentional; the skipped-provider branch nudges toward Settings
- * without blocking.
+ * Wizard step 4 — summary of everything configured, then off to chat. The
+ * celebratory "ready" card + starter prompts make the empty chat feel
+ * intentional; the skipped-provider branch nudges toward Settings without
+ * blocking. Done-ness is live-derived (needs_setup), never recorded.
  */
 
 "use client";
@@ -26,6 +25,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import {
+  type CredentialProvider,
   providerFaviconUrl,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
@@ -33,12 +33,12 @@ import {
   isAnyLlmConfigured,
   isProviderConfigured,
 } from "@/features/settings/hooks/useSetupStatus";
-import { setupTransport } from "@/lib/api/setupTransport";
 import { useAppendToInput } from "@/stores/composerStore";
 import {
   LLM_PROVIDER_CARDS,
   SEARCH_PROVIDER_CARD,
   TOOL_PROVIDER_CARDS,
+  WIZARD_EXCLUDED_TOOL_KEYS,
 } from "../../constants";
 
 const ConnectedAppsCount = nextDynamic(() => import("./ConnectedAppsCount"), {
@@ -57,31 +57,39 @@ function providerLabel(key: string): string {
   );
 }
 
-const STARTER_PROMPTS: Array<{
+/** A starter prompt plus the capability it needs. Prompts whose capability
+ * is missing are hidden — offering "search the web" with no search key just
+ * teaches the user the app is broken. */
+interface StarterPrompt {
   prompt: string;
   icon: typeof GlobalIcon;
-}> = [
+  /** Omitted for prompts that need nothing but chat. */
+  requires?: CredentialProvider | "sandbox" | "inbox";
+}
+
+const STARTER_PROMPTS: StarterPrompt[] = [
+  {
+    prompt: "What can you do for me?",
+    icon: SparklesIcon,
+  },
   {
     prompt: "Search the web for today's AI headlines",
     icon: GlobalIcon,
+    requires: "tavily",
   },
   {
     prompt: "Run a Python script that prints hello world",
     icon: CodeIcon,
+    requires: "sandbox",
   },
   {
     prompt: "Help me organize my inbox",
     icon: Mail01Icon,
+    requires: "inbox",
   },
 ];
 
 export function DoneStep({ status }: DoneStepProps) {
-  useEffect(() => {
-    setupTransport.completeStep("wizard").catch((err: unknown) => {
-      console.error("Failed to mark setup complete:", err);
-    });
-  }, []);
-
   const router = useRouter();
   const appendToInput = useAppendToInput();
 
@@ -96,8 +104,26 @@ export function DoneStep({ status }: DoneStepProps) {
     SEARCH_PROVIDER_CARD.key,
   );
 
-  const connectedTools = TOOL_PROVIDER_CARDS.filter((card) =>
-    isProviderConfigured(status, card.key),
+  const connectedTools = TOOL_PROVIDER_CARDS.filter(
+    (card) =>
+      !(WIZARD_EXCLUDED_TOOL_KEYS as readonly string[]).includes(card.key) &&
+      isProviderConfigured(status, card.key),
+  );
+  const toolConfigured = (key: CredentialProvider) =>
+    connectedTools.some((card) => card.key === key);
+
+  // Sandbox/inbox need no key on self-host (local Docker backend; Gmail via
+  // Composio) — every other prompt needs its key configured.
+  const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
+    if (!requires) return true;
+    if (requires === "sandbox")
+      return toolConfigured("e2b") || status?.auth_mode === "local";
+    if (requires === "inbox") return toolConfigured("composio");
+    return isProviderConfigured(status, requires);
+  };
+
+  const starterPrompts = STARTER_PROMPTS.filter((item) =>
+    capabilityReady(item.requires),
   );
 
   // Subtle confetti burst when the GAIA is ready — single fire, no loop.
@@ -274,7 +300,7 @@ export function DoneStep({ status }: DoneStepProps) {
             }}
             className="flex flex-col gap-2"
           >
-            {STARTER_PROMPTS.map(({ prompt, icon: Icon }) => (
+            {starterPrompts.map(({ prompt, icon: Icon }) => (
               <m.div
                 key={prompt}
                 variants={{

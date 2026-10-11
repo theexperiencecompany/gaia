@@ -145,7 +145,8 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "cloudinary",
     label: "Cloudinary",
-    description: "Image upload and storage for chat media.",
+    description:
+      "Image upload and storage. Also needs CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_SECRET in .env — the key alone is not enough.",
     faviconDomain: "cloudinary.com",
     needsBaseUrl: false,
     showModelField: false,
@@ -154,7 +155,8 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "google_oauth",
     label: "Google OAuth",
-    description: "Google account integration (Gmail, Calendar).",
+    description:
+      "Google account integration (Gmail, Calendar). Also needs GOOGLE_CLIENT_ID in .env — the secret alone cannot connect anything.",
     faviconDomain: "accounts.google.com",
     needsBaseUrl: false,
     showModelField: false,
@@ -272,11 +274,10 @@ function ConfigureProviderModal({
 
   if (!row) return null;
 
-  // A stored key can never be read back (only its last four chars are listed)
-  // and an upsert that omits api_key deletes it — so updating anything about a
-  // key-backed provider requires pasting the key again.
+  // A stored key can never be read back (only its last four chars are
+  // listed). Leaving the field empty keeps the stored key: the backend merges
+  // a partial save instead of erasing it.
   const hasStoredKey = Boolean(stored?.api_key_hint);
-  const needsKeyReentry = hasStoredKey && apiKey.trim().length === 0;
 
   const selectPreset = (id: CustomPresetId) => {
     setPreset(id);
@@ -374,7 +375,7 @@ function ConfigureProviderModal({
               }
               description={
                 hasStoredKey
-                  ? "Saved keys can't be read back — paste yours again to keep or replace it."
+                  ? "Saved — leave empty to keep it, or paste to replace."
                   : undefined
               }
               value={apiKey}
@@ -515,7 +516,7 @@ function ConfigureProviderModal({
               color="primary"
               size="sm"
               isLoading={isSaving}
-              isDisabled={isTesting || needsKeyReentry}
+              isDisabled={isTesting}
               onPress={() => {
                 void handleSave();
               }}

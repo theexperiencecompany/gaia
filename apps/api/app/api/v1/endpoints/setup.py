@@ -31,7 +31,6 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
-from app.db.repositories.instance_settings import instance_settings_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.provider_credentials import provider_credentials_repository
 from app.models.user_models import AuthenticatedUser
@@ -48,9 +47,6 @@ from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 from shared.py.wide_events import log
 
 router = APIRouter(tags=["Setup"])
-
-# Doc key under which wizard progress is persisted in instance settings.
-SETUP_DOC_KEY = "setup"
 
 # Providers that constitute a working LLM lane for needs_setup. The search,
 # tool, and integration keys configured here too cannot serve chat.
@@ -83,10 +79,6 @@ class ProviderCredentialBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
-
-
-class SetupCompleteBody(BaseModel):
-    step: str = Field(min_length=1)
 
 
 class ProviderConfiguredState(BaseModel):
@@ -171,16 +163,6 @@ class _NamedModelList(TypedDict, total=False):
     Ollama's /api/tags both return."""
 
     models: list[_GeminiModel]
-
-
-class SetupProgress(TypedDict, total=False):
-    """The ``setup`` instance-settings value: which wizard steps are done.
-
-    Written only by ``complete_setup_step`` below; ``total=False`` because a
-    wizard that has recorded no step yet has no ``steps`` key at all.
-    """
-
-    steps: dict[str, bool]
 
 
 @router.get("/status")
@@ -520,29 +502,6 @@ async def _probe_ollama(
     listed: list[_GeminiModel] = payload.get("models", [])
     models = sorted(str(m["name"]) for m in listed if m.get("name"))
     return True, "Connected to Ollama", models
-
-
-@router.post("/complete")
-@limiter.limit("20/minute")
-async def complete_setup_step(
-    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    body: SetupCompleteBody,
-    user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
-) -> dict[str, bool]:
-    """Mark one wizard step done in the instance-settings ``setup`` doc.
-
-    Mutates shared instance state — admin-only like the rest of the surface.
-    """
-    log.set(user={"id": user.user_id})
-    record = await instance_settings_repository.find_by_key(SETUP_DOC_KEY)
-    value: dict[str, object] = dict(record.value) if record is not None else {}
-    # ``value`` is the instance-settings mapping (``dict[str, object]``); the
-    # ``setup`` document's own shape is declared here, so the read below is
-    # checked instead of guessed.
-    progress: SetupProgress = cast(SetupProgress, value)
-    steps: dict[str, bool] = {**progress.get("steps", {}), body.step: True}
-    await instance_settings_repository.upsert_value(SETUP_DOC_KEY, {**value, "steps": steps})
-    return {"ok": True}
 
 
 def _ensure_known_provider(provider: str) -> None:

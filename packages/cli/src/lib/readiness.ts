@@ -15,8 +15,8 @@
  * @module commands/up/readiness
  */
 
-import { delay } from "../../lib/flow-utils.js";
-import type { CLIStore } from "../../ui/store.js";
+import type { CLIStore } from "../ui/store.js";
+import { delay } from "./flow-utils.js";
 
 /** How often pending targets are re-probed. */
 export const READINESS_INTERVAL_MS = 5_000;

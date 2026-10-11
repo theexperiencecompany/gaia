@@ -51,11 +51,6 @@ export const setupTransport = {
     return response.data;
   },
 
-  /** Mark one wizard step done (mirrors SetupCompleteBody: { step }). */
-  async completeStep(step: string): Promise<void> {
-    await apiauth.post(setupUrl("complete"), { step });
-  },
-
   async delete(path: string): Promise<void> {
     await apiauth.delete(setupUrl(path));
   },
