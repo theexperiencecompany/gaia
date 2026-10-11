@@ -32,10 +32,13 @@ export const LLM_PROVIDER_KEYS = [
   "custom",
 ] as const satisfies readonly CredentialProvider[];
 
-/** Direct link to obtain an API key for providers that use one. */
+/** Direct link to obtain an API key for providers that use one. e2b has no
+ * keys dashboard page (its docs live at e2b.dev/docs) and google_oauth is an
+ * OAuth client, not a key — both are deliberately absent. */
 export const PROVIDER_KEY_URLS: Partial<Record<CredentialProvider, string>> = {
   openrouter: "https://openrouter.ai/keys",
   gemini: "https://aistudio.google.com/apikey",
+  openai: "https://platform.openai.com/api-keys",
   tavily: "https://app.tavily.com",
   composio: "https://app.composio.dev",
   firecrawl: "https://www.firecrawl.dev/app/api-keys",

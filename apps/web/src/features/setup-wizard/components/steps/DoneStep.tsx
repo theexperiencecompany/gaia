@@ -188,7 +188,7 @@ export function DoneStep({ status }: DoneStepProps) {
             transition={{ duration: 0.35, delay: 0.22 }}
             className="mt-4 text-xl font-semibold tracking-tight text-zinc-100"
           >
-            Your GAIA is ready!
+            You're ready to chat
           </m.p>
           <m.p
             variants={{
@@ -256,7 +256,7 @@ export function DoneStep({ status }: DoneStepProps) {
               <p className="mt-1 text-sm leading-relaxed text-zinc-400">
                 Chat requires a provider to work. Add a key in{" "}
                 <span className="font-medium text-zinc-300">
-                  Settings → AI Providers
+                  Settings, under AI Providers
                 </span>{" "}
                 to start chatting — one key is all it takes.
               </p>
@@ -344,7 +344,7 @@ export function DoneStep({ status }: DoneStepProps) {
         className="w-full rounded-2xl bg-zinc-800 p-4"
       >
         <p className="mb-3 text-sm font-semibold text-zinc-100">
-          Instance summary
+          Your setup so far
         </p>
         <div className="space-y-2">
           <SummaryRow
@@ -444,7 +444,8 @@ export function DoneStep({ status }: DoneStepProps) {
           transition={{ duration: 0.35, delay: 0.2 }}
           className="text-center text-xs text-zinc-500"
         >
-          Skipped something? You can finish anytime from Settings → Providers.
+          Skipped something? You can finish anytime in Settings, under AI
+          Providers.
         </m.p>
       )}
     </m.div>

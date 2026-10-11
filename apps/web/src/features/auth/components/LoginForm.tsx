@@ -4,9 +4,16 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
-import { Alert01Icon, ArrowRight02Icon } from "@icons";
+import {
+  Alert01Icon,
+  ArrowRight02Icon,
+  ViewIcon,
+  ViewOffSlashIcon,
+} from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+
+import CopyButton from "@/components/ui/CopyButton";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 
@@ -32,6 +39,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResetHelp, setShowResetHelp] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,13 +76,30 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isDisabled={isSubmitting}
       />
       <Input
-        type="password"
+        type={isPasswordVisible ? "text" : "password"}
         label="Password"
         value={password}
         onValueChange={setPassword}
         autoComplete="current-password"
         isRequired
         isDisabled={isSubmitting}
+        endContent={
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            radius="full"
+            aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+            onPress={() => setIsPasswordVisible((visible) => !visible)}
+            className="text-zinc-500"
+          >
+            {isPasswordVisible ? (
+              <ViewOffSlashIcon size={16} />
+            ) : (
+              <ViewIcon size={16} />
+            )}
+          </Button>
+        }
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">
@@ -127,9 +152,17 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
               Self-hosted GAIA has one admin account. To reset your password,
               run this on the host that runs GAIA:
             </p>
-            <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 text-xs text-zinc-100">
-              {RESET_CMD}
-            </pre>
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
+                {RESET_CMD}
+              </pre>
+              <CopyButton
+                textToCopy={RESET_CMD}
+                variant="light"
+                size="sm"
+                className="absolute top-2 right-2 text-zinc-400"
+              />
+            </div>
             <p className="text-xs text-zinc-500">
               Then open{" "}
               <Link href="/signup" size="sm" color="primary">
@@ -137,9 +170,17 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
               </Link>{" "}
               to create a new admin account. Alternative (direct Mongo):
             </p>
-            <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 text-xs text-zinc-100">
-              {RESET_MONGO_CMD}
-            </pre>
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
+                {RESET_MONGO_CMD}
+              </pre>
+              <CopyButton
+                textToCopy={RESET_MONGO_CMD}
+                variant="light"
+                size="sm"
+                className="absolute top-2 right-2 text-zinc-400"
+              />
+            </div>
           </ModalBody>
         </ModalContent>
       </Modal>

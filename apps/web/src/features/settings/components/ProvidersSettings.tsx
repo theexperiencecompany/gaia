@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { Link } from "@heroui/link";
 import {
   Modal,
   ModalBody,
@@ -57,7 +58,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "openrouter",
     label: "OpenRouter",
-    description: "Route GAIA's LLM calls through OpenRouter.",
+    description: "One key for every major model. Easiest way to start.",
     faviconDomain: "openrouter.ai",
     needsBaseUrl: false,
     showModelField: true,
@@ -66,7 +67,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "gemini",
     label: "Google Gemini",
-    description: "Use Google's Gemini models with an API key.",
+    description: "Google's models, with a generous free tier.",
     faviconDomain: "ai.google.dev",
     needsBaseUrl: false,
     showModelField: true,
@@ -75,7 +76,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "ollama",
     label: "Ollama",
-    description: "Run local open-source models through Ollama.",
+    description: "Run models locally — no API key needed.",
     faviconDomain: "ollama.com",
     needsBaseUrl: true,
     defaultBaseUrl: "http://host.docker.internal:11434",
@@ -96,7 +97,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "tavily",
     label: "Tavily",
-    description: "API key for the Tavily web search tools.",
+    description: "Web search results grounded in live sources.",
     faviconDomain: "tavily.com",
     needsBaseUrl: false,
     showModelField: false,
@@ -320,7 +321,7 @@ function ConfigureProviderModal({
     const confirmed = await confirm({
       title: `Remove ${row.label}?`,
       message:
-        "GAIA will stop using this provider and fall back to any environment variables configured for it.",
+        "GAIA will stop using this key. If the same credential is also in your server config, that one still applies.",
       confirmText: "Remove",
       variant: "destructive",
     });
@@ -402,15 +403,15 @@ function ConfigureProviderModal({
               }
             />
             {PROVIDER_KEY_URLS[row.key] && (
-              <a
-                href={PROVIDER_KEY_URLS[row.key]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
+              <Link
+                href={PROVIDER_KEY_URLS[row.key] as string}
+                isExternal
+                size="sm"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500"
               >
                 Get your key
                 <SquareArrowUpRight02Icon size={12} />
-              </a>
+              </Link>
             )}
             {(row.needsBaseUrl || showPresetChips) && (
               <>
@@ -440,7 +441,10 @@ function ConfigureProviderModal({
                     row.defaultBaseUrl ?? "https://your-gateway.example.com/v1"
                   }
                   value={baseUrl}
-                  onValueChange={setBaseUrl}
+                  onValueChange={(value) => {
+                    setBaseUrl(value);
+                    setTestResult(null);
+                  }}
                 />
               </>
             )}
@@ -450,7 +454,10 @@ function ConfigureProviderModal({
                 placeholder="Default"
                 description="Leave empty to use the endpoint default."
                 value={model}
-                onValueChange={setModel}
+                onValueChange={(value) => {
+                  setModel(value);
+                  setTestResult(null);
+                }}
               />
             )}
             {testResult && (
@@ -480,6 +487,11 @@ function ConfigureProviderModal({
                   </p>
                 )}
               </div>
+            )}
+            {row.connectionTestable && testResult?.ok !== true && (
+              <p className="text-xs text-zinc-500">
+                Run Test first — Save unlocks after a passing test.
+              </p>
             )}
           </ModalBody>
           <ModalFooter>
@@ -516,7 +528,9 @@ function ConfigureProviderModal({
               color="primary"
               size="sm"
               isLoading={isSaving}
-              isDisabled={isTesting}
+              isDisabled={
+                isTesting || (row.connectionTestable && testResult?.ok !== true)
+              }
               onPress={() => {
                 void handleSave();
               }}

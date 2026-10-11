@@ -1,6 +1,6 @@
 /**
  * First-run self-host setup wizard. One full-screen shell (onboarding-style
- * wallpaper + stepper header + editorial serif heading) hosting the steps:
+ * wallpaper + stepper header + Inter heading) hosting the steps:
  * admin account (fresh local-auth instances), AI provider, web search,
  * account connections, done. Fetches instance setup status on mount —
  * instances that don't need setup are sent straight to chat. Never traps the
@@ -35,6 +35,18 @@ import { WizardStepper } from "./WizardStepper";
 const WALLPAPER_STYLE = {
   backgroundImage: "url('/images/wallpapers/bands_gradient_black.png')",
 } as const;
+
+// One-line reason shown under the footer while Continue is disabled.
+const CONTINUE_REASONS: Record<string, string> = {
+  account: "Create the admin account above to continue.",
+  provider: "Chat requires a provider — add one to start chatting.",
+  search: "Add a search key to continue, or skip this step.",
+};
+
+function continueReasonFor(stepId: string, objectiveMet: boolean) {
+  if (objectiveMet) return null;
+  return CONTINUE_REASONS[stepId] ?? null;
+}
 
 export function SetupWizard() {
   const router = useRouter();
@@ -122,6 +134,10 @@ export function SetupWizard() {
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
   const refreshStatus = () => void refetch();
 
+  // One-line reason shown under the footer while Continue is disabled —
+  // derived from the same objective check above.
+  const continueReason = continueReasonFor(step.id, stepObjectiveMet);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
       <div
@@ -144,7 +160,7 @@ export function SetupWizard() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              <h1 className="font-serif text-4xl font-light tracking-tight text-white">
+              <h1 className="text-2xl font-semibold tracking-tight text-white">
                 {step.title}
               </h1>
               <p className="mt-3 mb-8 text-sm leading-relaxed text-zinc-400">
@@ -172,7 +188,9 @@ export function SetupWizard() {
               {step.id === "provider" && (
                 <ProviderStep
                   status={status}
-                  onSaved={refreshStatus}
+                  // Return the refetch promise (not void) so Ollama one-click
+                  // can advance after it settles.
+                  onSaved={() => refetch()}
                   onNext={goNext}
                 />
               )}
@@ -224,6 +242,11 @@ export function SetupWizard() {
                 >
                   Skip for now
                 </Button>
+              )}
+              {continueReason && (
+                <p className="text-center text-xs leading-relaxed text-amber-400">
+                  {continueReason}
+                </p>
               )}
             </m.div>
           )}

@@ -110,7 +110,7 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
       </div>
 
       <div className="relative z-10 w-full max-w-xl px-6">
-        <div className="rounded-4xl bg-zinc-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
+        <div className="rounded-3xl bg-zinc-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
           <div className="mb-8 flex justify-center">
             <Image
               // src="/images/logos/macos.png"

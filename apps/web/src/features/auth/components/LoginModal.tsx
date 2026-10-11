@@ -1,10 +1,10 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Login02Icon } from "@icons";
 import { useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/raised-button";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import {
   useLoginModal,
@@ -91,10 +91,12 @@ export default function LoginModal() {
               Please login to continue your journey with GAIA.
             </div>
           </div>
-          <RaisedButton
-            color="#00bbff"
-            className="text-md w-full text-primary-foreground!"
-            onClick={() => {
+          <Button
+            color="primary"
+            size="lg"
+            fullWidth
+            startContent={<Login02Icon width={22} height={22} />}
+            onPress={() => {
               trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
                 location: "login_modal",
                 destination: isLocalAuth ? "local_login_page" : "workos_oauth",
@@ -107,9 +109,8 @@ export default function LoginModal() {
               }
             }}
           >
-            <Login02Icon width={22} height={22} />
             Sign in
-          </RaisedButton>
+          </Button>
         </ModalBody>
       </ModalContent>
     </Modal>

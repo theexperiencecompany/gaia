@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon } from "@icons";
+import { Alert01Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
@@ -29,6 +29,7 @@ export function PasswordChangeSection() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [arePasswordsVisible, setArePasswordsVisible] = useState(false);
 
   // Hidden while the setup-status probe is still loading.
   if (setupStatus?.auth_mode !== "local") return null;
@@ -76,16 +77,22 @@ export function PasswordChangeSection() {
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-3 px-4 py-3.5">
         <Input
-          type="password"
+          type={arePasswordsVisible ? "text" : "password"}
           label="Current password"
           value={currentPassword}
           onValueChange={setCurrentPassword}
           autoComplete="current-password"
           isRequired
           isDisabled={isSubmitting}
+          endContent={
+            <PasswordVisibilityToggle
+              visible={arePasswordsVisible}
+              onToggle={() => setArePasswordsVisible((v) => !v)}
+            />
+          }
         />
         <Input
-          type="password"
+          type={arePasswordsVisible ? "text" : "password"}
           label="New password"
           value={newPassword}
           onValueChange={setNewPassword}
@@ -93,15 +100,27 @@ export function PasswordChangeSection() {
           minLength={MIN_PASSWORD_LENGTH}
           isRequired
           isDisabled={isSubmitting}
+          endContent={
+            <PasswordVisibilityToggle
+              visible={arePasswordsVisible}
+              onToggle={() => setArePasswordsVisible((v) => !v)}
+            />
+          }
         />
         <Input
-          type="password"
+          type={arePasswordsVisible ? "text" : "password"}
           label="Confirm new password"
           value={confirmPassword}
           onValueChange={setConfirmPassword}
           autoComplete="new-password"
           isRequired
           isDisabled={isSubmitting}
+          endContent={
+            <PasswordVisibilityToggle
+              visible={arePasswordsVisible}
+              onToggle={() => setArePasswordsVisible((v) => !v)}
+            />
+          }
         />
 
         {error && (
@@ -126,5 +145,27 @@ export function PasswordChangeSection() {
         </div>
       </form>
     </SettingsSection>
+  );
+}
+
+function PasswordVisibilityToggle({
+  visible,
+  onToggle,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      isIconOnly
+      size="sm"
+      variant="light"
+      radius="full"
+      aria-label={visible ? "Hide passwords" : "Show passwords"}
+      onPress={onToggle}
+      className="text-zinc-500"
+    >
+      {visible ? <ViewOffSlashIcon size={16} /> : <ViewIcon size={16} />}
+    </Button>
   );
 }

@@ -29,7 +29,7 @@ type ProviderMode = "hosted" | "ollama" | "skip";
 interface ProviderStepProps {
   status: SetupStatus;
   /** Refetch setup status after a card connects, so Done reflects it. */
-  onSaved: () => void;
+  onSaved: () => unknown;
   /** Advance the wizard (used by Ollama one-click and Skip). */
   onNext?: () => void;
 }
@@ -88,10 +88,12 @@ export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
   const hostedOthers = hostedCards.filter((c) => c.key !== hostedPrimary?.key);
 
   const handleOllamaSaved = () => {
-    onSaved();
-    // Let the status refetch land, then advance so the wizard reflects the new
-    // provider before moving on.
-    window.setTimeout(() => onNext?.(), 400);
+    // onSaved fires only after a successful save — advance once the status
+    // refetch settles so the wizard reflects the new provider before moving.
+    void Promise.resolve(onSaved()).then(
+      () => onNext?.(),
+      () => onNext?.(),
+    );
   };
 
   return (
@@ -200,9 +202,9 @@ export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             You can add a provider later in{" "}
             <span className="font-medium text-zinc-300">
-              Settings → AI Providers
+              Settings, under AI Providers
             </span>
-            . Until then GAIA will use local fallbacks where available.
+            . Without a provider, chat can&apos;t reply yet.
           </p>
           {onNext && (
             <Button

@@ -65,7 +65,7 @@ export function SetupChecklistCard() {
       list.push({
         key: "llm",
         title: "Connect an AI provider",
-        description: "Add a key or point at Ollama to start chatting.",
+        description: "Add a key or use local Ollama to start chatting.",
         href: "/setup",
       });
     }
@@ -81,7 +81,7 @@ export function SetupChecklistCard() {
       list.push({
         key: "admin",
         title: "Create the admin account",
-        description: "Secure your instance with its administrator login.",
+        description: "Protect this setup with a login only you control.",
         href: "/signup",
       });
     }
@@ -117,7 +117,7 @@ export function SetupChecklistCard() {
       <div className="w-full rounded-2xl bg-zinc-800 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-zinc-100">
-            Finish setting up your instance
+            Complete your setup
           </p>
           <Button
             isIconOnly

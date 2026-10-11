@@ -10,6 +10,7 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { Link } from "@heroui/link";
 import {
   Alert01Icon,
   KeyIcon,
@@ -21,6 +22,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
+import CopyButton from "@/components/ui/CopyButton";
 import {
   extractProviderError,
   getProviderErrorHint,
@@ -124,6 +126,7 @@ export function ProviderSetupCard({
           <>
             <Input
               type={isKeyVisible ? "text" : "password"}
+              label="API key"
               placeholder="Paste your API key"
               value={apiKey}
               onValueChange={setApiKey}
@@ -151,21 +154,24 @@ export function ProviderSetupCard({
               isDisabled={isBusy}
             />
             {PROVIDER_KEY_URLS[config.key] && (
-              <a
-                href={PROVIDER_KEY_URLS[config.key]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
+              <Link
+                href={PROVIDER_KEY_URLS[config.key] as string}
+                isExternal
+                size="sm"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500"
               >
                 Get your key
                 <SquareArrowUpRight02Icon size={12} />
-              </a>
+              </Link>
             )}
           </>
         )}
         {config.showBaseUrl && (
           <Input
-            placeholder="Base URL"
+            label="Base URL"
+            placeholder={
+              config.defaultBaseUrl || "https://your-gateway.example.com/v1"
+            }
             value={baseUrl}
             onValueChange={setBaseUrl}
             size="sm"
@@ -175,7 +181,9 @@ export function ProviderSetupCard({
         )}
         {config.showModel && (
           <Input
-            placeholder="Model (e.g. llama3.2)"
+            label="Model"
+            placeholder="Default"
+            description="Leave empty to use the endpoint default."
             value={model}
             onValueChange={setModel}
             size="sm"
@@ -254,7 +262,8 @@ function OllamaOneClick({
       onSaved();
     } catch (err) {
       setOllamaError(
-        extractProviderError(err) ?? "Something went wrong while saving.",
+        extractProviderError(err) ??
+          "Couldn't reach GAIA to save — check your connection and try again. Your key wasn't stored.",
       );
     } finally {
       setOllamaBusy(false);
@@ -303,20 +312,27 @@ function OllamaOneClick({
         </Button>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-        Requires Ollama running on your host:{" "}
-        <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
-          ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
-        </code>{" "}
-        —{" "}
-        <a
+        Requires Ollama running on your host —{" "}
+        <Link
           href="https://ollama.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+          isExternal
+          size="sm"
+          className="text-xs"
         >
           ollama.com <SquareArrowUpRight02Icon size={10} />
-        </a>
+        </Link>
       </p>
+      <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-800 py-1 pr-1 pl-3">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-300">
+          ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
+        </code>
+        <CopyButton
+          textToCopy={`ollama pull ${OLLAMA_ONE_CLICK.model} && ollama serve`}
+          variant="light"
+          size="sm"
+          className="shrink-0 text-zinc-400"
+        />
+      </div>
       {(ollamaOutcome || ollamaError) && (
         <div className="mt-2">
           <OutcomeLine

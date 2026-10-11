@@ -121,8 +121,11 @@ export function useProviderSetup(
       setApiKey("");
       onSaved();
     } catch (err) {
+      // Thrown only when the test probe or the persist call itself fails
+      // (network, 5xx) — nothing was stored, so say exactly that.
       setError(
-        extractProviderError(err) ?? "Something went wrong while saving.",
+        extractProviderError(err) ??
+          "Couldn't reach GAIA to save — check your connection and try again. Your key wasn't stored.",
       );
     } finally {
       setPhase(null);

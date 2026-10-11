@@ -126,9 +126,9 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
   },
   {
     key: "custom",
-    label: "Custom / OpenAI-compatible",
+    label: "Custom",
     description:
-      "Any OpenAI-compatible endpoint. Pick a preset or enter your own.",
+      "Use any service with an OpenAI-style API — like OpenCode or Nous — or enter your own server address.",
     faviconDomain: "opencode.ai",
     presetFavicon: Object.fromEntries(
       CUSTOM_PRESETS.map((p) => [p.key, p.faviconDomain]),

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
-import { Alert01Icon } from "@icons";
+import { Alert01Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -38,6 +38,7 @@ export function SignupForm({ onCreated }: SignupFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRegistrationClosed, setIsRegistrationClosed] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -107,7 +108,7 @@ export function SignupForm({ onCreated }: SignupFormProps) {
         isDisabled={isSubmitting}
       />
       <Input
-        type="password"
+        type={isPasswordVisible ? "text" : "password"}
         label="Password"
         value={password}
         onValueChange={setPassword}
@@ -115,6 +116,23 @@ export function SignupForm({ onCreated }: SignupFormProps) {
         description={`At least ${MIN_PASSWORD_LENGTH} characters`}
         isRequired
         isDisabled={isSubmitting}
+        endContent={
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            radius="full"
+            aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+            onPress={() => setIsPasswordVisible((visible) => !visible)}
+            className="text-zinc-500"
+          >
+            {isPasswordVisible ? (
+              <ViewOffSlashIcon size={16} />
+            ) : (
+              <ViewIcon size={16} />
+            )}
+          </Button>
+        }
       />
 
       {error && (
