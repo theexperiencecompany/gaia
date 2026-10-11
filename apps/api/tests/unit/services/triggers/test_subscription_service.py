@@ -1052,21 +1052,30 @@ class TestOneAccountsWatches:
         with (
             patch(
                 "app.services.triggers.subscription_service.todo_repository.find_active_by_user_and_trigger",
-                AsyncMock(return_value=[self._todo_watching(_subscription(id="s-any"))]),
+                AsyncMock(
+                    return_value=[
+                        _todo(id="todo-a", trigger_subscriptions=[_subscription(id="s-a")]),
+                        _todo(
+                            id="todo-b",
+                            trigger_subscriptions=[_subscription(id="s-b", account_id="acct_work")],
+                        ),
+                    ]
+                ),
             ),
             patch("app.services.triggers.subscription_service.todo_repository.update", update),
             patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
         ):
-            await pause_subscriptions_for_trigger_names(
+            paused = await pause_subscriptions_for_trigger_names(
                 USER_ID,
                 {INSTANCE_TRIGGER},
                 AccountScope(account_id="acct_work", every_account=True),
             )
 
-        written = update.await_args.kwargs["update"]
-        assert [s.status for s in written.trigger_subscriptions] == [
-            TriggerSubscriptionStatus.PAUSED
-        ]
+        assert paused == 2
+        assert [
+            [s.status for s in c.kwargs["update"].trigger_subscriptions]
+            for c in update.await_args_list
+        ] == [[TriggerSubscriptionStatus.PAUSED], [TriggerSubscriptionStatus.PAUSED]]
 
     async def test_a_watch_on_another_account_stays_paused_and_keeps_the_block(self) -> None:
         todo = _todo(
@@ -1091,6 +1100,58 @@ class TestOneAccountsWatches:
             "s-home": TriggerSubscriptionStatus.PAUSED,
         }
         assert written.labels == [BLOCKING_LABEL]
+
+    async def test_a_todo_without_the_dying_accounts_watch_does_not_end_the_pause(self) -> None:
+        home_only = _todo(
+            id="todo-home",
+            labels=[],
+            trigger_subscriptions=[_subscription(id="s-home", account_id="acct_home")],
+        )
+        work = _todo(
+            id="todo-work",
+            labels=[],
+            trigger_subscriptions=[_subscription(id="s-work", account_id="acct_work")],
+        )
+        update = AsyncMock(return_value=None)
+        with (
+            patch(
+                "app.services.triggers.subscription_service.todo_repository.find_active_by_user_and_trigger",
+                AsyncMock(return_value=[home_only, work]),
+            ),
+            patch("app.services.triggers.subscription_service.todo_repository.update", update),
+            patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
+        ):
+            paused = await pause_subscriptions_for_trigger_names(
+                USER_ID,
+                {INSTANCE_TRIGGER},
+                AccountScope(account_id="acct_work", every_account=False),
+            )
+
+        assert paused == 1
+        assert [c.args[0] for c in update.await_args_list] == ["todo-work"]
+
+    async def test_a_todo_without_the_returning_accounts_watch_does_not_end_the_resume(
+        self,
+    ) -> None:
+        home_only = _todo(
+            id="todo-home",
+            labels=[BLOCKING_LABEL],
+            trigger_subscriptions=[_paused_sub(id="s-home", account_id="acct_home")],
+        )
+        work = _todo(
+            id="todo-work",
+            labels=[BLOCKING_LABEL],
+            trigger_subscriptions=[_paused_sub(id="s-work", account_id="acct_work")],
+        )
+        with _ResyncHarness([home_only, work], ["ti_new"]) as h:
+            resynced = await resync_subscriptions_for_trigger_names(
+                USER_ID,
+                {INSTANCE_TRIGGER},
+                AccountScope(account_id="acct_work", every_account=False),
+            )
+
+        assert resynced == 1
+        assert [c.args[0] for c in h.update.await_args_list] == ["todo-work"]
 
 
 class TestResyncSubscriptions:
@@ -1173,49 +1234,28 @@ class TestResyncSubscriptions:
         h.register.assert_not_awaited()
         h.update.assert_not_awaited()
 
-    async def test_an_unknown_trigger_skips_but_the_sweep_continues(self) -> None:
-        # A handlerless trigger must be skipped with continue, not break, which would abandon every
-        # trigger reconnected after it. Call order (first lookup handlerless, second real) pins this.
-        todo = _todo(id="todo-ok", labels=[BLOCKING_LABEL], trigger_subscriptions=[_paused_sub()])
+    async def test_a_trigger_with_no_handler_does_not_end_the_sweep(self) -> None:
+        # Set order is per-process, so the first trigger looked up is the handlerless one and
+        # the second must still have its paused todo resynced (continue, not break).
+        def paused_on(_user_id: str, trigger_name: str) -> list[TodoDocument]:
+            sub = _paused_sub(trigger_name=trigger_name)
+            return [_todo(id="todo-ok", labels=[BLOCKING_LABEL], trigger_subscriptions=[sub])]
+
         with (
-            _ResyncHarness([todo], ["ti_new"]) as h,
+            _ResyncHarness([], ["ti_new"]) as h,
             patch(
                 "app.services.triggers.subscription_service.get_handler_by_name",
                 side_effect=[None, Mock()],
             ),
         ):
+            h.find_paused.side_effect = paused_on
             resynced = await resync_subscriptions_for_trigger_names(
-                USER_ID, {"unknown_trigger", INSTANCE_TRIGGER}, EVERY_ACCOUNT
+                USER_ID, {ACCOUNT_TRIGGER, INSTANCE_TRIGGER}, EVERY_ACCOUNT
             )
 
-        # The second (real) trigger was still reached and its todo resynced.
         assert resynced == 1
         h.update.assert_awaited_once()
         assert h.update.await_args.args[0] == "todo-ok"
-
-    async def test_a_todo_without_an_id_is_skipped(self) -> None:
-        # A document with no id cannot be updated; it is skipped and the rest run.
-        no_id = TodoDocument.model_construct(
-            id=None,
-            user_id=USER_ID,
-            title="ghost",
-            labels=[BLOCKING_LABEL],
-            trigger_subscriptions=[_paused_sub()],
-        )
-        real = _todo(
-            id="todo-real",
-            labels=[BLOCKING_LABEL],
-            trigger_subscriptions=[_paused_sub()],
-        )
-        with _ResyncHarness([no_id, real], ["ti_new"]) as h:
-            resynced = await resync_subscriptions_for_trigger_names(
-                USER_ID, {INSTANCE_TRIGGER}, EVERY_ACCOUNT
-            )
-
-        assert resynced == 1
-        h.update.assert_awaited_once()
-        # The write is for the real todo, never the id-less one.
-        assert h.update.await_args.args[0] == "todo-real"
 
     async def test_one_todos_failure_is_logged_and_the_rest_still_resync(self) -> None:
         # One broken re-register must not strand the others or the OAuth flow behind

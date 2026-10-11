@@ -214,8 +214,10 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
         metadata_config=ProviderMetadataConfig(
             tools=[
                 ToolMetadataConfig(
-                    tool="GOOGLECALENDAR_GET_CURRENT_USER",
-                    variables=[VariableExtraction(name="email", field_path="email")],
+                    # The primary calendar's id is the account's email; GET_CURRENT_USER
+                    # does not exist at the pinned toolkit version.
+                    tool="GOOGLECALENDAR_GET_CALENDAR",
+                    variables=[VariableExtraction(name="email", field_path="calendar_data.id")],
                 ),
             ],
             label_template="{email}",

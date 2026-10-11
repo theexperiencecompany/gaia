@@ -329,6 +329,25 @@ class TestTheReadCache:
         [listed] = await repo.list_for_user("u")
         assert listed.primary_account_id == "acct_2"
 
+    async def test_a_page_of_the_list_is_cached_apart_from_the_whole_list(self, repo):
+        for integration_id in ("github", "gmail", "notion"):
+            await repo.save_accounts(
+                "u",
+                integration_id,
+                accounts=[self._account(f"acct_{integration_id}")],
+                primary_account_id=f"acct_{integration_id}",
+                status="connected",
+            )
+        by_name = [("integration_id", 1)]
+
+        first_two = await repo.list_for_user("u", sort=by_name, limit=2)
+        after_first = await repo.list_for_user("u", sort=by_name, skip=1)
+        everything = await repo.list_for_user("u", sort=by_name)
+
+        assert [d.integration_id for d in first_two] == ["github", "gmail"]
+        assert [d.integration_id for d in after_first] == ["gmail", "notion"]
+        assert [d.integration_id for d in everything] == ["github", "gmail", "notion"]
+
     async def test_naming_an_account_is_seen_by_the_next_read(self, repo):
         await repo.save_accounts(
             "u",

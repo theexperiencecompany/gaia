@@ -414,8 +414,6 @@ async def pause_subscriptions_for_trigger_names(
     paused = 0
     for trigger_name in trigger_names:
         for todo in await todo_repository.find_active_by_user_and_trigger(user_id, trigger_name):
-            if todo.id is None:
-                continue
             hit = [
                 s
                 for s in todo.trigger_subscriptions
@@ -468,8 +466,6 @@ async def resync_subscriptions_for_trigger_names(
         if handler is None:
             continue
         for todo in await todo_repository.find_paused_by_user_and_trigger(user_id, trigger_name):
-            if todo.id is None:
-                continue
             due = {
                 s.id
                 for s in todo.trigger_subscriptions
