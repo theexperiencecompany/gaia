@@ -31,6 +31,7 @@ from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
 )
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
+from app.models.agent_config import ComposioAccountSelection
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventsResponse,
@@ -53,6 +54,7 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
+from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
 from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
@@ -416,6 +418,17 @@ class TestRunSync:
         assert dispatch.call_args.args[0] is coro
         assert dispatch.call_args.kwargs == {"timeout": 3.0}
         coro.close()
+
+    async def test_inside_a_running_loop_the_coroutine_sees_the_account_scope(self) -> None:
+        # The nested-loop branch runs the coroutine on a fresh thread; the scope must follow.
+        work = ComposioAccountSelection(toolkit="googlecalendar", connected_account_id="ca_work")
+
+        async def scoped() -> str | None:
+            selection = current_selection("googlecalendar")
+            return selection.connected_account_id if selection else None
+
+        with account_scope(work):
+            assert _run_sync(scoped(), timeout=5.0) == "ca_work"
 
 
 class TestGetDaySummary:

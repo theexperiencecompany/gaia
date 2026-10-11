@@ -344,6 +344,7 @@ def test_move_page_wrapper_logs_action_and_delegates() -> None:
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "notion", "action": "move_page"})
     ]
+    assert proxy.call_args.args[0].user_id == "user_test_123"
     assert result == {
         "page_id": "moved-1",
         "new_parent": {"type": "page_id", "page_id": "par-1"},

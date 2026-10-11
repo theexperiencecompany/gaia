@@ -107,7 +107,7 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         asyncio.get_running_loop()
     except RuntimeError:
         return run_on_captured_loop(coro, timeout=timeout)
-    pool = ContextThreadPoolExecutor(max_workers=1)
+    pool = ContextThreadPoolExecutor(max_workers=1)  # pragma: no mutate — one task
     try:
         return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
     finally:
