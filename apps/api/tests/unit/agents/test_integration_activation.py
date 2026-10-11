@@ -133,11 +133,7 @@ class TestActivationContext:
         """Activation runs once per conversation; an account added later must not be hidden by a stale copy."""
         context = await _activation_context("gmail", "Gmail", "u1", True)
 
-        assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(
-            integration="Gmail",
-            tools="rename_integration_account, set_primary_integration_account, "
-            "disconnect_integration",
-        ) in context.split("\n\n")
+        assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration="Gmail") in context.split("\n\n")
         sources["build_provider_metadata_block"].assert_not_awaited()
 
 
@@ -552,9 +548,7 @@ class TestActivateIntegrationTool:
         assert text.index("CTX") < text.index("## GMAIL_FETCH_MESSAGES")
         assert self._bound(result) == ["query_json"]
 
-    async def test_with_several_accounts_the_account_tools_are_bound_too(
-        self, connected: AsyncMock
-    ) -> None:
+    async def test_several_accounts_bind_no_extra_tools(self, connected: AsyncMock) -> None:
         context = AsyncMock(return_value="CTX")
         with (
             patch(
@@ -568,12 +562,8 @@ class TestActivateIntegrationTool:
             result = await activate_integration.ainvoke(call, run_cfg)
 
         several.assert_awaited_once_with("gmail", "u1")
-        assert self._bound(result) == [
-            "query_json",
-            "rename_integration_account",
-            "set_primary_integration_account",
-            "disconnect_integration",
-        ]
+        # Account tools cost context on every turn; the agent retrieves them when it needs one.
+        assert self._bound(result) == ["query_json"]
         context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", True)
 
     async def test_unconnected_integration_returns_the_connect_prompt(self) -> None:

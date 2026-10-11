@@ -160,9 +160,9 @@ COMMS_MULTI_ACCOUNT_NOTE: Final[str] = (
 #: Activation runs once per conversation, so it points at the per-turn list
 #: instead of copying accounts that can change before the next turn.
 ACTIVATION_MULTI_ACCOUNT_POINTER: Final[str] = (
-    "The user has several {integration} accounts. The current list, refreshed every turn, "
-    "is with {integration} in the connected integrations section of your context, along "
-    "with how to choose and manage them. Bound for managing them: {tools}."
+    "The user has several {integration} accounts, listed with {integration} in the connected "
+    "integrations section. When one has a generic name and you learn whose it is, rename it "
+    f"({RENAME_INTEGRATION_ACCOUNT_TOOL}) so later calls never mix them up."
 )
 
 #: What every block of remembered history says about itself. A memory of the
