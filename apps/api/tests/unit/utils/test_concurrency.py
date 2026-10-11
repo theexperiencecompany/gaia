@@ -108,3 +108,7 @@ class TestContextThreadPoolExecutor:
             _scope.reset(token)
 
         assert seen == ["ca_work"] * 4
+
+    def test_keyword_arguments_reach_the_task(self) -> None:
+        with ContextThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(int, "ff", base=16).result() == 255

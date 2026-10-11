@@ -203,7 +203,7 @@ def master_before_execute_hook(
     """Run before every Composio tool: resolve the caller, pin its account, then the per-tool hooks."""
     log.set(composio_tool=tool, composio_toolkit=toolkit)
     _resolve_call_identity(tool, toolkit, params)
-    pin_connected_account(tool, toolkit, params)
+    pin_connected_account(tool, toolkit, params)  # pragma: no mutate — tool is never read
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 

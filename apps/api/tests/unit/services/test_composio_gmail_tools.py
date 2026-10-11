@@ -28,7 +28,10 @@ from app.models.composio_schemas.gmail import (
     FetchThreadInput,
 )
 from app.services.composio import account_scope as account_scope_module
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
+from app.services.composio.custom_tools.gmail_constants import (
+    FETCH_CONCURRENCY,
+    OFFLOAD_MIN_MESSAGES,
+)
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -43,11 +46,13 @@ from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
 from app.services.composio.proxy_client import ProxyRequest
+from app.utils.concurrency import ContextThreadPoolExecutor
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
-PROXY_PATH = "app.services.composio.custom_tools.gmail_tools.proxy_request_sync"
+GMAIL_TOOLS = "app.services.composio.custom_tools.gmail_tools"
+PROXY_PATH = f"{GMAIL_TOOLS}.proxy_request_sync"
 
 
 @pytest.fixture
@@ -1867,3 +1872,39 @@ class TestTheScopedAccountReachesEveryRequest:
             )
 
         assert seen == ["ca_work", "ca_work"]
+
+    def test_message_and_thread_reads_share_the_fetch_concurrency_cap(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        # Gmail rate-limits per user; a pool sized by the machine would not respect it.
+        pools: list[ContextThreadPoolExecutor] = []
+
+        class RecordingPool(ContextThreadPoolExecutor):
+            def __init__(self, max_workers: int | None = None) -> None:
+                super().__init__(max_workers=max_workers)
+                pools.append(self)
+
+        threads = TestTheThreadRead()._threads(count=1)
+
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/threads/" in request.endpoint or re.match(
+                r".+/users/me/messages/?$", request.endpoint
+            ):
+                return threads(request)
+            return TestFetchMessages._make_message_response()
+
+        mock_proxy.side_effect = serve
+        tools = _register_and_get_tools()
+        with patch(f"{GMAIL_TOOLS}.ContextThreadPoolExecutor", RecordingPool):
+            tools["FETCH_MESSAGES"](
+                request=FetchMessagesInput(timeframe="today", body_processing="none"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+            tools["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert [pool._max_workers for pool in pools] == [FETCH_CONCURRENCY] * 2
