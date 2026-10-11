@@ -208,98 +208,96 @@ def _cache_put(provider: str, config: ProviderConfig | None) -> None:
     _cache[provider] = (monotonic(), config)
 
 
+def _openrouter_env() -> ProviderConfig | None:
+    if not settings.OPENROUTER_API_KEY:
+        return None
+    return ProviderConfig(
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=settings.OPENROUTER_BASE_URL,
+        model=None,
+        preset=None,
+    )
+
+
+def _ollama_env() -> ProviderConfig | None:
+    # Only when the endpoint was explicitly provided; the settings default
+    # is a docker-internal name that is unreachable from bare instances.
+    explicit = os.environ.get("OLLAMA_BASE_URL")
+    if not explicit:
+        return None
+    return ProviderConfig(api_key=None, base_url=explicit, model=None, preset=None)
+
+
+def _custom_env() -> ProviderConfig | None:
+    # The dev-only OpenAI-compatible lane; all three fields ship together.
+    if settings.ENV != "development":
+        return None
+    if not (settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL):
+        return None
+    return ProviderConfig(
+        api_key=settings.DEV_LLM_API_KEY,
+        base_url=settings.DEV_LLM_BASE_URL,
+        model=settings.DEV_LLM_MODEL,
+        preset=None,
+    )
+
+
+def _cloudinary_env() -> ProviderConfig | None:
+    # Uploads need all three: cloud name + key + secret ship together.
+    if not (
+        settings.CLOUDINARY_CLOUD_NAME
+        and settings.CLOUDINARY_API_KEY
+        and settings.CLOUDINARY_API_SECRET
+    ):
+        return None
+    return ProviderConfig(
+        api_key=settings.CLOUDINARY_API_KEY, base_url=None, model=None, preset=None
+    )
+
+
+def _google_oauth_env() -> ProviderConfig | None:
+    # The client id/secret pair only works as a pair.
+    if not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
+        return None
+    return ProviderConfig(
+        api_key=settings.GOOGLE_CLIENT_SECRET,
+        base_url=None,
+        model=None,
+        preset=None,
+    )
+
+
+# Providers whose env fallback is a single api-key setting each.
+_SIMPLE_ENV_KEYS = {
+    "gemini": "GOOGLE_API_KEY",
+    "tavily": "TAVILY_API_KEY",
+    "composio": "COMPOSIO_KEY",
+    "e2b": "E2B_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "resend": "RESEND_API_KEY",
+    "firecrawl": "FIRECRAWL_API_KEY",
+}
+
+# Providers with bespoke rules above, by name.
+_BESPOKE_ENV_RESOLVERS = {
+    "openrouter": _openrouter_env,
+    "ollama": _ollama_env,
+    "custom": _custom_env,
+    "cloudinary": _cloudinary_env,
+    "google_oauth": _google_oauth_env,
+}
+
+
 def _env_fallback(provider: str) -> ProviderConfig | None:
     """Return what the environment alone provides for a provider, or None."""
-    if provider == "openrouter":
-        if not settings.OPENROUTER_API_KEY:
+    if resolve := _BESPOKE_ENV_RESOLVERS.get(provider):
+        return resolve()
+    # Tool keys resolve on a single api key.
+    if key_name := _SIMPLE_ENV_KEYS.get(provider):
+        api_key = getattr(settings, key_name, None)
+        if not api_key:
             return None
-        return ProviderConfig(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            model=None,
-            preset=None,
-        )
-    if provider == "gemini":
-        if not settings.GOOGLE_API_KEY:
-            return None
-        return ProviderConfig(
-            api_key=settings.GOOGLE_API_KEY, base_url=None, model=None, preset=None
-        )
-    if provider == "ollama":
-        # Only when the endpoint was explicitly provided; the settings default
-        # is a docker-internal name that is unreachable from bare instances.
-        explicit = os.environ.get("OLLAMA_BASE_URL")
-        if not explicit:
-            return None
-        return ProviderConfig(api_key=None, base_url=explicit, model=None, preset=None)
-    if provider == "tavily":
-        if not settings.TAVILY_API_KEY:
-            return None
-        return ProviderConfig(
-            api_key=settings.TAVILY_API_KEY, base_url=None, model=None, preset=None
-        )
-    if provider == "custom":
-        # The dev-only OpenAI-compatible lane; all three fields ship together.
-        if settings.ENV != "development":
-            return None
-        if not (settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL):
-            return None
-        return ProviderConfig(
-            api_key=settings.DEV_LLM_API_KEY,
-            base_url=settings.DEV_LLM_BASE_URL,
-            model=settings.DEV_LLM_MODEL,
-            preset=None,
-        )
-    # Tool keys resolve on a single api key, except multi-variable services
-    # that resolve only when every variable is present.
-    if provider == "composio":
-        if not settings.COMPOSIO_KEY:
-            return None
-        return ProviderConfig(api_key=settings.COMPOSIO_KEY, base_url=None, model=None, preset=None)
-    if provider == "e2b":
-        if not settings.E2B_API_KEY:
-            return None
-        return ProviderConfig(api_key=settings.E2B_API_KEY, base_url=None, model=None, preset=None)
-    if provider == "openai":
-        # Voice-note transcription (Whisper) key.
-        if not settings.OPENAI_API_KEY:
-            return None
-        return ProviderConfig(
-            api_key=settings.OPENAI_API_KEY, base_url=None, model=None, preset=None
-        )
-    if provider == "resend":
-        if not settings.RESEND_API_KEY:
-            return None
-        return ProviderConfig(
-            api_key=settings.RESEND_API_KEY, base_url=None, model=None, preset=None
-        )
-    if provider == "cloudinary":
-        # Uploads need all three: cloud name + key + secret ship together.
-        if not (
-            settings.CLOUDINARY_CLOUD_NAME
-            and settings.CLOUDINARY_API_KEY
-            and settings.CLOUDINARY_API_SECRET
-        ):
-            return None
-        return ProviderConfig(
-            api_key=settings.CLOUDINARY_API_KEY, base_url=None, model=None, preset=None
-        )
-    if provider == "google_oauth":
-        # The client id/secret pair only works as a pair.
-        if not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
-            return None
-        return ProviderConfig(
-            api_key=settings.GOOGLE_CLIENT_SECRET,
-            base_url=None,
-            model=None,
-            preset=None,
-        )
-    if provider == "firecrawl":
-        if not settings.FIRECRAWL_API_KEY:
-            return None
-        return ProviderConfig(
-            api_key=settings.FIRECRAWL_API_KEY, base_url=None, model=None, preset=None
-        )
+        return ProviderConfig(api_key=api_key, base_url=None, model=None, preset=None)
     return None
 
 
