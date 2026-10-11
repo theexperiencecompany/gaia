@@ -143,6 +143,48 @@ echo "Installing voice-agent dependencies..."
 echo "All dependencies installed"
 '''
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SELF-HOST BOOTSTRAP (`mise bootstrap`)
+# ─────────────────────────────────────────────────────────────────────────────
+# Declarative machine setup for running GAIA as a self-hosted instance from a
+# checkout. Division of labor with the `gaia` CLI:
+#
+# - mise owns the MACHINE: host packages (Docker, git), the Docker service,
+#   the repo checkout, and the toolchain in [tools]. All of it converges —
+#   `status --missing` tells you what would change, `--dry-run` prints how.
+# - `gaia up` owns the APP journey: env files, secrets, ports, compose start,
+#   readiness wait, and the browser wizard pointer. It stays the zero-checkout
+#   path (`npm i -g @heygaia/cli && gaia up`) because a self-host box cannot
+#   be assumed to have mise.
+#
+# So [tasks.bootstrap] delegates app setup to the CLI instead of redeclaring
+# it: one writer for env content, no drift. `mise bootstrap` = packages,
+# service, repo, toolchain, then the CLI non-interactive `up --yes`.
+[bootstrap.packages]
+"apt:docker.io" = "latest"
+"apt:docker-compose-v2" = "latest"
+"apt:git" = "latest"
+"apt:curl" = "latest"
+"brew:docker" = { os = "macos" }
+"brew:git" = { os = "macos" }
+"brew:curl" = { os = "macos" }
+
+[bootstrap.services.docker]
+state = "running"
+enabled = true
+
+[bootstrap.repos]
+"~/gaia" = { url = "https://github.com/theexperiencecompany/gaia.git" }
+
+[tasks.bootstrap]
+description = "Self-host GAIA on this machine: packages, repo, toolchain, then `gaia up --yes`"
+run = """
+set -e
+pnpm --filter @heygaia/cli build
+node packages/cli/dist/index.js up --yes
+echo ""
+echo "GAIA is starting. Finish setup in your browser at the /setup URL above."
+"""
 [tasks.setup]
 description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
