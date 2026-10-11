@@ -33,6 +33,7 @@ from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
     issue_session_token,
+    resolve_session_token,
 )
 from shared.py.wide_events import log
 
@@ -113,6 +114,17 @@ def _clear_session_cookie(response: JSONResponse, request: Request | None = None
         secure=secure,
         samesite="lax",
     )
+
+
+async def _logout_actor(request: Request) -> str:
+    """Best-effort actor for the logout audit: the session's user id when the
+    presented cookie still verifies, else the unauthenticated marker (logout is
+    idempotent, so an absent or dead cookie is not an error)."""
+    token = request.cookies.get(LOCAL_SESSION_COOKIE)
+    if not token:
+        return AUDIT_ACTOR_UNAUTHENTICATED
+    user_id = await resolve_session_token(token)
+    return user_id or AUDIT_ACTOR_UNAUTHENTICATED
 
 
 def _user_payload(user: UserDocument) -> dict[str, object]:
@@ -260,10 +272,14 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             if user is not None and credential is not None
             else False
         )
-    except ValueError:
+    except ValueError as exc:
         # bcrypt >= 5 refuses passwords past its 72-byte cap: a wrong-password
         # outcome, not a server error. Fold into the uniform 401 below
         # (request validation normally rejects such passwords earlier).
+        log.warning(
+            "over-cap password folded into uniform 401",
+            error_type=type(exc).__name__,
+        )
         verified = False
     if not verified:
         if user is None or credential is None:
@@ -331,9 +347,13 @@ async def change_password(
             if credential is not None
             else False
         )
-    except ValueError:
+    except ValueError as exc:
         # bcrypt >= 5 refuses inputs past its 72-byte cap: a wrong-password
         # outcome folded into the uniform 401 below, exactly like login.
+        log.warning(
+            "over-cap password folded into uniform 401",
+            error_type=type(exc).__name__,
+        )
         verified = False
     if not verified or credential is None:
         log.audit("password change rejected", actor=user_id)
@@ -385,6 +405,8 @@ async def logout(request: Request) -> JSONResponse:
     """Clear the session cookie. Idempotent — clearing an absent cookie still
     reports local mode so clients can branch uniformly."""
     log.set(operation="local_logout")
+    actor = await _logout_actor(request)
+    log.audit("logged out", actor=actor, mode="local")
     response = JSONResponse(content={"mode": "local"})
     _clear_session_cookie(response, request)
     log.set(outcome="success")
