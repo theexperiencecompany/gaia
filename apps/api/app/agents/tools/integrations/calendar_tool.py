@@ -10,7 +10,6 @@ in {successful, data, error} format automatically.
 
 import asyncio
 from collections.abc import Coroutine
-import concurrent.futures
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import TypeVar
 
@@ -67,7 +66,7 @@ from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
 )
 from app.utils.calendar_utils import calendar_events_endpoint
-from app.utils.concurrency import run_on_captured_loop
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
@@ -108,7 +107,7 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         asyncio.get_running_loop()
     except RuntimeError:
         return run_on_captured_loop(coro, timeout=timeout)
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    pool = ContextThreadPoolExecutor(max_workers=1)
     try:
         return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
     finally:

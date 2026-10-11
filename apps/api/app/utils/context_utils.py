@@ -1,11 +1,12 @@
 """Utilities for the context gathering system."""
 
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.log_tags import LogTag
+from app.utils.concurrency import ContextThreadPoolExecutor
 from shared.py.wide_events import log
 
 
@@ -31,7 +32,7 @@ PROVIDER_TIMEOUT_SECONDS = 30
 # Dedicated pool, isolated from the default asyncio thread pool, so slow
 # Composio calls don't starve async I/O; max_workers=4 caps concurrent calls.
 # Do NOT use as the outer run_in_executor target — see context_tool.py.
-_CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
+_CONTEXT_EXECUTOR = ContextThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
 
 
 # ── Composio tool executor ───────────────────────────────────────────────────
