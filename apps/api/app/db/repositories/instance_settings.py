@@ -6,10 +6,8 @@ written as upserts. No cache: reads are rare and must observe the latest
 persisted value.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.runtime_models import InstanceSettingsDocument, InstanceSettingsUpdate
-from app.utils.errors import AppError
 
 
 class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, InstanceSettingsUpdate]):
@@ -23,22 +21,6 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
     async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
         """Return the single document stored under key, or None."""
         return await self._find_one({"key": key})
-
-    async def upsert_value(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
-        """Insert or replace the value under key and return the stored doc."""
-        doc = await self._apply_raw_update(
-            {"key": key},
-            {"$set": {"value": value}},
-            scope=REPO_GLOBAL_SCOPE,
-            upsert=True,
-        )
-        if doc is None:
-            raise AppError(
-                message=f"instance_settings upsert for key '{key}' returned no document",
-                why="an upsert with return_document=AFTER always yields the stored row",
-                fix="check Mongo connectivity / collection write permissions",
-            )
-        return doc
 
     async def set_if_absent(self, key: str, value: dict[str, object]) -> bool:
         """Atomically insert value only when key does not exist yet.
