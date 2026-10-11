@@ -281,6 +281,11 @@ def test_every_gmail_account_is_worked_and_keeps_its_own_cursor() -> None:
         "fetched from>"
     ) in guidance
     assert "set each account's last processed time to the" in guidance
+    # Seen live: one account's failed sweep left every account's cursor where it was.
+    assert (
+        "Only an account whose step 2 fetch failed keeps its old time; a failed step 3 sweep "
+        "does not stop its account's mail being triaged or its time advancing."
+    ) in guidance
 
 
 def test_the_steps_are_defaults_and_mail_they_do_not_fit_gets_judgment() -> None:

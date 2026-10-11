@@ -16,6 +16,9 @@ import pytest
 from app.db.repositories.user_integrations import UserIntegrationsRepository
 from app.models.integration_models import IntegrationAccount
 
+# The repository caches reads in Redis; each test gets its own, so none reads another's record.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 USER_ID = "user_1"
 INTEGRATION_ID = "gmail"
 CONNECTED_AT = datetime(2026, 9, 1, tzinfo=UTC)
