@@ -21,7 +21,6 @@ from app.agents.llm.client import (
     _build_vision_llm,
     _get_available_providers,
     _sim_llm,
-    get_default_llm,
     init_custom_llm,
     init_gemini_llm,
     init_ollama_llm,
@@ -54,9 +53,19 @@ class _FakeChatOpenRouter:
         type(self).calls.append(kwargs)
         self.client = SimpleNamespace(sdk_configuration=SimpleNamespace(retry_config=None))
         self.profile: dict[str, int] | None = None
+        self.model_kwargs: dict[str, object] | None = None
 
     def configurable_fields(self, **_: object) -> "_FakeChatOpenRouter":
         return self
+
+    def model_copy(self, update: dict[str, object] | None = None) -> "_FakeChatOpenRouter":
+        # Bypass __init__: a copy is not a construction and must not record one,
+        # or the cache assertions below count copies as rebuilds.
+        fresh = object.__new__(_FakeChatOpenRouter)
+        fresh.client = self.client
+        fresh.profile = self.profile
+        fresh.model_kwargs = {**(self.model_kwargs or {}), **(update or {})}
+        return fresh
 
 
 class _FakeChatOpenAI:
@@ -256,7 +265,7 @@ class TestResolverPrecedence:
         client_module._runtime_configs["openrouter"] = _store_config(api_key="sk-store-aux")
         _FakeChatOpenRouter.calls.clear()
 
-        get_default_llm()
+        resolve_model()
 
         [kwargs] = _FakeChatOpenRouter.calls
         assert kwargs["api_key"] == SecretStr("sk-store-aux")
@@ -382,12 +391,12 @@ class TestResetAuxLlmCaches:
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-test")
         _FakeChatOpenRouter.calls.clear()
 
-        get_default_llm()
-        get_default_llm()
+        resolve_model()
+        resolve_model()
         assert len(_FakeChatOpenRouter.calls) == 1  # cached
 
         reset_aux_llm_caches()
-        get_default_llm()
+        resolve_model()
         assert len(_FakeChatOpenRouter.calls) == 2  # rebuilt
 
     def test_vision_and_memory_caches_are_cleared(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -426,7 +435,7 @@ class TestResetAuxLlmCaches:
 class TestAuxLaneErrorsPreserved:
     def test_default_llm_names_env_var(self) -> None:
         with pytest.raises(LLMNotConfiguredError, match="OPENROUTER_API_KEY"):
-            get_default_llm()
+            resolve_model()
 
     def test_vision_llm_names_env_var(self) -> None:
         with pytest.raises(LLMNotConfiguredError, match="GOOGLE_API_KEY"):

@@ -743,23 +743,6 @@ class _ProviderOrderKwargs(TypedDict, total=False):
     model_kwargs: dict[str, Any]
 
 
-def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """Build the default aux-task LLM: DEFAULT_MODEL_NAME over OpenRouter.
-
-    The memory pipeline prefers direct Gemini and lands here only when that lane is
-    unavailable. Raises LLMNotConfiguredError when OpenRouter has no API key.
-    Instances are cached per credential and temperature.
-    """
-    if settings.GAIA_SIM_MODE:
-        return _sim_llm(temperature)
-    config: ProviderConfig | None = _provider_config(LLMProviderName.OPENROUTER)
-    if config is None or not config.get("api_key"):
-        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
-    return _build_default_llm(
-        temperature, api_key=config["api_key"], base_url=config.get("base_url")
-    )
-
-
 def _provider_order_kwargs() -> _ProviderOrderKwargs:
     """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
 

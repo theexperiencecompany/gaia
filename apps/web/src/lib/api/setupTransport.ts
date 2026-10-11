@@ -60,5 +60,3 @@ export const setupTransport = {
     await apiauth.delete(setupUrl(path));
   },
 };
-
-export type { ProviderTestResult as ProviderTestResponse };

@@ -20,7 +20,7 @@ export type CredentialProvider =
   | "firecrawl";
 
 /** Gateway preset for the custom OpenAI-compatible lane; null clears it. */
-export type CustomPresetKey = "opencode" | "nous";
+type CustomPresetKey = "opencode" | "nous";
 
 // Wire shapes as the API serves them — aliases, never re-declarations, so the
 // generator stays the single source of truth.
