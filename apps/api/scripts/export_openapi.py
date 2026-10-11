@@ -23,6 +23,15 @@ os.chdir(API_ROOT)
 
 import tests.offline_env  # noqa: F401 -- must run before any app import
 
+# The document covers the whole API surface across deployment modes: under the
+# offline default (ENV=development, AUTH_MODE=workos) the self-host routers
+# (/setup, /auth) are unmounted and their shapes would be missing from the
+# generated contract. Self-host mode mounts a strict superset — nothing
+# workos-only unmounts — so exporting under it keeps every existing path
+# byte-identical while adding the setup shapes.
+os.environ["ENV"] = "selfhost"
+os.environ["AUTH_MODE"] = "local"
+
 from app.core.app_factory import create_app
 
 OUTPUT = API_ROOT / "openapi.json"

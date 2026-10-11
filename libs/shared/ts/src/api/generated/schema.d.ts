@@ -120,6 +120,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login
+         * @description Verify email + password and open a session.
+         *
+         *     Every failure — unknown email, missing credential, wrong password — returns
+         *     the same body with the same status AND burns the same bcrypt work, so the
+         *     endpoint can neither enumerate accounts nor distinguish them by latency.
+         */
+        post: operations["auth_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Clear the session cookie. Idempotent — clearing an absent cookie still
+         *     reports local mode so clients can branch uniformly.
+         */
+        post: operations["auth_logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Password
+         * @description Rotate the caller's own password after re-verifying the current one.
+         *
+         *     Not in the middleware's ``exclude_paths`` — a live local session is
+         *     required to even reach this handler. The current-password verify runs the
+         *     same bcrypt path as login and fails with the same uniform
+         *     ``invalid_credentials`` shape (401): whether the credential is missing or
+         *     the password is wrong must stay indistinguishable. No timing equalizer is
+         *     burned for a missing credential — unlike login, the caller already holds
+         *     an authenticated session, so there is no account left to enumerate.
+         *
+         *     Deliberately narrow failure semantics: a wrong current password is a
+         *     401 (the client renders it inline next to that field), while an over-cap
+         *     or too-short NEW password is rejected on the wire as a 422 before any
+         *     verification runs.
+         *
+         *     On success the credential's ``token_version`` is bumped and a fresh JWT
+         *     (``ver`` = new version) is returned as a ``Set-Cookie`` so the caller's
+         *     current session survives while every other previously issued JWT — whose
+         *     ``ver`` no longer matches — is revoked. Previous sessions remain valid for
+         *     up to 30 days only if password rotation never happened; after a rotation
+         *     they are rejected on the next request.
+         */
+        patch: operations["auth_change_password"];
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup
+         * @description Create the instance administrator account and open a session.
+         *
+         *     Refused with 403 ``registration_closed`` once any credential exists — a
+         *     self-hosted GAIA is single-admin. The gate is an ATOMIC CLAIM (a unique
+         *     index on the constant ``slot`` discriminator admits exactly one document),
+         *     not check-then-create: two concurrent signups on a fresh instance both read
+         *     zero credentials, but Mongo lets precisely one insert land and the loser
+         *     deterministically gets 403 — its half-created user row is removed again.
+         *
+         *     A pre-existing user row with the same email is NOT claimed — knowledge of
+         *     an email address is not proof of ownership, and a migrated WorkOS-era row
+         *     must not be attachable by an attacker (Greptile finding). Such signups are
+         *     refused as closed; only brand-new user rows can become the admin.
+         */
+        post: operations["auth_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/blogs": {
         parameters: {
             query?: never;
@@ -4166,6 +4283,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Provider Catalog
+         * @description The provider catalog the setup wizard and Settings render from.
+         *
+         *     Serves ``app.constants.providers.PRESETS`` — display metadata only (no
+         *     secrets, no configuration state) — partitioned by role so clients can
+         *     render every card without shipping their own copy of the catalog:
+         *
+         *     - ``providers``: one entry per credential-store provider, in display order
+         *       (``CREDENTIAL_PROVIDERS``),
+         *     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
+         *       custom lane's card (``opencode`` / ``nous``),
+         *     - ``llm_provider_keys``: which providers can serve chat (the wizard's
+         *       readiness rule mirrors ``_needs_setup``).
+         *
+         *     Adding or renaming a provider becomes a Python-only change; the UI picks
+         *     it up here. Public under local auth like ``/status`` — the wizard renders
+         *     cards before an admin session exists.
+         */
+        get: operations["setup_get_provider_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Setup Step
+         * @description Mark one wizard step done in the instance-settings ``setup`` doc.
+         *
+         *     Mutates shared instance state — admin-only like the rest of the surface.
+         */
+        post: operations["setup_complete_setup_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description Masked per-provider view for the settings UI. Never returns raw keys.
+         *
+         *     Admin-only: the listing reveals configured base_urls and models.
+         */
+        get: operations["setup_list_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Provider
+         * @description Store (or replace) one provider's credential. Presets prefill server-side.
+         *
+         *     Admin-only: rewriting a provider's endpoint redirects every LLM call the
+         *     instance makes. Stored base_urls must be public (see ``_assert_url_safe``)
+         *     except for ``ollama`` which is expected to be local
+         *     (``host.docker.internal`` / ``localhost``) and skips the public-IP check.
+         */
+        put: operations["setup_put_provider"];
+        post?: never;
+        /**
+         * Remove Provider
+         * @description Drop one provider's stored credential.
+         */
+        delete: operations["setup_remove_provider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Live-connectivity probe with strict credential binding.
+         *
+         *     Contract (H1): once a credential is stored for ``provider`` — including an
+         *     environment-fallback config — the probe uses the STORED ``base_url`` and
+         *     api_key exclusively; body values are ignored, so a caller-supplied URL can
+         *     never be paired with a server-held key. Body values (preset / base_url /
+         *     api_key / model) are honored only for first-time validation before
+         *     anything has been saved. Non-public endpoints are refused outright with a
+         *     422 by the SSRF guard inside ``_probe``.
+         */
+        post: operations["setup_test_provider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Setup Status
+         * @description First-run status for the web setup wizard and desktop CLI.
+         *
+         *     Public only under AUTH_MODE=local (middleware conditionally excludes it
+         *     there); in workos mode the route requires a session like any other.
+         */
+        get: operations["setup_get_setup_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/skills": {
         parameters: {
             query?: never;
@@ -6873,6 +7149,17 @@ export interface components {
             success: boolean;
         };
         /**
+         * ChangePasswordRequest
+         * @description Body of ``PATCH /api/v1/auth/password`` — rotates the caller's own
+         *     password after re-verifying the current one.
+         */
+        ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /**
          * ChannelConfig
          * @description Per-channel delivery settings for a notification request.
          */
@@ -9570,6 +9857,19 @@ export interface components {
             token: string;
         };
         /**
+         * LoginRequest
+         * @description Body of ``POST /api/v1/auth/login``.
+         */
+        LoginRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
          * LogoutResponse
          * @description ``POST /user/logout``: where the client sends the browser next.
          */
@@ -9624,6 +9924,37 @@ export interface components {
              * @default 0
              */
             total?: number;
+        };
+        /**
+         * MaskedProvider
+         * @description One row of ``GET /setup/providers`` — a credential with the key masked.
+         */
+        MaskedProvider: {
+            /**
+             * Api Key Hint
+             * @description Last four characters of the key; the key itself never leaves the server
+             */
+            api_key_hint?: string | null;
+            /**
+             * Base Url
+             * @description Configured endpoint, if any
+             */
+            base_url?: string | null;
+            /**
+             * Configured
+             * @description Whether a credential resolves for this provider
+             */
+            configured: boolean;
+            /**
+             * Model
+             * @description Configured model, if any
+             */
+            model?: string | null;
+            /**
+             * Provider
+             * @description Provider name
+             */
+            provider: string;
         };
         /**
          * MCPConfigDetail
@@ -11703,6 +12034,106 @@ export interface components {
             type?: string | null;
         };
         /**
+         * ProviderCatalogResponse
+         * @description ``GET /setup/catalog`` — display metadata, partitioned by role.
+         *
+         *     Each map holds ``app.constants.providers.PRESETS`` entries verbatim, so the
+         *     wizard never ships its own copy of the catalog.
+         */
+        ProviderCatalogResponse: {
+            /**
+             * Custom Presets
+             * @description OpenAI-compatible gateway presets for the custom lane's card
+             */
+            custom_presets: {
+                [key: string]: components["schemas"]["ProviderPreset"];
+            };
+            /**
+             * Llm Provider Keys
+             * @description Which providers can serve chat
+             */
+            llm_provider_keys: string[];
+            /**
+             * Providers
+             * @description One entry per credential-store provider, in display order
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderPreset"];
+            };
+        };
+        /**
+         * ProviderConfiguredState
+         * @description Per-provider readiness as the wizard reads it: "can this serve a request?".
+         */
+        ProviderConfiguredState: {
+            /**
+             * Configured
+             * @description Whether a usable credential or env fallback exists
+             */
+            configured: boolean;
+        };
+        /**
+         * ProviderCredentialBody
+         * @description Provider payload shared by upsert and test.
+         *
+         *     ``preset`` prefills the endpoint + default model server-side so configuring
+         *     OpenCode/Nous is paste-an-API-key-only.
+         */
+        ProviderCredentialBody: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Preset */
+            preset?: ("opencode" | "nous") | null;
+        };
+        /** ProviderListResponse */
+        ProviderListResponse: {
+            /**
+             * Providers
+             * @description Masked view per provider
+             */
+            providers: {
+                [key: string]: components["schemas"]["MaskedProvider"];
+            };
+        };
+        /** ProviderPreset */
+        ProviderPreset: {
+            /** Base Url */
+            base_url: string;
+            /** Default Model */
+            default_model: string;
+            /** Favicon Domain */
+            favicon_domain: string;
+            /** Label */
+            label: string;
+            /** Needs Base Url */
+            needs_base_url: boolean;
+        };
+        /**
+         * ProviderTestResponse
+         * @description ``POST /setup/providers/{provider}/test`` — the live connectivity probe.
+         */
+        ProviderTestResponse: {
+            /**
+             * Detail
+             * @description Human-readable outcome; never contains credentials
+             */
+            detail: string;
+            /**
+             * Models
+             * @description Model ids the endpoint advertised
+             */
+            models: string[];
+            /**
+             * Ok
+             * @description Whether the provider answered a models request
+             */
+            ok: boolean;
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12599,6 +13030,65 @@ export interface components {
         SetToolOverrideRequest: {
             /** Ask */
             ask?: boolean | null;
+        };
+        /** SetupCompleteBody */
+        SetupCompleteBody: {
+            /** Step */
+            step: string;
+        };
+        /**
+         * SetupStatusResponse
+         * @description ``GET /setup/status`` — what the first-run wizard branches on.
+         */
+        SetupStatusResponse: {
+            /**
+             * Auth Mode
+             * @description Active auth stack
+             * @enum {string}
+             */
+            auth_mode: "workos" | "local";
+            /**
+             * Billing Enabled
+             * @description Whether payments are live for this instance
+             */
+            billing_enabled: boolean;
+            /**
+             * Has Admin Account
+             * @description Whether the single admin slot is taken
+             */
+            has_admin_account: boolean;
+            /**
+             * Needs Setup
+             * @description Whether an LLM lane still has to be configured
+             */
+            needs_setup: boolean;
+            /**
+             * Plans Seeded
+             * @description Whether the billing plans have been seeded
+             */
+            plans_seeded: boolean;
+            /**
+             * Providers
+             * @description Readiness per credential-store provider
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderConfiguredState"];
+            };
+        };
+        /**
+         * SignupRequest
+         * @description Body of ``POST /api/v1/auth/signup`` — creates the instance admin.
+         */
+        SignupRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Password */
+            password: string;
         };
         /**
          * Skill
@@ -15436,6 +15926,7 @@ export type CalendarPreferencesResponse = components['schemas']['CalendarPrefere
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
 export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
+export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
@@ -15589,11 +16080,13 @@ export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
+export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
 export type MarkAsUnreadResponse = components['schemas']['MarkAsUnreadResponse'];
 export type MarketplaceResponse = components['schemas']['MarketplaceResponse'];
+export type MaskedProvider = components['schemas']['MaskedProvider'];
 export type MCPConfigDetail = components['schemas']['MCPConfigDetail'];
 export type MCPConnectionTestResponse = components['schemas']['MCPConnectionTestResponse'];
 export type MCPProxyPromptsListRequest = components['schemas']['MCPProxyPromptsListRequest'];
@@ -15701,6 +16194,12 @@ export type Priority = components['schemas']['Priority'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
+export type ProviderCatalogResponse = components['schemas']['ProviderCatalogResponse'];
+export type ProviderConfiguredState = components['schemas']['ProviderConfiguredState'];
+export type ProviderCredentialBody = components['schemas']['ProviderCredentialBody'];
+export type ProviderListResponse = components['schemas']['ProviderListResponse'];
+export type ProviderPreset = components['schemas']['ProviderPreset'];
+export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
@@ -15747,6 +16246,9 @@ export type SendEmailRequest = components['schemas']['SendEmailRequest'];
 export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
+export type SetupCompleteBody = components['schemas']['SetupCompleteBody'];
+export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
+export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
 export type SkillListResponse = components['schemas']['SkillListResponse'];
@@ -16220,6 +16722,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HILPreferencesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -27080,6 +27782,359 @@ export interface operations {
             };
             /** @description Workspace storage offline */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_provider_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCatalogResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_complete_setup_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupCompleteBody"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_list_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_put_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialBody"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_remove_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_test_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialBody"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderTestResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_setup_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

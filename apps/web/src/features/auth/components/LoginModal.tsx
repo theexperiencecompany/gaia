@@ -5,12 +5,12 @@ import { Login02Icon } from "@icons";
 import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
-import type { InstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import {
   useLoginModal,
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
+import type { SetupStatus } from "@/features/settings/api/providersApi";
 import { providersApi } from "@/features/settings/api/providersApi";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -46,7 +46,9 @@ export default function LoginModal() {
   // Local auth has no WorkOS routes, so route Sign in to /login. Plain state
   // + effect (modal mounts above QueryClientProvider). Resolved once per
   // session — auth mode cannot change without a restart.
-  const [authMode, setAuthMode] = useState<InstanceAuthMode | null>(null);
+  const [authMode, setAuthMode] = useState<SetupStatus["auth_mode"] | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!isOpen || authMode) return;

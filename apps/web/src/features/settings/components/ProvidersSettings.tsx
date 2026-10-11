@@ -16,8 +16,6 @@ import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   type CredentialProvider,
-  CUSTOM_PRESETS,
-  type CustomPreset,
   extractProviderError,
   getProviderErrorHint,
   PROVIDER_KEY_URLS,
@@ -33,6 +31,10 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import {
+  CUSTOM_PRESETS,
+  type CustomPreset,
+} from "@/features/setup-wizard/constants";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 
@@ -552,11 +554,10 @@ export function ProvidersSettings() {
         return {
           key,
           label: meta.label || fallback?.label || key,
-          description: fallback?.description || meta.description || "",
+          description: fallback?.description || "",
           faviconDomain: meta.favicon_domain || fallback?.faviconDomain || "",
           needsBaseUrl: meta.needs_base_url ?? fallback?.needsBaseUrl ?? false,
-          defaultBaseUrl:
-            meta.base_url || meta.default_base_url || fallback?.defaultBaseUrl,
+          defaultBaseUrl: meta.base_url || fallback?.defaultBaseUrl || "",
           defaultModel: meta.default_model || fallback?.defaultModel,
           showModelField: fallback?.showModelField ?? true,
           connectionTestable: fallback?.connectionTestable ?? false,

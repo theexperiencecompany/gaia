@@ -126,7 +126,6 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "workos",
-        models_seeded: false,
         plans_seeded: false,
         has_admin_account: false,
         billing_enabled: false,
@@ -136,7 +135,6 @@ describe("evaluateSetupReadiness", () => {
     );
 
     expect(items.map((i) => i.configured)).toEqual([
-      false,
       false,
       false,
       false,
@@ -153,7 +151,6 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "workos",
-        models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: true,
@@ -182,13 +179,25 @@ describe("evaluateSetupReadiness", () => {
     ).toBe(true);
   });
 
+  it("does not count a tool-only key toward LLM readiness", () => {
+    // A Tavily key alone leaves chat unusable — the server agrees
+    // (_needs_setup counts only the four LLM lanes).
+    const items = evaluateSetupReadiness(
+      { providers: { tavily: { configured: true } } },
+      3000,
+    );
+    expect(
+      items.find((i) => i.label === "LLM provider configured")?.configured,
+    ).toBe(false);
+  });
+
   it("drops the billing item for self-host instances (auth_mode local)", () => {
-    // Self-host never enables billing — the backend pins billing_enabled to
-    // ENV !== "selfhost". Requiring it here warned forever on every install.
+    // Self-host never enables billing — the backend reports billing_enabled
+    // only under ENV=production. Requiring it here warned forever on every
+    // install.
     const items = evaluateSetupReadiness(
       {
         auth_mode: "local",
-        models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,
@@ -205,7 +214,6 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "local",
-        models_seeded: false,
         plans_seeded: true,
         has_admin_account: false,
         billing_enabled: false,
@@ -217,7 +225,6 @@ describe("evaluateSetupReadiness", () => {
     // Billing is gone entirely; the remaining unconfigured items are intact.
     expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
     expect(items.filter((i) => !i.configured).map((i) => i.label)).toEqual([
-      "models seeded",
       "LLM provider configured",
       "admin account created",
     ]);
@@ -397,7 +404,6 @@ describe("checkSetupReadiness", () => {
     stubFetch(async () =>
       okResponse({
         auth_mode: "workos",
-        models_seeded: true,
         plans_seeded: false,
         has_admin_account: true,
         billing_enabled: false,
@@ -426,7 +432,6 @@ describe("checkSetupReadiness", () => {
     stubFetch(async () =>
       okResponse({
         auth_mode: "workos",
-        models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: true,
@@ -446,12 +451,11 @@ describe("checkSetupReadiness", () => {
 
   it("reports ok on a self-host instance with billing disabled", async () => {
     // The reported bug: every self-host install showed a permanent
-    // "[warn] Billing enabled is not configured" because the backend sets
-    // billing_enabled = (ENV !== "selfhost").
+    // "[warn] Billing enabled is not configured" because the backend reports
+    // billing_enabled only under ENV=production.
     stubFetch(async () =>
       okResponse({
         auth_mode: "local",
-        models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,

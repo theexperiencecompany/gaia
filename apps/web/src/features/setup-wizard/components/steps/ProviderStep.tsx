@@ -58,18 +58,14 @@ export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
           const card: ProviderCardConfig = {
             key,
             label: meta?.label || fallback?.label || key,
-            description: fallback?.description || meta?.description || "",
+            description: fallback?.description || "",
             faviconDomain:
               meta?.favicon_domain || fallback?.faviconDomain || "",
             showApiKey: fallback?.showApiKey ?? true,
             showBaseUrl: meta?.needs_base_url ?? fallback?.showBaseUrl ?? false,
             showModel: fallback?.showModel ?? false,
             connectionTestable: fallback?.connectionTestable ?? true,
-            defaultBaseUrl:
-              meta?.base_url ||
-              meta?.default_base_url ||
-              fallback?.defaultBaseUrl ||
-              "",
+            defaultBaseUrl: meta?.base_url || fallback?.defaultBaseUrl || "",
             defaultModel: meta?.default_model || fallback?.defaultModel || "",
             hasPresets: fallback?.hasPresets ?? false,
           };

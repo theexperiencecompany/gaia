@@ -188,16 +188,10 @@ export async function checkPortConflicts(
 // Setup readiness (/api/v1/setup/status)
 // ---------------------------------------------------------------------------
 
-/** Subset of the public `/setup/status` payload the CLI cares about. */
-export interface SetupStatusPayload {
-  /** Instance auth tier: "local" marks a self-host install. */
-  auth_mode?: "workos" | "local";
-  models_seeded?: boolean;
-  plans_seeded?: boolean;
-  has_admin_account?: boolean;
-  billing_enabled?: boolean;
-  providers?: Record<string, { configured?: boolean }>;
-}
+import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+
+/** The public `/setup/status` payload, straight from the generated contract. */
+export type SetupStatusPayload = SetupStatusResponse;
 
 export interface SetupReadinessItem {
   /** e.g. "models seeded". */
@@ -211,18 +205,20 @@ function readinessFix(webPort: number): string {
   return `Open http://localhost:${webPort}/setup in your browser and complete first-run setup.`;
 }
 
+/** Providers that can serve chat — the same four the server's _needs_setup counts. */
+const LLM_PROVIDER_KEYS = ["openrouter", "gemini", "ollama", "custom"] as const;
+
 export function evaluateSetupReadiness(
   payload: SetupStatusPayload,
   webPort: number,
 ): SetupReadinessItem[] {
-  const anyProviderConfigured = Object.values(payload.providers ?? {}).some(
-    (p) => p.configured === true,
+  const llmConfigured = LLM_PROVIDER_KEYS.some(
+    (key) => payload.providers?.[key]?.configured === true,
   );
 
   const items: Array<{ label: string; configured: boolean }> = [
-    { label: "models seeded", configured: payload.models_seeded === true },
     { label: "plans seeded", configured: payload.plans_seeded === true },
-    { label: "LLM provider configured", configured: anyProviderConfigured },
+    { label: "LLM provider configured", configured: llmConfigured },
     {
       label: "admin account created",
       configured: payload.has_admin_account === true,

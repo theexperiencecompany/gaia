@@ -1,18 +1,47 @@
 /**
  * Static metadata for the setup wizard: step copy and provider card configs.
- * The OpenAI-compatible presets offered inside the Custom card live beside
- * the API contract in `@/features/settings/api/providersApi` (CUSTOM_PRESETS)
- * so the wizard and Settings render one shared catalog. The API remains the
- * source of truth for behavior; these only drive UI.
+ * The OpenAI-compatible preset chips offered inside the Custom card live here
+ * (not in the API contract): they are UI shortcuts whose endpoints mirror the
+ * opencode/nous entries of PRESETS in app/constants/providers.py. The API
+ * remains the source of truth for behavior; these only drive UI.
  */
 
 import type { Transition } from "motion/react";
-import {
-  type CredentialProvider,
-  CUSTOM_PRESETS,
-} from "@/features/settings/api/providersApi";
+import type { CredentialProvider } from "@/lib/api/setupTransport";
 
 const EASE_OUT_QUART: [number, number, number, number] = [0.19, 1, 0.22, 1];
+
+/**
+ * OpenAI-compatible preset gateways surfaced as chips inside the "custom"
+ * lane — paste an API key and go. One shared catalog for Settings and the
+ * setup wizard, so both render the same chips.
+ */
+export interface CustomPreset {
+  /** Gateway id sent as `preset` on the provider body. */
+  key: "opencode" | "nous";
+  label: string;
+  baseUrl: string;
+  /** Empty ⇒ fetched from the endpoint at configure time. */
+  defaultModel: string;
+  faviconDomain: string;
+}
+
+export const CUSTOM_PRESETS: readonly CustomPreset[] = [
+  {
+    key: "opencode",
+    label: "OpenCode",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    defaultModel: "deepseek-v4-flash",
+    faviconDomain: "opencode.ai",
+  },
+  {
+    key: "nous",
+    label: "Nous Research",
+    baseUrl: "https://inference-api.nousresearch.com/v1",
+    defaultModel: "",
+    faviconDomain: "nousresearch.com",
+  },
+];
 
 export const MOTION_FADE_UP = {
   initial: { opacity: 0, y: 12 },

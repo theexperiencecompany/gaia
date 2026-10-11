@@ -1,3 +1,8 @@
+import type {
+  ProviderCatalogResponse,
+  ProviderListResponse,
+  SetupStatusResponse,
+} from "@gaia/shared/api/generated";
 import {
   type CredentialProvider,
   type ProviderConfigBody,
@@ -12,6 +17,10 @@ export type {
   ProviderTestResult,
   StoredProviderConfig,
 };
+// Wire shapes as the API serves them — aliases, never re-declarations, so the
+// generator stays the single source of truth.
+export type SetupStatus = SetupStatusResponse;
+export type ProviderCatalog = ProviderCatalogResponse;
 
 /** Providers that can serve chat (mirrors _LLM_PROVIDER_KEYS in
  * app/api/v1/endpoints/setup.py). The tool/integration keys in
@@ -22,39 +31,6 @@ export const LLM_PROVIDER_KEYS = [
   "ollama",
   "custom",
 ] as const satisfies readonly CredentialProvider[];
-
-/**
- * OpenAI-compatible preset gateways surfaced as chips inside the "custom"
- * lane — paste an API key and go. Single catalog shared by Settings and the
- * setup wizard (mirrors the opencode/nous entries of PRESETS in
- * app/constants/providers.py; the backend stays the source of truth).
- */
-export interface CustomPreset {
-  /** Gateway id sent as `preset` on ProviderConfigBody. */
-  key: "opencode" | "nous";
-  label: string;
-  baseUrl: string;
-  /** Empty ⇒ fetched from the endpoint at configure time. */
-  defaultModel: string;
-  faviconDomain: string;
-}
-
-export const CUSTOM_PRESETS: readonly CustomPreset[] = [
-  {
-    key: "opencode",
-    label: "OpenCode",
-    baseUrl: "https://opencode.ai/zen/go/v1",
-    defaultModel: "deepseek-v4-flash",
-    faviconDomain: "opencode.ai",
-  },
-  {
-    key: "nous",
-    label: "Nous Research",
-    baseUrl: "https://inference-api.nousresearch.com/v1",
-    defaultModel: "",
-    faviconDomain: "nousresearch.com",
-  },
-];
 
 /** Direct link to obtain an API key for providers that use one. */
 export const PROVIDER_KEY_URLS: Partial<Record<CredentialProvider, string>> = {
@@ -67,36 +43,6 @@ export const PROVIDER_KEY_URLS: Partial<Record<CredentialProvider, string>> = {
   cloudinary: "https://console.cloudinary.com/settings/api-keys",
 };
 
-export interface ProviderStatus {
-  configured: boolean;
-}
-
-export interface SetupStatus {
-  auth_mode: "workos" | "local";
-  has_admin_account: boolean;
-  needs_setup: boolean;
-  /** false on self-host instances — usage is tracked but never billed. */
-  billing_enabled: boolean;
-  providers: Record<CredentialProvider, ProviderStatus>;
-  plans_seeded: boolean;
-}
-
-export interface CatalogProviderMeta {
-  label: string;
-  description?: string;
-  favicon_domain: string;
-  needs_base_url: boolean;
-  default_model: string;
-  default_base_url?: string;
-  base_url?: string;
-}
-
-export interface ProviderCatalog {
-  providers: Record<CredentialProvider, CatalogProviderMeta>;
-  custom_presets: Record<string, CatalogProviderMeta>;
-  llm_provider_keys: CredentialProvider[];
-}
-
 class ProvidersApiService {
   fetchSetupStatus(): Promise<SetupStatus> {
     return setupTransport.get<SetupStatus>("status");
@@ -106,12 +52,8 @@ class ProvidersApiService {
     return setupTransport.get<ProviderCatalog>("catalog");
   }
 
-  async listProviders(): Promise<
-    Record<CredentialProvider, StoredProviderConfig>
-  > {
-    const listing = await setupTransport.get<{
-      providers: Record<CredentialProvider, StoredProviderConfig>;
-    }>("providers");
+  async listProviders(): Promise<ProviderListResponse["providers"]> {
+    const listing = await setupTransport.get<ProviderListResponse>("providers");
     return listing.providers;
   }
 

@@ -1,4 +1,4 @@
-import type { SetupStatus } from "@/features/settings/api/providersApi";
+import type { SetupStatusResponse } from "@gaia/shared/api/generated";
 
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
@@ -8,7 +8,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Returns null when unconfigured or unreachable so callers fall back
  * to the WorkOS redirect.
  */
-async function getSetupStatusServer(): Promise<SetupStatus | null> {
+async function getSetupStatusServer(): Promise<SetupStatusResponse | null> {
   const apiBaseUrl = getServerApiBaseUrl();
   if (!apiBaseUrl) {
     console.error(
@@ -27,15 +27,12 @@ async function getSetupStatusServer(): Promise<SetupStatus | null> {
       );
       return null;
     }
-    return (await response.json()) as SetupStatus;
+    return (await response.json()) as SetupStatusResponse;
   } catch (error) {
     console.error("[auth] Failed to fetch setup status:", error);
     return null;
   }
 }
-
-/** Auth modes an instance can run (mirrors `SetupStatus["auth_mode"]`). */
-export type InstanceAuthMode = SetupStatus["auth_mode"];
 
 /**
  * Resolve the instance auth mode for server-rendered auth pages.
@@ -43,7 +40,9 @@ export type InstanceAuthMode = SetupStatus["auth_mode"];
  * Invalid env values warn and defer to the probe; unreachable probes
  * resolve to "workos".
  */
-export async function resolveInstanceAuthMode(): Promise<InstanceAuthMode> {
+export async function resolveInstanceAuthMode(): Promise<
+  SetupStatusResponse["auth_mode"]
+> {
   const envAuthMode = process.env.AUTH_MODE;
   if (envAuthMode) {
     if (envAuthMode === "workos" || envAuthMode === "local") {

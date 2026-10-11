@@ -62,8 +62,8 @@ export function PasswordChangeSection() {
       ) {
         setError(WRONG_CURRENT_PASSWORD_COPY);
       }
-      // Every other failure (network, 429, 5xx) is already surfaced by the
-      // axios interceptor / apiService toasts — no inline duplicate.
+      // Every other failure (network, 429, 5xx) already toasts globally —
+      // no inline duplicate.
     } finally {
       setIsSubmitting(false);
     }

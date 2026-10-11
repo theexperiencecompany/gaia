@@ -98,7 +98,7 @@ class ProviderConfiguredState(BaseModel):
 class SetupStatusResponse(BaseModel):
     """``GET /setup/status`` — what the first-run wizard branches on."""
 
-    auth_mode: str = Field(description="Active auth stack (``local`` or ``workos``)")
+    auth_mode: Literal["workos", "local"] = Field(description="Active auth stack")
     has_admin_account: bool = Field(description="Whether the single admin slot is taken")
     needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
     billing_enabled: bool = Field(description="Whether payments are live for this instance")
