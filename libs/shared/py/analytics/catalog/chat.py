@@ -112,7 +112,7 @@ class ChatTurnReacted(ServerEvent):
     """An interactive turn's reply resolved to a one-emoji react instead of a message."""
 
     event: ClassVar[str] = "chat:turn_reacted"
-    budget_per_user_day: ClassVar[int] = 10
+    budget_per_user_day: ClassVar[int] = 50
 
     emoji: Emoji
 
@@ -135,7 +135,7 @@ class ChatConversationCreated(ServerEvent):
     """A conversation was created, by a user or by the system."""
 
     event: ClassVar[str] = "chat:conversation_created"
-    budget_per_user_day: ClassVar[int] = 20
+    budget_per_user_day: ClassVar[int] = 50
 
     is_system_generated: bool
     is_onboarding_demo: bool | None = None

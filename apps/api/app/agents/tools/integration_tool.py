@@ -8,7 +8,6 @@ from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 from pydantic import BaseModel, ConfigDict
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -25,7 +24,7 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, normalize_server_url
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
@@ -235,7 +234,7 @@ async def list_integrations(
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         lists = _IntegrationLists()
         await _add_platform_integrations(lists, user_id)
@@ -331,7 +330,7 @@ async def connect_integration(
             dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
         )
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         results = []
         connections_to_initiate: list[tuple[OAuthIntegration, ConnectStep]] = []

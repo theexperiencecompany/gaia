@@ -81,7 +81,7 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
             return_value=UserIntegrationCapabilities(tool_names=[]),
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=lambda _: None,
         ),
         patch(

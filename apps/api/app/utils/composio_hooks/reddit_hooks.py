@@ -8,9 +8,9 @@ minimizing token usage by extracting only critical information.
 from typing import TypedDict
 
 from composio.types import ToolExecuteParams, ToolExecutionResponse
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import current_stream_writer
 from app.models.integrations.composio_hooks import ComposioToolCall, ComposioToolResponse
 from app.models.integrations.reddit_hooks import (
     RedditComment,
@@ -198,21 +198,20 @@ def reddit_content_before_hook(
 ) -> ToolExecuteParams:
     """Handle Reddit content creation/editing progress."""
     try:
-        writer = get_stream_writer()
-        if writer is not None:
-            if tool == "REDDIT_CREATE_REDDIT_POST":
-                arguments = RedditCreatePostArguments.model_validate(
-                    ComposioToolCall.model_validate(params).arguments
-                )
-                payload = {"progress": f"Creating post in r/{arguments.subreddit}..."}
-            elif tool == "REDDIT_POST_REDDIT_COMMENT":
-                payload = {"progress": "Posting comment..."}
-            elif tool == "REDDIT_EDIT_REDDIT_COMMENT_OR_POST":
-                payload = {"progress": "Editing content..."}
-            else:
-                return params
+        writer = current_stream_writer()
+        if tool == "REDDIT_CREATE_REDDIT_POST":
+            arguments = RedditCreatePostArguments.model_validate(
+                ComposioToolCall.model_validate(params).arguments
+            )
+            payload = {"progress": f"Creating post in r/{arguments.subreddit}..."}
+        elif tool == "REDDIT_POST_REDDIT_COMMENT":
+            payload = {"progress": "Posting comment..."}
+        elif tool == "REDDIT_EDIT_REDDIT_COMMENT_OR_POST":
+            payload = {"progress": "Editing content..."}
+        else:
+            return params
 
-            writer(payload)
+        writer(payload)
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} Error in reddit_content_before_hook",
@@ -229,11 +228,10 @@ def reddit_delete_before_hook(
 ) -> ToolExecuteParams:
     """Handle Reddit deletion progress."""
     try:
-        writer = get_stream_writer()
-        if writer is not None:
-            content_type = "post" if "POST" in tool else "comment"
-            payload = {"progress": f"Deleting {content_type}..."}
-            writer(payload)
+        writer = current_stream_writer()
+        content_type = "post" if "POST" in tool else "comment"
+        payload = {"progress": f"Deleting {content_type}..."}
+        writer(payload)
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} Error in reddit_delete_before_hook",
@@ -250,16 +248,15 @@ def reddit_retrieve_before_hook(
 ) -> ToolExecuteParams:
     """Handle Reddit content retrieval progress."""
     try:
-        writer = get_stream_writer()
-        if writer is not None:
-            if tool == "REDDIT_RETRIEVE_REDDIT_POST":
-                payload = {"progress": "Fetching post details..."}
-            elif tool == "REDDIT_RETRIEVE_POST_COMMENTS":
-                payload = {"progress": "Fetching post comments..."}
-            else:
-                return params
+        writer = current_stream_writer()
+        if tool == "REDDIT_RETRIEVE_REDDIT_POST":
+            payload = {"progress": "Fetching post details..."}
+        elif tool == "REDDIT_RETRIEVE_POST_COMMENTS":
+            payload = {"progress": "Fetching post comments..."}
+        else:
+            return params
 
-            writer(payload)
+        writer(payload)
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} Error in reddit_retrieve_before_hook",
@@ -281,7 +278,7 @@ def reddit_search_after_hook(
     log.set(reddit_tool=tool, toolkit=toolkit)
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -293,7 +290,7 @@ def reddit_search_after_hook(
             child.data for child in data.search_results.data.children if child.kind == _POST_KIND
         ]
 
-        if writer is not None and posts:
+        if posts:
             # Send search results to frontend
             reddit_search_data = [
                 {
@@ -338,7 +335,7 @@ def reddit_post_detail_after_hook(
     """Process single Reddit post response and stream to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -346,31 +343,30 @@ def reddit_post_detail_after_hook(
         # The post is nested under 'data', as a Reddit thing
         post = RedditPostDetail.model_validate(raw).data
 
-        if writer is not None:
-            # Send post data to frontend
-            reddit_post_data = {
-                "id": post.id,
-                "title": post.title,
-                "author": post.author,
-                "subreddit": post.subreddit_name_prefixed,
-                "score": post.score,
-                "upvote_ratio": post.upvote_ratio,
-                "num_comments": post.num_comments,
-                "created_utc": post.created_utc,
-                "selftext": post.selftext,
-                "url": post.url,
-                "permalink": post.permalink,
-                "is_self": post.is_self,
-                "link_flair_text": post.link_flair_text,
-            }
+        # Send post data to frontend
+        reddit_post_data = {
+            "id": post.id,
+            "title": post.title,
+            "author": post.author,
+            "subreddit": post.subreddit_name_prefixed,
+            "score": post.score,
+            "upvote_ratio": post.upvote_ratio,
+            "num_comments": post.num_comments,
+            "created_utc": post.created_utc,
+            "selftext": post.selftext,
+            "url": post.url,
+            "permalink": post.permalink,
+            "is_self": post.is_self,
+            "link_flair_text": post.link_flair_text,
+        }
 
-            payload = {
-                "reddit_data": {
-                    "type": "post",
-                    "post": reddit_post_data,
-                }
+        payload = {
+            "reddit_data": {
+                "type": "post",
+                "post": reddit_post_data,
             }
-            writer(payload)
+        }
+        writer(payload)
 
         # Return processed response for LLM
         return process_reddit_post(post)
@@ -391,7 +387,7 @@ def reddit_comments_after_hook(
     """Process Reddit comments response and stream to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -406,7 +402,7 @@ def reddit_comments_after_hook(
         ]
         processed_comments = [process_reddit_comment(child.data) for child in comment_things]
 
-        if writer is not None and processed_comments:
+        if processed_comments:
             # Transform to frontend format, limited for the UI
             reddit_comment_data = [
                 _ui_comment(child.data) for child in comment_things[:_UI_COMMENT_LIMIT]
@@ -443,40 +439,39 @@ def reddit_content_created_after_hook(
     """Process Reddit content creation response and stream to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
 
         created = RedditCreatedContent.model_validate(raw)
 
-        if writer is not None:
-            if tool == "REDDIT_CREATE_REDDIT_POST":
-                payload = {
-                    "reddit_data": {
-                        "type": "post_created",
-                        "data": {
-                            "id": created.id,
-                            "url": created.url,
-                            "message": "Post created successfully!",
-                            "permalink": created.permalink,
-                        },
-                    }
+        if tool == "REDDIT_CREATE_REDDIT_POST":
+            payload = {
+                "reddit_data": {
+                    "type": "post_created",
+                    "data": {
+                        "id": created.id,
+                        "url": created.url,
+                        "message": "Post created successfully!",
+                        "permalink": created.permalink,
+                    },
                 }
-                writer(payload)
+            }
+            writer(payload)
 
-            elif tool == "REDDIT_POST_REDDIT_COMMENT":
-                payload = {
-                    "reddit_data": {
-                        "type": "comment_created",
-                        "data": {
-                            "id": created.id,
-                            "message": "Comment posted successfully!",
-                            "permalink": created.permalink,
-                        },
-                    }
+        elif tool == "REDDIT_POST_REDDIT_COMMENT":
+            payload = {
+                "reddit_data": {
+                    "type": "comment_created",
+                    "data": {
+                        "id": created.id,
+                        "message": "Comment posted successfully!",
+                        "permalink": created.permalink,
+                    },
                 }
-                writer(payload)
+            }
+            writer(payload)
 
         # Return minimal response for LLM
         summary: RedditContentCreatedSummary = {

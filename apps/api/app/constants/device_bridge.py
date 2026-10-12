@@ -116,8 +116,9 @@ FRAME_EXEC_EXIT: Final[str] = "exec.exit"
 # --- Chat-driven onboarding copy (surfaced by the add_device tool's card) ---
 # Global install commands for the `@heygaia/cli` package. MUST match
 # CLI_INSTALL_COMMANDS in libs/shared/ts/src/cli/command-manifest.ts.
+CLI_NPM_INSTALL_COMMAND: Final[str] = "npm install -g @heygaia/cli"
 CLI_INSTALL_COMMANDS: Final[dict[str, str]] = {
-    "npm": "npm install -g @heygaia/cli",
+    "npm": CLI_NPM_INSTALL_COMMAND,
     "pnpm": "pnpm add -g @heygaia/cli",
     "bun": "bun add -g @heygaia/cli",
 }

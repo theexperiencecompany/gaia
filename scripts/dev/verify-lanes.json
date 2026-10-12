@@ -172,7 +172,7 @@
       "heavy": false,
       "timeout_s": 900,
       "require_cmd": [],
-      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && { [ -x .venv-voice-agent/bin/python ] || rm -rf .venv-voice-agent; } && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent"
+      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && bash scripts/ci/runner.sh heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent"
     },
     {
       "name": "custom-lints",

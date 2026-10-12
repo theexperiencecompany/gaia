@@ -7,11 +7,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools import notification_tool as notification_tool_module
+from app.agents.tools.notification_tool import (
+    get_notification_count,
+    get_notification_preferences,
+    get_notifications,
+    mark_notifications_read,
+    search_notifications,
+    send_notification,
+)
 from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
 from app.models.agent_models import RunUserMissingError
 from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
     NotificationContentView,
     NotificationListFilters,
+    NotificationRecord,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
@@ -61,7 +72,7 @@ def _make_notification(
 class TestGetNotifications:
     """Tests for the get_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_happy_path(
         self,
@@ -73,8 +84,6 @@ class TestGetNotifications:
         mock_writer_factory.return_value = writer
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
-
-        from app.agents.tools.notification_tool import get_notifications
 
         result = await get_notifications.coroutine(
             config=_make_config(),
@@ -100,7 +109,7 @@ class TestGetNotifications:
             ),
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_service_error(
         self,
@@ -111,14 +120,12 @@ class TestGetNotifications:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(side_effect=Exception("DB error"))
 
-        from app.agents.tools.notification_tool import get_notifications
-
         result = await get_notifications.coroutine(config=_make_config())
 
         assert "DB error" in result["error"]
         assert result["notifications"] == []
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_forwards_all_filters(
         self,
@@ -128,8 +135,6 @@ class TestGetNotifications:
         """Every argument reaches get_user_notifications as the matching filter field."""
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
-
-        from app.agents.tools.notification_tool import get_notifications
 
         await get_notifications.coroutine(
             config=_make_config(),
@@ -149,7 +154,7 @@ class TestGetNotifications:
         assert filters.limit == 7
         assert filters.offset == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_streams_notification_data(
         self,
@@ -161,8 +166,6 @@ class TestGetNotifications:
         mock_writer_factory.return_value = writer
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
-
-        from app.agents.tools.notification_tool import get_notifications
 
         await get_notifications.coroutine(config=_make_config())
 
@@ -181,7 +184,7 @@ class TestGetNotifications:
 class TestSearchNotifications:
     """Tests for the search_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_happy_path_title_match(
         self,
@@ -198,8 +201,6 @@ class TestSearchNotifications:
             ]
         )
 
-        from app.agents.tools.notification_tool import search_notifications
-
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="meeting",
@@ -213,7 +214,7 @@ class TestSearchNotifications:
             FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_search_body_match(
         self,
@@ -229,8 +230,6 @@ class TestSearchNotifications:
             ]
         )
 
-        from app.agents.tools.notification_tool import search_notifications
-
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="deployment",
@@ -238,15 +237,13 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     async def test_empty_query_returns_error(
         self,
         mock_writer_factory: MagicMock,
     ) -> None:
         """Empty search query returns error."""
         mock_writer_factory.return_value = _writer_mock()
-
-        from app.agents.tools.notification_tool import search_notifications
 
         result = await search_notifications.coroutine(
             config=_make_config(),
@@ -256,7 +253,7 @@ class TestSearchNotifications:
         assert "error" in result
         assert "cannot be empty" in result["error"]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_limit_applied(
         self,
@@ -272,8 +269,6 @@ class TestSearchNotifications:
         ]
         mock_service.get_user_notifications = AsyncMock(return_value=many_notifs)
 
-        from app.agents.tools.notification_tool import search_notifications
-
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="test",
@@ -282,7 +277,7 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_forwards_fetch_filters(
         self,
@@ -292,8 +287,6 @@ class TestSearchNotifications:
         """Fetch pulls the status the caller asked for, capped at 100 rows."""
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
-
-        from app.agents.tools.notification_tool import search_notifications
 
         await search_notifications.coroutine(
             config=_make_config(),
@@ -324,8 +317,6 @@ class TestGetNotificationCount:
         """Returns count of notifications."""
         mock_service.get_user_notifications_count = AsyncMock(return_value=5)
 
-        from app.agents.tools.notification_tool import get_notification_count
-
         result = await get_notification_count.coroutine(config=_make_config())
 
         assert result["count"] == 5
@@ -339,8 +330,6 @@ class TestGetNotificationCount:
         mock_service.get_user_notifications_count = AsyncMock(
             side_effect=Exception("connection lost")
         )
-
-        from app.agents.tools.notification_tool import get_notification_count
 
         result = await get_notification_count.coroutine(config=_make_config())
 
@@ -364,8 +353,6 @@ class TestMarkNotificationsRead:
         """Marks a single notification as read."""
         mock_service.mark_as_read = AsyncMock(return_value=True)
 
-        from app.agents.tools.notification_tool import mark_notifications_read
-
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
             notification_ids=["notif-1"],
@@ -382,8 +369,6 @@ class TestMarkNotificationsRead:
         """Marks multiple notifications as read using bulk action."""
         mock_service.bulk_actions = AsyncMock(return_value={"notif-1": True, "notif-2": True})
 
-        from app.agents.tools.notification_tool import mark_notifications_read
-
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
             notification_ids=["notif-1", "notif-2"],
@@ -396,8 +381,6 @@ class TestMarkNotificationsRead:
         self,
     ) -> None:
         """Empty notification IDs list returns error."""
-        from app.agents.tools.notification_tool import mark_notifications_read
-
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
             notification_ids=[],
@@ -413,8 +396,6 @@ class TestMarkNotificationsRead:
     ) -> None:
         """Service exception returns error."""
         mock_service.mark_as_read = AsyncMock(side_effect=Exception("service down"))
-
-        from app.agents.tools.notification_tool import mark_notifications_read
 
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
@@ -436,8 +417,6 @@ class TestSendNotificationChannels:
         self,
         mock_service: MagicMock,
     ) -> None:
-        from app.agents.tools.notification_tool import send_notification
-
         result = await send_notification.coroutine(
             config=_make_config(), message="Build done", title="Build", channels=[]
         )
@@ -454,8 +433,6 @@ class TestSendNotificationChannels:
         self,
         mock_service: MagicMock,
     ) -> None:
-        from app.agents.tools.notification_tool import send_notification
-
         result = await send_notification.coroutine(
             config=_make_config(),
             message="Build done",
@@ -470,11 +447,53 @@ class TestSendNotificationChannels:
         mock_service.create_notification.assert_not_called()
 
 
+@patch(f"{MODULE}.current_stream_writer")
+@patch(f"{MODULE}.notification_service")
+async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
+    mock_service: MagicMock, mock_writer_factory: MagicMock
+) -> None:
+    async def deliver(request: NotificationRequest) -> NotificationRecord:
+        return NotificationRecord(
+            id="notif-9",
+            user_id=FAKE_USER_ID,
+            status=NotificationStatus.DELIVERED,
+            created_at="2026-01-01T00:00:00+00:00",
+            channels=[
+                ChannelDeliveryStatus(channel_type="inapp", status=NotificationStatus.DELIVERED),
+                ChannelDeliveryStatus(
+                    channel_type="telegram", status=NotificationStatus.DELIVERED, skipped=True
+                ),
+            ],
+            original_request=request,
+        )
+
+    writer = _writer_mock()
+    mock_writer_factory.return_value = writer
+    mock_service.create_notification = AsyncMock(side_effect=deliver)
+
+    result = await send_notification.coroutine(
+        config=_make_config(),
+        message=" Build done ",
+        title=" Build ",
+        channels=["inapp", "telegram"],
+    )
+
+    # The rate-limiting decorator adds its own _rate_limit_info key.
+    assert {k: v for k, v in result.items() if k != "_rate_limit_info"} == {
+        "success": True,
+        "notification_id": "notif-9",
+        "title": "Build",
+        "message": "Build done",
+        "notification_type": NotificationType.INFO.value,
+        "status": NotificationStatus.DELIVERED.value,
+        "delivered_channels": ["inapp"],
+    }
+    writer.assert_called_once_with({"send_notification_data": result})
+
+
 @patch(f"{MODULE}.fetch_channel_preferences", new_callable=AsyncMock)
 async def test_the_run_users_channel_preferences_are_read(mock_fetch: AsyncMock) -> None:
     mock_fetch.return_value = {"email": False}
-
-    from app.agents.tools.notification_tool import get_notification_preferences
 
     result = await get_notification_preferences.coroutine(config=_make_config())
 

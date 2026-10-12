@@ -416,7 +416,7 @@ class TestGmailBeforeHooks:
             }
         )
 
-        with patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer") as mock_writer:
+        with patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer") as mock_writer:
             mock_writer.return_value = MagicMock()
             result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
 
@@ -449,7 +449,7 @@ class TestGmailBeforeHooks:
         )
 
         with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
+            "app.utils.composio_hooks.gmail_hooks.current_stream_writer",
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
@@ -849,7 +849,7 @@ class TestTwitterHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.twitter_hooks.get_stream_writer",
+            "app.utils.composio_hooks.twitter_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "twitter", raw_response)
@@ -897,7 +897,7 @@ class TestRedditHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.reddit_hooks.get_stream_writer",
+            "app.utils.composio_hooks.reddit_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = reddit_search_after_hook(

@@ -30,7 +30,7 @@ def test_onboarding_streams_card_and_stays_url_free_on_ui():
     captured, writer = _capture()
     with (
         patch.object(mod, "_current_source_category", return_value=_UI),
-        patch.object(mod, "get_stream_writer", return_value=writer),
+        patch.object(mod, "current_stream_writer", return_value=writer),
     ):
         ret = mod.request_device_onboarding()
 
@@ -71,7 +71,7 @@ def test_approval_streams_link_and_normalizes_code_on_ui():
     captured, writer = _capture()
     with (
         patch.object(mod, "_current_source_category", return_value=_UI),
-        patch.object(mod, "get_stream_writer", return_value=writer),
+        patch.object(mod, "current_stream_writer", return_value=writer),
     ):
         ret = mod.request_device_approval("ns2v-yc5s")
 
@@ -106,7 +106,7 @@ def test_no_stream_when_outside_a_runnable_context():
     captured, writer = _capture()
     with (
         patch.object(mod, "_current_source_category", return_value=None),
-        patch.object(mod, "get_stream_writer", return_value=writer) as gsw,
+        patch.object(mod, "current_stream_writer", return_value=writer) as gsw,
     ):
         mod.request_device_onboarding()
     assert captured == {}

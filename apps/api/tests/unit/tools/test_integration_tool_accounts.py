@@ -36,7 +36,7 @@ class TestConnectModes:
     @pytest.fixture
     def seams(self) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
             patch(
                 f"{MODULE}.OAUTH_INTEGRATIONS",
                 [
@@ -178,7 +178,7 @@ class TestReconnectMode:
     @pytest.fixture
     def seams(self) -> Iterator[tuple[AsyncMock, AsyncMock]]:
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
             patch(
                 f"{MODULE}.OAUTH_INTEGRATIONS",
                 [

@@ -16,6 +16,8 @@
 #                       --env (default) --json.
 #   dep-marker <kind>   Print the marker path that decides whether a persisted
 #                       node|python install is stale.
+#   heal-venv <dir>     Remove a persisted uv venv that holds no runnable
+#                       interpreter, so the next uv command recreates it.
 #   with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
 #                       release them. For a lane whose heavy command is not its
 #                       own script — the nx build step passes NX_PARALLEL — so a
@@ -690,6 +692,22 @@ _dep_marker_key() {
   done | sha256sum | cut -c1-16
 }
 
+# ── heal-venv ─────────────────────────────────────────────────────────────
+# A persisted venv whose interpreter is gone (dangling bin/python, or a dir
+# with no pyvenv.cfg left) is one uv refuses to touch: "cannot be used because
+# it is not a valid Python environment (no Python executable was found)". Every
+# later job on that runner then fails the same way, so the dir is removed and
+# the next uv sync/run builds it fresh. `-x` follows the symlink, so a dangling
+# one counts as missing.
+cmd_heal_venv() {
+  local dir="${1:?usage: runner.sh heal-venv <dir>}"
+  if [[ ! -e "$dir" || -x "$dir/bin/python" ]]; then
+    return 0
+  fi
+  echo "::warning::runner.sh heal-venv: $dir has no runnable interpreter — removing it so uv recreates it"
+  rm -rf "$dir"
+}
+
 # ── with-slots ──────────────────────────────────────────────────────────────
 # Take N host CPU tokens for the duration of a command, then give them back.
 # The scriptless heavy lane (the nx build) uses this so its workflow step is
@@ -841,6 +859,7 @@ main() {
     prime-archive)     cmd_prime_archive "$@" ;;
     parallel)          cmd_parallel "$@" ;;
     dep-marker)        cmd_dep_marker "$@" ;;
+    heal-venv)         cmd_heal_venv "$@" ;;
     with-slots)        cmd_with_slots "$@" ;;
     health)            cmd_health "$@" ;;
     *)

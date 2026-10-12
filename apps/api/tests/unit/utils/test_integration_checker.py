@@ -58,7 +58,7 @@ def _graph_run(
     )
     with (
         config_patch,
-        patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        patch("app.utils.integration_checker.current_stream_writer", return_value=writer),
         patch(
             "app.utils.integration_checker.build_connect_link_url",
             AsyncMock(return_value=connect_url),

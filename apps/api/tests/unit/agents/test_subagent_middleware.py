@@ -86,7 +86,7 @@ def _spawn_harness(outcomes, decisions=("approved",), recovered=None):
     registry = MagicMock(claim=AsyncMock(return_value=True), deregister=AsyncMock())
     with (
         patch(f"{MODULE}.build_initial_messages", new=AsyncMock(return_value=[])),
-        patch(f"{DELEGATION}.get_stream_writer", return_value=writer),
+        patch(f"{DELEGATION}.current_stream_writer", return_value=writer),
         patch(f"{DELEGATION}.execute_subagent_stream", new=execute),
         patch(f"{DELEGATION}.resume_for_gate", new=resume),
         patch(f"{DELEGATION}.recover_from_checkpoint", new=recover),

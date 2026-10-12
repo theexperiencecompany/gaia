@@ -81,7 +81,7 @@ def _ui_chat_turn(writer: MagicMock, *, expired: bool = True) -> Iterator[None]:
     """Stand in for the graph run the wrapper's connect prompt writes into."""
     with (
         patch(f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}),
-        patch(f"{CHECKER}.get_stream_writer", return_value=writer),
+        patch(f"{CHECKER}.current_stream_writer", return_value=writer),
         patch(f"{CHECKER}.build_connect_link_url", AsyncMock(return_value=None)),
         # Answers from its arguments: a fixed value cannot tell the real lookup
         # from one asked about the wrong user, which is how the prompt would
@@ -217,7 +217,7 @@ class TestDeadAccountReconciles:
             patch(
                 f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}
             ),
-            patch(f"{CHECKER}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{CHECKER}.current_stream_writer", return_value=MagicMock()),
             patch.object(
                 user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)
             ),

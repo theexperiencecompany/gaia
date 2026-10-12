@@ -8,8 +8,17 @@ app.models.memory_models.
 """
 
 from datetime import datetime
+from typing import cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import ErrorDetails
 
 from app.constants.memory import (
     MemoryEntityType,
@@ -17,6 +26,7 @@ from app.constants.memory import (
     MemoryShelfLife,
     ReconcileOutcome,
 )
+from shared.py.wide_events import log
 
 
 class ExtractedEntity(BaseModel):
@@ -63,15 +73,10 @@ class ExtractedFact(BaseModel):
             "Never write vague fragments like 'likes it' or 'her birthday is soon'."
         )
     )
-    kind: MemoryKind = Field(
-        description=(
-            "'fact' for stable knowledge about the user and their world "
-            "(preferences, relationships, identity mappings, context); "
-            "'experience' for something that happened (an event, a trip, a decision made)."
-        )
-    )
     shelf_life: MemoryShelfLife = Field(
         description=(
+            "Decide this first: it routes the assertion. One of 'durable', "
+            "'state', 'task' or 'journal', and only here, never in 'kind'. "
             "How long this assertion stays true. 'durable': identity, "
             "relationships, preferences, style, health, values, long-run goals. "
             "Never expires. 'state': a value that was only true as of a "
@@ -83,6 +88,15 @@ class ExtractedFact(BaseModel):
             "drafted or advised, or a world fact merely looked up. Becomes a "
             "journal line, never a fact. When torn between durable and state, "
             "choose state."
+        )
+    )
+    kind: MemoryKind = Field(
+        description=(
+            "Exactly 'fact' or 'experience', nothing else: a task or journal "
+            "item still takes one of these two here, its shelf life goes in "
+            "'shelf_life'. 'fact' for knowledge about the user and their world "
+            "(preferences, relationships, identity mappings, context, commitments); "
+            "'experience' for something that happened (an event, a trip, a decision made)."
         )
     )
     category_path: str = Field(
@@ -172,6 +186,33 @@ class ExtractedMemoryBatch(BaseModel):
             "resolved. Empty if the conversation changed no open loops."
         ),
     )
+
+    @field_validator("facts", mode="wrap")
+    @classmethod
+    def _drop_invalid_facts(
+        cls, value: object, handler: ValidatorFunctionWrapHandler
+    ) -> list[ExtractedFact]:
+        """Validate each fact alone: a malformed one is dropped and logged, the rest are kept."""
+        if not isinstance(value, list):
+            return cast(list[ExtractedFact], handler(value))
+        kept: list[ExtractedFact] = []
+        reasons: list[str] = []
+        for index, item in enumerate(value):
+            try:
+                kept.extend(handler([item]))
+            except ValidationError as error:
+                details: list[ErrorDetails] = error.errors()
+                for detail in details:
+                    location = ".".join(map(str, ("facts", index, *detail["loc"][1:])))
+                    reasons.append(f"{location}: {detail['msg']}")
+        if reasons:
+            log.warning(
+                "memory_facts_rejected",
+                rejected_count=len(value) - len(kept),
+                kept_count=len(kept),
+                reasons=reasons,
+            )
+        return kept
 
 
 class FactCategorization(BaseModel):

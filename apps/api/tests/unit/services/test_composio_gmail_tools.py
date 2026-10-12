@@ -13,12 +13,14 @@ import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 import pytest
 import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
+from app.agents.tools.execute.dispatch import dispatch_config_for
 from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
@@ -1295,7 +1297,7 @@ class TestTheInlineEmailCard:
 
         with (
             patch(
-                "app.services.composio.custom_tools.gmail_tools.get_stream_writer",
+                "app.services.composio.custom_tools.gmail_tools.current_stream_writer",
                 return_value=writer,
             ),
             patch(
@@ -1318,6 +1320,24 @@ class TestTheInlineEmailCard:
         assert row["thread_id"] == "thread-1"
         assert row["id"] == "msg-1"
         assert row["time"]
+
+    @pytest.mark.regression
+    def test_a_sandbox_dispatched_fetch_returns_its_messages_without_a_card(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """Regression for GAIA-BACKEND-433: the sandbox route's run config carries no graph runtime."""
+        mock_proxy.side_effect = _one_message_mailbox()
+        fetch = _register_and_get_tools()["FETCH_MESSAGES"]
+
+        result = RunnableLambda(
+            lambda _: fetch(
+                request=FetchMessagesInput(query="after:1790000000", per_page=5),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+        ).invoke(None, config=dispatch_config_for(AUTH_CREDS["user_id"]))
+
+        assert [message["id"] for message in result["messages"]] == ["msg-1"]
 
 
 class TestTheOffloadedFile:

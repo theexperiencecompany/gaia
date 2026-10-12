@@ -376,10 +376,6 @@ def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
     )
 
     with (
-        patch(
-            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-            return_value=None,
-        ),
         patch("app.utils.twitter_utils.proxy_request_sync") as proxy,
     ):
         # First call: get_my_user_id; second: lookup_user_by_username; third: follow
@@ -404,10 +400,6 @@ def test_twitter_create_thread_uses_proxy() -> None:
     )
 
     with (
-        patch(
-            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-            return_value=None,
-        ),
         patch("app.utils.twitter_utils.proxy_request_sync") as utils_proxy,
         patch("app.agents.tools.integrations.twitter_tool.proxy_request_sync") as tool_proxy,
     ):

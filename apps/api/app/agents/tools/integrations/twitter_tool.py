@@ -17,10 +17,10 @@ from dataclasses import dataclass
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators.documentation import with_doc
+from app.models.agent_models import current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.twitter import (
@@ -105,7 +105,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     ) -> dict[str, object]:
         """Follow multiple Twitter users at once."""
         del execute_request  # unused: framework-mandated custom-tool signature
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         user_id = _user_id(auth_credentials)
 
         my_user_id = get_my_user_id(user_id)
@@ -120,8 +120,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         targets, failed_count = _resolve_targets(user_id, request, results)
 
         total = len(targets)
-        if writer is not None:
-            writer({"progress": f"Following {total} users..."})
+        writer({"progress": f"Following {total} users..."})
 
         for i, target in enumerate(targets):
             result = follow_user(user_id, my_user_id, target.user_id)
@@ -142,7 +141,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                 )
                 failed_count += 1
 
-            if writer is not None and (i + 1) % 5 == 0:
+            if (i + 1) % 5 == 0:
                 writer({"progress": f"Followed {i + 1}/{total} users..."})
 
         if results and failed_count == len(results):
@@ -163,7 +162,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     ) -> dict[str, object]:
         """Unfollow multiple Twitter users at once. DESTRUCTIVE - requires user consent."""
         del execute_request  # unused: framework-mandated custom-tool signature
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         user_id = _user_id(auth_credentials)
 
         my_user_id = get_my_user_id(user_id)
@@ -178,8 +177,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         targets, failed_count = _resolve_targets(user_id, request, results)
 
         total = len(targets)
-        if writer is not None:
-            writer({"progress": f"Unfollowing {total} users..."})
+        writer({"progress": f"Unfollowing {total} users..."})
 
         for i, target in enumerate(targets):
             result = unfollow_user(user_id, my_user_id, target.user_id)
@@ -200,7 +198,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                 )
                 failed_count += 1
 
-            if writer is not None and (i + 1) % 5 == 0:
+            if (i + 1) % 5 == 0:
                 writer({"progress": f"Unfollowed {i + 1}/{total} users..."})
 
         if results and failed_count == len(results):
@@ -221,7 +219,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     ) -> dict[str, object]:
         """Create a Twitter thread (multiple connected tweets)."""
         del execute_request  # unused: framework-mandated custom-tool signature
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         user_id = _user_id(auth_credentials)
 
         if len(request.tweets) < 2:
@@ -231,8 +229,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         previous_tweet_id: str | None = None
 
         total_tweets = len(request.tweets)
-        if writer is not None:
-            writer({"progress": f"Creating thread with {total_tweets} tweets..."})
+        writer({"progress": f"Creating thread with {total_tweets} tweets..."})
 
         for i, tweet_text in enumerate(request.tweets):
             media_ids = None
@@ -255,8 +252,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
             tweet_ids.append(tweet_id)
             previous_tweet_id = tweet_id
 
-            if writer is not None:
-                writer({"progress": f"Posted tweet {i + 1}/{total_tweets}..."})
+            writer({"progress": f"Posted tweet {i + 1}/{total_tweets}..."})
 
         try:
             username = TwitterUserResponse.model_validate(
@@ -274,16 +270,15 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
 
         thread_url = f"https://twitter.com/{username}/status/{tweet_ids[0]}"
 
-        if writer is not None:
-            writer(
-                {
-                    "twitter_thread_created": {
-                        "thread_id": tweet_ids[0],
-                        "tweet_count": len(tweet_ids),
-                        "url": thread_url,
-                    }
+        writer(
+            {
+                "twitter_thread_created": {
+                    "thread_id": tweet_ids[0],
+                    "tweet_count": len(tweet_ids),
+                    "url": thread_url,
                 }
-            )
+            }
+        )
 
         return {
             "thread_id": tweet_ids[0],
@@ -301,11 +296,10 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     ) -> dict[str, object]:
         """Search for Twitter users by name, bio, or keywords."""
         del execute_request  # unused: framework-mandated custom-tool signature
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         user_id = _user_id(auth_credentials)
 
-        if writer is not None:
-            writer({"progress": f"Searching for users matching: {request.query}..."})
+        writer({"progress": f"Searching for users matching: {request.query}..."})
 
         search_query = f"{request.query} -is:retweet"
         result = search_tweets(user_id, search_query, max_results=request.max_results * 3)
@@ -320,7 +314,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
 
         unique_users = list(users_map.values())[: request.max_results]
 
-        if writer is not None and unique_users:
+        if unique_users:
             writer(
                 {
                     "twitter_user_data": [
@@ -368,7 +362,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         This creates a draft that can be stored and posted later by a scheduler.
         """
         del execute_request  # unused: framework-mandated custom-tool signature
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         _user_id(auth_credentials)
 
         draft = {
@@ -378,8 +372,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
             "reply_to_tweet_id": request.reply_to_tweet_id,
         }
 
-        if writer is not None:
-            writer({"twitter_scheduled_draft": draft})
+        writer({"twitter_scheduled_draft": draft})
 
         return {
             "draft": draft,

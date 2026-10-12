@@ -267,9 +267,10 @@ async def handle_dodo_webhook(
     # seeing — still carries the payment context instead of emitting bare.
     log.set(payment={"operation": "webhook", "webhook_id": webhook_id})
 
+    # Read outside the try: a client hanging up mid-body is answered by the
+    # ClientDisconnect handler, not reported as a webhook processing failure.
+    body = await request.body()
     try:
-        # Get raw body for signature verification
-        body = await request.body()
         payload = body.decode("utf-8")
 
         # Prepare headers for verification

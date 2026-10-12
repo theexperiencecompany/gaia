@@ -63,7 +63,7 @@ class IntegrationDisconnected(ServerEvent):
     """An integration or platform account was disconnected."""
 
     event: ClassVar[str] = "integration:disconnected"
-    budget_per_user_day: ClassVar[int] = 10
+    budget_per_user_day: ClassVar[int] = 30
 
     integration_id: Identifier
 

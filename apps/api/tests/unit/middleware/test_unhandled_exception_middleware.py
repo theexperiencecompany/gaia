@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from httpx import ASGITransport, AsyncClient
 import pytest
+from sentry_sdk.types import Event
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.types import Receive, Scope, Send
@@ -118,12 +119,15 @@ async def test_the_crash_is_recorded_on_the_wide_event() -> None:
         async with _client(_boom_app) as client:
             await client.get("/boom-path")
 
-    mock_log.error.assert_called_once_with(
-        "unhandled_exception",
-        error_type="RuntimeError",
-        error="db down",
-        path="/boom-path",
-    )
+    mock_log.error.assert_called_once()
+    args, kwargs = mock_log.error.call_args
+    assert args == ("unhandled_exception",)
+    assert {k: v for k, v in kwargs.items() if k != "exc_info"} == {
+        "error_type": "RuntimeError",
+        "error": "db down",
+        "path": "/boom-path",
+    }
+    assert str(kwargs["exc_info"]) == "db down"
 
 
 async def test_the_crash_is_attributed_in_posthog(
@@ -137,3 +141,12 @@ async def test_the_crash_is_attributed_in_posthog(
 
     posthog_client.capture_exception.assert_called_once()
     assert isinstance(posthog_client.capture_exception.call_args.args[0], RuntimeError)
+
+
+@pytest.mark.regression
+async def test_a_crash_reaches_sentry_once_as_its_exception(sentry_events: list[Event]) -> None:
+    """Grouped by traceback; as a bare unhandled_exception message every crash was one issue."""
+    async with _client(_boom_app) as client:
+        await client.get("/x")
+
+    assert [event["exception"]["values"][-1]["type"] for event in sentry_events] == ["RuntimeError"]

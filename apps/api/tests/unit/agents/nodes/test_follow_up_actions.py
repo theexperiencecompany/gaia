@@ -86,7 +86,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=RuntimeError("stream closed"))
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -104,7 +104,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -123,7 +123,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -151,7 +151,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=lambda *a, **k: None)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             await follow_up_actions_node(state, config, _make_store())
@@ -183,7 +183,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -219,7 +219,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -229,7 +229,7 @@ class TestFollowUpActionsNode:
                         tool_names=["xyztest_invoice_tool", "xyztest_sms_tool"]
                     )
                 ),
-            ),
+            ) as capabilities,
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
                 new=capture_invoke,
@@ -238,6 +238,7 @@ class TestFollowUpActionsNode:
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
+        capabilities.assert_awaited_once_with("user-123")
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
@@ -273,7 +274,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -307,7 +308,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
@@ -353,7 +354,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -389,7 +390,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=failing_second_write)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -413,7 +414,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
@@ -544,3 +545,51 @@ class TestDelegatedToExecutor:
             AIMessage(content="plain reply"),
         ]
         assert _delegated_to_executor(messages) is False
+
+
+def _ai_calling(name: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": f"call-{name}"}])
+
+
+class TestExecutorDelegationSkip:
+    """A turn handed to the executor gets its follow-ups from the executor, not from comms."""
+
+    @staticmethod
+    async def _run(messages: list) -> tuple[list, AsyncMock]:
+        written: list = []
+        generate = AsyncMock(return_value=["Next step"])
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(side_effect=written.append),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.generate_follow_up_actions",
+                new=generate,
+            ),
+        ):
+            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
+        return written, generate
+
+    @pytest.mark.asyncio
+    async def test_an_executor_call_after_tool_traffic_skips_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [
+                HumanMessage(content="Book my flight"),
+                _ai_calling("search_flights"),
+                ToolMessage(content="3 flights", tool_call_id="call-search_flights"),
+                _ai_calling("call_executor"),
+            ]
+        )
+
+        assert written == [{"main_response_complete": True}]
+        generate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_turn_calling_other_tools_still_gets_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [HumanMessage(content="Weather?"), _ai_calling("get_weather")]
+        )
+
+        assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
+        generate.assert_awaited_once()
