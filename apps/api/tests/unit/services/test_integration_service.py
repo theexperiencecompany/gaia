@@ -35,6 +35,7 @@ from app.models.integration_models import (
     Integration,
     IntegrationAccount,
     IntegrationAccountStatus,
+    IntegrationCapability,
     IntegrationResponse,
     IntegrationWithCreator,
     StoredIntegrationTool,
@@ -377,7 +378,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "general" in result
         assert "subagents" in result
@@ -403,7 +404,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "todos" in result
 
@@ -435,7 +436,7 @@ class TestGetUserAvailableToolNamespaces:
         )
         mock_get_by_id.return_value = platform_int
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "github" in result
 
@@ -458,7 +459,7 @@ class TestGetUserAvailableToolNamespaces:
         mock_server_url.return_value = SERVER_URL
         mock_derive.return_value = "mcp.example.com/v1"
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "mcp.example.com/v1" in result
         mock_derive.assert_called_once_with(CUSTOM_INTEGRATION_ID, SERVER_URL, is_custom=True)
@@ -479,7 +480,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {"github": False, "slack": False}
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         # Only core namespaces should remain
         assert result == {"general", "subagents"}
@@ -507,7 +508,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "reminders" not in result
 
@@ -535,7 +536,7 @@ class TestGetUserAvailableToolNamespaces:
         mock_server_url.return_value = "https://some-server.com"
         mock_derive.return_value = "some-server.com"
 
-        result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
+        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
 
         assert "some-server.com" in result
 
@@ -1121,11 +1122,11 @@ class TestCapabilitiesPayloadAndArguments:
         ):
             result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert result["capabilities"] == {
-            "github": {
-                "name": "GitHub",
-                "tools": [{"name": "create_issue", "description": "Create"}],
-            }
+        assert result.capabilities == {
+            "github": IntegrationCapability(
+                name="GitHub",
+                tools=[StoredIntegrationTool(name="create_issue", description="Create")],
+            )
         }
 
     async def test_a_tool_without_a_description_carries_an_empty_string(self) -> None:
@@ -1151,8 +1152,8 @@ class TestCapabilitiesPayloadAndArguments:
         ):
             result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert result["capabilities"]["github"]["tools"] == [
-            {"name": "create_issue", "description": ""}
+        assert result.capabilities["github"].tools == [
+            StoredIntegrationTool(name="create_issue", description=None)
         ]
 
     async def test_an_integration_that_no_longer_exists_does_not_end_the_scan(self) -> None:
@@ -1182,8 +1183,8 @@ class TestCapabilitiesPayloadAndArguments:
         ):
             result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert result["integration_names"] == ["GitHub"]
-        assert "github" in result["capabilities"]
+        assert result.integration_names == ["GitHub"]
+        assert "github" in result.capabilities
 
 
 class TestGetUserIntegrationCapabilities:
@@ -1228,10 +1229,10 @@ class TestGetUserIntegrationCapabilities:
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert "web_search" in result["tool_names"]
-        assert "create_issue" in result["tool_names"]
-        assert "GitHub" in result["integration_names"]
-        assert "github" in result["capabilities"]
+        assert "web_search" in result.tool_names
+        assert "create_issue" in result.tool_names
+        assert "GitHub" in result.integration_names
+        assert "github" in result.capabilities
 
     @patch(
         "app.agents.core.integration_capabilities.get_integration_details",
@@ -1257,8 +1258,8 @@ class TestGetUserIntegrationCapabilities:
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert result["integration_names"] == []
-        assert result["capabilities"] == {}
+        assert result.integration_names == []
+        assert result.capabilities == {}
 
     @patch(
         "app.agents.core.integration_capabilities.get_integration_details",
@@ -1280,9 +1281,9 @@ class TestGetUserIntegrationCapabilities:
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
-        assert result["integration_names"] == []
-        assert result["tool_names"] == []
-        assert result["capabilities"] == {}
+        assert result.integration_names == []
+        assert result.tool_names == []
+        assert result.capabilities == {}
 
 
 # ---------------------------------------------------------------------------

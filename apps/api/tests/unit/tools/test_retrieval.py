@@ -11,6 +11,7 @@ from langgraph.store.base import SearchItem
 import pytest
 
 from app.agents.tools.core import retrieval
+from app.models.integration_models import UserToolNamespaces
 from app.utils.log_identifiers import user_text_shape
 from tests.helpers import captured_wide_event
 
@@ -48,7 +49,7 @@ class TestGetUserContext:
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
-                return_value=["general", "gmail", "subagents"],
+                return_value=UserToolNamespaces(namespaces={"general", "gmail", "subagents"}),
             ),
             patch(
                 "app.agents.tools.core.retrieval._resolve_connected_subagents",
@@ -93,7 +94,7 @@ class TestGetUserContext:
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
-                return_value=["general", "slack", "subagents"],
+                return_value=UserToolNamespaces(namespaces={"general", "slack", "subagents"}),
             ),
             patch(
                 "app.agents.tools.core.retrieval._resolve_connected_subagents",

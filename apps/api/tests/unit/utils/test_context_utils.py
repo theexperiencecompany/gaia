@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import pytest
 
 from app.models.agent_config import ComposioAccountSelection
+from app.models.integration_models import UserToolNamespaces
 from app.services.composio.account_scope import PIN_ACCOUNT_MODIFIER, account_scope
 from app.utils.context_utils import execute_tool, fetch_all_providers, resolve_providers
 
@@ -369,7 +370,7 @@ class TestResolveProviders:
 
         assert result == ["gmail"]
 
-    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=UserToolNamespaces())
     async def test_with_explicit_requested_empty_list(self, mock_namespaces: AsyncMock) -> None:
         """An empty requested list is falsy, so it should trigger auto-detect."""
         provider_tools = {"gmail": "GMAIL_TOOL"}
@@ -386,7 +387,7 @@ class TestResolveProviders:
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
     async def test_auto_detect_connected_found(self, mock_namespaces: AsyncMock) -> None:
-        mock_namespaces.return_value = {"gmail_ns", "calendar_ns"}
+        mock_namespaces.return_value = UserToolNamespaces(namespaces={"gmail_ns", "calendar_ns"})
 
         provider_tools = {
             "gmail": "GMAIL_TOOL",
@@ -406,7 +407,7 @@ class TestResolveProviders:
 
         assert sorted(result) == ["calendar", "gmail"]
 
-    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=UserToolNamespaces())
     async def test_auto_detect_no_connected_returns_empty(self, mock_namespaces: AsyncMock) -> None:
         provider_tools = {"gmail": "GMAIL_TOOL"}
 
@@ -441,7 +442,7 @@ class TestResolveProviders:
     @patch(
         _NAMESPACES_PATCH,
         new_callable=AsyncMock,
-        return_value={"completely_different_ns"},
+        return_value=UserToolNamespaces(namespaces={"completely_different_ns"}),
     )
     async def test_auto_detect_connected_but_no_match_returns_empty(
         self, mock_namespaces: AsyncMock
@@ -485,7 +486,7 @@ class TestResolveProviders:
     @patch(
         _NAMESPACES_PATCH,
         new_callable=AsyncMock,
-        return_value={"something"},
+        return_value=UserToolNamespaces(namespaces={"something"}),
     )
     async def test_auto_detect_none_requested_with_empty_provider_tools(
         self, mock_namespaces: AsyncMock

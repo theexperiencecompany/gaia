@@ -162,7 +162,7 @@ async def resolve_providers(
 
     connected: set[str] = set()
     try:
-        connected = await get_user_available_tool_namespaces(user_id)
+        connected = (await get_user_available_tool_namespaces(user_id)).namespaces
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} Could not get connected namespaces",

@@ -59,6 +59,7 @@ from app.models.hil_models import (
     HILMode,
     HILPreferences,
 )
+from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -516,7 +517,7 @@ async def hil_world(
         ),
         patch(
             f"{FOLLOW_UP_NODE}.get_user_integration_capabilities",
-            new=AsyncMock(return_value={"tool_names": []}),
+            new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
         ),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),

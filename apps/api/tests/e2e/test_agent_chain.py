@@ -42,6 +42,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ToolDataEntry
+from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
@@ -252,7 +253,7 @@ async def run_chain(
         ),
         patch(
             f"{FOLLOW_UP_NODE}.get_user_integration_capabilities",
-            new=AsyncMock(return_value={"tool_names": []}),
+            new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
         ),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),

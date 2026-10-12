@@ -8,12 +8,15 @@ For main functions, import directly from:
 - app.services.integrations.custom_crud
 """
 
+from pydantic import ValidationError
+
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
+from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.integration_models import IntegrationWithCreator
+from app.models.integration_models import IntegrationWithCreator, UserToolNamespaces
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,
     CommunityIntegrationItem,
@@ -21,14 +24,17 @@ from app.schemas.integrations.responses import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_status import get_all_integrations_status
+from shared.py.wide_events import log
 
 
-@Cacheable(key_pattern="tool_namespaces:{user_id}", ttl=ONE_DAY_TTL)
-async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
+@Cacheable(key_pattern="tool_namespaces:{user_id}", ttl=ONE_DAY_TTL, model=UserToolNamespaces)
+async def get_user_available_tool_namespaces(user_id: str) -> UserToolNamespaces:
     """Get the set of integration namespaces (tool spaces) that user has connected.
 
     For platform integrations, uses the configured tool_space.
     For custom integrations, resolves to URL domain (matches indexing logic).
+    An integration whose stored document cannot be validated is skipped and the
+    result flagged degraded, which keeps it out of the cache.
     """
 
     namespaces: set[str] = set()
@@ -47,6 +53,7 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
 
     # Get connected integrations from unified status
     status = await get_all_integrations_status(user_id)
+    degraded = False
 
     for integration_id, is_connected in status.items():
         if not is_connected:
@@ -59,11 +66,24 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
         else:
             # Custom integration: resolve to URL (domain + path) for consistency
             # Includes path to differentiate /v1 vs /v2 endpoints
-            server_url = await IntegrationResolver.get_server_url(integration_id)
+            try:
+                server_url = await IntegrationResolver.get_server_url(integration_id)
+            except ValidationError as e:
+                # One unreadable document (a retired integration's tools-only stub)
+                # must not cost the user every other namespace. A DB outage still propagates.
+                log.error(
+                    f"{LogTag.INTEGRATION} Skipping unresolvable integration in tool namespaces",
+                    integration_id=integration_id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                degraded = True
+                continue
             namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
             namespaces.add(namespace)
 
-    return namespaces
+    return UserToolNamespaces(namespaces=namespaces, degraded=degraded)
 
 
 def format_community_integrations(

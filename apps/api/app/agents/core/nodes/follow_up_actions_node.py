@@ -47,22 +47,22 @@ async def generate_follow_up_actions(
 
     Shared by the comms end-graph hook and the background executor's final
     result message so suggestions are produced consistently in both paths.
-    Returns an empty list on any failure (never raises).
+    Returns an empty list on any failure (never raises), logged at error level:
+    suggestions are optional and must never cost the user the turn's answer.
     """
-    if user_id:
-        capabilities = await get_user_integration_capabilities(user_id)
-        tool_names = capabilities.get("tool_names", [])
-    else:
-        # Fallback to all tools if user_id not available
-        tool_registry = await get_tool_registry()
-        tool_names = tool_registry.get_tool_names()
-
-    # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
-    # context. The byte-identical static prefix lets this call benefit from any
-    # upstream prompt caching and reduces throughput/latency.
-    dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
-
     try:
+        if user_id:
+            tool_names = (await get_user_integration_capabilities(user_id)).tool_names
+        else:
+            # Fallback to all tools if user_id not available
+            tool_registry = await get_tool_registry()
+            tool_names = tool_registry.get_tool_names()
+
+        # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
+        # context. The byte-identical static prefix lets this call benefit from any
+        # upstream prompt caching and reduces throughput/latency.
+        dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
+
         result = await ainvoke_structured(
             FollowUpActions,
             [
@@ -93,7 +93,12 @@ async def generate_follow_up_actions(
         )
         return result.actions or []
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Follow-up action generation failed", error_type=type(e).__name__)
+        log.error(
+            f"{LogTag.AGENT} Follow-up action generation failed",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []
 
 

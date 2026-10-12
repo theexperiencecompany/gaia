@@ -33,6 +33,17 @@ _COMMUNITY_SORT: dict[str, list[tuple[str, int]]] = {
 }
 
 
+# store_tools upserts {integration_id, tools} for an id that has no catalog document,
+# so a stub is exactly a document with tools and none of the Integration identity fields.
+_TOOLS_STUB_FILTER: dict[str, object] = {
+    "tools": {"$exists": True},
+    "name": {"$exists": False},
+    "description": {"$exists": False},
+    "category": {"$exists": False},
+    "managed_by": {"$exists": False},
+}
+
+
 class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     collection_name = "integrations"
     document_model = Integration
@@ -461,6 +472,14 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice
         )
         return slice_.tools if slice_ is not None else []
+
+    async def tools_stub_ids(self) -> list[str]:
+        """Ids whose only document is a tools-only stub (never a full Integration)."""
+        return await self._distinct("integration_id", _TOOLS_STUB_FILTER)
+
+    async def delete_tools_stub(self, integration_id: str) -> bool:
+        """Delete the tools-only stub for an id; a full Integration document is never matched."""
+        return await self._remove(integration_id, REPO_GLOBAL_SCOPE, _TOOLS_STUB_FILTER)
 
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""

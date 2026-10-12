@@ -51,6 +51,11 @@ def _schedule_refresh() -> None:
     spawn_logged_task("mcp_tools_cache_refresh", _refresh_cache())
 
 
+async def invalidate_mcp_tools_cache() -> None:
+    """Drop the global roll-up so the next read rebuilds it from the integrations repository."""
+    await delete_cache(MCP_TOOLS_CACHE_KEY)
+
+
 async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata]) -> None:
     """Store tools for one MCP integration globally, then refresh the roll-up cache."""
     formatted = _format_tools(tools)
@@ -58,7 +63,7 @@ async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata])
         return
     try:
         await integration_repository.store_tools(integration_id, formatted)
-        await delete_cache(MCP_TOOLS_CACHE_KEY)
+        await invalidate_mcp_tools_cache()
         _schedule_refresh()
     except Exception as e:
         log.error(
@@ -81,7 +86,7 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
         return
     try:
         await integration_repository.store_tools_batch(formatted_items)
-        await delete_cache(MCP_TOOLS_CACHE_KEY)
+        await invalidate_mcp_tools_cache()
         _schedule_refresh()
     except Exception as e:
         log.error(
