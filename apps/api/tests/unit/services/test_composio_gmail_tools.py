@@ -1876,13 +1876,14 @@ class TestTheScopedAccountReachesEveryRequest:
     def test_message_and_thread_reads_share_the_fetch_concurrency_cap(
         self, mock_proxy: MagicMock
     ) -> None:
-        # Gmail rate-limits per user; a pool sized by the machine would not respect it.
-        pools: list[ContextThreadPoolExecutor] = []
+        # Assert the requested size: _max_workers normalizes None to min(32, cpu+4),
+        # which is 8 on a 4-CPU runner and would let a None mutant survive.
+        requested: list[int | None] = []
 
         class RecordingPool(ContextThreadPoolExecutor):
             def __init__(self, max_workers: int | None = None) -> None:
+                requested.append(max_workers)
                 super().__init__(max_workers=max_workers)
-                pools.append(self)
 
         threads = TestTheThreadRead()._threads(count=1)
 
@@ -1907,4 +1908,4 @@ class TestTheScopedAccountReachesEveryRequest:
                 auth_credentials=AUTH_CREDS,
             )
 
-        assert [pool._max_workers for pool in pools] == [FETCH_CONCURRENCY] * 2
+        assert requested == [FETCH_CONCURRENCY] * 2
