@@ -6,7 +6,8 @@ From conversation context and tool usage.
 import time
 from typing import cast
 
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
@@ -20,7 +21,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable, config_agent_name
+from app.models.agent_models import config_agent_name, read_agent_configurable
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.latency_metrics import observe_graph_node
@@ -146,7 +147,7 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
         _safe_write_actions(writer, [])
         return state
 
-    user_id = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -187,10 +188,11 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
             break
 
     for message in messages[last_human + 1 :]:
-        tool_calls = getattr(message, "tool_calls", None) or []
-        for tc in tool_calls:
-            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-            if name == CALL_EXECUTOR_NAME:
+        if not isinstance(message, AIMessage):
+            continue
+        tool_call: ToolCall
+        for tool_call in message.tool_calls:
+            if tool_call["name"] == CALL_EXECUTOR_NAME:
                 return True
     return False
 

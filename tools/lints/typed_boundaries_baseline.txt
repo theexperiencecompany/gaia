@@ -17,7 +17,6 @@ apps/api/app/agents/core/integration_capabilities.py	TB001
 apps/api/app/agents/core/interruption.py	TB002
 apps/api/app/agents/core/nodes/adapt_media.py	TB002
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
-apps/api/app/agents/core/nodes/follow_up_actions_node.py	TB002
 apps/api/app/agents/core/nodes/memory_node.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
 apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-12-31; the 4 remaining Any are LangChain's own contract — two ainvoke/invoke returns and **_kwargs overriding Runnable/BaseCallbackHandler signatures typed Any upstream, plus _requested_model taking any Runnable shape (CLAUDE.md Type Safety item 14). Every TB002 in the file was fixed in #1194 (decided 2026-09-20)
@@ -129,15 +128,11 @@ apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15;
 apps/api/app/services/hil/classification.py	TB002
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
-apps/api/app/services/integrations/marketplace.py	TB001
-apps/api/app/services/integrations/marketplace.py	TB002
 apps/api/app/services/llm_metering.py	TB001	deferred-until=2026-12-31; resolve_channel takes the raw configurable Mapping[str, Any]; touched by the llm-cost single-source fix, which leaves it as it was (decided 2026-10-08)
 apps/api/app/services/llm_metering.py	TB002	deferred-until=2026-12-31; 37 string-key reads, mostly parsing provider response_metadata/usage_metadata and the wide-event fields; a typed provider-reply model is its own change, out of scope for the llm-cost single-source fix that touched the file (decided 2026-10-08)
 apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
-apps/api/app/services/mcp/mcp_tools_service.py	TB001
-apps/api/app/services/mcp/mcp_tools_service.py	TB002
 apps/api/app/services/mcp/oauth_discovery.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
@@ -155,7 +150,6 @@ apps/api/app/services/sandbox/lifecycle.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
 apps/api/app/services/support_service.py	TB002
-apps/api/app/services/tools/tools_service.py	TB002
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001

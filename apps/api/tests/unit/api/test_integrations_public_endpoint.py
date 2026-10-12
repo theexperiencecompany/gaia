@@ -9,6 +9,7 @@ from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
+    StoredIntegrationTool,
     UserIntegrationDocument,
 )
 from app.models.workflow_models import PublicWorkflowRow
@@ -82,7 +83,9 @@ class TestGetPublicIntegration:
             patch(
                 "app.api.v1.endpoints.integrations.public.get_integration_tools",
                 new_callable=AsyncMock,
-                return_value=[{"name": "create_event", "description": "Create event"}],
+                return_value=[
+                    StoredIntegrationTool(name="create_event", description="Create event")
+                ],
             ) as get_tools,
         ):
             resp = await client.get(f"{BASE}/public/googlecalendar")

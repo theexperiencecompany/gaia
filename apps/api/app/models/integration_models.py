@@ -86,6 +86,14 @@ class UserIntegrationCapabilities(BaseModel):
     )
 
 
+class McpToolsRollupEntry(BaseModel):
+    """One integration's entry in the global MCP tool roll-up."""
+
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
+    name: str | None = None
+    icon_url: str | None = None
+
+
 class UserToolNamespaces(BaseModel):
     """The tool namespaces a user can search, as resolved from their connected integrations."""
 

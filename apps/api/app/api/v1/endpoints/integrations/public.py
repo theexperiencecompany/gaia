@@ -17,7 +17,7 @@ from app.helpers.integration_helpers import (
     parse_integration_slug,
 )
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.integration_models import PublicIntegrationSearchHit, StoredIntegrationTool
+from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.workflow_models import (
     PublicWorkflowCard,
     PublicWorkflowsResponse,
@@ -46,9 +46,8 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-# The stored-tool and search-hit services hand back plain dicts; the route
-# validates them into their models once, where they enter the handler.
-_STORED_TOOLS = TypeAdapter(list[StoredIntegrationTool])
+# The search-hit service hands back plain dicts; the route validates them into
+# their model once, where they enter the handler.
 _SEARCH_HITS = TypeAdapter(list[PublicIntegrationSearchHit])
 
 
@@ -73,7 +72,7 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
-            stored_tools = _STORED_TOOLS.validate_python(await get_integration_tools(native.id))
+            stored_tools = await get_integration_tools(native.id)
             integration_tools = [
                 IntegrationTool(name=t.name, description=t.description) for t in stored_tools
             ]

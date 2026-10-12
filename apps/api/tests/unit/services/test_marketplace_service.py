@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
 from app.models.user_models import UserDocument
 
 MODULE = "app.services.integrations.marketplace"
@@ -141,10 +142,10 @@ class TestGetAllIntegrations:
         mock_get_all: AsyncMock,
     ) -> None:
         mock_get_all.return_value = {
-            "gmail": {
-                "tools": [{"name": "send_email", "description": "Send an email"}],
-                "name": "Gmail",
-            }
+            "gmail": McpToolsRollupEntry(
+                tools=[StoredIntegrationTool(name="send_email", description="Send an email")],
+                name="Gmail",
+            )
         }
 
         mock_repo.list_public_custom = AsyncMock(return_value=[])
@@ -254,7 +255,7 @@ class TestGetIntegrationDetails:
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        stored = [{"name": "tool1", "description": "desc1"}]
+        stored = [StoredIntegrationTool(name="tool1", description="desc1")]
         mock_get_tools.return_value = stored
 
         resolved = MagicMock()
