@@ -5,6 +5,8 @@ rows and a {integration_id, tools} stub in integrations; resolving it then
 raised pydantic's ValidationError out of every comms turn's end-of-graph hook.
 """
 
+from __future__ import annotations
+
 from contextlib import ExitStack
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,7 +19,8 @@ import pytest
 from app.agents.core.integration_capabilities import get_user_integration_capabilities
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
-from app.models.integration_models import Integration, UserIntegrationCapabilities
+from app.models import integration_models
+from app.models.integration_models import Integration
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.integration_capabilities"
@@ -50,7 +53,7 @@ class _IntegrationsCollection:
 
 async def _capabilities(
     connected: list[str], documents: list[dict[str, Any]]
-) -> UserIntegrationCapabilities:
+) -> integration_models.UserIntegrationCapabilities:
     """Run the real, cached function with only Mongo and the connected-id read doubled."""
     registry = MagicMock()
     registry.get_core_categories.return_value = []

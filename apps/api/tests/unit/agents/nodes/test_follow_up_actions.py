@@ -15,7 +15,7 @@ from app.agents.core.nodes.follow_up_actions_node import (
 )
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.integration_models import UserIntegrationCapabilities
+from app.models import integration_models
 from tests.helpers import captured_wide_event
 
 
@@ -225,7 +225,7 @@ class TestFollowUpActionsNode:
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
                 new=AsyncMock(
-                    return_value=UserIntegrationCapabilities(
+                    return_value=integration_models.UserIntegrationCapabilities(
                         tool_names=["xyztest_invoice_tool", "xyztest_sms_tool"]
                     )
                 ),
@@ -312,7 +312,9 @@ class TestFollowUpActionsNode:
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -356,7 +358,9 @@ class TestFollowUpActionsNode:
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -414,7 +418,9 @@ class TestFollowUpActionsNode:
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -462,7 +468,7 @@ class TestGenerateFollowUpActionsNeverRaises:
         with (
             patch(
                 f"{NODE}.get_user_integration_capabilities",
-                new=AsyncMock(return_value=UserIntegrationCapabilities()),
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
             ),
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
@@ -476,7 +482,7 @@ class TestGenerateFollowUpActionsNeverRaises:
         with (
             patch(
                 f"{NODE}.get_user_integration_capabilities",
-                new=AsyncMock(return_value=UserIntegrationCapabilities()),
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
             ),
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
@@ -489,7 +495,9 @@ class TestGenerateFollowUpActionsNeverRaises:
         assert error["error"] == "bad json"
 
     async def test_capabilities_are_read_for_the_asking_user(self) -> None:
-        capabilities = AsyncMock(return_value=UserIntegrationCapabilities(tool_names=["a_tool"]))
+        capabilities = AsyncMock(
+            return_value=integration_models.UserIntegrationCapabilities(tool_names=["a_tool"])
+        )
         llm = AsyncMock(return_value=FollowUpActions(actions=["Do it"]))
         with (
             patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),

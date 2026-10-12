@@ -4,6 +4,8 @@ The stub fails strict Integration validation when resolved. These tests run the 
 cached function, resolver and repository, faking only Mongo and the connection status.
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -13,7 +15,7 @@ import pytest
 
 from app.agents.tools.core.retrieval import _get_user_context
 from app.constants.log_tags import LogTag
-from app.models.integration_models import UserToolNamespaces
+from app.models import integration_models
 from app.services.integrations.integration_service import get_user_available_tool_namespaces
 from tests.helpers import captured_wide_event
 
@@ -48,7 +50,9 @@ class _Integrations:
         return next((d for d in self.documents if d["integration_id"] == wanted), None)
 
 
-async def _namespaces(connected: list[str], documents: list[dict[str, Any]]) -> UserToolNamespaces:
+async def _namespaces(
+    connected: list[str], documents: list[dict[str, Any]]
+) -> integration_models.UserToolNamespaces:
     status = dict.fromkeys(connected, True)
     with (
         patch(f"{SERVICE}.get_all_integrations_status", AsyncMock(return_value=status)),
