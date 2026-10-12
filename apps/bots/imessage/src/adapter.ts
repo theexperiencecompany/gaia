@@ -18,6 +18,8 @@ import {
   mediaKindFromMime,
   type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   readBodyBytesBounded,
@@ -33,7 +35,13 @@ import {
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
+import {
+  attachment,
+  type Message,
+  reaction,
+  type Space,
+  Spectrum,
+} from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import {
   IMESSAGE_SERVER_PORT,
@@ -429,6 +437,11 @@ export class ImessageAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.imessage,
         await this.analyticsFor(handle),
+        async (emoji: string) => {
+          // Media turns carry no inbound message id, so there is nothing to react to.
+          if (!messageId) return REACTION_OUTCOME.NO_TARGET;
+          return this.reactToMessage(handle, messageId, emoji, false);
+        },
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -720,6 +733,39 @@ export class ImessageAdapter extends BaseBotAdapter {
     // _isChannel is never set — destinationId is always a handle/space.
     const space = await this.im.space.create(destinationId);
     await space.send(text);
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // The SDK maps the six classic tapbacks to native kinds and sends any other
+    // emoji as an emoji reaction, so no emoji is refused here.
+    try {
+      const space = await this.im.space.create(destinationId);
+      const target = await space.getMessage(platformMessageId);
+      if (!target) {
+        this.adapterLogger.warn("outbound_reaction_target_not_found", {
+          target_platform_message_id: platformMessageId,
+        });
+        return REACTION_OUTCOME.ATTACH_FAILED;
+      }
+      const sent = await space.send(reaction(emoji, target));
+      if (!sent) {
+        this.adapterLogger.warn("outbound_reaction_unsupported_by_platform", {
+          target_platform_message_id: platformMessageId,
+        });
+        return REACTION_OUTCOME.ATTACH_FAILED;
+      }
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...sanitizeErrorForLog(err),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
+    }
   }
 
   protected override async sendOutboundFile(
