@@ -65,6 +65,19 @@ class TestGetUserContext:
         assert "gmail" in connected
 
     @pytest.mark.asyncio
+    async def test_the_users_namespaces_are_added_to_the_seeds_for_that_user(self):
+        from app.agents.tools.core.retrieval import _get_user_context
+
+        namespaces = AsyncMock(return_value=UserToolNamespaces(namespaces={"gmail"}))
+        with patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces", namespaces
+        ):
+            ns, _ = await _get_user_context("user1", "general", include_subagents=False)
+
+        namespaces.assert_awaited_once_with("user1")
+        assert ns == {"general", "gmail"}
+
+    @pytest.mark.asyncio
     async def test_user_context_exception_returns_defaults(self):
         from app.agents.tools.core.retrieval import _get_user_context
 

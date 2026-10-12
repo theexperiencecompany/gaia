@@ -12,7 +12,8 @@ touch the data written while it existed:
 For each retired id this deletes both, then busts the per-user integration caches
 and the global MCP tool roll-up so nothing keeps serving the old state. Only a
 tools-only stub is ever deleted from integrations: a full Integration document
-with the same id is left alone. An id still in OAUTH_INTEGRATIONS is refused.
+with the same id is left alone. An id still in OAUTH_INTEGRATIONS, or still backed by a full integration
+document, is refused before anything is read or deleted.
 
 The dry run also lists every tools-only stub whose id is not in OAUTH_INTEGRATIONS
 at all, with the user rows pointing at it, so every retirement leftover shows up in
@@ -63,11 +64,19 @@ class OrphanStub:
     user_count: int
 
 
-def require_retired(integration_ids: Sequence[str]) -> None:
-    """Refuse an id that is still a catalog integration: deleting its rows would disconnect live users."""
-    live = [i for i in integration_ids if get_integration_by_id(i) is not None]
-    if live:
-        raise ValueError(f"still in OAUTH_INTEGRATIONS, not retired: {', '.join(live)}")
+async def require_retired(integration_ids: Sequence[str]) -> None:
+    """Refuse an id that is still live, since deleting its user rows would disconnect users.
+
+    Live means still in OAUTH_INTEGRATIONS, or still backed by a full integration document.
+    """
+    in_catalog = [i for i in integration_ids if get_integration_by_id(i) is not None]
+    if in_catalog:
+        raise ValueError(f"still in OAUTH_INTEGRATIONS, not retired: {', '.join(in_catalog)}")
+    documented = await integration_repository.full_document_ids(list(integration_ids))
+    if documented:
+        raise ValueError(
+            f"still have a full integration document, not retired: {', '.join(documented)}"
+        )
 
 
 async def plan_retired(integration_id: str) -> RetiredIntegration:
@@ -103,7 +112,7 @@ async def purge(plan: RetiredIntegration) -> tuple[int, bool]:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    require_retired(args.retired_ids)
+    await require_retired(args.retired_ids)
 
     for integration_id in args.retired_ids:
         plan = await plan_retired(integration_id)

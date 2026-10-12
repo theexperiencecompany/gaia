@@ -489,6 +489,34 @@ class TestLockedAndFilteredTools:
         ):
             return await _build_tools_response("user_123")
 
+    async def test_the_workspace_is_read_for_the_asking_user(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
+        records = {"user_123": [{"integration_id": "m1", "status": "connected"}]}
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+
+        async def _records_of(user_id):
+            return records.get(user_id, [])
+
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=AsyncMock(return_value=_rollup(global_mcp)),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_user_integration_records",
+                new=AsyncMock(side_effect=_records_of),
+            ),
+        ):
+            result = await _build_tools_response("user_123")
+
+        assert [tool.name for tool in result.tools] == ["t1"]
+
     async def test_connected_integration_tools_not_locked(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
@@ -505,6 +533,11 @@ class TestLockedAndFilteredTools:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([], global_mcp)
         assert result.total_count == 0
+
+    async def test_the_stored_integration_name_is_the_display_name(self):
+        global_mcp = {"m1": {"name": "MCP One", "icon_url": None, "tools": [{"name": "tool_a"}]}}
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        assert result.tools[0].display_name == "MCP One"
 
     async def test_icon_url_forwarded_from_mcp_store(self):
         global_mcp = {

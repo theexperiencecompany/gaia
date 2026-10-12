@@ -124,7 +124,8 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
         return None
 
     # Creator lives only on custom integration docs; platform entries have none.
-    creator_doc: CreatorDoc | None = None
+    # Equivalent under mutation: only truthiness is read, so "" behaves as None.
+    creator_doc: CreatorDoc | None = None  # pragma: no mutate
     custom_doc: _CreatedBy | None = cast("_CreatedBy | None", resolved.custom_doc)
     created_by = custom_doc.get("created_by") if custom_doc else None
     if created_by:

@@ -16,6 +16,7 @@ import pytest
 
 from app.agents.core.integration_capabilities import get_user_integration_capabilities
 from app.config.oauth_config import get_integration_by_id
+from app.constants.log_tags import LogTag
 from app.models.integration_models import Integration, UserIntegrationCapabilities
 from tests.helpers import captured_wide_event
 
@@ -86,6 +87,10 @@ class TestRetiredIntegrationStub:
         (error,) = [e for e in event["errors"] if e.get("integration_id") == RETIRED_ID]
         assert error["user_id"] == USER_ID
         assert error["error_type"] == "ValidationError"
+        assert error["msg"] == (
+            f"{LogTag.INTEGRATION} Skipping unresolvable integration in follow-up capabilities"
+        )
+        assert "4 validation errors for Integration" in error["error"]
 
     @pytest.mark.regression
     async def test_a_degraded_result_is_not_cached_so_a_later_fix_is_seen(

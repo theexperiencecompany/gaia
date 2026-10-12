@@ -40,6 +40,9 @@ def _matches(document: dict[str, Any], filter_: dict[str, Any]) -> bool:
         if isinstance(condition, dict) and "$exists" in condition:
             if (field in document) != condition["$exists"]:
                 return False
+        elif isinstance(condition, dict) and "$in" in condition:
+            if document.get(field) not in condition["$in"]:
+                return False
         elif document.get(field) != condition:
             return False
     return True
@@ -119,7 +122,7 @@ class TestPurgeRetiredIntegrations:
         self, fake_redis: FakeRedis
     ) -> None:
         with _mongo([dict(FULL_DOCUMENT)], []) as db:
-            await script._run(_args(apply=True))
+            assert await script.purge(script.RetiredIntegration(RETIRED, [], True)) == (0, False)
             assert await integration_repository.tools_stub_ids() == []
 
         assert db["integrations"].documents == [FULL_DOCUMENT]
@@ -133,6 +136,65 @@ class TestPurgeRetiredIntegrations:
             await script._run(_args(apply=True))
 
         assert f"{RETIRED}: 0 user row(s), tools-only stub: no" in capsys.readouterr().out
+
+    async def test_apply_reports_when_there_was_no_stub_to_delete(
+        self, fake_redis: FakeRedis, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with _mongo([], _rows(RETIRED, "u1")):
+            await script._run(_args(apply=True))
+
+        assert "  deleted 1 user row(s), stub deleted: no\n" in capsys.readouterr().out
+
+    async def test_the_dry_run_ends_with_the_exact_apply_hint(
+        self, fake_redis: FakeRedis, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with _mongo([dict(STUB)], []):
+            await script._run(_args())
+
+        assert capsys.readouterr().out.endswith(
+            "\ndry run: nothing deleted. Re-run with --apply.\n"
+        )
+
+    async def test_an_id_with_a_full_document_is_refused_and_nothing_is_deleted(
+        self, fake_redis: FakeRedis
+    ) -> None:
+        with _mongo([dict(FULL_DOCUMENT)], _rows(RETIRED, "u1")) as db:
+            with pytest.raises(ValueError) as refused:
+                await script._run(_args(apply=True))
+
+        assert str(refused.value) == (
+            f"still have a full integration document, not retired: {RETIRED}"
+        )
+        assert db["integrations"].documents == [FULL_DOCUMENT]
+        assert db["user_integrations"].documents == _rows(RETIRED, "u1")
+
+    async def test_the_dry_run_refuses_a_full_document_too(self, fake_redis: FakeRedis) -> None:
+        with _mongo([dict(FULL_DOCUMENT)], []):
+            with pytest.raises(ValueError, match="full integration document"):
+                await script._run(_args())
+
+    async def test_only_the_ids_with_a_full_document_are_named(self, fake_redis: FakeRedis) -> None:
+        other = {**FULL_DOCUMENT, "integration_id": "other-full"}
+        stub_only = {"integration_id": "stub-only", "tools": TOOLS}
+        with _mongo([dict(FULL_DOCUMENT), other, stub_only], []):
+            with pytest.raises(ValueError) as refused:
+                await script._run(_args(retired_ids=[RETIRED, "stub-only", "other-full"]))
+
+        assert str(refused.value).endswith(f": {RETIRED}, other-full")
+
+    async def test_a_stub_only_id_is_accepted(self, fake_redis: FakeRedis) -> None:
+        with _mongo([dict(STUB)], []):
+            await script.require_retired([RETIRED])
+
+    async def test_every_live_id_is_named_in_the_refusal(self) -> None:
+        first, second = OAUTH_INTEGRATIONS[0].id, OAUTH_INTEGRATIONS[1].id
+        with _mongo([], []):
+            with pytest.raises(ValueError) as refused:
+                await script._run(_args(retired_ids=[first, RETIRED, second]))
+
+        assert str(refused.value) == (
+            f"still in OAUTH_INTEGRATIONS, not retired: {first}, {second}"
+        )
 
     async def test_an_id_still_in_the_catalog_is_refused_before_anything_is_read(self) -> None:
         with _mongo([], []) as db:
@@ -163,6 +225,16 @@ class TestOrphanStubReport:
             orphans = await script.find_orphan_stubs()
 
         assert orphans == [script.OrphanStub(RETIRED, 2)]
+
+    async def test_a_live_stub_does_not_stop_the_scan_for_later_orphans(
+        self, fake_redis: FakeRedis
+    ) -> None:
+        live_stub = {"integration_id": LIVE_ID, "tools": TOOLS}
+        late_orphan = {"integration_id": "~retired-last", "tools": TOOLS}
+        with _mongo([live_stub, late_orphan], []):
+            orphans = await script.find_orphan_stubs()
+
+        assert orphans == [script.OrphanStub("~retired-last", 0)]
 
     async def test_the_dry_run_lists_orphans_beyond_the_ids_named(
         self, fake_redis: FakeRedis, capsys: pytest.CaptureFixture[str]

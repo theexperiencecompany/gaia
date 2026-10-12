@@ -386,6 +386,21 @@ class TestResolveProviders:
         assert result == []
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
+    async def test_auto_detect_reads_the_namespaces_of_the_asking_user(
+        self, mock_namespaces: AsyncMock
+    ) -> None:
+        mock_namespaces.return_value = UserToolNamespaces(namespaces={"gmail_ns"})
+
+        await resolve_providers(
+            requested=None,
+            user_id="user_1",
+            provider_tools={"gmail": "GMAIL_TOOL"},
+            namespace_fn=lambda slug: slug.lower().replace("_tool", "_ns"),
+        )
+
+        mock_namespaces.assert_awaited_once_with("user_1")
+
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
     async def test_auto_detect_connected_found(self, mock_namespaces: AsyncMock) -> None:
         mock_namespaces.return_value = UserToolNamespaces(namespaces={"gmail_ns", "calendar_ns"})
 

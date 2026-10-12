@@ -12,6 +12,7 @@ from fakeredis.aioredis import FakeRedis
 import pytest
 
 from app.agents.tools.core.retrieval import _get_user_context
+from app.constants.log_tags import LogTag
 from app.models.integration_models import UserToolNamespaces
 from app.services.integrations.integration_service import get_user_available_tool_namespaces
 from tests.helpers import captured_wide_event
@@ -73,6 +74,10 @@ class TestToolNamespacesWithRetiredStub:
         (error,) = [e for e in event["errors"] if e.get("integration_id") == RETIRED_ID]
         assert error["user_id"] == USER_ID
         assert error["error_type"] == "ValidationError"
+        assert error["msg"] == (
+            f"{LogTag.INTEGRATION} Skipping unresolvable integration in tool namespaces"
+        )
+        assert "4 validation errors for Integration" in error["error"]
 
     @pytest.mark.regression
     async def test_a_degraded_result_is_not_cached_so_a_later_fix_is_seen(

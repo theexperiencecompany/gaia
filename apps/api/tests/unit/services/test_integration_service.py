@@ -817,6 +817,58 @@ class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_creator_picture_is_carried_with_the_name(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        stored = Integration(
+            integration_id="custom-uuid",
+            name="Custom",
+            description="Mine",
+            category="custom",
+            managed_by="mcp",
+            created_by="user-9",
+        )
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("custom-uuid")])
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[stored])
+        mock_users_col.find_by_ids = AsyncMock(
+            return_value=[SimpleNamespace(id="user-9", name="Nina", picture="https://img/n.png")]
+        )
+
+        result = await get_user_integrations(USER_ID)
+
+        assert result.integrations[0].integration.creator == {
+            "name": "Nina",
+            "picture": "https://img/n.png",
+        }
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_stored_tools_overlay_a_catalog_integration_without_its_own(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        """A catalog entry carries no tool list; the stored document supplies it."""
+        stored = Integration(
+            integration_id="github",
+            name="GitHub",
+            description="",
+            category="developer",
+            managed_by="mcp",
+            tools=[StoredIntegrationTool(name="create_issue", description="Create")],
+        )
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("github")])
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[stored])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
+
+        result = await get_user_integrations(USER_ID)
+
+        assert result.integrations[0].integration.tools == [
+            StoredIntegrationTool(name="create_issue", description="Create")
+        ]
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_expired_at_is_carried_from_the_stored_document(
         self, mock_repo, mock_int_repo, mock_users_col
     ):

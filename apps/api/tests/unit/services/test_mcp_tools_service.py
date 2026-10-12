@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
+from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.models.integration_models import (
     IntegrationToolsRecord,
     McpToolsRollupEntry,
@@ -34,6 +35,14 @@ class TestFormatTools:
         assert mcp_tools_service._format_tools([]) == []
 
 
+class TestInvalidateMcpToolsCache:
+    async def test_drops_the_global_roll_up_key(self):
+        with patch(f"{_MOD}.delete_cache", new_callable=AsyncMock) as mock_del:
+            await mcp_tools_service.invalidate_mcp_tools_cache()
+
+        mock_del.assert_awaited_once_with(MCP_TOOLS_CACHE_KEY)
+
+
 class TestStoreMcpTools:
     async def test_stores_and_busts_cache(self):
         with (
@@ -47,7 +56,7 @@ class TestStoreMcpTools:
         mock_repo.store_tools.assert_awaited_once()
         stored = mock_repo.store_tools.call_args[0][1]
         assert [t.name for t in stored] == ["t1"]
-        mock_del.assert_awaited_once()
+        mock_del.assert_awaited_once_with(MCP_TOOLS_CACHE_KEY)
 
     async def test_skips_when_no_valid_tools(self):
         with (
@@ -131,6 +140,7 @@ class TestGetIntegrationTools:
             )
             result = await mcp_tools_service.get_integration_tools("int1")
 
+        mock_repo.get_tools.assert_awaited_once_with("int1")
         assert result == [StoredIntegrationTool(name="t1", description="d1")]
 
     async def test_returns_empty_when_the_repository_fails(self):
@@ -142,9 +152,10 @@ class TestGetIntegrationTools:
 class TestGetAllMcpTools:
     async def test_returns_cached(self):
         cached = {"int1": McpToolsRollupEntry(tools=[StoredIntegrationTool(name="t1")], name="One")}
-        with patch(f"{_MOD}.get_cache", new_callable=AsyncMock, return_value=cached):
+        with patch(f"{_MOD}.get_cache", new_callable=AsyncMock, return_value=cached) as mock_get:
             result = await mcp_tools_service.get_all_mcp_tools()
         assert result == cached
+        mock_get.assert_awaited_once_with(MCP_TOOLS_CACHE_KEY, dict[str, McpToolsRollupEntry])
 
     async def test_builds_and_caches_from_repo(self):
         record = IntegrationToolsRecord(
@@ -164,7 +175,12 @@ class TestGetAllMcpTools:
         assert result["int1"].name == "Integration 1"
         assert result["int1"].icon_url == "https://ex.com/icon.png"
         assert result["int1"].tools == [StoredIntegrationTool(name="t1", description="d")]
-        mock_set.assert_awaited_once()
+        mock_set.assert_awaited_once_with(
+            MCP_TOOLS_CACHE_KEY,
+            {"int1": result["int1"]},
+            ttl=MCP_TOOLS_CACHE_TTL,
+            model=dict[str, McpToolsRollupEntry],
+        )
 
     async def test_returns_empty_when_the_repository_fails(self):
         with (

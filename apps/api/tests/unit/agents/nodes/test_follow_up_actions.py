@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from prometheus_client import REGISTRY
 import pytest
 
@@ -8,10 +8,13 @@ from app.agents.core.nodes.follow_up_actions_node import (
     _FOLLOW_UP_CONTEXT_MAX_CHARS,
     SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
+    _delegated_to_executor,
     _pretty_print_messages,
     follow_up_actions_node,
     generate_follow_up_actions,
 )
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
 from app.models.integration_models import UserIntegrationCapabilities
 from tests.helpers import captured_wide_event
 
@@ -468,3 +471,68 @@ class TestGenerateFollowUpActionsNeverRaises:
 
         assert actions == []
         assert [e["error_type"] for e in event["errors"]] == ["ValueError"]
+
+    async def test_the_failure_is_logged_with_its_message_and_the_users_id(self) -> None:
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
+        ):
+            async with captured_wide_event() as event:
+                await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} Follow-up action generation failed"
+        assert error["user_id"] == "user-123"
+        assert error["error"] == "bad json"
+
+    async def test_capabilities_are_read_for_the_asking_user(self) -> None:
+        capabilities = AsyncMock(return_value=UserIntegrationCapabilities(tool_names=["a_tool"]))
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Do it"]))
+        with (
+            patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == ["Do it"]
+        capabilities.assert_awaited_once_with("user-123")
+
+
+def _call(name: str) -> dict[str, object]:
+    return {"name": name, "args": {}, "id": f"call-{name}", "type": "tool_call"}
+
+
+class TestDelegatedToExecutor:
+    def test_a_call_to_the_executor_this_turn_is_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+        ]
+        assert _delegated_to_executor(messages) is True
+
+    def test_a_call_to_another_tool_is_not_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call("web_search")]),
+        ]
+        assert _delegated_to_executor(messages) is False
+
+    def test_a_non_ai_message_before_the_call_does_not_hide_it(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            ToolMessage(content="ok", tool_call_id="x"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+        ]
+        assert _delegated_to_executor(messages) is True
+
+    def test_a_delegation_before_the_last_human_turn_does_not_count(self) -> None:
+        messages = [
+            HumanMessage(content="first"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+            HumanMessage(content="second"),
+            AIMessage(content="plain reply"),
+        ]
+        assert _delegated_to_executor(messages) is False
