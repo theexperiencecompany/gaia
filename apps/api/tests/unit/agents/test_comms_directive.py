@@ -61,6 +61,34 @@ class TestInterpretCommsOutput:
         assert d.kind == CommsDirectiveKind.SILENCE
         assert d.payload == "background calendar refresh, nothing new"
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("text", "kind", "payload"),
+        [
+            (
+                "< SILENCE >Already reported that work@acme.com is now your default.</SILENCE>",
+                CommsDirectiveKind.SILENCE,
+                "Already reported that work@acme.com is now your default.",
+            ),
+            ("<SILENCE >nothing new< /SILENCE >", CommsDirectiveKind.SILENCE, "nothing new"),
+            ("< silence >nothing new</ silence >", CommsDirectiveKind.SILENCE, "nothing new"),
+            ("< EMOJI >👍</EMOJI >", CommsDirectiveKind.REACT, "👍"),
+            # Seen live too: a space between every letter of the tag.
+            (
+                "< S I L E N C E >Waiting for the inbox check to finish.</SILENCE>",
+                CommsDirectiveKind.SILENCE,
+                "Waiting for the inbox check to finish.",
+            ),
+        ],
+    )
+    def test_spaces_inside_a_tag_still_make_it_a_directive(
+        self, text: str, kind: CommsDirectiveKind, payload: str
+    ) -> None:
+        """Regression: gpt-6-luna wrote '< SILENCE >', and the marker and its reason reached the user."""
+        directive = interpret_comms_output(text)
+
+        assert (directive.kind, directive.payload) == (kind, payload)
+
     def test_a_silence_without_a_reason_is_still_a_silence(self) -> None:
         assert interpret_comms_output("<SILENCE></SILENCE>").kind == CommsDirectiveKind.SILENCE
 
@@ -176,6 +204,13 @@ class TestVisibleCommsText:
             (f"A.{BREAK}<SILENCE>x</SILENCE>{BREAK}C", f"A.{BREAK}C"),
             (f"A.{BREAK}REACT: 👍{BREAK}", "A."),
             (f"A.{BREAK}{BREAK}C", f"A.{BREAK}C"),
+            ("< SIL", ""),
+            ("< S I L E N", ""),
+            ("< S I L E N C E >Waiting", ""),
+            ("<SILENT>ly", "<SILENT>ly"),
+            ("< SILENCE >Already rep", ""),
+            (f"Hello there.{BREAK}< SILENCE >x</SILENCE>", "Hello there."),
+            ("< 5 items left", "< 5 items left"),
         ],
     )
     def test_while_streaming(self, text: str, visible: str) -> None:
@@ -193,6 +228,8 @@ class TestVisibleCommsText:
             ("Hello there.<NEW_MESS", "Hello there."),
             (f"A.{BREAK}<EMOJI>👍</EMOJI>{BREAK}C", f"A.{BREAK}C"),
             (f"A.{BREAK}  {BREAK}C", f"A.{BREAK}C"),
+            ("< SILENCE >Already reported.</SILENCE>", ""),
+            (f"Hello there.{BREAK}< EMOJI >👍</ EMOJI >", "Hello there."),
         ],
     )
     def test_once_the_message_ended(self, text: str, visible: str) -> None:
@@ -201,7 +238,8 @@ class TestVisibleCommsText:
     def test_what_was_shown_is_always_a_prefix_of_what_is_shown_next(self) -> None:
         """Clients append each delta; text shown early and then retracted would stay on screen."""
         text = (
-            f"Hi <b>there</b>.{BREAK}  <SILENCE>no</SILENCE>{BREAK}Re: your trip<NEW_LINE_BREAK>ok"
+            f"Hi <b>there</b>.{BREAK}  < SILENCE >no</ SILENCE >{BREAK}"
+            "Re: your trip<NEW_LINE_BREAK>ok"
         )
         shown = [visible_comms_text_so_far(text[:end]) for end in range(len(text) + 1)]
         shown.append(visible_comms_text(text))

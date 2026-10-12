@@ -12,6 +12,7 @@ from app.agents.prompts.todo_prompts import (
     SUB_TODOS_CUT_NOTE,
     SUB_TODOS_LABEL,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     CANVAS_CURRENT_STATE_SECTION,
     CANVAS_LEARNINGS_SECTION,
@@ -25,6 +26,7 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoRunContext
 from app.services.canvas_markdown import section_body
+from app.services.integrations.integration_accounts import get_account_record
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
@@ -38,6 +40,8 @@ async def collect_run_context(doc: TodoDocument) -> TodoRunContext:
     to "" and is logged, so a Mongo blip does not burn the run's retries.
     """
     parent_rules = await collect_parent_rules(doc.parent_todo_id, doc.user_id)
+    # Required like the rules: without it the run would act on the primary account's mailbox.
+    ref_account = await collect_ref_account(doc)
     sub_todos, learnings = await asyncio.gather(
         collect_sub_todo_states(doc),
         collect_reference_learnings(doc.references, doc.user_id),
@@ -57,7 +61,22 @@ async def collect_run_context(doc: TodoDocument) -> TodoRunContext:
             error_type=type(result).__name__,
         )
         degraded[name] = ""
-    return TodoRunContext(parent_rules=parent_rules, **degraded)
+    return TodoRunContext(
+        parent_rules=parent_rules,
+        ref_account=ref_account or "",
+        ref_account_gone=ref_account is None,
+        **degraded,
+    )
+
+
+async def collect_ref_account(doc: TodoDocument) -> str | None:
+    """Name the account the todo's Gmail thread is in: "" when it names none, None when it is gone."""
+    ref = doc.external_ref
+    if ref is None or ref.account is None:
+        return ""
+    record = await get_account_record(doc.user_id, GMAIL_INTEGRATION_ID)
+    account = record.find_account(ref.account) if record else None
+    return account.display_name if account else None
 
 
 async def collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:

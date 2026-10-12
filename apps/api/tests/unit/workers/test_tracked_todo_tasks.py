@@ -40,6 +40,8 @@ from app.agents.prompts.todo_prompts import (
     DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
+    GMAIL_THREAD_ACCOUNT_GONE,
+    GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_MAIL_WAKE_OPENING,
     PARENT_STANDING_RULES_LABEL,
@@ -119,6 +121,7 @@ from shared.py.analytics.context import (
     worker_context,
 )
 from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, users_get
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 # Analytics attributes a todo run to its owner, so the owner is a real user id.
 OWNER_ID = "6812f0b3c9a14e2b7d5a91cf"
@@ -1694,6 +1697,31 @@ class TestAThreadTodoRunCarriesTheThreadContract:
             "Details: Sam asked for the lease",
             GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611"),
         ]
+
+    def test_the_run_is_told_which_account_holds_the_thread(self):
+        thread = ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611", account="ca_home"
+        )
+
+        prompt = _prompt(_doc(external_ref=thread), context=TodoRunContext(ref_account="Personal"))
+
+        assert (
+            GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
+            + "\n"
+            + GMAIL_THREAD_ACCOUNT_LINE.format(account="Personal", account_id="ca_home")
+        ) in prompt
+        # By GAIA's stable id, so a rename between runs cannot send it to another mailbox.
+        assert 'pass account="ca_home" to execute on every Gmail call' in prompt
+
+    def test_a_thread_whose_account_was_removed_is_left_alone(self):
+        thread = ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611", account="ca_gone"
+        )
+
+        prompt = _prompt(_doc(external_ref=thread), context=TodoRunContext(ref_account_gone=True))
+
+        assert GMAIL_THREAD_ACCOUNT_GONE in prompt
+        assert GMAIL_THREAD_ACCOUNT_LINE.split("{account}")[0] not in prompt
 
     @pytest.mark.parametrize(
         "external_ref",
@@ -3493,6 +3521,37 @@ class TestCollectRunContext:
 
         assert "Be kind." in context.parent_rules
         assert context.sub_todos == ""
+
+    @pytest.mark.parametrize(
+        ("account", "ref_account", "gone"),
+        [("ca_home", "Personal", False), ("ca_removed", "", True)],
+        ids=["connected", "removed"],
+    )
+    async def test_a_thread_todo_learns_its_account_by_its_current_name(
+        self, account: str, ref_account: str, gone: bool
+    ) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t1", account=account)
+        record = make_integration_record(
+            make_integration_account("ca_work"),
+            make_integration_account("ca_home", nickname="Personal"),
+            user_id=OWNER_ID,
+        )
+        with patch(
+            "app.workers.tasks.todo_run_context.get_account_record",
+            AsyncMock(return_value=record),
+        ) as lookup:
+            context = await collect_run_context(_doc(external_ref=thread))
+
+        assert (context.ref_account, context.ref_account_gone) == (ref_account, gone)
+        lookup.assert_awaited_once_with(OWNER_ID, "gmail")
+
+    async def test_a_todo_that_names_no_account_reads_none(self) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t1")
+        with patch("app.workers.tasks.todo_run_context.get_account_record") as lookup:
+            context = await collect_run_context(_doc(external_ref=thread))
+
+        assert (context.ref_account, context.ref_account_gone) == ("", False)
+        lookup.assert_not_called()
 
     async def test_a_parent_rules_read_failure_raises_for_a_retry(self) -> None:
         """Governing rules are not enrichment: the run retries rather than acting blind."""

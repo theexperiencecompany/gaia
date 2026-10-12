@@ -67,6 +67,9 @@ class ToolUsed(ServerEvent):
     tool_name: Identifier
     via: Literal["bound", "execute"] | None = None
     source: Literal["mcp_app"] | None = None
+    # For a tool that acts as a connected account: how many its integration has, and whether this was the primary.
+    account_count: int | None = None
+    account_is_primary: bool | None = None
 
 
 class ToolExecuteFailed(ServerEvent):

@@ -84,80 +84,38 @@ WHEN NOT TO USE:
 """
 
 CONNECT_INTEGRATION = """
-INTEGRATIONS (CONNECT): This tool initiates the connection flow for one or more integrations.
+INTEGRATIONS (CONNECT): Connect an integration, or another account to one the user already has.
 
-Use this tool when the user asks to:
-- "Connect Gmail"
-- "I want to link my Notion account"
-- "Set up Twitter integration"
-- "Connect my [service] account"
-- "Connect Gmail and Notion"
-- "Set up multiple integrations"
+GAIA supports several accounts per integration (two Gmails, a work and a personal
+Notion). When the user wants another account, connect it with mode="add_account".
+If you're not sure that's what they want (they ask to connect Gmail and Gmail is
+already connected), tell them which accounts are already connected and ask whether
+they want to add another. check_integrations_status lists them.
 
 PARAMETERS:
-- `integration_ids` (List[str]): List of exact integration IDs to connect.
-  - Use integration IDs (e.g., "gmail", "notion", "twitter"); call list_integrations first if unsure
-  - Can be a single ID or multiple IDs
-- `force_reconnect` (bool, optional): Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected. Defaults to false.
+- `integration_ids` (List[str]): Exact integration IDs (e.g., "gmail", "notion");
+  call list_integrations first if unsure.
+- `mode`: "connect" (default), "add_account" for another account, or "reconnect"
+  when they ask to reconnect or refresh access.
+- `account`: with "reconnect", the expired account to sign back in, by its listed
+  name. It keeps its name and stays primary if it was.
 
-BEHAVIOR:
-- Validates each integration ID (exact match only)
-- Checks if integration is available
-- Checks if integration is already connected
-- Initiates OAuth/connection flow for disconnected integrations
-- When `force_reconnect` is true, bypasses the connected-status check and starts reauthorization
-
-IMPORTANT:
-- This tool does NOT directly connect integrations
-- It initiates the OAuth flow and the user must complete authentication
-- Multiple integrations can be connected in a single call
-- If an integration is already connected, it will skip and inform the user
-- Do not force reconnection unless the user explicitly asks to reconnect or refresh access
-
-RETURN VALUE:
-Returns a status message for each integration:
-- Already connected
-- Connection initiated (user needs to complete OAuth)
-- Not found (suggests available IDs)
-- Not available yet (coming soon)
-
-Examples:
-- User: "Connect Gmail" → integration_ids: ["gmail"]
-- User: "Set up Gmail and Notion" → integration_ids: ["gmail", "notion"]
-- User: "Link my calendar" → integration_ids: ["googlecalendar"]
+The user signs in through a card (or a single-use link on text-only platforms); this
+tool never connects anything by itself. To remove an account, use disconnect_integration.
 """
 
 CHECK_INTEGRATIONS_STATUS = """
-INTEGRATIONS (CHECK STATUS): This tool checks the connection status of specific integrations.
+INTEGRATIONS (CHECK STATUS): Check whether integrations are connected, and which accounts.
 
-Use this tool when the user asks:
-- "Is Gmail connected?"
-- "Check if Notion is connected"
-- "What's the status of my integrations?"
-- "Am I connected to [service]?"
-- "Check my calendar connection"
+Use it for "Is Gmail connected?", "Which Gmail accounts do I have?", or before adding
+another account, to see what is already there.
 
 PARAMETERS:
-- `integration_names` (List[str]): List of integration names or IDs to check
-  - Can be integration IDs (e.g., "gmail", "notion")
-  - Can be integration names (e.g., "Gmail", "Notion")
-  - Can check single or multiple integrations at once
+- `integration_names` (List[str]): Integration IDs or names (e.g., "gmail", "Notion").
 
-BEHAVIOR:
-- Validates each integration name/ID
-- Checks current connection status for each integration
-- Returns clear status indicator for each
-
-RETURN VALUE:
-Returns a formatted status message for each integration:
-- ✅ Connected: Integration is active and connected
-- ⚪ Not Connected: Integration is available but not connected
-- ❓ Not found: Integration name/ID doesn't exist
-
-Examples:
-- User: "Is Gmail connected?" → integration_names: ["gmail"]
-- User: "Check calendar and notion status" → integration_names: ["calendar", "notion"]
-- User: "What's the status of my integrations?" → Use list_integrations instead
+RETURN VALUE: one line per integration: connected or not, and for an integration with
+accounts, each account's name with primary or expired marked. "Not found" for an
+unknown name. For the status of every integration at once, use list_integrations.
 """
 
 

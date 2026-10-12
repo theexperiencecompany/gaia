@@ -13,6 +13,7 @@ import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationConnectOptions,
   IntegrationStatus,
 } from "../types";
 import { byConnectionStateThenName, toIntegration } from "../utils/catalog";
@@ -42,7 +43,7 @@ export interface UseIntegrationsReturn {
   // Actions
   connectIntegration: (
     integrationId: string,
-    bearerToken?: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
@@ -134,7 +135,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-      bearerToken?: string,
+      options?: IntegrationConnectOptions,
     ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
@@ -146,7 +147,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         const result = await integrationsApi.connectIntegration(
           integrationId,
-          bearerToken,
+          options,
         );
 
         if (result.status === "connected") {

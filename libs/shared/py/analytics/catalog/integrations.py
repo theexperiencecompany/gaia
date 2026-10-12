@@ -6,6 +6,9 @@ from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
+    "IntegrationAccountAdded",
+    "IntegrationAccountRemoved",
+    "IntegrationAccountRenamed",
     "IntegrationConnectInitiated",
     "IntegrationConnected",
     "IntegrationCustomDeleted",
@@ -15,6 +18,7 @@ __all__ = [
     "IntegrationDisconnected",
     "IntegrationError",
     "IntegrationInstructionsUpdated",
+    "IntegrationPrimaryChanged",
     "McpConnectionTested",
     "SkillDisabled",
     "SkillEnabled",
@@ -38,7 +42,8 @@ class IntegrationConnected(ServerEvent):
     connection_method: Literal["oauth"] | None = None
     provider: Identifier | None = None
     is_new_link: bool | None = None
-    # An OAuth callback for an integration this user had connected before (an expiry or re-auth).
+    # The user signed in again to an account they already had (an expiry or re-auth). A further
+    # account on a multi-account integration is a new connect, not a reconnect.
     is_reconnect: bool | None = None
 
 
@@ -61,6 +66,48 @@ class IntegrationDisconnected(ServerEvent):
     budget_per_user_day: ClassVar[int] = 30
 
     integration_id: Identifier
+
+
+class IntegrationAccountAdded(ServerEvent):
+    """An account was authorized on a multi-account integration, or replaced one with its identity."""
+
+    event: ClassVar[str] = "integration:account_added"
+    budget_per_user_day: ClassVar[int] = 50
+
+    integration_id: Identifier
+    account_count: int
+    replaced: bool
+    has_identity: bool
+
+
+class IntegrationAccountRemoved(ServerEvent):
+    """One account of an integration was disconnected; 0 left means the integration went too."""
+
+    event: ClassVar[str] = "integration:account_removed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    integration_id: Identifier
+    account_count: int
+
+
+class IntegrationAccountRenamed(ServerEvent):
+    """An account of an integration was given a name, or had it cleared."""
+
+    event: ClassVar[str] = "integration:account_renamed"
+    budget_per_user_day: ClassVar[int] = 50
+
+    integration_id: Identifier
+    cleared: bool
+
+
+class IntegrationPrimaryChanged(ServerEvent):
+    """Another account became an integration's primary, the one triggers and defaults use."""
+
+    event: ClassVar[str] = "integration:primary_changed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    integration_id: Identifier
+    account_count: int
 
 
 class IntegrationInstructionsUpdated(ServerEvent):

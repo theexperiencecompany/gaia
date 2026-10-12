@@ -55,8 +55,9 @@ def _make_integration(
     description: str = "Email",
     category: str = "email",
 ) -> MagicMock:
-    """Create a mock OAuthIntegration."""
+    """Create a mock OAuthIntegration with one connection (no Composio account list)."""
     mock = MagicMock()
+    mock.composio_config = None
     mock.id = integration_id
     mock.name = name
     mock.available = available
@@ -455,7 +456,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -488,7 +489,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -522,7 +523,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -536,8 +537,8 @@ class TestConnectIntegration:
         """Minting for the wrong user hands one person another's connect flow, and losing the name leaves the agent telling the user "None" needs connecting."""
         mock_gsw.return_value = _writer()
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == (FAKE_USER_ID, "gmail"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == (FAKE_USER_ID, "gmail", None):
                 return "https://app.example.com/connect/for-this-user"
             return None
 
@@ -561,7 +562,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -591,7 +592,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -605,12 +606,12 @@ class TestConnectIntegration:
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
-        assert "already connected" in result
+        assert result == "✅ Gmail is already connected!"
 
     @pytest.mark.regression
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -618,7 +619,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("posthog", "PostHog", short_name="posthog")],
     )
-    async def test_force_reconnect_bypasses_connected_status_and_renders_reconnect_card(
+    async def test_reconnect_mode_bypasses_connected_status_and_renders_reconnect_card(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
         writer = _writer()
@@ -632,7 +633,7 @@ class TestConnectIntegration:
             patch("app.utils.integration_checker.current_stream_writer", return_value=writer),
         ):
             result = await connect_integration.ainvoke(
-                {"integration_ids": ["posthog"], "force_reconnect": True}, config=_cfg()
+                {"integration_ids": ["posthog"], "mode": "reconnect"}, config=_cfg()
             )
 
         assert "reconnect button" in result
@@ -647,7 +648,9 @@ class TestConnectIntegration:
 
     @pytest.mark.regression
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(
+        "app.services.integrations.connect_steps.check_integration_status", new_callable=AsyncMock
+    )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -671,12 +674,14 @@ class TestConnectIntegration:
         assert "already connected" in result
         mock_check.assert_any_call("gmail", FAKE_USER_ID)
         mock_request.assert_awaited_once_with(
-            "posthog", "PostHog", FAKE_USER_ID, force_reconnect=False
+            "posthog", "PostHog", FAKE_USER_ID, mode="connect", account=None
         )
 
     @pytest.mark.regression
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(
+        "app.services.integrations.connect_steps.check_integration_status", new_callable=AsyncMock
+    )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
         f"{MODULE}.OAUTH_INTEGRATIONS",
@@ -695,7 +700,9 @@ class TestConnectIntegration:
 
         assert "not found" in result
         mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
-        mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, force_reconnect=False)
+        mock_request.assert_awaited_once_with(
+            "gmail", "Gmail", FAKE_USER_ID, mode="connect", account=None
+        )
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
@@ -738,7 +745,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.check_single_integration_status",
+        "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         side_effect=RuntimeError("err"),
     )

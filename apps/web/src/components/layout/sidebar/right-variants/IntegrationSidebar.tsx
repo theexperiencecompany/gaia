@@ -14,8 +14,12 @@ import { IntegrationRelatedWorkflows } from "@/features/integrations/components/
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
-import type { Integration } from "@/features/integrations/types";
+import type {
+  Integration,
+  IntegrationConnectOptions,
+} from "@/features/integrations/types";
 
+import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 
@@ -27,6 +31,7 @@ interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (
     integrationId: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
@@ -48,6 +53,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
+  // Composio integrations hold several accounts; an expired one still lists
+  // its accounts so each can be reconnected or removed.
+  const hasAccounts =
+    integration.managedBy === "composio" &&
+    (isConnected || integration.status === "expired");
   const {
     tools: integrationTools,
     mentionNames: toolMentionNames,
@@ -103,6 +113,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           onPublish={onPublish}
           onUnpublish={onUnpublish}
         />
+
+        {hasAccounts && (
+          <IntegrationAccounts
+            integration={integration}
+            onConnect={onConnect}
+          />
+        )}
 
         {isConnected && (
           <div className="mt-3">

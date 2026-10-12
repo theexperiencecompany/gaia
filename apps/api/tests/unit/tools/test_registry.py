@@ -455,6 +455,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         finish_task_tool,
         flowchart_tool,
         image_tool,
+        integration_account_tools,
         integration_instructions_tools,
         integration_tool,
         manual_tool,
@@ -495,7 +496,9 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "billing": {t.name for t in subscription_tool.tools},
         "manual": {t.name for t in manual_tool.tools},
         "memory": {t.name for t in memory_tools.tools},
-        "integrations": {t.name for t in integration_tool.tools},
+        "integrations": {
+            t.name for t in [*integration_tool.tools, *integration_account_tools.tools]
+        },
         "integration_instructions": {t.name for t in integration_instructions_tools.tools},
         "development": {t.name for t in coding.tools},
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
@@ -980,8 +983,8 @@ class TestInitializedCategoryContract:
             "execute": {"execute", "get_tool_schema"},
         }
 
-    def test_the_two_destructive_built_ins_are_stamped_alone(self, registry: ToolRegistry) -> None:
-        """execute_workflow and connect_integration are the only irreversible built-ins here; a mangled curated-set member would downgrade the one tool that must stop at HIL to safe."""
+    def test_the_destructive_built_ins_are_stamped_alone(self, registry: ToolRegistry) -> None:
+        """execute_workflow, connect_integration and disconnect_integration are the only irreversible built-ins here; a mangled curated-set member would downgrade a tool that must stop at HIL to safe."""
         workflows = {
             tool.name: tool.destructive for tool in registry._categories["workflows"].tools
         }
@@ -1004,6 +1007,12 @@ class TestInitializedCategoryContract:
             "suggest_integrations": False,
             "connect_integration": True,
             "check_integrations_status": False,
+            # A label on the user's own account; reversible, so it runs without asking.
+            "rename_integration_account": False,
+            # Which account is the default; reversible, so it runs without asking.
+            "set_primary_integration_account": False,
+            # Force-gated (always_gate): revoking the grant is undone only by signing in again.
+            "disconnect_integration": False,
             # Force-gated (always_gate), not destructive — see the always_gate test.
             "add_custom_mcp_server": False,
             # Read-only device catalog lookup.
@@ -1018,14 +1027,18 @@ class TestInitializedCategoryContract:
             "run_on_device": False,
         }
 
-    def test_integrations_always_gate_set_is_exactly_the_two_forced_tools(
+    def test_integrations_always_gate_set_is_exactly_the_forced_tools(
         self, registry: ToolRegistry
     ) -> None:
-        """Dropping either forced tool silently removes the human gate on a security-sensitive action."""
+        """Dropping any forced tool silently removes the human gate on a security-sensitive action."""
         gated = {
             tool.name for tool in registry._categories["integrations"].tools if tool.always_gate
         }
-        assert gated == {"add_custom_mcp_server", "approve_device_pairing"}
+        assert gated == {
+            "add_custom_mcp_server",
+            "approve_device_pairing",
+            "disconnect_integration",
+        }
 
 
 @pytest.mark.unit

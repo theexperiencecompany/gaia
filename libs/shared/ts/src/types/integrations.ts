@@ -61,6 +61,12 @@ export interface IntegrationConnectionData {
   // Lets the card render a header before the live catalog (/integrations/me)
   // loads. Optional: absent on messages streamed before the field existed.
   integration_name?: string;
+  // Adds another account to an integration that stays connected.
+  add_account?: boolean;
+  // The accounts already connected, primary first, shown on an add-account card.
+  connected_accounts?: string[];
+  // The expired account the card signs back in, in place of adding a new one.
+  reconnect_account?: { id: string; name: string } | null;
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";

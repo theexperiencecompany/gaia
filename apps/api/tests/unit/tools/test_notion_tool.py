@@ -5,7 +5,7 @@ tests pin the exact registration contract (tool names + toolkit kwarg) and
 the FETCH_DATA failure paths.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
@@ -58,6 +58,21 @@ MODULE = "app.agents.tools.integrations.notion_tool"
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 CREDS = CustomToolAuthCredentials(user_id="user_test_123")
+
+
+def _scoped_account_id(user_id: str, toolkit: str) -> str:
+    """Answer only for the caller's own user on this toolkit, so a lost identity changes the account."""
+    return "ca_scoped" if (user_id, toolkit) == (CREDS.user_id, "NOTION") else "ca_wrong_scope"
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
+        MagicMock(side_effect=_scoped_account_id),
+    ) as resolve:
+        yield resolve
 
 
 def _cell(text: str) -> list[NotionTextRun]:
@@ -147,11 +162,6 @@ def test_fetch_data_unexpected_error_raises_runtime_error_with_str() -> None:
     assert excinfo.value.__cause__ is error
 
 
-class _ProxyResponse:
-    def __init__(self, data: dict[str, Any]) -> None:
-        self.data = data
-
-
 def test_build_parent_page_branch() -> None:
     assert _build_parent("page_id", "par-123") == NotionParent(type="page_id", page_id="par-123")
 
@@ -164,16 +174,20 @@ def test_build_parent_database_branch() -> None:
 
 def test_move_page_sends_exact_patch_and_returns_data_fields() -> None:
     request = MovePageInput(page_id="pg-9", parent_type="page_id", parent_id="par-1")
-    execute_request = MagicMock(
-        return_value=_ProxyResponse({"id": "moved-1", "url": "https://notion.so/moved-1"})
-    )
+    proxy = MagicMock(return_value={"id": "moved-1", "url": "https://notion.so/moved-1"})
 
-    result = _move_page(request, execute_request)
+    with patch(f"{MODULE}.proxy_request_sync", proxy):
+        result = _move_page(request, "user_test_123")
 
-    execute_request.assert_called_once_with(
-        endpoint="/pages/pg-9",
-        method="PATCH",
-        body={"parent": {"type": "page_id", "page_id": "par-1"}},
+    proxy.assert_called_once_with(
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="NOTION",
+            endpoint="https://api.notion.com/v1/pages/pg-9",
+            method="PATCH",
+            body={"parent": {"type": "page_id", "page_id": "par-1"}},
+            headers={"Notion-Version": "2022-06-28"},
+        )
     )
     assert result == {
         "page_id": "moved-1",
@@ -184,16 +198,14 @@ def test_move_page_sends_exact_patch_and_returns_data_fields() -> None:
 
 def test_move_page_body_without_a_page_fails_loudly() -> None:
     request = MovePageInput(page_id="pg-10", parent_type="database_id", parent_id="db-2")
-    execute_request = MagicMock(return_value=_ProxyResponse({"object": "error"}))
+    proxy = MagicMock(return_value={"object": "error"})
 
-    with pytest.raises(ValidationError):
-        _move_page(request, execute_request)
+    with patch(f"{MODULE}.proxy_request_sync", proxy), pytest.raises(ValidationError):
+        _move_page(request, "user_test_123")
 
-    execute_request.assert_called_once_with(
-        endpoint="/pages/pg-10",
-        method="PATCH",
-        body={"parent": {"type": "database_id", "database_id": "db-2"}},
-    )
+    assert proxy.call_args.args[0].body == {
+        "parent": {"type": "database_id", "database_id": "db-2"}
+    }
 
 
 def test_fetch_data_sends_exact_search_request_and_maps_results() -> None:
@@ -320,20 +332,19 @@ def test_fetch_data_unexpected_error_logs_fetch_type_and_raises_runtime_error() 
 def test_move_page_wrapper_logs_action_and_delegates() -> None:
     _, tools, _ = _capture_tools(register_notion_custom_tools)
     move_page, _ = tools["NOTION_MOVE_PAGE"]
-    execute_request = MagicMock(
-        return_value=_ProxyResponse({"id": "moved-1", "url": "https://notion.so/moved-1"})
-    )
+    proxy = MagicMock(return_value={"id": "moved-1", "url": "https://notion.so/moved-1"})
 
-    with patch(f"{MODULE}.log") as log_mock:
+    with patch(f"{MODULE}.log") as log_mock, patch(f"{MODULE}.proxy_request_sync", proxy):
         result = move_page(
             MovePageInput(page_id="pg-9", parent_type="page_id", parent_id="par-1"),
-            execute_request,
+            MagicMock(),
             AUTH_CREDS,
         )
 
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "notion", "action": "move_page"})
     ]
+    assert proxy.call_args.args[0].user_id == "user_test_123"
     assert result == {
         "page_id": "moved-1",
         "new_parent": {"type": "page_id", "page_id": "par-1"},
@@ -505,6 +516,7 @@ def test_execute_notion_action_passes_version_through_from_credentials() -> None
         version="2024-01-01",
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
     assert result == ComposioResponse(successful=True, error=None, data={"ok": 1})
 
@@ -524,6 +536,7 @@ def test_fetch_page_blocks_returns_results_list_and_sends_exact_execute_call() -
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
 
@@ -664,6 +677,7 @@ def test_append_table_block_sends_exact_table_args_and_raises_on_failure() -> No
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
     failing = _composio_returning({"successful": False, "error": "table refused"})
@@ -704,6 +718,7 @@ def test_append_content_block_includes_after_only_when_set_and_raises_on_failure
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
     failing = _composio_returning({"successful": False, "error": "insert refused"})

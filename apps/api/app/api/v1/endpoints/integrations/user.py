@@ -23,10 +23,10 @@ from app.services.integration_instructions_service import (
     get_instructions_record,
     upsert_instructions,
 )
+from app.services.integrations.integration_connection_service import remove_from_workspace
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
     check_user_has_integration,
-    remove_user_integration,
 )
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.analytics import UserId
@@ -110,7 +110,7 @@ async def remove_integration_from_workspace(
             # None and False are equally falsy here, so a None-mutation of
             # this fallback is behaviorally unreachable. pragma: no mutate
             was_connected = False  # pragma: no mutate
-        removed = await remove_user_integration(user_id, integration_id)
+        removed = await remove_from_workspace(user_id, integration_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Integration not found in workspace")
         if was_connected:

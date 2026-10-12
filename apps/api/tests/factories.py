@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from bson import ObjectId
 from composio.types import Tool
+import composio_client
+import httpx
 
 from app.models.user_models import AuthenticatedUser
 
@@ -182,3 +184,11 @@ def make_integration_config(
     config.associated_triggers = associated_triggers or []
     config.metadata_config = metadata_config
     return config
+
+
+def make_composio_not_found(body: object, message: str) -> composio_client.NotFoundError:
+    """Build the 404 the Composio SDK raises, with its error body and message."""
+    request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
+    return composio_client.NotFoundError(
+        message, response=httpx.Response(404, request=request, json=body), body=body
+    )

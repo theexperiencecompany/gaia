@@ -6,6 +6,8 @@ drift (root CLAUDE.md, Type Safety item 18).
 """
 
 EXECUTE_TOOL_NAME = "execute"
+# Names the account an execute result came from, when the user has several on that integration.
+RAN_AS_ACCOUNT_KEY = "ran_as_account"
 
 # Ticket operations ride the execute proxy under reserved inner names (no
 # bound tool, no schema); reserved here so no provider tool can squat on them —

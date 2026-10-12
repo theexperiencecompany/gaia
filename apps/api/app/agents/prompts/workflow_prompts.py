@@ -250,6 +250,12 @@ Only call send_notification if the workflow instructions above explicitly ask fo
 or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
 """
 
+# Appended when the triggering event names which of the user's accounts received it.
+TRIGGERED_ACCOUNT_SECTION = """
+
+This run was triggered by an event on the user's account {accounts}. Act on that same
+account: pass it as `account` to execute for that integration's tools."""
+
 WORKFLOW_SILENT_NOTIFY_SECTION = """
 NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT send an automatic
 completion notification; the result only lands in this conversation. If the workflow

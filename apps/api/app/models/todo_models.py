@@ -53,6 +53,8 @@ class ExternalRef(BaseModel):
 
     source: ExternalRefSource
     id: str = Field(min_length=1)
+    # The connected account the object lives in: a Gmail thread id means nothing outside its mailbox.
+    account: str | None = None
 
 
 class SubTask(ResponseModel):
@@ -633,8 +635,12 @@ class UpdateFieldInputs:
 
 
 class TodoRunContext(NamedTuple):
-    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
+    """What a run reads beyond its own todo: its parent's rules, sub-todos, past lessons, account."""
 
     parent_rules: str = ""
     sub_todos: str = ""
     learnings: str = ""
+    # The current name of the account the todo's outside object lives in; "" when it names none.
+    ref_account: str = ""
+    # The object's account is no longer connected, so the object cannot be reached.
+    ref_account_gone: bool = False

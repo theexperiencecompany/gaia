@@ -41,6 +41,7 @@ from app.agents.core.subagents.subagent_runner import (
 from app.agents.tools.core.retrieval import preloaded_startup_docs
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
+from app.constants.integrations import MANAGED_BY_COMPOSIO
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
@@ -55,10 +56,10 @@ from app.models.agent_models import (
 )
 from app.models.subagent_models import Subagent
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
+from app.services.integrations.integration_accounts import get_account_record, primary_account
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import check_integration_status
-from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import IntegrationMetadata, parse_subagent_id
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
@@ -522,7 +523,11 @@ async def prepare_subagent_execution(
     platform_subagent = get_subagent_by_id(integration_id)
     if platform_subagent and platform_subagent.provider and user_id:
         provider_name = platform_subagent.provider
-        provider_meta = await get_provider_metadata(user_id, platform_subagent.provider)
+    # Only Composio integrations hold connected accounts with an identity.
+    if platform_subagent and platform_subagent.managed_by == MANAGED_BY_COMPOSIO and user_id:
+        record = await get_account_record(user_id, integration_id)
+        primary = primary_account(record) if record else None
+        provider_meta = primary.identity if primary else None
     service_username = _extract_service_username(provider_meta)
     integration_usernames: dict[str, str] = {}
     if provider_name and service_username:

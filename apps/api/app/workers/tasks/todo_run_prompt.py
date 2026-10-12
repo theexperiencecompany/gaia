@@ -12,6 +12,8 @@ from types import MappingProxyType
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
+    GMAIL_THREAD_ACCOUNT_GONE,
+    GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_MAIL_WAKE_OPENING,
     INBOX_DESK_QUIET_HOURS_NOTE,
@@ -43,12 +45,23 @@ WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
 )
 
 
-def external_ref_guidance(doc: TodoDocument) -> str | None:
+def external_ref_guidance(doc: TodoDocument, context: TodoRunContext) -> str | None:
     """Return how to work the outside object the todo owns, or None when that kind has no contract."""
     if doc.external_ref is None:
         return None
     guidance = EXTERNAL_REF_RUN_GUIDANCE.get(doc.external_ref.source)
-    return guidance.format(ref_id=doc.external_ref.id) if guidance else None
+    if guidance is None:
+        return None
+    parts = [guidance.format(ref_id=doc.external_ref.id)]
+    if context.ref_account_gone:
+        parts.append(GMAIL_THREAD_ACCOUNT_GONE)
+    elif context.ref_account:
+        parts.append(
+            GMAIL_THREAD_ACCOUNT_LINE.format(
+                account=context.ref_account, account_id=doc.external_ref.account
+            )
+        )
+    return "\n".join(parts)
 
 
 def delivery_guidance(doc: TodoDocument) -> str:
@@ -127,7 +140,7 @@ def build_execution_prompt(
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
-    if ref_guidance := external_ref_guidance(doc):
+    if ref_guidance := external_ref_guidance(doc, context):
         prompt_parts.append(ref_guidance)
     if doc.canvas_content:
         prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")

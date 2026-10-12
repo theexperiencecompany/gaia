@@ -89,6 +89,7 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
+from app.config.composio_auth_configs import with_auth_config_overrides
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -128,6 +129,7 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.config.settings import settings
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
@@ -182,7 +184,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
+_DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -209,6 +211,17 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit_version="20260107_00",
         ),
         destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    # The primary calendar's id is the account's email; GET_CURRENT_USER
+                    # does not exist at the pinned toolkit version.
+                    tool="GOOGLECALENDAR_GET_CALENDAR",
+                    variables=[VariableExtraction(name="email", field_path="calendar_data.id")],
+                ),
+            ],
+            label_template="{email}",
+        ),
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
@@ -579,6 +592,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=GMAIL_CONTENT,
     ),
@@ -689,6 +703,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{workspace_name}",
         ),
         content=NOTION_CONTENT,
     ),
@@ -738,6 +753,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="@{username}",
         ),
         content=TWITTER_CONTENT,
     ),
@@ -1006,6 +1022,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username}",
         ),
         content=GITHUB_CONTENT,
     ),
@@ -1191,6 +1208,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=LINEAR_CONTENT,
     ),
@@ -1302,6 +1320,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username} @ {team_name}",
         ),
         content=SLACK_CONTENT,
     ),
@@ -2201,6 +2220,10 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         content=POSTHOG_CONTENT,
     ),
 ]
+
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = with_auth_config_overrides(
+    _DECLARED_INTEGRATIONS, settings.COMPOSIO_AUTH_CONFIG_OVERRIDES
+)
 
 
 @cache

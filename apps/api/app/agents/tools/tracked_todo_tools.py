@@ -48,6 +48,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
 )
 from app.services.todo_activity import agent_actor, record_field_changes
+from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
     CanvasShapeError,
     ExternalRefTakenError,
@@ -208,6 +209,11 @@ async def create_tracked_todo(
         "the thread can have only one open todo: if it already has one, that todo "
         "comes back instead, for you to update.",
     ] = None,
+    gmail_account: Annotated[
+        str | None,
+        "With gmail_thread_id: the Gmail account the thread is in, by its listed name, "
+        "the account you fetched it from. Required when the user has several.",
+    ] = None,
     references: Annotated[
         list[str] | None,
         "IDs of the user's other tracked todos this one builds on, usually completed "
@@ -259,6 +265,7 @@ async def create_tracked_todo(
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead.
+    gmail_account: The Gmail account the thread is in; every run reads and drafts there.
     references: IDs of the user's tracked todos this one builds on; its runs read their
                 Learnings. An id that is not one of the user's todos creates nothing.
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
@@ -288,7 +295,9 @@ async def create_tracked_todo(
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
         return SUB_TODO_STANDING_RULES_REFUSAL
 
-    external_ref = _gmail_thread_ref(gmail_thread_id)
+    external_ref = await owned_gmail_thread_ref(user_id, gmail_thread_id, gmail_account)
+    if isinstance(external_ref, str):
+        return external_ref
     try:
         result = await tracked_todo_service.create_tracked_todo(
             user_id=user_id,
@@ -662,6 +671,11 @@ async def subscribe_todo_to_trigger(
         "not fire without it. Call list_trigger_fields to see which scope a "
         "trigger needs.",
     ] = None,
+    account: Annotated[
+        str | None,
+        "Only events on this one connected account, by its listed name or id (e.g. the "
+        "user's work inbox). Omit to watch every account on the integration.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -702,6 +716,9 @@ async def subscribe_todo_to_trigger(
         return f"Error: {' '.join(scope_errors)}\n\n{render_catalog(trigger_name)}"
 
     trigger_data = scope or None
+    account_id = await watched_account_id(user_id, trigger_name, account) if account else None
+    if account and account_id is None:
+        return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
         subscription, outcome, _created = await register_subscription(
@@ -713,6 +730,7 @@ async def subscribe_todo_to_trigger(
             match=parsed_match,
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
+            account_id=account_id,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.

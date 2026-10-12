@@ -32,9 +32,15 @@ from app.utils.message_breaks import (
 from shared.py.analytics.catalog.properties import Emoji
 from shared.py.wide_events import log
 
+# A tag name with any spaces gpt-6-luna puts in it: "< SILENCE >", even "< S I L E N C E >".
+_TAG_NAME = r"[A-Za-z](?:[ \t]*[A-Za-z])*"
 # One line, no DOTALL: a directive never spans lines, so a multi-line reply can
 # never be mis-silenced. The closing tag must name the opening one.
-_TAG_RE = re.compile(rf"^<({SILENCE_TAG}|{EMOJI_TAG})>([^\n]*?)</\1>$", re.IGNORECASE)
+_TAG_RE = re.compile(rf"^<\s*({_TAG_NAME})\s*>([^\n]*?)<\s*/\s*({_TAG_NAME})\s*>$")
+_DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG})
+_SPACES_RE = re.compile(r"[ \t]")
+# The opening of a tag still being written, its spaces dropped.
+_SPACED_OPENING_RE = re.compile(r"^<[ \t]*([A-Za-z \t]*)")
 _LEGACY_LINE_RE = re.compile(rf"^({SILENCE_TAG}|{LEGACY_REACT_KEYWORD}):([^\n]*)$", re.IGNORECASE)
 # How each form above begins: a bubble that does not start like one is text.
 _DIRECTIVE_OPENINGS = (
@@ -58,10 +64,17 @@ def _is_emoji(payload: str) -> bool:
 
 def _bubble_directive(bubble: str) -> CommsDirective | None:
     """Return the directive a stripped bubble is, or None when it is text."""
-    match = _TAG_RE.match(bubble) or _LEGACY_LINE_RE.match(bubble)
-    if match is None:
-        return None
-    keyword, payload = match.group(1).upper(), match.group(2).strip()
+    tag = _TAG_RE.match(bubble)
+    if tag is not None:
+        keyword, closing = (_SPACES_RE.sub("", tag.group(i)).upper() for i in (1, 3))
+        if keyword != closing or keyword not in _DIRECTIVE_TAGS:
+            return None
+        payload = tag.group(2).strip()
+    else:
+        legacy = _LEGACY_LINE_RE.match(bubble)
+        if legacy is None:
+            return None
+        keyword, payload = legacy.group(1).upper(), legacy.group(2).strip()
     if keyword == SILENCE_TAG:
         return CommsDirective(CommsDirectiveKind.SILENCE, payload)
     # A reaction that is not one emoji (empty, or a word) is meaningless: the bubble stays text.
@@ -71,8 +84,9 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
 def _could_become_directive(bubble: str) -> bool:
     """Whether a bubble still being written can end as a directive."""
     candidate = bubble.lstrip()
+    compact = _SPACED_OPENING_RE.sub(lambda m: "<" + _SPACES_RE.sub("", m.group(1)), candidate)
     if not any(
-        opening.startswith(candidate[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
+        opening.startswith(compact[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
     ):
         return False
     # Past a newline only trailing whitespace may follow, so the bubble is decided.

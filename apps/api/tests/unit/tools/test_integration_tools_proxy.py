@@ -9,7 +9,7 @@ Detailed per-function behavior tests live in the per-tool unit modules
 that fails fast if a tool stops routing through the proxy.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +28,16 @@ from app.models.twitter_models import BatchFollowInput, CreateThreadInput
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 EXECUTE_REQUEST = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
+        MagicMock(return_value="ca_scoped"),
+    ) as resolve:
+        yield resolve
 
 
 def _capture_tools(register_fn: Callable[..., Any]) -> dict[str, Any]:
@@ -212,20 +222,25 @@ def test_google_sheets_share_routes_through_proxy() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_notion_move_page_uses_execute_request_proxy() -> None:
+def test_notion_move_page_runs_through_the_scoped_proxy() -> None:
+    # Composio's own execute_request carries no account, so a second Notion
+    # workspace's page would be moved as whichever account Composio picked.
     from app.agents.tools.integrations.notion_tool import (
         register_notion_custom_tools,
     )
 
-    tools = _capture_tools(register_notion_custom_tools)
-    proxy_mock = MagicMock()
-    proxy_mock.return_value.data = {"id": "page-1", "url": "https://notion.so/x"}
-    result = tools["MOVE_PAGE"](
-        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
-        proxy_mock,
-        AUTH_CREDS,
-    )
-    proxy_mock.assert_called_once()
+    execute_request = MagicMock()
+    with patch("app.agents.tools.integrations.notion_tool.proxy_request_sync") as proxy:
+        proxy.return_value = {"id": "page-1", "url": "https://notion.so/x"}
+        tools = _capture_tools(register_notion_custom_tools)
+        result = tools["MOVE_PAGE"](
+            MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+            execute_request,
+            AUTH_CREDS,
+        )
+
+    execute_request.assert_not_called()
+    proxy.assert_called_once()
     assert result["page_id"] == "page-1"
 
 

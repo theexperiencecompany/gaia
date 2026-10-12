@@ -765,8 +765,8 @@ class TestConnectionChecksUseTheirArguments:
         """On a text-only client, minting the login-free link for the wrong user hands one person another's connect flow."""
         subagent = _make_subagent("gmail")
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == ("user1", "gmail"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == ("user1", "gmail", None):
                 return "https://gaia.test/connect/abc"
             return None
 
@@ -814,8 +814,8 @@ class TestConnectionChecksUseTheirArguments:
             "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
         )
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == ("user1", "posthog"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == ("user1", "posthog", None):
                 return "https://gaia.test/connect/xyz"
             return None
 

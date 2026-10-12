@@ -50,6 +50,7 @@ from app.services.triggers.subscription_validation import (
     ValidationOutcome,
     validate_conditions,
 )
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 pytestmark = pytest.mark.unit
 
@@ -185,6 +186,59 @@ class TestSubscribe:
         assert kwargs["conditions"][0].operator is ConditionOperator.EQUALS
         # The two output lines are newline-joined, not run together.
         assert f"\nSubscription id: {subscription.id}" in out
+
+    async def test_a_watch_on_one_account_is_registered_with_gaias_id_for_it(self) -> None:
+        register, _ = self._register()
+        record = make_integration_record(
+            make_integration_account("acct_work", nickname="Work"),
+            make_integration_account("acct_home"),
+            user_id=USER_ID,
+        )
+        with (
+            patch(f"{_MOD}.register_subscription", register),
+            patch(
+                "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
+            ) as lookup,
+        ):
+            await subscribe_todo_to_trigger.coroutine(
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="notify",
+                account="work",
+            )
+
+        assert register.await_args.kwargs["account_id"] == "acct_work"
+        lookup.assert_awaited_once_with(USER_ID, "gmail")
+
+    async def test_an_account_the_user_does_not_have_watches_nothing(self) -> None:
+        register, _ = self._register()
+        record = make_integration_record(make_integration_account("acct_work"), user_id=USER_ID)
+        with (
+            patch(f"{_MOD}.register_subscription", register),
+            patch(
+                "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
+            ),
+        ):
+            out = await subscribe_todo_to_trigger.coroutine(
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="notify",
+                account="school",
+            )
+
+        assert out == f"Error: no connected account for {GMAIL} is named 'school'."
+        register.assert_not_awaited()
+
+    async def test_without_an_account_every_account_is_watched(self) -> None:
+        register, _ = self._register()
+        with patch(f"{_MOD}.register_subscription", register):
+            await subscribe_todo_to_trigger.coroutine(
+                config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="notify"
+            )
+
+        assert register.await_args.kwargs["account_id"] is None
 
     async def test_no_conditions_is_allowed(self) -> None:
         register, _ = self._register()

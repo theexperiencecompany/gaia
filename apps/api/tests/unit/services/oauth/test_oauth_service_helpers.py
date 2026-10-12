@@ -5,10 +5,9 @@ base revision — the regression-proof lane runs its marked tests there.
 """
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from bson import ObjectId
-from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
 
 from app.constants.log_tags import LogTag
@@ -19,9 +18,7 @@ from app.services.oauth.oauth_service import (
     _refresh_bio_status_for_reconnect,
     _returning_user_profile,
     _run_signup_side_effects,
-    _setup_integration_triggers,
 )
-from app.services.workflow.trigger_service import TriggerService
 
 
 class LoguruErrorSpy:
@@ -325,31 +322,3 @@ class TestHandleGmailConnection:
             }
         ]
         assert spy.errors == [(message, True)]
-
-
-# ---------------------------------------------------------------------------
-# _setup_integration_triggers
-# ---------------------------------------------------------------------------
-
-
-class TestSetupIntegrationTriggers:
-    def test_resyncs_this_users_workflow_triggers_for_the_reconnected_integration(self):
-        """The resync keeps workflows firing after a reconnect strands the old account's triggers."""
-        workflow_trigger = MagicMock()
-        workflow_trigger.workflow_trigger_schema.slug = "gmail_new_email"
-        plain_trigger = MagicMock()
-        plain_trigger.workflow_trigger_schema = None
-        config = make_integration_config(
-            integration_id="gmail",
-            associated_triggers=[workflow_trigger, plain_trigger],
-        )
-        background_tasks = MagicMock()
-
-        with patch("app.services.oauth.oauth_service.get_composio_service"):
-            _setup_integration_triggers("user123", config, background_tasks)
-
-        background_tasks.add_task.assert_any_call(
-            TriggerService.resync_user_workflow_triggers,
-            "user123",
-            ["gmail_new_email"],
-        )

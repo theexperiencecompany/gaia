@@ -31,8 +31,8 @@ export interface IntegrationDeepLinkHandlers {
   onOpen: (integrationId: string, opts: { refresh: boolean }) => void;
   /** `?connect=<id>`: start that integration's connect flow on arrival. Used by
    *  the links GAIA puts in chat, so "Connect Gmail" is one tap, not a page
-   *  and a search. */
-  onConnectRequested: (integrationId: string) => void;
+   *  and a search. `&account=<id>` signs that expired account back in instead. */
+  onConnectRequested: (integrationId: string, accountId: string | null) => void;
   /** `?connect_error=<reason>`: a bot connect link could not be redeemed. */
   onConnectLinkFailed: (reason: string) => void;
 }
@@ -94,6 +94,7 @@ export function useIntegrationDeepLink(
     const oauthSuccess = searchParams.get("oauth_success");
     const refresh = searchParams.get("refresh") === "true";
     const connect = searchParams.get("connect");
+    const account = searchParams.get("account");
     const connectError = searchParams.get("connect_error");
     const h = handlersRef.current;
 
@@ -132,8 +133,8 @@ export function useIntegrationDeepLink(
     // before the OAuth redirect so coming back never re-triggers it.
     if (connect && consumedConnectRef.current !== connect) {
       consumedConnectRef.current = connect;
-      stripParams(["connect"]);
-      h.onConnectRequested(connect);
+      stripParams(["connect", "account"]);
+      h.onConnectRequested(connect, account);
     }
   }, [searchParams, router]);
 }

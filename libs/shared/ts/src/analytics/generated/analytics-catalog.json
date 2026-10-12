@@ -3897,6 +3897,106 @@
       }
     },
     {
+      "event": "integration:account_added",
+      "class": "IntegrationAccountAdded",
+      "owner": "server",
+      "domain": "integration",
+      "description": "An account was authorized on a multi-account integration, or replaced one with its identity.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An account was authorized on a multi-account integration, or replaced one with its identity.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "account_count": {
+            "title": "Account Count",
+            "type": "integer"
+          },
+          "replaced": {
+            "title": "Replaced",
+            "type": "boolean"
+          },
+          "has_identity": {
+            "title": "Has Identity",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "integration_id",
+          "account_count",
+          "replaced",
+          "has_identity"
+        ],
+        "title": "IntegrationAccountAdded",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:account_removed",
+      "class": "IntegrationAccountRemoved",
+      "owner": "server",
+      "domain": "integration",
+      "description": "One account of an integration was disconnected; 0 left means the integration went too.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One account of an integration was disconnected; 0 left means the integration went too.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "account_count": {
+            "title": "Account Count",
+            "type": "integer"
+          }
+        },
+        "required": ["integration_id", "account_count"],
+        "title": "IntegrationAccountRemoved",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:account_renamed",
+      "class": "IntegrationAccountRenamed",
+      "owner": "server",
+      "domain": "integration",
+      "description": "An account of an integration was given a name, or had it cleared.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An account of an integration was given a name, or had it cleared.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "cleared": {
+            "title": "Cleared",
+            "type": "boolean"
+          }
+        },
+        "required": ["integration_id", "cleared"],
+        "title": "IntegrationAccountRenamed",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:connect_initiated",
       "class": "IntegrationConnectInitiated",
       "owner": "server",
@@ -4271,6 +4371,35 @@
         },
         "required": ["integration_id"],
         "title": "IntegrationInstructionsUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:primary_changed",
+      "class": "IntegrationPrimaryChanged",
+      "owner": "server",
+      "domain": "integration",
+      "description": "Another account became an integration's primary, the one triggers and defaults use.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Another account became an integration's primary, the one triggers and defaults use.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "account_count": {
+            "title": "Account Count",
+            "type": "integer"
+          }
+        },
+        "required": ["integration_id", "account_count"],
+        "title": "IntegrationPrimaryChanged",
         "type": "object"
       }
     },
@@ -7301,6 +7430,30 @@
             ],
             "default": null,
             "title": "Source"
+          },
+          "account_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Account Count"
+          },
+          "account_is_primary": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Account Is Primary"
           }
         },
         "required": ["tool_name"],

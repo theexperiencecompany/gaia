@@ -165,6 +165,10 @@ class TriggerSubscription(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     trigger_name: str
+    account_id: str | None = Field(
+        default=None,
+        description="GAIA id of the one connected account whose events fire it; None for every account",
+    )
     conditions: list[SubscriptionCondition] = Field(default_factory=list)
     match: ConditionMatch = Field(
         default=ConditionMatch.ALL,

@@ -6,15 +6,23 @@ single process's fan-out, not the fleet's.
 run_on_captured_loop is the bridge for the reverse direction: sync code on a
 worker thread (a Composio custom tool, an executor-offloaded callable) that must
 drive an async client bound to the server's event loop.
+
+ContextThreadPoolExecutor is the thread pool for work that reads context
+variables (the Composio account a tool call is scoped to): a plain pool runs
+each task with an empty context.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
-from typing import TypeVar
+from collections.abc import Callable, Coroutine
+from concurrent.futures import Future, ThreadPoolExecutor
+import contextvars
+import functools
+from typing import ParamSpec, TypeVar
 
 _T = TypeVar("_T")
+_P = ParamSpec("_P")
 
 # key -> (semaphore, the loop it was created under)
 _loop_semaphores: dict[str, tuple[asyncio.Semaphore, asyncio.AbstractEventLoop]] = {}
@@ -77,3 +85,13 @@ def loop_bound_semaphore(key: str, size: int) -> asyncio.Semaphore:
         sem = asyncio.Semaphore(size)
         _loop_semaphores[key] = (sem, loop)
     return sem
+
+
+class ContextThreadPoolExecutor(ThreadPoolExecutor):
+    """A thread pool whose tasks see the submitting thread's context variables."""
+
+    def submit(self, fn: Callable[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs) -> Future[_T]:
+        # One copy per task: a Context cannot be entered by two threads at once.
+        return super().submit(
+            functools.partial(contextvars.copy_context().run, fn, *args, **kwargs)
+        )

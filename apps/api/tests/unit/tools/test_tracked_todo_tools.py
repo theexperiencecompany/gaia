@@ -68,6 +68,7 @@ from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
 from app.utils.timezone import Timezone
 from shared.py.wide_events import spawn_logged_task
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
@@ -1792,6 +1793,15 @@ class TestCreateThreadTrackedTodo:
 
     _CREATE = "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo"
 
+    @pytest.fixture(autouse=True)
+    def gmail_accounts(self) -> Iterator[AsyncMock]:
+        """Stub the user's Gmail accounts; none on record unless a test says so."""
+        with patch(
+            "app.services.todos.account_refs.get_account_record",
+            AsyncMock(return_value=None),
+        ) as lookup:
+            yield lookup
+
     @staticmethod
     def _response() -> TodoResponse:
         now = datetime.now(UTC)
@@ -1829,6 +1839,67 @@ class TestCreateThreadTrackedTodo:
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc"
         )
+
+    async def test_a_single_gmail_account_is_pinned_without_being_named(
+        self, gmail_accounts: AsyncMock
+    ):
+        """Pinned now, so adding a second account or a new primary later cannot move it."""
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"), user_id="user-1"
+        )
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+        assert create.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
+        )
+        gmail_accounts.assert_awaited_once_with("user-1", "gmail")
+
+    async def test_with_several_accounts_the_named_one_holds_the_thread(
+        self, gmail_accounts: AsyncMock
+    ):
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"),
+            make_integration_account("ca_home", nickname="Personal"),
+            user_id="user-1",
+        )
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
+            )
+        assert create.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_home"
+        )
+
+    @pytest.mark.parametrize(
+        ("gmail_account", "refusal"),
+        [
+            (
+                None,
+                "Error: the user has 2 Gmail accounts (ca_work@acme.com, Personal). Pass "
+                "gmail_account with the one the thread was fetched from.",
+            ),
+            (
+                "school",
+                "Error: no Gmail account is named 'school'. Its accounts: ca_work@acme.com, "
+                "Personal.",
+            ),
+        ],
+        ids=["unnamed", "unknown"],
+    )
+    async def test_a_thread_whose_account_is_unclear_is_not_tracked(
+        self, gmail_accounts: AsyncMock, gmail_account: str | None, refusal: str
+    ):
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"),
+            make_integration_account("ca_home", nickname="Personal"),
+            user_id="user-1",
+        )
+        with patch(self._CREATE, new_callable=AsyncMock) as create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
+            )
+        assert result == refusal
+        create.assert_not_awaited()
 
     async def test_every_field_reaches_the_service(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
