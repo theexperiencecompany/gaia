@@ -109,6 +109,7 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
           NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
+          NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
           IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
           # A production bundle missing a public value ships a dead link or silent analytics.
