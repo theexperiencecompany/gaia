@@ -19,6 +19,11 @@ from uuid import uuid4
 
 from directives import Response, ToolCallResponse
 
+
+class ScriptedFault(RuntimeError):
+    """A [[fail:...]] directive firing: breaks the streamed response mid-flight."""
+
+
 # Split streamed payloads across a few chunks so the stub exercises the client's
 # delta-assembly path (tool-call argument concatenation, content joining).
 _STREAM_PIECES = 3
@@ -162,6 +167,10 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
     else:
         for piece in _split(response.text, _STREAM_PIECES):
             yield _chunk(model, completion_id, created, {"content": piece}, None)
+        if response.fail is not None:
+            # Raising inside the body generator makes uvicorn drop the connection
+            # mid-response — the client sees exactly a provider stream breaking.
+            raise ScriptedFault(response.fail)
         finish_reason = "stop"
 
     yield _chunk(model, completion_id, created, {}, finish_reason)
