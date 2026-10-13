@@ -4,8 +4,9 @@ notify_on_completion=true (or absent, the old default) becomes delivery="now";
 notify_on_completion=false becomes delivery="silent". The legacy field is unset.
 Workflows that already carry a delivery are left alone, so re-running is safe.
 
-Run BEFORE deploying the code that reads delivery: that code requires the field
-on every workflow document and fails loud on one without it.
+WorkflowDocument reads an unmigrated record the same way at load time, so the
+deploy does not depend on this having run; running it retires that mapping's
+work and is safe before or after the new code ships.
 
     cd apps/api && uv run python scripts/migrate_workflow_delivery.py [--apply]
 """
@@ -19,13 +20,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.collections import get_async_collection
+from app.models.workflow_models import LegacyDeliveryFlag
 
 workflows_collection = get_async_collection("workflows")
-
-
-def delivery_for(notify_on_completion: object) -> WorkflowDelivery:
-    """Map the legacy flag to its delivery mode; only an explicit False was silent."""
-    return WorkflowDelivery.SILENT if notify_on_completion is False else WorkflowDelivery.NOW
 
 
 async def migrate(apply: bool) -> None:
@@ -36,7 +33,7 @@ async def migrate(apply: bool) -> None:
     counts = dict.fromkeys(WorkflowDelivery, 0)
     query = {"delivery": {"$exists": False}}
     async for doc in workflows_collection.find(query, {"_id": 1, "notify_on_completion": 1}):
-        delivery = delivery_for(doc.get("notify_on_completion"))
+        delivery = LegacyDeliveryFlag.model_validate(doc).delivery
         counts[delivery] += 1
         print(
             f"  {doc['_id']}: notify_on_completion={doc.get('notify_on_completion')!r} -> {delivery}"

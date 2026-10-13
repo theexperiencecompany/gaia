@@ -756,6 +756,19 @@ class PlaybookDiscard(BaseModel):
     details: dict[str, str] = Field(default_factory=dict)
 
 
+class LegacyDeliveryFlag(BaseModel):
+    """The flag a workflow stored before delivery modes; the old schema defaulted it to True."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    notify_on_completion: bool = True
+
+    @property
+    def delivery(self) -> WorkflowDelivery:
+        """What the flag meant: False ran silently, True pushed the result."""
+        return WorkflowDelivery.NOW if self.notify_on_completion else WorkflowDelivery.SILENT
+
+
 class WorkflowDocument(Workflow, MongoDocument):
     """A workflow as stored in MongoDB.
 
@@ -772,6 +785,21 @@ class WorkflowDocument(Workflow, MongoDocument):
     # diamond: a persisted workflow always has its wf_ id, so this stays
     # non-optional with no alias — the repository keys on _id directly.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Read a record stored before delivery modes by what its flag meant then.
+
+        notify_on_completion=False ran silently; True, or the flag never written,
+        pushed the result. This maps a stored value, not a missing one, so the
+        API reads every existing workflow the way it ran until now.
+        scripts/migrate_workflow_delivery.py rewrites the records for good.
+        """
+        if isinstance(data, dict) and "delivery" not in data:
+            return {**data, "delivery": LegacyDeliveryFlag.model_validate(data).delivery}
+        return data
+
     #: Runs declined to write a playbook at this workflow hash. Past
     #: PLAYBOOK_DECLINE_LIMIT on the same hash the check brief stops asking;
     #: an edit to the workflow changes the hash and asks again.
