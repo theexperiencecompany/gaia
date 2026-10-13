@@ -6742,6 +6742,12 @@ export interface components {
             conversations: components["schemas"]["ConversationSyncRow"][];
         };
         /**
+         * BlobStoreKind
+         * @description Where uploaded and generated files live; the value is the BLOB_STORE setting.
+         * @enum {string}
+         */
+        BlobStoreKind: "local" | "cloudinary";
+        /**
          * BlogCountResponse
          * @description Response for the total count of blog posts.
          */
@@ -13553,6 +13559,8 @@ export interface components {
              * @description Whether payments are live for this instance
              */
             billing_enabled: boolean;
+            /** @description Where uploaded and generated files live (BLOB_STORE) */
+            blob_store: components["schemas"]["BlobStoreKind"];
             /**
              * Has Admin Account
              * @description Whether the instance administrator exists
@@ -16421,6 +16429,7 @@ export type BatchEventUpdateRequest = components['schemas']['BatchEventUpdateReq
 export type BatchEventUpdateResponse = components['schemas']['BatchEventUpdateResponse'];
 export type BatchSyncRequest = components['schemas']['BatchSyncRequest'];
 export type BatchSyncResponse = components['schemas']['BatchSyncResponse'];
+export type BlobStoreKind = components['schemas']['BlobStoreKind'];
 export type BlogCountResponse = components['schemas']['BlogCountResponse'];
 export type BlogPost = components['schemas']['BlogPost'];
 export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_transcribe_bot_audio'];

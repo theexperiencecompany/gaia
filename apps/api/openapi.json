@@ -1370,6 +1370,15 @@
         "title": "BatchSyncResponse",
         "type": "object"
       },
+      "BlobStoreKind": {
+        "description": "Where uploaded and generated files live; the value is the BLOB_STORE setting.",
+        "enum": [
+          "local",
+          "cloudinary"
+        ],
+        "title": "BlobStoreKind",
+        "type": "string"
+      },
       "BlogCountResponse": {
         "description": "Response for the total count of blog posts.",
         "properties": {
@@ -15694,6 +15703,10 @@
             "title": "Billing Enabled",
             "type": "boolean"
           },
+          "blob_store": {
+            "$ref": "#/components/schemas/BlobStoreKind",
+            "description": "Where uploaded and generated files live (BLOB_STORE)"
+          },
           "has_admin_account": {
             "description": "Whether the instance administrator exists",
             "title": "Has Admin Account",
@@ -15735,7 +15748,8 @@
           "billing_enabled",
           "providers",
           "plans_seeded",
-          "local_code_sandbox"
+          "local_code_sandbox",
+          "blob_store"
         ],
         "title": "SetupStatusResponse",
         "type": "object"

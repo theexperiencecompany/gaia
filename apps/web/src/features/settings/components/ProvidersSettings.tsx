@@ -32,7 +32,10 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import {
+  isProviderOffered,
+  useSetupStatus,
+} from "@/features/settings/hooks/useSetupStatus";
 import {
   type CustomPreset,
   type CustomPresetKey,
@@ -572,11 +575,13 @@ export function ProvidersSettings() {
         ? {
             displayRows: (
               Object.keys(catalog.providers) as CredentialProvider[]
-            ).map((key) => resolveProviderRow(key, catalog)),
+            )
+              .filter((key) => isProviderOffered(status, key))
+              .map((key) => resolveProviderRow(key, catalog)),
             presets: customPresetsFromCatalog(catalog),
           }
         : { displayRows: [], presets: [] },
-    [catalog],
+    [catalog, status],
   );
 
   const editingRow = displayRows.find((r) => r.key === editingKey) ?? null;

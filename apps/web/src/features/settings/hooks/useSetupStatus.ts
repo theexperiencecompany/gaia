@@ -39,6 +39,17 @@ export function isProviderConfigured(
   return status?.providers?.[key]?.configured === true;
 }
 
+/**
+ * Whether Settings offers a provider's card. Cloudinary does nothing unless
+ * the instance stores files there (BLOB_STORE=cloudinary).
+ */
+export function isProviderOffered(
+  status: SetupStatus | undefined,
+  key: CredentialProvider,
+): boolean {
+  return key !== "cloudinary" || status?.blob_store === "cloudinary";
+}
+
 /** Whether any chat-capable provider (per the catalog) can serve a request. */
 export function isAnyLlmConfigured(
   status: SetupStatus | undefined,

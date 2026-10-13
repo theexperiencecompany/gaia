@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.middleware.rate_limiter import limiter
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.auth import RegistrationPolicy
 from app.constants.llm import OPENROUTER_MODELS_URL
@@ -119,6 +120,9 @@ class SetupStatusResponse(BaseModel):
     local_code_sandbox: bool = Field(
         description="Whether code runs in the opt-in local Docker sandbox when no E2B key is saved"
     )
+    blob_store: BlobStoreKind = Field(
+        description="Where uploaded and generated files live (BLOB_STORE)"
+    )
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -209,6 +213,7 @@ async def get_setup_status() -> SetupStatusResponse:
         },
         plans_seeded=await is_payment_setup(),
         local_code_sandbox=settings.deployment.local_code_sandbox,
+        blob_store=settings.deployment.blob_store,
     )
 
 

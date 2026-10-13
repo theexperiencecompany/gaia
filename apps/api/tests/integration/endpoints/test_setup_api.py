@@ -23,6 +23,7 @@ from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import setup as setup_endpoint
 from app.api.v1.endpoints.setup import router as setup_router
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import CREDENTIAL_PROVIDERS
@@ -119,6 +120,7 @@ class TestStatus:
             "providers",
             "plans_seeded",
             "local_code_sandbox",
+            "blob_store",
         }
         assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {
@@ -136,6 +138,17 @@ class TestStatus:
             "firecrawl",
         }
         assert all(set(v) == {"configured", "source"} for v in body["providers"].values())
+
+    @pytest.mark.parametrize("blob_store", list(BlobStoreKind))
+    async def test_status_reports_the_instances_blob_store(
+        self, anon_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, blob_store: BlobStoreKind
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "BLOB_STORE", blob_store)
+
+        resp = await anon_client.get(f"{API}/status")
+
+        assert resp.json()["blob_store"] == blob_store.value
 
     async def test_status_has_no_auth_dependency(self) -> None:
         assert not _requires("/status", get_current_user)

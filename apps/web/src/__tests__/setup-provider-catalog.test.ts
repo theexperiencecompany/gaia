@@ -25,7 +25,10 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => {
   };
 });
 
-import { isAnyLlmConfigured } from "@/features/settings/hooks/useSetupStatus";
+import {
+  isAnyLlmConfigured,
+  isProviderOffered,
+} from "@/features/settings/hooks/useSetupStatus";
 import { useProviderSetup } from "@/features/setup-wizard/hooks/useProviderSetup";
 import {
   resolveLlmProviderCards,
@@ -73,6 +76,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   needs_setup: true,
   plans_seeded: true,
   local_code_sandbox: false,
+  blob_store: "local",
   providers: Object.fromEntries(
     configured.map((key) => [
       key,
@@ -188,5 +192,23 @@ describe("useProviderSetup", () => {
       defaultModel: "",
       presets: [],
     });
+  });
+});
+
+describe("isProviderOffered", () => {
+  it("offers Cloudinary only when the instance stores files there", () => {
+    expect(
+      isProviderOffered(
+        { ...statusWith([]), blob_store: "cloudinary" },
+        "cloudinary",
+      ),
+    ).toBe(true);
+    expect(isProviderOffered(statusWith([]), "cloudinary")).toBe(false);
+    expect(isProviderOffered(undefined, "cloudinary")).toBe(false);
+  });
+
+  it("offers every other provider whatever the blob store", () => {
+    expect(isProviderOffered(statusWith([]), "e2b")).toBe(true);
+    expect(isProviderOffered(undefined, "openrouter")).toBe(true);
   });
 });

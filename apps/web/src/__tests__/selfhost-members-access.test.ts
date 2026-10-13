@@ -15,6 +15,7 @@ const status = (
   needs_setup: false,
   plans_seeded: true,
   local_code_sandbox: false,
+  blob_store: "local",
   providers: {},
   ...overrides,
 });
