@@ -1,4 +1,4 @@
-"""Referral program events: invites, attribution, conversions and months earned; plus the UI-only taps."""
+"""Referral program events: invites, attribution, conversions, months earned and nudges; plus the UI-only taps."""
 
 from typing import ClassVar, Literal
 
@@ -10,6 +10,8 @@ __all__ = [
     "ReferralConverted",
     "ReferralInviteSent",
     "ReferralInviteUndone",
+    "ReferralNudgeDismissed",
+    "ReferralNudgeSent",
     "ReferralRewardGranted",
     "ReferralSentWithGaiaAppended",
     "ReferralShareClicked",
@@ -71,6 +73,26 @@ class ReferralSentWithGaiaAppended(ServerEvent):
     tool: Identifier
 
 
+class ReferralNudgeSent(ServerEvent):
+    """GAIA messaged the user about sharing on its own: a pitch under the weekly cap, or a reward note."""
+
+    event: ClassVar[str] = "referral:nudge_sent"
+    # One pitch a week plus a reward note per paying friend.
+    budget_per_user_day: ClassVar[int] = 50
+
+    nudge: Identifier
+
+
+class ReferralNudgeDismissed(ServerEvent):
+    """The user dismissed a referral nudge; the dismissal that pauses nudges says so."""
+
+    event: ClassVar[str] = "referral:nudge_dismissed"
+    budget_per_user_day: ClassVar[int] = 10
+
+    nudge: Identifier
+    paused: bool
+
+
 ReferralCopyVariantName = Literal["gift", "earn", "time_back", "insider"]
 
 
@@ -80,7 +102,7 @@ class ReferralShareClicked(WebEvent):
     event: ClassVar[str] = "referral:share_clicked"
     budget_per_user_day: ClassVar[int] = 50
 
-    surface: Literal["page", "sidebar", "post_payment", "weekly_stats"]
+    surface: Literal["page", "sidebar", "post_payment", "chat_card", "weekly_stats"]
     channel: Literal["native", "whatsapp", "sms", "x", "linkedin", "email", "copy", "qr"]
     copy_variant: ReferralCopyVariantName
 
@@ -91,7 +113,7 @@ class ReferralCardDismissed(WebEvent):
     event: ClassVar[str] = "referral:card_dismissed"
     budget_per_user_day: ClassVar[int] = 10
 
-    surface: Literal["sidebar", "post_payment", "weekly_stats"]
+    surface: Literal["sidebar", "post_payment"]
     copy_variant: ReferralCopyVariantName
 
 

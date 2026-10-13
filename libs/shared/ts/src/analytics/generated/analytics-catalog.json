@@ -5789,7 +5789,7 @@
         "description": "The user closed a referral prompt without sharing.",
         "properties": {
           "surface": {
-            "enum": ["sidebar", "post_payment", "weekly_stats"],
+            "enum": ["sidebar", "post_payment"],
             "title": "Surface",
             "type": "string"
           },
@@ -5902,6 +5902,60 @@
       }
     },
     {
+      "event": "referral:nudge_dismissed",
+      "class": "ReferralNudgeDismissed",
+      "owner": "server",
+      "domain": "referral",
+      "description": "The user dismissed a referral nudge; the dismissal that pauses nudges says so.",
+      "previous_names": [],
+      "budget_per_user_day": 10,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user dismissed a referral nudge; the dismissal that pauses nudges says so.",
+        "properties": {
+          "nudge": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Nudge",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          }
+        },
+        "required": ["nudge", "paused"],
+        "title": "ReferralNudgeDismissed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:nudge_sent",
+      "class": "ReferralNudgeSent",
+      "owner": "server",
+      "domain": "referral",
+      "description": "GAIA messaged the user about sharing on its own: a pitch under the weekly cap, or a reward note.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA messaged the user about sharing on its own: a pitch under the weekly cap, or a reward note.",
+        "properties": {
+          "nudge": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Nudge",
+            "type": "string"
+          }
+        },
+        "required": ["nudge"],
+        "title": "ReferralNudgeSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "referral:reward_granted",
       "class": "ReferralRewardGranted",
       "owner": "server",
@@ -5975,7 +6029,13 @@
         "description": "The user picked a way to share their invite link: the native sheet, a channel, copy or QR.",
         "properties": {
           "surface": {
-            "enum": ["page", "sidebar", "post_payment", "weekly_stats"],
+            "enum": [
+              "page",
+              "sidebar",
+              "post_payment",
+              "chat_card",
+              "weekly_stats"
+            ],
             "title": "Surface",
             "type": "string"
           },

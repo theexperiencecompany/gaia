@@ -3,7 +3,7 @@ import type React from "react";
 import Composer from "@/features/chat/components/composer/Composer";
 import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 import StarterText from "@/features/chat/components/interface/StarterText";
-import { WeeklyStatsChatCard } from "@/features/referrals/components/WeeklyStatsCard";
+import { WeeklyStatsChatCard } from "@/features/referrals/components/WeeklyStatsChatCard";
 
 import { ChatSuggestions } from "./ChatSuggestions";
 

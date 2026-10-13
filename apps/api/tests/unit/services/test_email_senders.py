@@ -14,8 +14,10 @@ from app.config.settings import settings
 from app.constants.email import CONTACT_EMAIL, FOUNDER_SENDER
 from app.constants.log_tags import LogTag
 from app.services.email import (
+    ReferralRewardEmail,
     add_marketing_contact,
     send_inactive_user_email,
+    send_referral_reward_email,
     send_welcome_email,
 )
 from app.services.email.senders import (
@@ -434,3 +436,32 @@ class TestTheWeeklyWindowIsClaimedNotJustRead:
                 await send_limit_reached_email("user-1", "chat_messages")
 
         release.assert_awaited_once_with("user-1", previously)
+
+
+class TestSendReferralRewardEmail:
+    @patch(f"{SENDERS}.build_unsubscribe_headers", return_value={"List-Unsubscribe": "<u>"})
+    @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://heygaia.io/unsub")
+    @patch(f"{SENDERS}.send_email")
+    async def test_the_real_template_tells_who_joined_and_when_the_bill_moves(
+        self, mock_send, _mock_url, _mock_headers
+    ) -> None:
+        await send_referral_reward_email(
+            ReferralRewardEmail(
+                to="aryan@example.com",
+                user_id=SENDER_USER_ID,
+                user_name="Aryan",
+                friend_name="Priya",
+                reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
+            )
+        )
+
+        message = mock_send.call_args.args[0]
+        assert message.to == ["aryan@example.com"]
+        assert message.subject == "Yay, Priya joined! 🎉"
+        assert message.sender == FOUNDER_SENDER
+        assert message.reply_to == CONTACT_EMAIL
+        assert message.headers == {"List-Unsubscribe": "<u>"}
+        assert "Yay, Priya joined GAIA!" in message.html
+        assert "Your next bill moves to Dec 14. Enjoy the free month." in message.html
+        assert f"{settings.FRONTEND_URL}/settings/referrals" in message.html
+        assert "https://heygaia.io/unsub" in message.html

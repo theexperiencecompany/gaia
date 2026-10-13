@@ -1,13 +1,14 @@
-"""The /referrals routes: the first-touch cookie, the subscribe-first 403 and the public opt-out page."""
+"""The /referrals routes: the first-touch cookie, the subscribe-first 403, the opt-out page and the chat-card nudge."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
 from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED
-from app.constants.referrals import REFERRAL_COOKIE_NAME
+from app.constants.referrals import REFERRAL_COOKIE_NAME, ReferralNudge
 from app.models.payment_models import PlanDuration, PlanResponse, PlanTier
+from app.models.referral_models import ReferralNudgeStateDocument
 from app.schemas.referrals import ReferralResolveResponse
 from app.services.referrals.offer import ProPlans, build_offer
 
@@ -156,7 +157,7 @@ class TestWeeklyCard:
                 AsyncMock(return_value=AsyncMock(id="u")),
             ),
         ):
-            response = await client.get(f"{URL}/weekly-card")
+            response = await client.post(f"{URL}/nudges/weekly-card")
 
         assert response.status_code == 403
         assert response.json()["code"] == REFERRAL_SUBSCRIPTION_REQUIRED
@@ -178,3 +179,59 @@ class TestUnsubscribe:
         page = await unauthed_client.get(f"{URL}/unsubscribe/forged")
 
         assert (posted.status_code, page.status_code) == (400, 400)
+
+
+NUDGES = "app.services.referrals.nudges"
+
+
+class TestChatCardNudge:
+    async def test_the_card_shows_when_the_weeks_slot_is_free(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{NUDGES}.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=object()),
+            ),
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture"),
+        ):
+            repo.get = AsyncMock(return_value=None)
+            repo.claim = AsyncMock(return_value=ReferralNudgeStateDocument(user_id="u"))
+            response = await client.post(f"{URL}/nudges/chat-card")
+
+        assert response.status_code == 200
+        assert response.json() == {"show": True}
+        assert repo.claim.call_args.args[1] is ReferralNudge.CHAT_CARD
+
+    async def test_the_card_stays_hidden_once_this_weeks_nudge_went_out(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{NUDGES}.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=object()),
+            ),
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture") as capture,
+        ):
+            repo.get = AsyncMock(return_value=None)
+            repo.claim = AsyncMock(return_value=None)
+            response = await client.post(f"{URL}/nudges/chat-card")
+
+        assert response.json() == {"show": False}
+        capture.assert_not_called()
+
+    async def test_dismissing_the_card_reports_whether_it_paused_nudges(
+        self, client: AsyncClient
+    ) -> None:
+        state = ReferralNudgeStateDocument(
+            user_id="u", paused_until=datetime.now(UTC) + timedelta(days=30)
+        )
+        with (
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture"),
+        ):
+            repo.record_dismissal = AsyncMock(return_value=state)
+            response = await client.post(f"{URL}/nudges/chat-card/dismissal")
+
+        assert response.status_code == 200
+        assert response.json() == {"paused": True}

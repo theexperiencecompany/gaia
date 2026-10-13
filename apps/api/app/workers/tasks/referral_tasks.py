@@ -1,10 +1,11 @@
-"""Apply a resubscribed referrer's banked free months, queued by the billing reducer on activation."""
+"""Referral jobs: a resubscribed referrer's banked free months, and the hourly week-one DM sweep."""
 
 from arq import Retry
 
 from app.constants.log_tags import LogTag
 from app.constants.referrals import APPLY_BANKED_MONTHS_RETRY_DELAY
 from app.services.referrals.rewards import apply_banked_months
+from app.services.referrals.week_one import send_week_one_dms
 from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
@@ -28,3 +29,8 @@ async def apply_banked_referral_months_task(ctx: ArqJobContext, user_id: str) ->
         raise Retry(defer=defer) from e
     log.set_ns("referral", months_applied=applied)
     return f"apply_banked_referral_months {applied}"
+
+
+async def send_referral_week_one_dms_task(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    """Hourly sweep: DM each user who just had a good first week, at 10am their time."""
+    return await send_week_one_dms()

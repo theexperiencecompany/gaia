@@ -6,11 +6,20 @@ are the critical branches — a step that asks the user to connect an
 integration they already have is dead copy.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
+from app.models.payment_models import PlanDuration, PlanResponse, PlanTier
 from app.models.user_models import UserDocument
-from app.services.nurture.context_builders import CONTEXT_BUILDERS, google_connection_status
+from app.services.nurture.context_builders import (
+    CONTEXT_BUILDERS,
+    google_connection_status,
+    referral_gift_prices,
+)
+from app.services.referrals.offer import ProPlans
+
+NOW = datetime(2026, 10, 14, tzinfo=UTC)
 
 
 def _user(user_id: str = "u-1", **overrides) -> UserDocument:
@@ -81,6 +90,35 @@ class TestGoogleConnectionStatus:
 
 
 def test_context_builders_map_exposes_every_builder() -> None:
-    assert set(CONTEXT_BUILDERS) == {"google_connection_status"}
+    assert set(CONTEXT_BUILDERS) == {"google_connection_status", "referral_gift_prices"}
     for builder in CONTEXT_BUILDERS.values():
         assert callable(builder)
+
+
+def _plan(duration: PlanDuration, amount: int) -> PlanResponse:
+    return PlanResponse(
+        id=duration.value,
+        dodo_product_id=f"pdt_{duration.value}",
+        name="Pro",
+        plan_type=PlanTier.PRO,
+        amount=amount,
+        currency="USD",
+        duration=duration,
+        is_active=True,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+
+
+async def test_the_share_email_quotes_the_live_gift_price() -> None:
+    plans = ProPlans(
+        monthly=_plan(PlanDuration.MONTHLY, 3000), yearly=_plan(PlanDuration.YEARLY, 27000)
+    )
+    with patch(
+        "app.services.nurture.context_builders.payment_service.get_pro_plans",
+        AsyncMock(return_value=plans),
+    ):
+        assert await referral_gift_prices(_user()) == {
+            "price_line": "$15/month for their first 2 months",
+            "regular_price_line": "$30/month",
+        }

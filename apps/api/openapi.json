@@ -13935,6 +13935,20 @@
         "title": "RedirectConfig",
         "type": "object"
       },
+      "ReferralChatCardResponse": {
+        "description": "Whether the chat may show its share card now; a true answer spends this week's nudge.",
+        "properties": {
+          "show": {
+            "title": "Show",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "show"
+        ],
+        "title": "ReferralChatCardResponse",
+        "type": "object"
+      },
       "ReferralCopyVariant": {
         "description": "The copy angle a referral surface speaks in; the PostHog experiment picks one.",
         "enum": [
@@ -14107,6 +14121,20 @@
           "layout_variant"
         ],
         "title": "ReferralMeResponse",
+        "type": "object"
+      },
+      "ReferralNudgeDismissResponse": {
+        "properties": {
+          "paused": {
+            "description": "This dismissal paused every referral nudge for 30 days",
+            "title": "Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "title": "ReferralNudgeDismissResponse",
         "type": "object"
       },
       "ReferralOffer": {
@@ -34847,6 +34875,214 @@
         ]
       }
     },
+    "/api/v1/referrals/nudges/chat-card": {
+      "post": {
+        "description": "Ask before showing the in-chat share card: show is true at most once a week, never while paused.",
+        "operationId": "referrals_claim_chat_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralChatCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Claim Chat Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/chat-card/dismissal": {
+      "post": {
+        "description": "Record the user closing the share card; the second dismissal pauses every nudge for 30 days.",
+        "operationId": "referrals_dismiss_chat_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralNudgeDismissResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Dismiss Chat Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/weekly-card": {
+      "post": {
+        "description": "Last week's time saved and the link to share it; a true show spends this week's referral nudge.",
+        "operationId": "referrals_claim_my_weekly_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralWeeklyCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Claim My Weekly Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/weekly-card/dismissal": {
+      "post": {
+        "description": "Record the user closing the weekly card; it counts toward the 30-day nudge pause like any nudge.",
+        "operationId": "referrals_dismiss_weekly_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralNudgeDismissResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Dismiss Weekly Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
     "/api/v1/referrals/resolve/{code}": {
       "get": {
         "description": "Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie.",
@@ -35112,58 +35348,6 @@
           }
         },
         "summary": "Invite Unsubscribe",
-        "tags": [
-          "Referrals"
-        ]
-      }
-    },
-    "/api/v1/referrals/weekly-card": {
-      "get": {
-        "description": "Last week's time saved and the link to share it; show says whether chat surfaces it today.",
-        "operationId": "referrals_get_my_weekly_card",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReferralWeeklyCardResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get My Weekly Card",
         "tags": [
           "Referrals"
         ]

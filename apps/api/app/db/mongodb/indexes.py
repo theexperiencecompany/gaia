@@ -723,12 +723,13 @@ async def create_referral_indexes() -> None:
     """Create the referral program's indexes; each unique one is a once-only guarantee.
 
     One code per user and per code string, one referral per friend, one invite
-    per (sender, recipient), one suppression per address.
+    per (sender, recipient), one suppression per address, one nudge budget per user.
     """
     codes = get_async_collection("referral_codes")
     referrals = get_async_collection("referrals")
     invites = get_async_collection("referral_invites")
     suppressions = get_async_collection("email_suppressions")
+    nudges = get_async_collection("referral_nudges")
     try:
         await asyncio.gather(
             codes.create_index("user_id", unique=True),
@@ -739,6 +740,7 @@ async def create_referral_indexes() -> None:
             invites.create_index([("sender_user_id", 1), ("recipient_email", 1)], unique=True),
             invites.create_index([("sender_user_id", 1), ("sent_at", -1)]),
             suppressions.create_index("email", unique=True),
+            nudges.create_index("user_id", unique=True),
         )
     except Exception as e:
         log.error(

@@ -48,6 +48,8 @@ from shared.py.analytics.catalog.onboarding import OnboardingCompleted, Onboardi
 from shared.py.analytics.catalog.referrals import (
     ReferralConverted,
     ReferralInviteSent,
+    ReferralNudgeDismissed,
+    ReferralNudgeSent,
     ReferralRewardGranted,
     ReferralSentWithGaiaAppended,
     ReferralSignupAttributed,
@@ -238,6 +240,19 @@ def build_journeys(transcript: Path) -> list[Journey]:
             "referral invite",
             journeys.referral_invite,
             (Expect(ReferralInviteSent.event, BROWSER, True, (("invite_surface", "page"),)),),
+        ),
+        Journey(
+            "referral chat card",
+            journeys.referral_chat_card,
+            (
+                Expect(ReferralNudgeSent.event, BROWSER, True, (("nudge", "chat_card"),)),
+                Expect(
+                    ReferralNudgeDismissed.event,
+                    BROWSER,
+                    True,
+                    (("nudge", "chat_card"), ("paused", False)),
+                ),
+            ),
         ),
         Journey(
             "web chat turn",

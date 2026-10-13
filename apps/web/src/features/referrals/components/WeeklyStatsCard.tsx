@@ -11,10 +11,9 @@ import {
 } from "@icons";
 import type { ReferralWeeklyCardResponse } from "@shared/api/generated";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useShareLink } from "../hooks/useShareLink";
-import { useWeeklyCard, weeklyImagePath } from "../hooks/useWeeklyCard";
+import { weeklyImagePath } from "../hooks/useWeeklyCard";
 import { REFERRAL_UI_COPY, WEEKLY_STATS_COPY } from "../referralCopy";
 import { formatTimeSaved } from "../utils/timeSaved";
 
@@ -24,15 +23,7 @@ interface WeeklyStatsCardProps {
   className?: string;
 }
 
-/** In chat on Mondays: last week's time back, and one way to share it. */
-export function WeeklyStatsChatCard({ className }: { className?: string }) {
-  const { card, dismiss } = useWeeklyCard();
-  if (!card) return null;
-  return (
-    <WeeklyStatsCard card={card} onDismiss={dismiss} className={className} />
-  );
-}
-
+/** Last week's time back, and one way to share it. */
 export function WeeklyStatsCard({
   card,
   onDismiss,
@@ -46,14 +37,6 @@ export function WeeklyStatsCard({
     text: WEEKLY_STATS_COPY.shareText(time),
     emailSubject: WEEKLY_STATS_COPY.emailSubject,
   });
-
-  const dismiss = () => {
-    track("referral:card_dismissed", {
-      surface: "weekly_stats",
-      copy_variant: card.copy_variant,
-    });
-    onDismiss();
-  };
 
   const shareIcon = canShareNatively ? (
     <Share08Icon width={16} height={16} />
@@ -81,7 +64,7 @@ export function WeeklyStatsCard({
           size="sm"
           radius="full"
           className="-mr-1.5 text-zinc-500"
-          onPress={dismiss}
+          onPress={onDismiss}
         >
           <CancelIcon width={14} height={14} />
         </Button>

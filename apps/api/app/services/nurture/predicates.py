@@ -27,6 +27,11 @@ async def used_chat(user: UserDocument) -> bool:
     return await conversation_repository.count_non_onboarding(user.id) > 0
 
 
+async def never_used_chat(user: UserDocument) -> bool:
+    """Return True while the user has no real conversation: too early to ask them to share GAIA."""
+    return not await used_chat(user)
+
+
 async def google_suite_connected(user: UserDocument) -> bool:
     """Return True only when BOTH Gmail and Google Calendar are connected."""
     statuses = await check_multiple_integrations_status(
@@ -59,4 +64,5 @@ SKIP_PREDICATES: Mapping[str, Callable[[UserDocument], Awaitable[bool]]] = {
     "uses_todos": uses_todos,
     "has_workflow": has_workflow,
     "linked_platform": linked_platform,
+    "never_used_chat": never_used_chat,
 }

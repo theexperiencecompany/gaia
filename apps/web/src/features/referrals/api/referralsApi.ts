@@ -29,6 +29,19 @@ export const referralsApi = {
       silent: true,
     }),
 
-  getWeeklyCard: () =>
-    api.get("/api/v1/referrals/weekly-card", { silent: true }),
+  /** Spends this week's referral nudge when show is true; ask only where the card would appear. */
+  claimWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card", { silent: true }),
+
+  dismissWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card/dismissal", {
+      silent: true,
+    }),
+
+  /** Spends this week's referral nudge when show is true; ask only at the moment the card would appear. */
+  claimChatCard: () =>
+    api.post("/api/v1/referrals/nudges/chat-card", { silent: true }),
+
+  dismissChatCard: () =>
+    api.post("/api/v1/referrals/nudges/chat-card/dismissal", { silent: true }),
 };

@@ -1,4 +1,4 @@
-"""Remix credit, the Sent with GAIA lookup and last week's time saved, against real Mongo.
+"""Remix credit, the Sent with GAIA lookup, last week's time saved and the Monday card, on real Mongo.
 
 Analytics is the patched seam; users, subscriptions, workflows, runs, rollups
 and referrals are real rows.
@@ -13,7 +13,7 @@ import uuid
 import pytest
 
 from app.config.settings import settings
-from app.constants.referrals import INVITE_PATH, ReferralSource
+from app.constants.referrals import INVITE_PATH, ReferralNudge, ReferralSource
 from app.constants.time_saved import MINUTES_SAVED_PER_ACTION, MINUTES_SAVED_PER_WORKFLOW_RUN
 from app.db.mongodb.indexes import create_referral_indexes
 from app.db.repositories.referrals import referral_repository
@@ -35,7 +35,9 @@ from app.models.workflow_execution_models import (
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.referrals.attribution import ReferralAttribution, attribute_signup
 from app.services.referrals.codes import ensure_code
+from app.services.referrals.nudges import rendered_by_client, send_pitch
 from app.services.referrals.sent_with_gaia import sent_with_gaia_link
+from app.services.referrals.weekly_card import claim_weekly_card
 from app.services.referrals.workflow_credit import workflow_creator_code
 from app.services.time_saved import get_time_saved
 
@@ -49,6 +51,7 @@ LOOP_COLLECTIONS = (
     "workflows",
     "workflow_executions",
     "usage_daily",
+    "referral_nudges",
 )
 
 
@@ -208,3 +211,49 @@ class TestTimeSaved:
     async def test_a_quiet_week_saves_nothing(self, clean: None) -> None:
         summary = await get_time_saved((await _user("Aryan")).id, NOW)
         assert (summary.actions, summary.workflow_runs, summary.minutes_saved) == (0, 0, 0)
+
+
+class TestWeeklyCard:
+    """The Monday card draws on the same weekly nudge slot as every other referral pitch."""
+
+    @pytest.fixture
+    def nudge_capture(self, clean: None, real_redis: Any) -> Iterator[MagicMock]:
+        with patch("app.services.referrals.nudges.capture") as capture:
+            yield capture
+
+    async def _busy_user(self) -> UserDocument:
+        user = await _user("Aryan")
+        await _subscribe(user)
+        await usage_daily_repository.increment(
+            user.id, (NOW - timedelta(days=2)).date().isoformat(), UsageDailyIncrement(count=12)
+        )
+        return user
+
+    async def test_monday_shows_it_once_and_the_slot_is_then_spent(
+        self, nudge_capture: MagicMock
+    ) -> None:
+        user = await self._busy_user()
+
+        first = await claim_weekly_card(user.id, NOW)
+        again = await claim_weekly_card(user.id, NOW + timedelta(hours=1))
+
+        assert first.show is True and again.show is False
+        assert first.stats.minutes_saved == 12 * MINUTES_SAVED_PER_ACTION
+        assert first.share_link.endswith(f"{INVITE_PATH}{first.code}")
+        assert nudge_capture.call_count == 1
+
+    async def test_another_pitch_this_week_holds_the_card_back(
+        self, nudge_capture: MagicMock
+    ) -> None:
+        user = await self._busy_user()
+        assert await send_pitch(user.id, ReferralNudge.CHAT_CARD, rendered_by_client) is True
+
+        assert (await claim_weekly_card(user.id, NOW)).show is False
+
+    async def test_off_monday_the_slot_is_never_touched(self, nudge_capture: MagicMock) -> None:
+        user = await self._busy_user()
+
+        tuesday = await claim_weekly_card(user.id, NOW + timedelta(days=1))
+
+        assert tuesday.show is False
+        assert await send_pitch(user.id, ReferralNudge.CHAT_CARD, rendered_by_client) is True
