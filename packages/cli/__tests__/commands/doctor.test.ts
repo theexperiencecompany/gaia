@@ -155,12 +155,7 @@ describe("evaluateSetupReadiness", () => {
       3000,
     );
 
-    expect(items.map((i) => i.configured)).toEqual([
-      false,
-      false,
-      false,
-      false,
-    ]);
+    expect(items.map((i) => i.configured)).toEqual([false, false, false]);
     for (const item of items) {
       expect(item.fix).toBe(
         "Open http://localhost:3000/setup in your browser and complete first-run setup.",
@@ -263,6 +258,36 @@ describe("evaluateSetupReadiness", () => {
 
     expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
     expect(items.every((i) => i.configured)).toBe(true);
+  });
+
+  it("asks for seeded plans only where /setup/status says billing is on", () => {
+    const status = {
+      auth_mode: "local" as const,
+      needs_setup: false,
+      plans_seeded: false,
+      has_admin_account: true,
+      registration_policy: "invite_only" as const,
+      local_code_sandbox: false,
+      blob_store: "local" as const,
+      gaia_support: false,
+      providers: {
+        openrouter: { configured: true, source: "stored" as const },
+      },
+    };
+
+    const off = evaluateSetupReadiness(
+      { ...status, billing_enabled: false },
+      LLM_KEYS,
+      3000,
+    );
+    const on = evaluateSetupReadiness(
+      { ...status, billing_enabled: true },
+      LLM_KEYS,
+      3000,
+    );
+
+    expect(off.find((i) => i.label === "plans seeded")).toBeUndefined();
+    expect(on.find((i) => i.label === "plans seeded")?.configured).toBe(false);
   });
 
   it("still reports other unconfigured items on a self-host instance", () => {
@@ -496,7 +521,7 @@ describe("checkSetupReadiness", () => {
       webPort: 3000,
     });
 
-    expect(results).toHaveLength(3); // plans, provider lane, billing
+    expect(results).toHaveLength(2); // provider lane, billing
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
       "http://localhost:3000/api/v1/setup/status",
     );

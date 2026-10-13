@@ -214,13 +214,17 @@ export function evaluateSetupReadiness(
   );
 
   const items: Array<{ label: string; configured: boolean }> = [
-    { label: "plans seeded", configured: payload.plans_seeded === true },
     { label: "LLM provider configured", configured: llmConfigured },
     {
       label: "admin account created",
       configured: payload.has_admin_account === true,
     },
   ];
+
+  // Plans exist only to be bought; an instance that does not bill has none.
+  if (payload.billing_enabled) {
+    items.push({ label: "plans seeded", configured: payload.plans_seeded });
+  }
 
   // Billing never applies under local auth (backend pins it off for selfhost),
   // so skip it there to avoid a permanent warning. Unknown auth_mode keeps
