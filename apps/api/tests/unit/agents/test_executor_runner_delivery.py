@@ -2801,6 +2801,7 @@ class TestAWorkflowResult:
             "Morning digest",
         )
         assert (item.conversation_id, item.text) == ("conv-1", "Digest ready.")
+        assert delivered.event["workflow_delivery"] == "brief"
 
     @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
     async def test_a_run_with_nothing_to_report_reaches_nobody(

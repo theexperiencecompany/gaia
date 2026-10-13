@@ -21,6 +21,8 @@ from app.utils.workflow_utils import (
     create_workflow_directly,
     get_workflow_id,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated
 
 USER_ID = "507f1f77bcf86cd799439011"
 SERVICE = "app.services.workflow.service.WorkflowService"
@@ -375,10 +377,13 @@ class TestCreateWorkflowDirectly:
             )
 
         assert mock_create.await_args.kwargs["request"].delivery is WorkflowDelivery.BRIEF
-        mock_capture.assert_called_once()
-        event = mock_capture.call_args.args[1]
-        assert (event.workflow_id, event.delivery, event.created_by_agent) == (
-            "wf_1",
-            "brief",
-            True,
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID),
+            WorkflowCreated(
+                workflow_id="wf_1",
+                trigger_type="manual",
+                generated_immediately=True,
+                delivery="brief",
+                created_by_agent=True,
+            ),
         )

@@ -8,6 +8,8 @@ import { NotificationsAPI } from "@/services/api/notifications";
 interface UseQuietHoursSettings {
   /** null until the stored window loads; nothing is shown as stored before then. */
   quietHours: QuietHours | null;
+  /** The stored window could not be read; the API client has already reported why. */
+  loadFailed: boolean;
   saving: boolean;
   setEdge: (edge: keyof QuietHours, hour: number) => Promise<void>;
 }
@@ -18,10 +20,13 @@ interface UseQuietHoursSettings {
  */
 export function useQuietHoursSettings(): UseQuietHoursSettings {
   const [quietHours, setQuietHours] = useState<QuietHours | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    NotificationsAPI.getQuietHours().then(setQuietHours);
+    NotificationsAPI.getQuietHours().then(setQuietHours, () =>
+      setLoadFailed(true),
+    );
   }, []);
 
   const setEdge = async (edge: keyof QuietHours, hour: number) => {
@@ -44,5 +49,5 @@ export function useQuietHoursSettings(): UseQuietHoursSettings {
     }
   };
 
-  return { quietHours, saving, setEdge };
+  return { quietHours, loadFailed, saving, setEdge };
 }

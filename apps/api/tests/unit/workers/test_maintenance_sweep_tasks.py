@@ -47,6 +47,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _send_user_dormant_digest,
     maintenance_sweep_tracked_todos,
 )
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.maintenance_sweep_tasks"
 
@@ -565,8 +566,36 @@ class TestOutsideQuietHours:
     async def test_user_lookup_failure_falls_back_to_the_default_window_on_utc(self):
         night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
         with patch(f"{MODULE}.get_user_by_id", AsyncMock(side_effect=Exception("mongo down"))):
-            result = await _outside_quiet_hours("user-1", night, {})
+            async with captured_wide_event() as event:
+                result = await _outside_quiet_hours("user-1", night, {})
         assert result is False
+        assert {
+            "msg": "maintenance_sweep.user_lookup_failed",
+            "user_id": "user-1",
+            "error": "mongo down",
+        } in event["warnings"]
+
+
+@pytest.mark.unit
+class TestEveryTierWaitsOutTheOwnersQuietHours:
+    async def test_each_tier_asks_once_per_todo_with_one_shared_sweep_cache(self) -> None:
+        todos = [
+            _doc(id="exp-1", expires_at=datetime.now(UTC) - timedelta(hours=1)),
+            _doc(id="due-1", due_date=datetime.now(UTC) - timedelta(days=2)),
+            _doc(id="dor-1", updated_at=datetime.now(UTC) - timedelta(days=10)),
+        ]
+        with _sweep(list=todos, daytime=False) as (_p, mocks):
+            await maintenance_sweep_tracked_todos({})
+
+        calls = mocks["daytime"].await_args_list
+        assert len(calls) == 3
+        caches = {id(call.args[2]) for call in calls}
+        assert len(caches) == 1
+        for call in calls:
+            user_id, now, cache = call.args
+            assert user_id == "user-1"
+            assert isinstance(now, datetime)
+            assert cache == {}
 
 
 # ---------------------------------------------------------------------------

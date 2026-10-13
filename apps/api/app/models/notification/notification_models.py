@@ -352,10 +352,12 @@ class QuietHours(BaseModel):
         return self
 
     def contains_hour(self, local_hour: int) -> bool:
-        """Whether local_hour (0-23, on the user's clock) is inside the window."""
-        if self.start_hour < self.end_hour:
-            return self.start_hour <= local_hour < self.end_hour
-        return local_hour >= self.start_hour or local_hour < self.end_hour
+        """Whether local_hour (0-23, on the user's clock) is inside the window.
+
+        Hours are measured from the window's start around the 24-hour clock, so
+        a window that spans midnight needs no special case.
+        """
+        return (local_hour - self.start_hour) % 24 < (self.end_hour - self.start_hour) % 24
 
     def covers(self, instant: datetime, timezone_name: str | None) -> bool:
         """Whether instant falls in the window on the clock of timezone_name (UTC when unset)."""

@@ -256,6 +256,17 @@ class TestProcessUser:
         with patch("app.services.nurture.service.is_within_local_daytime", return_value=True):
             assert await _process_user(self._user(email=None), NOW) is False
 
+    async def test_a_user_who_turned_email_off_gets_nothing(self) -> None:
+        with (
+            patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
+            patch(
+                "app.services.nurture.service._select_step", new_callable=AsyncMock
+            ) as mock_select,
+        ):
+            user = self._user(notification_channel_prefs={"email": False})
+            assert await _process_user(user, NOW) is False
+        mock_select.assert_not_awaited()
+
     async def test_sends_and_records_on_success(self) -> None:
         sent = _entry(NurtureStepStatus.SENT, datetime(2026, 5, 20, 12, 0))
         user = self._user(nurture={"completed_steps": ["welcome"], "history": [sent.model_dump()]})

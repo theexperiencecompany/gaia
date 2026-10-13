@@ -206,6 +206,7 @@ class TestExternalPlatformTransform:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
         assert content.text == "**My Title**\nMy body"
+        assert content.origin == f"notification from {request.source.value}"
 
     async def test_standard_message_without_title(self) -> None:
         request = _make_request(title="", body="just body")
@@ -279,16 +280,18 @@ class TestExternalPlatformDeliver:
             patch(
                 f"{EXTERNAL}.user_repository.get",
                 AsyncMock(return_value=UserDocument(id="user-1")),
-            ),
+            ) as get,
             patch(f"{EXTERNAL}.post_to_platform_chat", new_callable=AsyncMock) as post,
         ):
             status = await DiscordChannelAdapter().deliver(
                 ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
             )
 
+        get.assert_awaited_once_with("user-1")
         post.assert_not_awaited()
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is True
+        assert status.error_message == "discord: not linked"
 
     async def test_blank_text_is_skipped_without_a_lookup(self) -> None:
         with patch(f"{EXTERNAL}.user_repository.get", new_callable=AsyncMock) as get:
@@ -298,6 +301,7 @@ class TestExternalPlatformDeliver:
 
         get.assert_not_awaited()
         assert status.skipped is True
+        assert status.error_message == "discord: nothing to publish"
 
     async def test_deliver_maps_skipped_to_skipped(self) -> None:
         with (

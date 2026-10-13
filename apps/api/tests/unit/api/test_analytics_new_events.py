@@ -932,11 +932,12 @@ class TestNotificationNewEvents:
             patch(
                 f"{NOTIF}.user_repository.set_channel_preferences",
                 new_callable=AsyncMock,
-            ),
+            ) as set_prefs,
             patch(f"{NOTIF}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/notifications/unsubscribe?token=tok")
         assert resp.status_code == 200
+        set_prefs.assert_awaited_once_with(UID, {"email": False})
         mock_capture.assert_called_once_with(UserId(UID), NotificationUnsubscribed())
 
     async def test_a_token_for_a_non_user_id_unsubscribes_nobody(self, client: AsyncClient) -> None:

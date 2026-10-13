@@ -800,13 +800,18 @@ class TestGetNotification:
 
 class TestQuietHoursEndpoints:
     async def test_an_unset_user_reads_the_default_window(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.notification.user_repository.get",
-            new_callable=AsyncMock,
-            return_value=UserDocument(id=FAKE_USER_ID),
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ) as get,
+            patch("app.api.v1.endpoints.notification.log") as log,
         ):
             response = await client.get(f"{NOTIF_BASE}/preferences/quiet-hours")
 
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_quiet_hours")
         assert response.status_code == 200
         assert response.json() == {
             "start_hour": DEFAULT_QUIET_HOURS_START,
@@ -822,6 +827,7 @@ class TestQuietHoursEndpoints:
             response = await client.get(f"{NOTIF_BASE}/preferences/quiet-hours")
 
         assert response.status_code == 404
+        assert response.json() == {"message": "User not found"}
 
     async def test_an_update_is_stored_echoed_and_reported(self, client: AsyncClient) -> None:
         with (
@@ -830,11 +836,16 @@ class TestQuietHoursEndpoints:
                 new_callable=AsyncMock,
             ) as store,
             patch(ANALYTICS_PATCH) as capture,
+            patch("app.api.v1.endpoints.notification.log") as log,
         ):
             response = await client.put(
                 f"{NOTIF_BASE}/preferences/quiet-hours", json={"start_hour": 23, "end_hour": 7}
             )
 
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_quiet_hours")
+        log.audit.assert_called_once_with(
+            "quiet hours updated", actor=FAKE_USER_ID, start_hour=23, end_hour=7
+        )
         assert response.status_code == 200
         assert response.json() == {"start_hour": 23, "end_hour": 7}
         store.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))

@@ -79,8 +79,11 @@ class TestQuietHours:
         assert default_quiet_hours().covers(utc_evening, "UTC") is False
 
     def test_an_empty_window_is_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="different hours"):
+        with pytest.raises(ValidationError) as excinfo:
             QuietHours(start_hour=9, end_hour=9)
+        assert [error["msg"] for error in excinfo.value.errors()] == [
+            "Value error, Quiet hours must start and end at different hours"
+        ]
 
     @pytest.mark.parametrize("hour", [-1, 24])
     def test_an_hour_outside_the_clock_is_rejected(self, hour: int) -> None:

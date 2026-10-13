@@ -56,12 +56,11 @@ class WorkflowDraftFrame(TypedDict):
 
 
 class _PayloadEnvelope(BaseModel):
-    """The two keys read off a decoded payload before it is validated as its own type."""
+    """The one key read off a decoded payload before it is validated as its own type."""
 
     model_config = ConfigDict(extra="ignore")
 
     type: str | None = None
-    message: object = None
 
 
 class ClarifyingOutput(BaseModel):
@@ -161,8 +160,7 @@ class ParseResult:
 
 def _result_from_payload(data: Mapping[str, object], response: str) -> ParseResult | None:
     """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
-    envelope = _PayloadEnvelope.model_validate(data)
-    output_type = envelope.type
+    output_type = _PayloadEnvelope.model_validate(data).type
 
     if output_type == "finalized":
         try:
@@ -202,11 +200,8 @@ def _result_from_payload(data: Mapping[str, object], response: str) -> ParseResu
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
         except Exception:
-            return ParseResult(
-                mode="clarifying",
-                message=envelope.message if isinstance(envelope.message, str) else response,
-                raw_response=response,
-            )
+            # A clarifying payload without a usable message: the reply itself is the question.
+            return ParseResult(mode="clarifying", message=response, raw_response=response)
 
     return None
 

@@ -61,6 +61,14 @@ describe("useQuietHoursSettings", () => {
     expect(result.current.quietHours).toEqual({ start_hour: 22, end_hour: 8 });
   });
 
+  it("says the load failed instead of leaving the window unknown", async () => {
+    getQuietHours.mockRejectedValue(new Error("down"));
+    const { result } = renderHook(() => useQuietHoursSettings());
+
+    await waitFor(() => expect(result.current.loadFailed).toBe(true));
+    expect(result.current.quietHours).toBeNull();
+  });
+
   it("rolls back a change the server refused", async () => {
     updateQuietHours.mockRejectedValue(new Error("down"));
     const { result } = await loaded();

@@ -19,12 +19,16 @@ const EDGES: { edge: keyof QuietHours; label: string }[] = [
  * proactive messages instead of sending them.
  */
 export function QuietHoursSettings() {
-  const { quietHours, saving, setEdge } = useQuietHoursSettings();
+  const { quietHours, loadFailed, saving, setEdge } = useQuietHoursSettings();
 
   return (
     <SettingsSection
       title="Quiet hours"
-      description="GAIA holds proactive messages during this window, on your clock."
+      description={
+        loadFailed
+          ? "Couldn't load your quiet hours. Reload the page to try again."
+          : "GAIA holds proactive messages during this window, on your clock."
+      }
     >
       {EDGES.map(({ edge, label }) => (
         <SettingsRow key={edge} label={label}>
