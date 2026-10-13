@@ -141,10 +141,10 @@ export async function getDiskFreeKb(path: string): Promise<string> {
  * First Docker Engine major with `volume-subpath` mounts (API 1.45), which the
  * code sandbox uses to give each user's container only that user's files.
  */
-export const MIN_CODE_SANDBOX_ENGINE_MAJOR = 26;
+const MIN_CODE_SANDBOX_ENGINE_MAJOR = 26;
 
 /** The daemon's Docker Engine version, e.g. "29.1.3". */
-export async function getDockerServerVersion(): Promise<string> {
+async function getDockerServerVersion(): Promise<string> {
   const { stdout } = await execa("docker", [
     "version",
     "--format",

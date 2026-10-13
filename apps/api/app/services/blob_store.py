@@ -29,7 +29,7 @@ from app.constants.files import (
     LOCAL_BLOB_URL_PREFIX,
 )
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
-from app.models.integrations.cloudinary import CloudinaryUploadResult
+from app.models.integrations.cloudinary import CloudinaryDestroyResult, CloudinaryUploadResult
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -102,8 +102,8 @@ class CloudinaryBlobStore:
     async def delete(self, owner_id: str, public_id: str) -> None:
         del owner_id
         try:
-            result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
-            if result.get("result") != "ok":
+            response = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
+            if CloudinaryDestroyResult.model_validate(response).result != "ok":
                 log.warning("[blobs] cloudinary delete did not confirm", public_id=public_id)
         except Exception as e:
             log.error(
