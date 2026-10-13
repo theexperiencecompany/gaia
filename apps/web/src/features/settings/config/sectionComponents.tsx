@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { ReferralsSettings } from "@/features/referrals/components/ReferralsSettings";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
@@ -38,6 +39,7 @@ const SECTION_PANELS: Record<
   "linked-accounts": () => <LinkedAccountsSettings />,
   subscription: () => <SubscriptionSettings />,
   usage: () => <UsageSettings />,
+  referrals: () => <ReferralsSettings />,
   preferences: (setModalAction) => (
     <PreferencesSettings setModalAction={setModalAction} />
   ),

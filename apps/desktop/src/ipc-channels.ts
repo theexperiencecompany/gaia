@@ -14,6 +14,7 @@ export const IPC = {
   getVersion: "get-version",
   windowReady: "window-ready",
   openExternal: "open-external",
+  shareSheet: "share-sheet",
   authRedirecting: "auth-redirecting",
   wakeWordDetected: "wake-word-detected",
   popupDismiss: "popup-dismiss",

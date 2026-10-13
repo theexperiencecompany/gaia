@@ -28,6 +28,9 @@ export interface ElectronAPI {
   isElectron: boolean;
   signalReady: () => void;
   openExternal: (url: string) => void;
+  /** True on macOS, where showShareSheet opens the system share menu. */
+  canShowShareSheet: boolean;
+  showShareSheet: (item: { text: string; url: string }) => Promise<boolean>;
   onAuthRedirecting: (callback: () => void) => () => void;
   notifyWakeWord: () => void;
   dismissPopup: () => void;

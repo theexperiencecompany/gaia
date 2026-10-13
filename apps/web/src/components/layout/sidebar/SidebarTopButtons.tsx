@@ -20,10 +20,14 @@ import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
 import { toMajorUnits } from "@/features/pricing/utils/money";
+import { SidebarReferralSlot } from "@/features/referrals/components/SidebarReferralPromo";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import { SidebarPromo } from "./SidebarPromo";
+
+/** Remembers that the upgrade card was collapsed to its button. */
+const UPGRADE_PROMO_COLLAPSE_KEY = "sidebar-promo-collapsed:v1";
 
 type SidebarNavigation = EventProperties["navigation:sidebar_clicked"];
 
@@ -70,6 +74,7 @@ export default function SidebarTopButtons() {
   const price = monthlyPlan
     ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)
     : null;
+  const paywallCopy = paywallCopyFor(hasEverSubscribed);
 
   // In settings, the app nav is noise — a single "Back to chats" is all you need.
   if (pathname.startsWith("/settings")) {
@@ -101,10 +106,13 @@ export default function SidebarTopButtons() {
           paying user on a cold cache briefly sees the free-tier promo. */}
       {!isUnknown && !isPaid && (
         <SidebarPromo
-          price={price}
-          isPriceLoading={isPriceLoading}
-          copy={paywallCopyFor(hasEverSubscribed)}
-          onUpgrade={() =>
+          heading={paywallCopy.heading}
+          body={price !== null ? paywallCopy.sidebarBody(price) : null}
+          isBodyLoading={isPriceLoading}
+          cta={paywallCopy.cta}
+          icon={<ZapIcon fill="black" width={17} height={17} />}
+          collapseKey={UPGRADE_PROMO_COLLAPSE_KEY}
+          onAction={() =>
             openUpgradeModal(undefined, {
               dismissible: true,
               source: "sidebar",
@@ -112,6 +120,8 @@ export default function SidebarTopButtons() {
           }
         />
       )}
+      {/* Pro users get the invite card in the same slot; the two never show together. */}
+      {isPaid && <SidebarReferralSlot />}
 
       <div className="flex w-full flex-col gap-0.5">
         {buttonData.map(({ route, icon, label }) => {

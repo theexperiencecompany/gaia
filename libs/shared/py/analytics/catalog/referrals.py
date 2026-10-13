@@ -1,16 +1,19 @@
-"""Referral program events: invites sent, friends attributed and converting, months earned, nudges."""
+"""Referral program events: invites, attribution, conversions, months earned and nudges; plus the UI-only taps."""
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
-from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
 __all__ = [
+    "ReferralCardDismissed",
     "ReferralConverted",
     "ReferralInviteSent",
+    "ReferralInviteUndone",
     "ReferralNudgeDismissed",
     "ReferralNudgeSent",
     "ReferralRewardGranted",
+    "ReferralShareClicked",
     "ReferralSignupAttributed",
 ]
 
@@ -76,3 +79,36 @@ class ReferralNudgeDismissed(ServerEvent):
 
     nudge: Identifier
     paused: bool
+
+
+ReferralCopyVariantName = Literal["gift", "earn", "time_back", "insider"]
+
+
+class ReferralShareClicked(WebEvent):
+    """The user picked a way to share their invite link: the native sheet, a channel, copy or QR."""
+
+    event: ClassVar[str] = "referral:share_clicked"
+    budget_per_user_day: ClassVar[int] = 50
+
+    surface: Literal["page", "sidebar", "post_payment", "chat_card"]
+    channel: Literal["native", "whatsapp", "sms", "x", "linkedin", "email", "copy", "qr"]
+    copy_variant: ReferralCopyVariantName
+
+
+class ReferralCardDismissed(WebEvent):
+    """The user closed a referral prompt without sharing."""
+
+    event: ClassVar[str] = "referral:card_dismissed"
+    budget_per_user_day: ClassVar[int] = 10
+
+    surface: Literal["sidebar", "post_payment"]
+    copy_variant: ReferralCopyVariantName
+
+
+class ReferralInviteUndone(WebEvent):
+    """The user took back an email invite inside the undo window, before it was sent."""
+
+    event: ClassVar[str] = "referral:invite_undone"
+    budget_per_user_day: ClassVar[int] = 50
+
+    surface: Literal["hover_card", "page", "suggestion"]
