@@ -84,12 +84,6 @@ const { GET: baseGET } = createLLmsTxt({
   generator: generateContent,
 });
 
-interface DynamicEntry {
-  title: string;
-  url: string;
-  description?: string;
-}
-
 /**
  * Programmatic SEO pages skipped by autoDiscovery (every "[slug]" route is
  * filtered out of `pages`), enumerated from the same data sources as the
@@ -98,28 +92,17 @@ interface DynamicEntry {
  * sitemap's PageRank consolidation.
  */
 async function buildDynamicSections(): Promise<string> {
-  let comparisons: Awaited<ReturnType<typeof getAllComparisons>> = [];
-  let alternatives: Awaited<ReturnType<typeof getAllAlternatives>> = [];
-  let glossary: Awaited<ReturnType<typeof getAllGlossaryTerms>> = [];
-  let combos: Awaited<ReturnType<typeof getAllCombos>> = [];
-  let personas: Awaited<ReturnType<typeof getAllPersonas>> = [];
-  let posts: Awaited<ReturnType<typeof getAllBlogPosts>> = [];
-  try {
-    [comparisons, alternatives, glossary, combos, personas, posts] =
-      await Promise.all([
-        getAllComparisons(),
-        getAllAlternatives(),
-        getAllGlossaryTerms(),
-        getAllCombos(),
-        getAllPersonas(),
-        getAllBlogPosts(false),
-      ]);
-  } catch (error) {
-    console.error("Error loading dynamic entries for llms.txt:", error);
-    return "";
-  }
+  const [comparisons, alternatives, glossary, combos, personas, posts] =
+    await Promise.all([
+      getAllComparisons(),
+      getAllAlternatives(),
+      getAllGlossaryTerms(),
+      getAllCombos(),
+      getAllPersonas(),
+      getAllBlogPosts(false),
+    ]);
 
-  const sections: Array<{ heading: string; entries: DynamicEntry[] }> = [
+  const sections = [
     {
       heading: "Comparisons",
       entries: comparisons.slice(0, MAX_ENTRIES_PER_SECTION).map((c) => ({
@@ -205,12 +188,6 @@ export async function GET(request: NextRequest) {
   }
   const body = await response.text();
   const extra = await buildDynamicSections();
-  if (!extra) {
-    return new NextResponse(body, {
-      status: response.status,
-      headers: response.headers,
-    });
-  }
   return new NextResponse(`${body}\n${extra}\n`, {
     status: response.status,
     headers: response.headers,

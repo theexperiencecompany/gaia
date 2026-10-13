@@ -15,13 +15,11 @@
  *   node scripts/seo/pull-gsc.mjs --dry-run   # 20 SAMPLE rows, no creds (CI-safe)
  *   node scripts/seo/pull-gsc.mjs             # real pull (needs env above)
  *   node scripts/seo/pull-gsc.mjs --days 28 --out public/data/seo/queries.json
- *
- * Deps: `googleapis` is dynamically imported ONLY for the real pull, so
- * --dry-run works with zero installs. For real pulls: pnpm add -D googleapis
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { auth as googleAuth, searchconsole as searchConsole } from "@googleapis/searchconsole";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const args = new Set(process.argv.slice(2));
@@ -103,23 +101,15 @@ if (!clientEmail || !privateKey) {
 }
 privateKey = privateKey.replace(/\\n/g, "\n");
 
-let google;
-try {
-  ({ google } = await import("googleapis"));
-} catch {
-  console.error("[pull-gsc] `googleapis` is not installed. Run: pnpm add -D googleapis");
-  process.exit(1);
-}
-
 const endDate = isoDaysAgo(2);
 const startDate = isoDaysAgo(2 + DAYS);
 
-const auth = new google.auth.JWT({
+const auth = new googleAuth.JWT({
   email: clientEmail,
   key: privateKey,
   scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
 });
-const searchconsole = google.searchconsole({ version: "v1", auth });
+const searchconsole = searchConsole({ version: "v1", auth });
 
 console.log(`[pull-gsc] pulling query dimensions ${startDate}..${endDate} for ${PROPERTY} ...`);
 const res = await searchconsole.searchanalytics.query({

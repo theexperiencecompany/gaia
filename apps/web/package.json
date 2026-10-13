@@ -223,6 +223,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
+    "@googleapis/searchconsole": "^11.0.1",
     "@heroui/dom-animation": "2.1.10",
     "@next/bundle-analyzer": "^16.3.0",
     "@playwright/test": "^1.62.1",
