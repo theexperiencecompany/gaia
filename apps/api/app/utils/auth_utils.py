@@ -105,6 +105,7 @@ def build_user_context(
         email_memory_processed_at=user_doc.email_memory_processed_at,
         email_memory_count=user_doc.email_memory_count,
         integration_scan_states=user_doc.integration_scan_states,
+        role=user_doc.role,
         is_active=user_doc.is_active,
         memory_backfilled=user_doc.memory_backfilled,
         last_inactive_email_sent=user_doc.last_inactive_email_sent,

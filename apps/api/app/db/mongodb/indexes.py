@@ -8,10 +8,13 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
 
@@ -19,7 +22,7 @@ from shared.py.wide_events import log
 # unlike performance indexes (warn-and-continue) a failed build aborts boot
 # rather than running healthy with the constraint silently absent.
 SECURITY_CRITICAL_COLLECTIONS = frozenset(
-    {"auth_credentials", "instance_settings", "provider_credentials"}
+    {"auth_credentials", "auth_invites", "instance_settings", "provider_credentials"}
 )
 
 # Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
@@ -38,6 +41,14 @@ class IndexOptions(TypedDict, total=False):
     unique: bool
     sparse: bool
     partialFilterExpression: Mapping[str, object]
+
+
+class _IndexSpec(TypedDict):
+    """One list_indexes entry, narrowed to the fields the slot-index migration reads."""
+
+    name: str
+    key: Mapping[str, int]
+    partialFilterExpression: NotRequired[Mapping[str, object]]
 
 
 class _DuplicateShapeGroup(TypedDict):
@@ -95,9 +106,10 @@ async def create_all_indexes() -> None:
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             # Security-critical (see SECURITY_CRITICAL_COLLECTIONS): these unique
-            # indexes are what enforce the single-admin claim and the provisioning
+            # indexes are what enforce the bootstrap-admin claim and the provisioning
             # upsert keys, so their creators must run with the rest.
             create_local_credential_indexes(),
+            create_local_invite_indexes(),
             create_instance_settings_indexes(),
             create_provider_credential_indexes(),
             create_workflow_execution_indexes(),
@@ -138,6 +150,7 @@ async def create_all_indexes() -> None:
             "device_tokens",
             "skills",
             "auth_credentials",
+            "auth_invites",
             "instance_settings",
             "provider_credentials",
             "workflow_executions",
@@ -963,21 +976,60 @@ async def _create_index_safe(
         raise
 
 
+async def _drop_unfiltered_slot_index(collection: AsyncIOMotorCollection[DocumentT]) -> None:
+    """Drop the single-admin era's unique slot index, which admits only one slotless member row."""
+    async for raw in collection.list_indexes():
+        index: _IndexSpec = cast("_IndexSpec", raw)
+        if dict(index["key"]) == {"slot": 1} and "partialFilterExpression" not in index:
+            await collection.drop_index(index["name"])
+
+
+async def _backfill_bootstrap_admin_role() -> None:
+    """Make the single-admin era's account an admin; idempotent, a no-op once its role is set."""
+    admin = await local_credentials_repository.get_admin()
+    if admin is None:
+        return
+    if await user_repository.set_role_if_unset(admin.user_id, InstanceRole.ADMIN):
+        log.info(f"{LogTag.MONGO} Backfilled the instance administrator role")
+
+
 async def create_local_credential_indexes() -> None:
     """Create indexes for auth_credentials collection (local auth mode)."""
     collection = get_async_collection("auth_credentials")
     try:
+        await _drop_unfiltered_slot_index(collection)
         await asyncio.gather(
             # One credential per user — session lookups resolve by user_id.
             _create_index_safe(collection, "user_id", unique=True),
-            # The registration gate: constant slot=admin admits exactly one
-            # document ever, so concurrent first signups race in Mongo instead
-            # of a check-then-create that two requests can both pass.
-            _create_index_safe(collection, "slot", unique=True),
+            # The bootstrap gate: only the first account's row carries slot=admin,
+            # so concurrent first signups race in Mongo instead of a
+            # check-then-create that two requests can both pass.
+            _create_index_safe(
+                collection,
+                "slot",
+                unique=True,
+                partialFilterExpression={"slot": {"$exists": True}},
+            ),
         )
+        await _backfill_bootstrap_admin_role()
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating local credential indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_local_invite_indexes() -> None:
+    """Create indexes for auth_invites collection (local auth mode)."""
+    collection = get_async_collection("auth_invites")
+    try:
+        # Redemption looks an invite up by its token digest; two invites never share one.
+        await _create_index_safe(collection, "token_hash", unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating local invite indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

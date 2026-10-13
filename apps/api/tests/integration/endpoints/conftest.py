@@ -4,7 +4,7 @@ Drives the router over ASGITransport with its external seams (provider
 credentials service, instance and local repositories, startup-validation seed
 checks) rebound to in-memory fakes via monkeypatch on the endpoint module own
 namespace, so no test touches Mongo or Redis. Fakes mirror the real APIs
-(any_exists, find_by_key and upsert_value, resolve, upsert, delete, invalidate).
+(admin_exists, find_by_key and upsert_value, resolve, upsert, delete, invalidate).
 
 HTTP probes use respx, the repo-wide pattern for mocking httpx.
 """
@@ -13,11 +13,11 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
 
-from app.api.v1.dependencies import instance_admin as instance_admin_module
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import setup as setup_module
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
+from app.constants.auth import InstanceRole, RegistrationPolicy
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -71,7 +71,7 @@ class FakeLocalCredentialsRepository:
     """The single locally-registered admin account (or none).
 
     admin_user_id is None before first signup, otherwise the row owner.
-    Mirrors the real read surface used by the setup module: any_exists
+    Mirrors the real read surface used by the setup module: admin_exists
     and get_by_user_id.
     """
 
@@ -81,7 +81,7 @@ class FakeLocalCredentialsRepository:
     def reset(self) -> None:
         self.admin_user_id: str | None = FAKE_USER_ID
 
-    async def any_exists(self) -> bool:
+    async def admin_exists(self) -> bool:
         return self.admin_user_id is not None
 
     async def get_by_user_id(self, user_id: str) -> LocalCredentialDocument | None:
@@ -109,6 +109,10 @@ async def _fake_is_payment_setup() -> bool:
     return seed_state.plans_seeded
 
 
+async def _fake_registration_policy() -> RegistrationPolicy:
+    return RegistrationPolicy.INVITE_ONLY
+
+
 @pytest.fixture(autouse=True)
 def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point every external seam of the setup module at controlled fakes.
@@ -123,10 +127,8 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_module, "delete_provider_config", provider_service.delete)
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)
     monkeypatch.setattr(setup_module, "local_credentials_repository", local_credentials_repo)
-    monkeypatch.setattr(
-        instance_admin_module, "local_credentials_repository", local_credentials_repo
-    )
     monkeypatch.setattr(setup_module, "is_payment_setup", _fake_is_payment_setup)
+    monkeypatch.setattr(setup_module, "get_registration_policy", _fake_registration_policy)
     monkeypatch.setattr(settings, "ENV", "selfhost")
     monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
@@ -138,11 +140,18 @@ def _reset_fake_state() -> None:
     seed_state.reset()
 
 
-def _client(*, authenticated: bool, user_id: str = FAKE_USER_ID) -> AsyncClient:
+def _client(
+    *,
+    authenticated: bool,
+    user_id: str = FAKE_USER_ID,
+    role: InstanceRole | None = InstanceRole.ADMIN,
+) -> AsyncClient:
     app = FastAPI()
     app.include_router(setup_router, prefix=API)
     if authenticated:
-        app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(user_id=user_id)
+        app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+            user_id=user_id, role=role
+        )
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",  # NOSONAR
@@ -158,8 +167,10 @@ async def client() -> AsyncClient:
 
 @pytest.fixture
 async def nonadmin_client() -> AsyncClient:
-    """Authed as a second principal that owns no local credential row."""
-    async with _client(authenticated=True, user_id=NON_ADMIN_USER_ID) as c:
+    """Authed as a member account, which may not administer the instance."""
+    async with _client(
+        authenticated=True, user_id=NON_ADMIN_USER_ID, role=InstanceRole.MEMBER
+    ) as c:
         yield c
 
 

@@ -1,4 +1,4 @@
-"""Auth and activity events: signup, login, logout, session resume and the daily active mark."""
+"""Auth and activity events: signup, login, logout, session resume, self-host membership and the daily active mark."""
 
 from datetime import timedelta
 from typing import ClassVar, Literal
@@ -7,6 +7,8 @@ from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
+    "InstanceInviteCreated",
+    "InstanceMemberJoined",
     "UserActive",
     "UserLoggedIn",
     "UserLoggedOut",
@@ -42,6 +44,22 @@ class UserLoggedOut(ServerEvent):
 
     event: ClassVar[str] = "user:logged_out"
     budget_per_user_day: ClassVar[int] = 10
+
+
+class InstanceInviteCreated(ServerEvent):
+    """A self-host administrator created an invite link."""
+
+    event: ClassVar[str] = "instance:invite_created"
+    budget_per_user_day: ClassVar[int] = 50
+
+
+class InstanceMemberJoined(ServerEvent):
+    """A member account was created on a self-host instance, emitted for the new member."""
+
+    event: ClassVar[str] = "instance:member_joined"
+    budget_per_user_day: ClassVar[int] = 1
+
+    via: Literal["invite", "open"]
 
 
 class UserActive(ServerEvent):

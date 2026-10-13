@@ -65,6 +65,8 @@ export type ServerEventName =
   | "hil:revoked"
   | "image:described"
   | "image:generated"
+  | "instance:invite_created"
+  | "instance:member_joined"
   | "integration:account_added"
   | "integration:account_removed"
   | "integration:account_renamed"
@@ -868,6 +870,17 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "instance:invite_created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "instance:member_joined": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "via": "invite" | "open";
   };
   "integration:account_added": {
     "actor": "user" | "agent";

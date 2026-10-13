@@ -116,6 +116,8 @@ async def resolve_session_token(token: str) -> str | None:
     if credential is None:
         # No credential row: only honour legacy ver 0 tokens (pre-migration).
         return user_id if token_ver_int == 0 else None
+    if credential.disabled_at is not None:
+        return None
     current_ver = int(getattr(credential, "token_version", 0) or 0)
     if token_ver_int != current_ver:
         return None

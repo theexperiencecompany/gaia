@@ -3,8 +3,8 @@
 Mounted at ``/auth`` by ``app/api/v1/routes.py``; ``signup`` and ``login`` are
 public (the coordinator lists them in the middleware's ``exclude_paths``),
 while ``password`` and ``logout`` require a live local session.
-A self-host instance has exactly one administrator: the first signup creates
-it, every later signup is refused with ``registration_closed``.
+The first signup creates the instance administrator; later signups create
+members when an invite or the open registration policy admits them.
 """
 
 from typing import Never, cast
@@ -16,11 +16,12 @@ from fastapi.responses import JSONResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
-from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.models.auth_models import (
+    ADMIN_CREDENTIAL_SLOT,
     ChangePasswordRequest,
     LocalCredentialDocument,
     LocalCredentialUpdate,
@@ -28,6 +29,7 @@ from app.models.auth_models import (
     SignupRequest,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.members_service import admit_member, record_member_joined
 from app.utils.auth_utils import build_user_context
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -144,8 +146,7 @@ def _user_payload(user: UserDocument) -> dict[str, object]:
 
 
 def _registration_closed(email: str) -> Never:
-    """Audit and raise the single-admin rejection (shared by the pre-check and
-    a lost atomic-claim race)."""
+    """Audit and raise the closed-registration rejection."""
     log.audit(
         "signup rejected — registration closed",
         actor=AUDIT_ACTOR_UNAUTHENTICATED,
@@ -155,7 +156,7 @@ def _registration_closed(email: str) -> Never:
         status_code=403,
         detail={
             "code": REGISTRATION_CLOSED,
-            "message": "An administrator account already exists on this instance",
+            "message": "Signing up here needs an invite from this instance's administrator",
         },
     )
 
@@ -184,31 +185,28 @@ async def _delete_user_best_effort(user_id: str) -> None:
 @router.post("/signup", status_code=201)
 @limiter.limit("10/minute")
 async def signup(request: Request, body: SignupRequest) -> JSONResponse:
-    """Create the instance administrator account and open a session.
+    """Create an account and open a session.
 
-    Refused with 403 ``registration_closed`` once any credential exists — a
-    self-hosted GAIA is single-admin. The gate is an ATOMIC CLAIM (a unique
-    index on the constant ``slot`` discriminator admits exactly one document),
-    not check-then-create: two concurrent signups on a fresh instance both read
-    zero credentials, but Mongo lets precisely one insert land and the loser
-    deterministically gets 403 — its half-created user row is removed again.
+    The first account administers the instance. Its gate is an ATOMIC CLAIM (a
+    partial unique index on slot=admin), not check-then-create: two concurrent
+    first signups both read no admin, Mongo lets precisely one insert land, and
+    the loser gets 403 registration_closed with its half-created user row removed.
+
+    Every later account is a member, admitted by a valid invite or, when the
+    administrator has opened signup, by anyone; otherwise 403 registration_closed.
 
     A pre-existing user row with the same email is NOT claimed — knowledge of
     an email address is not proof of ownership, and a migrated WorkOS-era row
     must not be attachable by an attacker (Greptile finding). Such signups are
-    refused as closed; only brand-new user rows can become the admin.
+    refused as closed before any invite is spent.
     """
     email = str(body.email)
     log.set(operation="local_signup", email=email, client_ip=_client_ip(request))
 
-    # Fast-path pre-check only — the authoritative gate is the claim below.
-    if await local_credentials_repository.any_exists():
-        _registration_closed(email)
-
     if await user_repository.get_by_email(email) is not None:
         # Email already belongs to an existing identity. Attaching a credential
         # would hand that identity to whoever knows the address, which is not
-        # ownership proof. Refuse; only brand-new rows can become admin.
+        # ownership proof. Refuse; only brand-new rows can become accounts.
         _registration_closed(email)
 
     # Hash BEFORE creating any row: hashing after the insert would strand an
@@ -224,26 +222,39 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
             detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
         ) from exc
 
-    user = await user_repository.create(
-        UserDocument(
-            email=email,
-            # Self-host name is optional, unlike hosted signups. Default to the
-            # email local-part so the display name never has to handle null.
-            name=body.name or email.split("@", 1)[0],
+    # Self-host name is optional, unlike hosted signups. Default to the email
+    # local-part so the display name never has to handle null.
+    name = body.name or email.split("@", 1)[0]
+
+    if not await local_credentials_repository.admin_exists():
+        # Fast-path pre-check only — the authoritative gate is the claim below.
+        user = await user_repository.create(
+            UserDocument(email=email, name=name, role=InstanceRole.ADMIN)
         )
-    )
+        credential = await local_credentials_repository.try_create(
+            LocalCredentialDocument(
+                user_id=user.id, password_hash=password_hash, slot=ADMIN_CREDENTIAL_SLOT
+            )
+        )
+        if credential is None:
+            # Lost the race — another concurrent signup holds the admin slot now.
+            # Remove the user row this request just created so no orphan remains.
+            await _delete_user_best_effort(user.id)
+            _registration_closed(email)
+    else:
+        admission = await admit_member(body.invite)
+        if admission is None:
+            _registration_closed(email)
+        user = await user_repository.create(
+            UserDocument(email=email, name=name, role=InstanceRole.MEMBER)
+        )
+        credential = await local_credentials_repository.create(
+            LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
+        )
+        await record_member_joined(admission, user.id)
 
-    credential = await local_credentials_repository.try_create(
-        LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
-    )
-    if credential is None:
-        # Lost the race — another concurrent signup holds the admin slot now.
-        # Remove the user row this request just created so no orphan remains.
-        await _delete_user_best_effort(user.id)
-        _registration_closed(email)
-
-    token = await issue_session_token(user.id, int(getattr(credential, "token_version", 0) or 0))
-    log.audit("account created", actor=user.id, mode="local")
+    token = await issue_session_token(user.id, credential.token_version)
+    log.audit("account created", actor=user.id, mode="local", role=user.role)
 
     response = JSONResponse(status_code=201, content={"user": _user_payload(user)})
     _set_session_cookie(response, token, request=request)
@@ -264,7 +275,9 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
     log.set(operation="local_login", email=email, client_ip=_client_ip(request))
 
     user = await user_repository.get_by_email(email)
-    credential = await local_credentials_repository.get_by_user_id(user.id) if user else None
+    stored = await local_credentials_repository.get_by_user_id(user.id) if user else None
+    # A removed member fails exactly like an unknown account.
+    credential = stored if stored is not None and stored.disabled_at is None else None
 
     try:
         verified = (

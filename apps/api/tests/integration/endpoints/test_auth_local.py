@@ -11,6 +11,7 @@ cookie contract all run for real.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -24,15 +25,24 @@ from jose import jwt
 import pytest
 
 from app.config.settings import settings
-from app.constants.auth import JWT_ALGORITHM
+from app.constants.auth import JWT_ALGORITHM, REGISTRATION_SETTINGS_KEY, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS
-from app.models.auth_models import LocalCredentialDocument, LocalCredentialUpdate
+from app.models.auth_models import (
+    ADMIN_CREDENTIAL_SLOT,
+    LocalCredentialDocument,
+    LocalCredentialUpdate,
+    LocalInviteDocument,
+    LocalInviteUpdate,
+)
+from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
     issue_session_token,
     resolve_session_token,
     verify_session_token,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.auth import InstanceMemberJoined
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
@@ -137,10 +147,13 @@ def credential_store():
 
     Every operation yields to the event loop first, mirroring a real Mongo
     round trip so gathered concurrent signups interleave between gate check
-    and write. try_create keeps atomic claim semantics: at most one
-    credential can ever land.
+    and write. try_create keeps the partial unique index's semantics: at most
+    one slot=admin credential can ever land.
     """
     store: dict[str, LocalCredentialDocument] = {}
+
+    def admin_slot_taken() -> bool:
+        return any(c.slot == ADMIN_CREDENTIAL_SLOT for c in store.values())
 
     async def get_by_user_id(user_id: str) -> LocalCredentialDocument | None:
         await asyncio.sleep(0)
@@ -148,13 +161,14 @@ def credential_store():
 
     async def create(doc: LocalCredentialDocument) -> LocalCredentialDocument:
         await asyncio.sleep(0)
-        store[doc.user_id] = doc
-        return doc
+        stored = doc.model_copy(update={"id": str(ObjectId())})
+        store[doc.user_id] = stored
+        return stored
 
     async def try_create(doc: LocalCredentialDocument) -> LocalCredentialDocument | None:
-        """Atomic insert: wins only when no credential exists yet."""
+        """Atomic insert: wins only when the admin slot is free."""
         await asyncio.sleep(0)
-        if store:
+        if admin_slot_taken():
             return None
         store[doc.user_id] = doc
         return doc
@@ -171,9 +185,9 @@ def credential_store():
         store[updated.user_id] = updated
         return updated
 
-    async def any_exists() -> bool:
+    async def admin_exists() -> bool:
         await asyncio.sleep(0)
-        return bool(store)
+        return admin_slot_taken()
 
     holder = MagicMock()
     holder.store = store
@@ -181,8 +195,85 @@ def credential_store():
     holder.create = AsyncMock(side_effect=create)
     holder.try_create = AsyncMock(side_effect=try_create)
     holder.update = AsyncMock(side_effect=update)
-    holder.any_exists = AsyncMock(side_effect=any_exists)
+    holder.admin_exists = AsyncMock(side_effect=admin_exists)
     return holder
+
+
+class InviteStore:
+    """In-memory auth_invites with the repository's redeem/revoke semantics."""
+
+    def __init__(self) -> None:
+        self.invites: dict[str, LocalInviteDocument] = {}
+
+    def add(self, token: str, *, expires_in: timedelta = timedelta(days=7)) -> LocalInviteDocument:
+        invite = LocalInviteDocument(
+            id=str(ObjectId()),
+            token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            created_by="admin",
+            expires_at=datetime.now(UTC) + expires_in,
+        )
+        self.invites[invite.id] = invite
+        return invite
+
+    async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+        await asyncio.sleep(0)
+        for invite in self.invites.values():
+            if (
+                invite.token_hash == token_hash
+                and invite.used_at is None
+                and invite.revoked_at is None
+                and invite.expires_at > now
+            ):
+                self.invites[invite.id] = invite.model_copy(update={"used_at": now})
+                return self.invites[invite.id]
+        return None
+
+    async def update(self, invite_id: str, update: LocalInviteUpdate) -> LocalInviteDocument:
+        self.invites[invite_id] = self.invites[invite_id].model_copy(
+            update=update.model_dump(exclude_unset=True)
+        )
+        return self.invites[invite_id]
+
+
+class SettingsStore:
+    """In-memory instance_settings keyed by business key."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, dict[str, object]] = {}
+
+    async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
+        value = self.values.get(key)
+        return None if value is None else InstanceSettingsDocument(key=key, value=value)
+
+
+@pytest.fixture
+def invite_store(monkeypatch) -> InviteStore:
+    from app.services import members_service
+
+    store = InviteStore()
+    monkeypatch.setattr(members_service.local_invites_repository, "redeem", store.redeem)
+    monkeypatch.setattr(members_service.local_invites_repository, "update", store.update)
+    return store
+
+
+@pytest.fixture
+def settings_store(monkeypatch) -> SettingsStore:
+    from app.services import members_service
+
+    store = SettingsStore()
+    monkeypatch.setattr(
+        members_service.instance_settings_repository, "find_by_key", store.find_by_key
+    )
+    return store
+
+
+@pytest.fixture
+def captured(monkeypatch) -> MagicMock:
+    from app.services import members_service
+
+    capture = MagicMock()
+    monkeypatch.setattr(members_service, "capture", capture)
+    return capture
 
 
 @pytest.fixture
@@ -196,11 +287,13 @@ def patched_repos(directory, credential_store, monkeypatch):
     import app.api.v1.endpoints.auth_local as auth_local_module
     import app.db.repositories.local_credentials as creds_mod
     from app.db.repositories.users import user_repository as users_singleton
+    from app.utils import local_auth_utils
 
     real_creds = creds_mod.LocalCredentialsRepository()
     monkeypatch.setattr(creds_mod, "local_credentials_repository", real_creds)
     if hasattr(auth_local_module, "local_credentials_repository"):
         monkeypatch.setattr(auth_local_module, "local_credentials_repository", real_creds)
+    monkeypatch.setattr(local_auth_utils, "local_credentials_repository", real_creds)
 
     with (
         patch.object(
@@ -213,21 +306,30 @@ def patched_repos(directory, credential_store, monkeypatch):
         patch.object(real_creds, "create", credential_store.create),
         patch.object(real_creds, "try_create", credential_store.try_create),
         patch.object(real_creds, "update", credential_store.update),
-        patch.object(real_creds, "any_exists", credential_store.any_exists),
+        patch.object(real_creds, "admin_exists", credential_store.admin_exists),
     ):
         yield directory
 
 
-def seed_admin(directory: UserDirectory, credential_store, email: str) -> UserDocument:
-    """Insert an existing admin (user + bcrypt credential) into both stores."""
-    user = UserDocument.model_validate({"id": str(ObjectId()), "email": email, "name": "Admin"})
+def seed_account(
+    directory: UserDirectory, credential_store, email: str, role: InstanceRole
+) -> UserDocument:
+    """Insert an existing account (user + bcrypt credential) into both stores."""
+    user = UserDocument.model_validate(
+        {"id": str(ObjectId()), "email": email, "name": "Account", "role": role}
+    )
     directory.by_email[email] = user
     credential_store.store[user.id] = LocalCredentialDocument(
         id=str(ObjectId()),
         user_id=user.id,
         password_hash=bcrypt_lib.hashpw(TEST_PASSWORD.encode(), bcrypt_lib.gensalt()).decode(),
+        slot=ADMIN_CREDENTIAL_SLOT if role is InstanceRole.ADMIN else None,
     )
     return user
+
+
+def seed_admin(directory: UserDirectory, credential_store, email: str) -> UserDocument:
+    return seed_account(directory, credential_store, email, InstanceRole.ADMIN)
 
 
 async def _client(app: FastAPI) -> httpx.AsyncClient:
@@ -308,13 +410,16 @@ class TestSignup:
 
         created = patched_repos.created[0]
         assert created.email == "admin@gaia.dev"
-        assert created.id in credential_store.store
+        assert created.role is InstanceRole.ADMIN
+        assert body["user"]["role"] == "admin"
+        assert credential_store.store[created.id].slot == ADMIN_CREDENTIAL_SLOT
 
         assert verify_session_token(response.cookies["gaia_session"]) == created.id
 
     async def test_second_signup_is_403_registration_closed(
-        self, patched_repos, credential_store, _instance_secret
+        self, patched_repos, credential_store, settings_store, _instance_secret
     ):
+        """Invite-only is the default: no stored policy and no invite means closed."""
         seed_admin(patched_repos, credential_store, "admin@gaia.dev")
 
         app = _build_router_app()
@@ -461,7 +566,7 @@ class TestSignup:
         assert response.status_code == 422
 
     async def test_concurrent_signups_produce_exactly_one_admin(
-        self, patched_repos, credential_store, _instance_secret, monkeypatch
+        self, patched_repos, credential_store, settings_store, _instance_secret, monkeypatch
     ):
         """Admit exactly one admin when signups race; losers get 403 and leave no orphan rows."""
         import app.api.v1.endpoints.auth_local as auth_local_module
@@ -492,6 +597,132 @@ class TestSignup:
         assert len(credential_store.store) == 1
         # The losers' just-created user rows were compensated away — no garbage.
         assert len(patched_repos.created) == 1
+
+
+# ---------------------------------------------------------------------------
+# Member signup (after the administrator exists)
+# ---------------------------------------------------------------------------
+
+
+async def _signup(email: str, invite: str | None = None) -> httpx.Response:
+    body: dict[str, str] = {"email": email, "password": TEST_PASSWORD}
+    if invite is not None:
+        body["invite"] = invite
+    client = await _client(_build_router_app())
+    async with client:
+        return await client.post("/api/v1/auth/signup", json=body)
+
+
+@pytest.mark.integration
+class TestMemberSignup:
+    @pytest.fixture(autouse=True)
+    def _admin(self, patched_repos, credential_store) -> None:
+        seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+    async def test_valid_invite_creates_a_member_with_a_session(
+        self,
+        patched_repos,
+        credential_store,
+        invite_store,
+        settings_store,
+        captured,
+        _instance_secret,
+    ):
+        invite = invite_store.add("good-token")
+
+        response = await _signup("kid@gaia.dev", invite="good-token")
+
+        assert response.status_code == 201, response.text
+        assert response.json()["user"]["role"] == "member"
+        member = patched_repos.by_email["kid@gaia.dev"]
+        assert member.role is InstanceRole.MEMBER
+        assert credential_store.store[member.id].slot is None
+        assert verify_session_token(response.cookies["gaia_session"]) == member.id
+        redeemed = invite_store.invites[invite.id]
+        assert redeemed.used_at is not None
+        assert redeemed.used_by == member.id
+        captured.assert_called_once_with(UserId(member.id), InstanceMemberJoined(via="invite"))
+
+    async def test_an_invite_admits_only_one_account(
+        self, patched_repos, invite_store, settings_store, captured, _instance_secret
+    ):
+        invite_store.add("one-use")
+
+        first = await _signup("first@gaia.dev", invite="one-use")
+        second = await _signup("second@gaia.dev", invite="one-use")
+
+        assert first.status_code == 201, first.text
+        assert second.status_code == 403
+        assert second.json()["code"] == "invite_invalid"
+        assert "second@gaia.dev" not in patched_repos.by_email
+
+    @pytest.mark.parametrize("token", ["expired-token", "unknown-token"])
+    async def test_expired_or_unknown_invite_is_refused(
+        self, token, patched_repos, invite_store, settings_store, _instance_secret
+    ):
+        invite_store.add("expired-token", expires_in=timedelta(seconds=-1))
+
+        response = await _signup("late@gaia.dev", invite=token)
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "invite_invalid"
+        assert "late@gaia.dev" not in patched_repos.by_email
+
+    async def test_open_registration_admits_without_an_invite(
+        self, patched_repos, settings_store, captured, _instance_secret
+    ):
+        settings_store.values[REGISTRATION_SETTINGS_KEY] = {"policy": "open"}
+
+        response = await _signup("friend@gaia.dev")
+
+        assert response.status_code == 201, response.text
+        member = patched_repos.by_email["friend@gaia.dev"]
+        assert member.role is InstanceRole.MEMBER
+        captured.assert_called_once_with(UserId(member.id), InstanceMemberJoined(via="open"))
+
+    async def test_existing_email_is_refused_before_the_invite_is_spent(
+        self, patched_repos, invite_store, settings_store, _instance_secret
+    ):
+        invite = invite_store.add("keep-me")
+
+        response = await _signup("admin@gaia.dev", invite="keep-me")
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "registration_closed"
+        assert invite_store.invites[invite.id].used_at is None
+
+
+@pytest.mark.integration
+class TestRemovedMember:
+    async def test_removed_member_cannot_log_in(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        member = seed_account(patched_repos, credential_store, "gone@gaia.dev", InstanceRole.MEMBER)
+        credential_store.store[member.id] = credential_store.store[member.id].model_copy(
+            update={"disabled_at": datetime.now(UTC)}
+        )
+
+        client = await _client(_build_router_app())
+        async with client:
+            response = await client.post(
+                "/api/v1/auth/login", json={"email": "gone@gaia.dev", "password": TEST_PASSWORD}
+            )
+
+        assert response.status_code == 401
+        assert response.json()["code"] == INVALID_CREDENTIALS
+
+    async def test_removed_member_session_stops_resolving(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        member = seed_account(patched_repos, credential_store, "gone@gaia.dev", InstanceRole.MEMBER)
+        token = await issue_session_token(member.id, 0)
+        assert await resolve_session_token(token) == member.id
+
+        credential_store.store[member.id] = credential_store.store[member.id].model_copy(
+            update={"disabled_at": datetime.now(UTC)}
+        )
+
+        assert await resolve_session_token(token) is None
 
 
 # ---------------------------------------------------------------------------

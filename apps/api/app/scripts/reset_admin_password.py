@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Reset the self-host admin account so a new one can be created.
 
-Deletes every document in ``auth_credentials`` (the single-admin slot).
-After running, visit ``/signup`` to create a new administrator.
+Deletes the administrator's ``auth_credentials`` row (slot=admin) and its user
+row; member accounts are untouched. After running, visit ``/signup`` to create
+a new administrator.
 
 Usage (on the host that runs GAIA)::
 
@@ -10,16 +11,6 @@ Usage (on the host that runs GAIA)::
     docker compose exec api python -m app.scripts.reset_admin_password
     # or inside the API container
     python -m app.scripts.reset_admin_password
-
-Alternative direct-Mongo form (no script)::
-
-    docker exec mongo mongosh --eval 'db.getSiblingDB("GAIA").auth_credentials.deleteMany({})'
-
-Then open ``/signup``. If signup says the email is already taken (the
-``users`` row still exists from the previous admin), either sign up with a
-different email or remove the old user row:
-
-    docker exec mongo mongosh --eval 'db.getSiblingDB("GAIA").users.deleteMany({})'
 """
 
 from __future__ import annotations
@@ -32,6 +23,7 @@ from pymongo import MongoClient
 
 from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+from app.models.auth_models import ADMIN_CREDENTIAL_SLOT
 
 
 class StoredCredential(TypedDict):
@@ -62,7 +54,8 @@ def main() -> None:
     client: MongoClient[dict[str, object]] = MongoClient(settings.MONGO_DB)
     db = client[MONGO_DATABASE_NAME]
     credentials = db.get_collection("auth_credentials")
-    count = credentials.count_documents({})
+    admin_filter = {"slot": ADMIN_CREDENTIAL_SLOT}
+    count = credentials.count_documents(admin_filter)
 
     if count == 0:
         print("No admin account found — you can already sign up at /signup")
@@ -76,10 +69,10 @@ def main() -> None:
     # Capture user_ids before deleting so we can clean up orphaned users
     # (otherwise signup with the same email is blocked by the existing-identity gate).
     # Materialised before the delete, exactly as the lazy cursor was.
-    rows: list[StoredCredential] = [*credentials.find({}, {"user_id": 1})]
+    rows: list[StoredCredential] = [*credentials.find(admin_filter, {"user_id": 1})]
     user_ids = [row["user_id"] for row in rows if row.get("user_id")]
 
-    result = credentials.delete_many({})
+    result = credentials.delete_many(admin_filter)
     print(f"Deleted {result.deleted_count} admin credential(s).")
 
     if user_ids:
