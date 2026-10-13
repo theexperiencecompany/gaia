@@ -6,7 +6,9 @@ each to a ~600px WebP (keeping the transparent perforated edge), uploads it to
 Cloudinary under ``briefing/stamps/<slug>``, and writes the returned URL into
 ``app/services/briefing/editions/explorer/assets/stamps/cities.json`` — the only
 stamp file the repo carries. Every city in the catalogue must have a source
-image. Safe to re-run: uploads overwrite and the URLs are rewritten.
+image. Idempotent: each city uploads to a fixed public id with overwrite, and
+the recorded URL is versionless, so a re-run replaces the same assets and
+leaves cities.json unchanged.
 
 Needs CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET.
 
@@ -18,6 +20,7 @@ import asyncio
 import io
 import json
 from pathlib import Path
+import re
 
 from PIL import Image
 
@@ -33,6 +36,9 @@ _CATALOGUE = (
 _PUBLIC_ID_PREFIX = "briefing/stamps"
 _WIDTH_PX = 600
 _WEBP_QUALITY = 80
+# Cloudinary stamps a fresh /v<timestamp>/ on every upload; the asset is the
+# public id, so the recorded URL drops it to stay stable across re-runs.
+_VERSION_SEGMENT = re.compile(r"/upload/v\d+/")
 
 
 def _webp(png: Path) -> bytes:
@@ -68,9 +74,10 @@ async def upload(source: Path) -> None:
 
     for done, row in enumerate(rows, start=1):
         data = _webp(sources[row["slug"]])
-        row["url"] = await asyncio.to_thread(
+        uploaded = await asyncio.to_thread(
             upload_file_to_cloudinary, f"{_PUBLIC_ID_PREFIX}/{row['slug']}", file_data=data
         )
+        row["url"] = _VERSION_SEGMENT.sub("/upload/", uploaded)
         print(f"  {done}/{len(rows)} {row['slug']}: {len(data) // 1024} KB -> {row['url']}")
 
     _CATALOGUE.write_text(json.dumps(rows, ensure_ascii=False, indent=1) + "\n")
