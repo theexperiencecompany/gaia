@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   type CredentialProvider,
-  LLM_PROVIDER_KEYS,
+  type ProviderCatalog,
   providersApi,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
@@ -30,6 +30,12 @@ export function isProviderConfigured(
   return status?.providers?.[key]?.configured === true;
 }
 
-export function isAnyLlmConfigured(status: SetupStatus | undefined): boolean {
-  return LLM_PROVIDER_KEYS.some((key) => isProviderConfigured(status, key));
+/** Whether any chat-capable provider (per the catalog) can serve a request. */
+export function isAnyLlmConfigured(
+  status: SetupStatus | undefined,
+  catalog: ProviderCatalog,
+): boolean {
+  return catalog.llm_provider_keys.some(
+    (key) => status?.providers?.[key]?.configured === true,
+  );
 }

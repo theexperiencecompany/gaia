@@ -15,8 +15,9 @@ import { ArrowRight02Icon, Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { LLM_PROVIDER_KEYS } from "@/features/settings/api/providersApi";
+import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
+  isAnyLlmConfigured,
   isProviderConfigured,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
@@ -48,6 +49,7 @@ function readDismissedSnapshot(): string[] {
 
 export function SetupChecklistCard() {
   const { data: status } = useSetupStatus();
+  const { data: catalog } = useProviderCatalog();
   const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
 
   // Read localStorage after mount so SSR and hydration agree.
@@ -56,12 +58,9 @@ export function SetupChecklistCard() {
   }, []);
 
   const items = useMemo<ChecklistItem[]>(() => {
-    if (!status) return [];
+    if (!status || !catalog) return [];
     const list: ChecklistItem[] = [];
-    const hasLlm = LLM_PROVIDER_KEYS.some((key) =>
-      isProviderConfigured(status, key),
-    );
-    if (!hasLlm) {
+    if (!isAnyLlmConfigured(status, catalog)) {
       list.push({
         key: "llm",
         title: "Connect an AI provider",
@@ -86,7 +85,7 @@ export function SetupChecklistCard() {
       });
     }
     return list;
-  }, [status]);
+  }, [status, catalog]);
 
   // Hidden only while the pending set matches what was dismissed; any new or
   // returning item (LLM unconfigured again) makes the card visible once more.

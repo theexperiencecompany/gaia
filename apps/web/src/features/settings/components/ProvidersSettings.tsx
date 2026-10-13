@@ -10,10 +10,10 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { Spinner } from "@heroui/spinner";
 import { SquareArrowUpRight02Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
-import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   type CredentialProvider,
@@ -30,12 +30,14 @@ import {
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import {
-  CUSTOM_PRESETS,
   type CustomPreset,
-} from "@/features/setup-wizard/constants";
+  type CustomPresetKey,
+  customPresetsFromCatalog,
+} from "@/features/setup-wizard/utils/providerCards";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 
@@ -45,15 +47,19 @@ interface ProviderRow {
   description: string;
   faviconDomain: string;
   needsBaseUrl: boolean;
-  defaultBaseUrl?: string;
-  defaultModel?: string;
   /** Tavily is a tool key — no model applies. */
   showModelField: boolean;
   /** Whether the backend can live-probe this credential (it cannot for Tavily). */
   connectionTestable: boolean;
 }
 
-// Mirrors PRESETS in app/constants/providers.py.
+/** A row's UI copy plus the endpoint defaults the catalog serves for it. */
+interface CatalogProviderRow extends ProviderRow {
+  defaultBaseUrl: string;
+  defaultModel: string;
+}
+
+// UI copy only — endpoint defaults and display order come from GET /setup/catalog.
 const PROVIDER_ROWS: ProviderRow[] = [
   {
     key: "openrouter",
@@ -74,13 +80,21 @@ const PROVIDER_ROWS: ProviderRow[] = [
     connectionTestable: true,
   },
   {
+    key: "openai",
+    label: "OpenAI",
+    description:
+      "GPT models directly from OpenAI. Also powers voice-note transcription.",
+    faviconDomain: "openai.com",
+    needsBaseUrl: false,
+    showModelField: true,
+    connectionTestable: true,
+  },
+  {
     key: "ollama",
     label: "Ollama",
     description: "Run models locally — no API key needed.",
     faviconDomain: "ollama.com",
     needsBaseUrl: true,
-    defaultBaseUrl: "http://host.docker.internal:11434",
-    defaultModel: "llama3.2",
     showModelField: true,
     connectionTestable: true,
   },
@@ -126,15 +140,6 @@ const PROVIDER_ROWS: ProviderRow[] = [
     connectionTestable: false,
   },
   {
-    key: "openai",
-    label: "OpenAI",
-    description: "Used for voice-note transcription (Whisper).",
-    faviconDomain: "openai.com",
-    needsBaseUrl: false,
-    showModelField: false,
-    connectionTestable: false,
-  },
-  {
     key: "resend",
     label: "Resend Email",
     description: "Outbound email for notifications and reminders.",
@@ -174,14 +179,21 @@ const PROVIDER_ROWS: ProviderRow[] = [
   },
 ];
 
-// Preset gateways for the custom lane come from the shared catalog in
-// providersApi (CUSTOM_PRESETS) — paste an API key and go.
-type CustomPresetId = CustomPreset["key"] | "manual";
+type CustomPresetId = CustomPresetKey | "manual";
 
-const PRESET_CHIPS: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
-  ...CUSTOM_PRESETS.map((p) => ({ id: p.key, label: p.label })),
-  { id: "manual", label: "Manual" },
-];
+function resolveProviderRow(
+  key: CredentialProvider,
+  catalog: ProviderCatalog,
+): CatalogProviderRow {
+  const row = PROVIDER_ROWS.find((r) => r.key === key);
+  if (!row) throw new Error(`No settings copy for provider "${key}"`);
+  const meta = catalog.providers[key];
+  return {
+    ...row,
+    defaultBaseUrl: meta.base_url,
+    defaultModel: meta.default_model,
+  };
+}
 
 function StatusBadge({ configured }: { configured: boolean }) {
   if (configured) {
@@ -220,7 +232,9 @@ function ProviderFavicon({
 }
 
 interface ConfigureProviderModalProps {
-  row: ProviderRow | null;
+  row: CatalogProviderRow | null;
+  /** Gateway chips offered when configuring the custom lane. */
+  presets: readonly CustomPreset[];
   /** Masked stored config for this row, when the listing has loaded. */
   stored?: StoredProviderConfig;
   isConfigured: boolean;
@@ -228,17 +242,9 @@ interface ConfigureProviderModalProps {
   onClose: () => void;
 }
 
-function useProviderCatalog() {
-  return useQuery<ProviderCatalog>({
-    queryKey: ["setup", "catalog"],
-    queryFn: () => providersApi.fetchCatalog(),
-    staleTime: 60_000,
-    retry: false,
-  });
-}
-
 function ConfigureProviderModal({
   row,
+  presets,
   stored,
   isConfigured,
   onSaved,
@@ -256,22 +262,20 @@ function ConfigureProviderModal({
 
   const isOpen = row != null;
 
-  // Seed from the STORED config (masked listing), falling back to row
-  // defaults. The upsert endpoint replaces a provider's whole config, so
-  // saving must carry the resolved base_url/model or they would be wiped.
+  // Upsert replaces the whole config, so seed from what is stored or a save wipes it.
+  // The catalog model stays a placeholder: storing it would pin it past a default change.
   useEffect(() => {
     if (!row) return;
     setApiKey("");
-    setBaseUrl(stored?.base_url || row.defaultBaseUrl || "");
-    setModel(row.showModelField ? stored?.model || row.defaultModel || "" : "");
+    setBaseUrl(stored?.base_url || row.defaultBaseUrl);
+    setModel(row.showModelField ? stored?.model || "" : "");
     setPreset(
-      CUSTOM_PRESETS.find((p) => p.baseUrl === stored?.base_url)?.key ??
-        "manual",
+      presets.find((p) => p.base_url === stored?.base_url)?.key ?? "manual",
     );
     setTestResult(null);
     setIsSaving(false);
     setIsTesting(false);
-  }, [row, stored]);
+  }, [row, stored, presets]);
 
   if (!row) return null;
 
@@ -284,11 +288,16 @@ function ConfigureProviderModal({
     setPreset(id);
     setTestResult(null);
     if (id === "manual") return;
-    const match = CUSTOM_PRESETS.find((p) => p.key === id);
+    const match = presets.find((p) => p.key === id);
     if (!match) return;
-    setBaseUrl(match.baseUrl);
-    setModel(match.defaultModel);
+    setBaseUrl(match.base_url);
+    setModel(match.default_model);
   };
+
+  const presetChips: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
+    ...presets.map((p) => ({ id: p.key, label: p.label })),
+    { id: "manual", label: "Manual" },
+  ];
 
   const buildBody = (): ProviderConfigBody => {
     const body: ProviderConfigBody = {};
@@ -421,7 +430,7 @@ function ConfigureProviderModal({
                       Preset gateway
                     </p>
                     <div className="flex gap-2">
-                      {PRESET_CHIPS.map((chip) => (
+                      {presetChips.map((chip) => (
                         <Button
                           key={chip.id}
                           size="sm"
@@ -438,7 +447,7 @@ function ConfigureProviderModal({
                 <Input
                   label="Base URL"
                   placeholder={
-                    row.defaultBaseUrl ?? "https://your-gateway.example.com/v1"
+                    row.defaultBaseUrl || "https://your-gateway.example.com/v1"
                   }
                   value={baseUrl}
                   onValueChange={(value) => {
@@ -451,7 +460,7 @@ function ConfigureProviderModal({
             {row.showModelField && (
               <Input
                 label="Model"
-                placeholder="Default"
+                placeholder={row.defaultModel || "Default"}
                 description="Leave empty to use the endpoint default."
                 value={model}
                 onValueChange={(value) => {
@@ -552,39 +561,35 @@ export function ProvidersSettings() {
     isLoading: isLoadingConfigs,
     refetch: refetchConfigs,
   } = useProviderConfigs();
-  const { data: catalog } = useProviderCatalog();
+  const { data: catalog, isError: isCatalogError } = useProviderCatalog();
   const [editingKey, setEditingKey] = useState<CredentialProvider | null>(null);
 
-  // Prefer the live catalog from GET /setup/catalog (backend is now source of
-  // truth); fall back to the hardcoded PROVIDER_ROWS so older builds or a
-  // failed fetch still render every row.
-  const displayRows: ProviderRow[] = catalog
-    ? (
-        Object.entries(catalog.providers) as [
-          CredentialProvider,
-          ProviderCatalog["providers"][CredentialProvider],
-        ][]
-      ).map(([key, meta]) => {
-        const fallback = PROVIDER_ROWS.find((r) => r.key === key);
-        return {
-          key,
-          label: meta.label || fallback?.label || key,
-          description: fallback?.description || "",
-          faviconDomain: meta.favicon_domain || fallback?.faviconDomain || "",
-          needsBaseUrl: meta.needs_base_url ?? fallback?.needsBaseUrl ?? false,
-          defaultBaseUrl: meta.base_url || fallback?.defaultBaseUrl || "",
-          defaultModel: meta.default_model || fallback?.defaultModel,
-          showModelField: fallback?.showModelField ?? true,
-          connectionTestable: fallback?.connectionTestable ?? false,
-        };
-      })
-    : PROVIDER_ROWS;
+  // The catalog serves every credential-store provider in display order.
+  // Memoized so the open modal's seeding effect doesn't re-run per render.
+  const { displayRows, presets } = useMemo(
+    () =>
+      catalog
+        ? {
+            displayRows: (
+              Object.keys(catalog.providers) as CredentialProvider[]
+            ).map((key) => resolveProviderRow(key, catalog)),
+            presets: customPresetsFromCatalog(catalog),
+          }
+        : { displayRows: [], presets: [] },
+    [catalog],
+  );
 
   const editingRow = displayRows.find((r) => r.key === editingKey) ?? null;
 
   return (
     <SettingsPage>
       <SettingsSection description="Connect the AI providers, tools, and integrations GAIA runs on.">
+        {!catalog && !isCatalogError && <Spinner size="sm" />}
+        {isCatalogError && (
+          <p className="text-sm text-zinc-400">
+            Couldn&apos;t load the provider list. Reload the page to try again.
+          </p>
+        )}
         {displayRows.map((row) => {
           const configured = status?.providers?.[row.key]?.configured === true;
 
@@ -615,6 +620,7 @@ export function ProvidersSettings() {
 
       <ConfigureProviderModal
         row={editingRow}
+        presets={presets}
         stored={editingKey != null ? storedConfigs?.[editingKey] : undefined}
         isConfigured={
           editingKey != null &&

@@ -25,7 +25,15 @@ import {
 } from "./env-parser.js";
 import { isInteractive } from "./non-tty.js";
 
-export type LlmProvider = "openrouter" | "gemini" | "custom";
+/** Providers `gaia up --llm-provider` accepts. */
+export const LLM_PROVIDERS = [
+  "openrouter",
+  "gemini",
+  "openai",
+  "custom",
+] as const;
+
+export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
 export interface UpFlags {
   /** Accept all defaults — implied for every prompt `up` can resolve. */
@@ -41,15 +49,6 @@ export interface UpFlags {
   forceDevTree?: boolean;
 }
 
-/**
- * Maps env vars to the flag that sources them — used to fail loud naming the
- * flag instead of silently continuing when a value is missing in non-TTY runs.
- */
-const ENV_VAR_FLAG_HINTS: Record<string, string> = {
-  OPENROUTER_API_KEY: "--llm-key --llm-provider openrouter",
-  GOOGLE_API_KEY: "--llm-key --llm-provider gemini",
-};
-
 /** Env var each provider flag writes for first boot ("custom" writes none). */
 export const PROVIDER_ENV_VAR: Record<
   Exclude<LlmProvider, "custom">,
@@ -57,7 +56,19 @@ export const PROVIDER_ENV_VAR: Record<
 > = {
   openrouter: "OPENROUTER_API_KEY",
   gemini: "GOOGLE_API_KEY",
+  openai: "OPENAI_API_KEY",
 };
+
+/**
+ * Maps env vars to the flag that sources them — used to fail loud naming the
+ * flag instead of silently continuing when a value is missing in non-TTY runs.
+ */
+const ENV_VAR_FLAG_HINTS: Record<string, string> = Object.fromEntries(
+  Object.entries(PROVIDER_ENV_VAR).map(([provider, envVar]) => [
+    envVar,
+    `--llm-key --llm-provider ${provider}`,
+  ]),
+);
 
 /** Default install location for fresh self-host clones (mirrors init). */
 export const DEFAULT_INSTALL_DIR = path.join(os.homedir(), "gaia");
@@ -95,7 +106,7 @@ export function validateLlmFlags(flags: UpFlags): void {
   }
   if (flags.llmKey && !flags.llmProvider) {
     throw new Error(
-      "--llm-key requires --llm-provider <openrouter|gemini|custom>.",
+      `--llm-key requires --llm-provider <${LLM_PROVIDERS.join("|")}>.`,
     );
   }
   if (flags.llmProvider && !flags.llmKey) {

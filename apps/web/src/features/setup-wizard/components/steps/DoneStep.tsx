@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import {
   type CredentialProvider,
+  type ProviderCatalog,
   providerFaviconUrl,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
@@ -47,6 +48,7 @@ const ConnectedAppsCount = nextDynamic(() => import("./ConnectedAppsCount"), {
 
 interface DoneStepProps {
   status: SetupStatus;
+  catalog: ProviderCatalog;
 }
 
 function providerLabel(key: string): string {
@@ -89,14 +91,14 @@ const STARTER_PROMPTS: StarterPrompt[] = [
   },
 ];
 
-export function DoneStep({ status }: DoneStepProps) {
+export function DoneStep({ status, catalog }: DoneStepProps) {
   const router = useRouter();
   const appendToInput = useAppendToInput();
 
   const connectedLlmCards = LLM_PROVIDER_CARDS.filter((card) =>
     isProviderConfigured(status, card.key),
   );
-  const hasLlm = isAnyLlmConfigured(status);
+  const hasLlm = isAnyLlmConfigured(status, catalog);
   const primaryLlm = connectedLlmCards[0] ?? null;
 
   const searchConfigured = isProviderConfigured(

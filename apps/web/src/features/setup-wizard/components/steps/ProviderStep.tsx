@@ -1,80 +1,44 @@
 /**
  * Wizard step 1 — pick and configure an AI provider (OpenRouter, Gemini,
- * Ollama, or a custom OpenAI-compatible endpoint). Every card saves and
+ * OpenAI, Ollama, or a custom OpenAI-compatible endpoint). Every card saves and
  * tests independently; any single success unblocks continuing.
  */
 
 "use client";
 
 import { Button } from "@heroui/button";
-import { useQuery } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import {
-  type CredentialProvider,
-  type ProviderCatalog,
-  providersApi,
-  type SetupStatus,
+import type {
+  ProviderCatalog,
+  SetupStatus,
 } from "@/features/settings/api/providersApi";
 import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
-import {
-  LLM_PROVIDER_CARDS,
-  MOTION_FADE_UP,
-  type ProviderCardConfig,
-} from "../../constants";
+import { MOTION_FADE_UP } from "../../constants";
+import { resolveLlmProviderCards } from "../../utils/providerCards";
 import { ProviderSetupCard } from "../ProviderSetupCard";
 
 type ProviderMode = "hosted" | "ollama" | "skip";
 
 interface ProviderStepProps {
   status: SetupStatus;
+  catalog: ProviderCatalog;
   /** Refetch setup status after a card connects, so Done reflects it. */
   onSaved: () => unknown;
   /** Advance the wizard (used by Ollama one-click and Skip). */
   onNext?: () => void;
 }
 
-export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
+export function ProviderStep({
+  status,
+  catalog,
+  onSaved,
+  onNext,
+}: ProviderStepProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mode, setMode] = useState<ProviderMode>("hosted");
 
-  const { data: catalog } = useQuery<ProviderCatalog>({
-    queryKey: ["setup", "catalog"],
-    queryFn: () => providersApi.fetchCatalog(),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  // Prefer live catalog when available; fall back to the hardcoded LLM cards so
-  // the wizard works even if the catalog endpoint is unreachable.
-  const llmCards: ProviderCardConfig[] = catalog
-    ? (catalog.llm_provider_keys as CredentialProvider[])
-        .map<ProviderCardConfig | null>((key) => {
-          const meta = catalog.providers[key];
-          const fallback = LLM_PROVIDER_CARDS.find((c) => c.key === key);
-          if (!meta && !fallback) return null;
-          // Catalog has no description/connectionTestable — carry them from the
-          // hardcoded card so UI shape stays identical.
-          const card: ProviderCardConfig = {
-            key,
-            label: meta?.label || fallback?.label || key,
-            description: fallback?.description || "",
-            faviconDomain:
-              meta?.favicon_domain || fallback?.faviconDomain || "",
-            showApiKey: fallback?.showApiKey ?? true,
-            showBaseUrl: meta?.needs_base_url ?? fallback?.showBaseUrl ?? false,
-            showModel: fallback?.showModel ?? false,
-            connectionTestable: fallback?.connectionTestable ?? true,
-            defaultBaseUrl: meta?.base_url || fallback?.defaultBaseUrl || "",
-            defaultModel: meta?.default_model || fallback?.defaultModel || "",
-            hasPresets: fallback?.hasPresets ?? false,
-          };
-          if (fallback?.presetFavicon)
-            card.presetFavicon = fallback.presetFavicon;
-          return card;
-        })
-        .filter((c): c is ProviderCardConfig => c !== null)
-    : LLM_PROVIDER_CARDS;
+  const llmCards = resolveLlmProviderCards(catalog);
 
   const openRouterCard =
     llmCards.find((c) => c.key === "openrouter") ?? llmCards[0];
@@ -186,8 +150,7 @@ export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
           ) : (
             <div className="w-full rounded-2xl bg-zinc-800 p-4">
               <p className="text-sm text-zinc-400">
-                Ollama configuration is unavailable — the provider catalog
-                couldn&apos;t be loaded. Try reloading the page.
+                This instance doesn&apos;t offer Ollama as a chat provider.
               </p>
             </div>
           )}

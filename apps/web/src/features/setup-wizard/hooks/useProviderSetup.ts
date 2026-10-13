@@ -7,11 +7,7 @@ import {
   type ProviderConfigBody,
   providersApi,
 } from "@/features/settings/api/providersApi";
-import {
-  CUSTOM_PRESETS,
-  type CustomPreset,
-  type ProviderCardConfig,
-} from "../constants";
+import type { CustomPreset, ProviderCard } from "../utils/providerCards";
 
 export type ProviderSetupPhase = "saving" | "testing";
 
@@ -24,16 +20,14 @@ export interface ProviderTestOutcome {
 /**
  * State + connect flow for one provider card. Credentials are tested via the
  * test endpoint's body before anything is stored; untestable providers
- * (Tavily) skip straight to saving. Field defaults come from the card
- * config (and the selected preset, for Custom).
+ * (Tavily) skip straight to saving. The base URL starts at the catalog
+ * default; the model stays empty (the backend runs its catalog default) unless
+ * the user types one or picks a Custom preset.
  */
-export function useProviderSetup(
-  config: ProviderCardConfig,
-  onSaved: () => void,
-) {
+export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(config.defaultBaseUrl);
-  const [model, setModel] = useState(config.defaultModel);
+  const [model, setModel] = useState("");
   const [preset, setPreset] = useState<CustomPreset | null>(null);
   const [phase, setPhase] = useState<ProviderSetupPhase | null>(null);
   const [outcome, setOutcome] = useState<ProviderTestOutcome | null>(null);
@@ -74,11 +68,11 @@ export function useProviderSetup(
   const applyPreset = useCallback(
     (selected: CustomPreset | null) => {
       setPreset(selected);
-      setBaseUrl(selected ? selected.baseUrl : config.defaultBaseUrl);
-      setModel(selected ? selected.defaultModel : config.defaultModel);
+      setBaseUrl(selected ? selected.base_url : config.defaultBaseUrl);
+      setModel(selected ? selected.default_model : "");
       resetResult();
     },
-    [config.defaultBaseUrl, config.defaultModel, resetResult],
+    [config.defaultBaseUrl, resetResult],
   );
 
   const body = useMemo((): ProviderConfigBody => {
@@ -148,7 +142,6 @@ export function useProviderSetup(
     setModel: updateModel,
     preset,
     applyPreset,
-    presets: CUSTOM_PRESETS,
     isBusy,
     outcome,
     error,

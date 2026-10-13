@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CLIStore } from "../ui/store.js";
+import { type LlmProvider, PROVIDER_ENV_VAR } from "./answers.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
@@ -10,7 +11,7 @@ const delay = (ms: number): Promise<void> =>
 
 export interface EnvSetupOptions {
   /** Provider selected via `gaia up --llm-provider`. */
-  llmProvider?: "openrouter" | "gemini" | "custom";
+  llmProvider?: LlmProvider;
   /** API key supplied via `gaia up --llm-key`. */
   llmKey?: string;
 }
@@ -133,12 +134,9 @@ function applyLlmFlagAnswers(
   envValues: Record<string, string>,
   options?: EnvSetupOptions,
 ): void {
-  if (!options?.llmKey) return;
-  if (options.llmProvider === "openrouter") {
-    envValues["OPENROUTER_API_KEY"] = options.llmKey;
-  } else if (options.llmProvider === "gemini") {
-    envValues["GOOGLE_API_KEY"] = options.llmKey;
-  }
+  if (!options?.llmKey || !options.llmProvider) return;
+  if (options.llmProvider === "custom") return;
+  envValues[PROVIDER_ENV_VAR[options.llmProvider]] = options.llmKey;
 }
 
 async function collectInfisicalEnv(

@@ -1,47 +1,13 @@
 /**
- * Static metadata for the setup wizard: step copy and provider card configs.
- * The OpenAI-compatible preset chips offered inside the Custom card live here
- * (not in the API contract): they are UI shortcuts whose endpoints mirror the
- * opencode/nous entries of PRESETS in app/constants/providers.py. The API
- * remains the source of truth for behavior; these only drive UI.
+ * Static UI copy for the setup wizard: step text and provider card configs.
+ * Endpoint defaults (base URL, model) and the Custom card's preset gateways
+ * come from GET /setup/catalog (see utils/providerCards), never from here.
  */
 
 import type { Transition } from "motion/react";
 import type { CredentialProvider } from "@/lib/api/setupTransport";
 
 const EASE_OUT_QUART: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
-/**
- * OpenAI-compatible preset gateways surfaced as chips inside the "custom"
- * lane — paste an API key and go. One shared catalog for Settings and the
- * setup wizard, so both render the same chips.
- */
-export interface CustomPreset {
-  /** Gateway id sent as `preset` on the provider body. */
-  key: "opencode" | "nous";
-  label: string;
-  baseUrl: string;
-  /** Empty ⇒ fetched from the endpoint at configure time. */
-  defaultModel: string;
-  faviconDomain: string;
-}
-
-export const CUSTOM_PRESETS: readonly CustomPreset[] = [
-  {
-    key: "opencode",
-    label: "OpenCode",
-    baseUrl: "https://opencode.ai/zen/go/v1",
-    defaultModel: "deepseek-v4-flash",
-    faviconDomain: "opencode.ai",
-  },
-  {
-    key: "nous",
-    label: "Nous Research",
-    baseUrl: "https://inference-api.nousresearch.com/v1",
-    defaultModel: "",
-    faviconDomain: "nousresearch.com",
-  },
-];
 
 export const MOTION_FADE_UP = {
   initial: { opacity: 0, y: 12 },
@@ -57,8 +23,6 @@ export interface ProviderCardConfig {
   label: string;
   description: string;
   faviconDomain: string;
-  /** Favicon swaps with the selected preset (Custom card only). */
-  presetFavicon?: Record<string, string>;
   showApiKey: boolean;
   showBaseUrl: boolean;
   showModel: boolean;
@@ -68,21 +32,9 @@ export interface ProviderCardConfig {
    * so its card saves directly and reports "Saved" instead of "Connected".
    */
   connectionTestable: boolean;
-  defaultBaseUrl: string;
-  defaultModel: string;
+  /** Offers the catalog's OpenAI-compatible preset gateways as chips. */
   hasPresets: boolean;
 }
-
-/**
- * One-click Ollama defaults — the local endpoint + model the wizard's
- * "Use local Ollama" shortcut saves without a probe. Kept here so the card
- * defaults and the shortcut stay in sync; the backend allows this private
- * address for ollama (see setup.py `_assert_url_safe`).
- */
-export const OLLAMA_ONE_CLICK = {
-  baseUrl: "http://host.docker.internal:11434",
-  model: "llama3.2",
-} as const;
 
 export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
   {
@@ -94,8 +46,6 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: true,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -107,8 +57,18 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: true,
-    defaultBaseUrl: "",
-    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description:
+      "GPT models directly from OpenAI. Also powers voice-note transcription.",
+    faviconDomain: "openai.com",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: true,
     hasPresets: false,
   },
   {
@@ -120,8 +80,6 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: true,
     showModel: true,
     connectionTestable: true,
-    defaultBaseUrl: OLLAMA_ONE_CLICK.baseUrl,
-    defaultModel: OLLAMA_ONE_CLICK.model,
     hasPresets: false,
   },
   {
@@ -130,15 +88,10 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     description:
       "Use any service with an OpenAI-style API — like OpenCode or Nous — or enter your own server address.",
     faviconDomain: "opencode.ai",
-    presetFavicon: Object.fromEntries(
-      CUSTOM_PRESETS.map((p) => [p.key, p.faviconDomain]),
-    ),
     showApiKey: true,
     showBaseUrl: true,
     showModel: true,
     connectionTestable: true,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: true,
   },
 ];
@@ -152,8 +105,6 @@ export const SEARCH_PROVIDER_CARD: ProviderCardConfig = {
   showBaseUrl: false,
   showModel: false,
   connectionTestable: false,
-  defaultBaseUrl: "",
-  defaultModel: "",
   hasPresets: false,
 };
 
@@ -180,8 +131,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -193,21 +142,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
-    hasPresets: false,
-  },
-  {
-    key: "openai",
-    label: "OpenAI",
-    description: "Used for voice-note transcription (Whisper).",
-    faviconDomain: "openai.com",
-    showApiKey: true,
-    showBaseUrl: false,
-    showModel: false,
-    connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -219,8 +153,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -232,8 +164,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -245,8 +175,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
   {
@@ -258,8 +186,6 @@ export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: false,
     showModel: false,
     connectionTestable: false,
-    defaultBaseUrl: "",
-    defaultModel: "",
     hasPresets: false,
   },
 ];
