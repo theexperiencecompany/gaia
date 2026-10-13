@@ -103,7 +103,7 @@ export default function (pi: ExtensionAPI) {
     ) {
       return;
     }
-    input.command = "export GIT_TERMINAL_PROMPT=0\n" + input.command;
+    input.command = `export GIT_TERMINAL_PROMPT=0\n${input.command}`;
   });
 
   // Everything below forwards session lifecycle to Entire, which only the
