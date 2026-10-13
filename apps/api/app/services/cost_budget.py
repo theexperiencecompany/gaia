@@ -244,10 +244,8 @@ async def get_budget_stop_reason(
     per-request token ceiling, and returns the spend/plan read so callers can
     test the wrap-up threshold for free. Fails open only when nothing can be enforced.
     """
-    # Skip on self-host (records cost but never blocks — no allowance to run
-    # out of) or when DEV_UNLIMITED_RATE_LIMITS is set (eval and local dev stay
-    # unblocked). Dev otherwise enforces, mirroring production.
-    if settings.is_selfhost or settings.DEV_UNLIMITED_RATE_LIMITS:
+    # Cost is still recorded where limits are off; only the wall stands down.
+    if not settings.deployment.enforces_usage_limits:
         return BudgetCheck(None, None, None)
 
     if user_id is None:

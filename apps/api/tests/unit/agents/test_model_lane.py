@@ -137,6 +137,18 @@ class TestPlanRouting:
         for plan in (PlanType.FREE, PlanType.PRO):
             assert (await _resolve(plan)).max_input_tokens == DEFAULT_MAX_TOKENS
 
+    async def test_self_host_serves_its_configured_lane_not_the_hosted_paid_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every self-host user resolves to Pro; that must not route them to the hosted paid model."""
+        monkeypatch.setattr(lane_module.settings, "ENV", "selfhost")
+        unreachable = AsyncMock(side_effect=AssertionError("no economic guard without plans"))
+        with patch.object(lane_module, "_pro_monthly_budget_exhausted", unreachable):
+            resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
+
+        assert plan is PlanType.PRO
+        assert resolved == lane_module._default_lane()
+
     async def test_no_user_id_resolves_the_default_lane_and_no_plan(self) -> None:
         resolved, plan = await resolve_lane(None, AgentRole.COMMS)
 
@@ -236,14 +248,6 @@ class TestTheMonthlySpendRead:
 
     async def test_spend_below_the_budget_keeps_the_paid_lane(self) -> None:
         with _spend(PRO_MONTHLY_COST_BUDGET_USD - 0.01):
-            assert await _pro_monthly_budget_exhausted(USER) is False
-
-    async def test_the_guard_stands_down_on_self_host(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Stand the guard down on self-host, even at the cap."""
-        monkeypatch.setattr(type(lane_module.settings), "is_selfhost", property(lambda self: True))
-        with _spend(PRO_MONTHLY_COST_BUDGET_USD):
             assert await _pro_monthly_budget_exhausted(USER) is False
 
     async def test_a_read_failure_fails_open_and_keeps_the_paid_lane(self) -> None:

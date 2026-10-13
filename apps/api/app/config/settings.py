@@ -23,6 +23,12 @@ from pydantic import Field, ValidationInfo, computed_field, field_validator
 from pydantic_settings import SettingsConfigDict
 
 from app.config.browser_host_settings import BrowserHostSettings
+from app.config.deployment import (
+    AuthMode,
+    DeploymentKind,
+    DeploymentProfile,
+    deployment_profile,
+)
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from app.constants.browser import BrowserAgentEffort
@@ -188,23 +194,14 @@ class CommonSettings(BaseAppSettings):
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
 
-    # Capability flag, not configuration: only the hosted production tier bills.
-    # Drives UI affordances, never enforcement: gates key off is_selfhost, as
-    # dev mirrors production enforcement while billing nothing.
     @property
-    def billing_enabled(self) -> bool:
-        """Whether this deployment bills (True only under ENV=production)."""
-        return self.ENV == "production"
-
-    @property
-    def is_selfhost(self) -> bool:
-        """Whether this deployment is the self-hosted single-admin tier.
-
-        The one predicate every enforcement gate stands down on: a self-hosted
-        instance has no payment provider and no plans, so 402s, rate walls, cost
-        walls, caps and link gates would block a user who cannot pay.
-        """
-        return self.ENV == "selfhost"
+    def deployment(self) -> DeploymentProfile:
+        """Return the instance's capabilities; every deployment difference reads from here."""
+        return deployment_profile(
+            DeploymentKind(self.ENV),
+            self.AUTH_MODE,
+            unlimited_usage=self.DEV_UNLIMITED_RATE_LIMITS,
+        )
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.
@@ -944,12 +941,6 @@ def _ensure_infisical_loaded() -> None:
     global _infisical_secrets_loaded
     if _infisical_secrets_loaded:
         return
-    if os.getenv("ENV") == "selfhost":
-        # Self-host resolves all configuration locally by design — never contact
-        # Infisical, even if machine-identity vars happen to be present in .env.
-        log.info(f"{LogTag.STARTUP} Infisical skipped: self-host mode uses local configuration")
-        _infisical_secrets_loaded = True
-        return
     infisical_start = time.time()
     inject_infisical_secrets()
     log.info(
@@ -1006,20 +997,9 @@ def _raise_if_dev_override_env() -> None:
         )
 
 
-def _raise_if_selfhost_feature_in_production() -> None:
-    """Hard-block self-host-only configuration outside its environments.
-
-    Local auth is a self-host concept: hosted production MUST authenticate via
-    WorkOS. Letting AUTH_MODE=local slip into a production deployment would
-    silently stand up an open-registration password endpoint against the
-    hosted user base.
-    """
-    if os.getenv("AUTH_MODE") == "local" and os.getenv("ENV", "production") == "production":
-        raise RuntimeError(
-            "AUTH_MODE=local is set but ENV=production — local username/password "
-            "auth is a self-host feature and must never run against production. "
-            "Use ENV=selfhost for local auth."
-        )
+def _auth_mode_from_env() -> AuthMode:
+    """Read AUTH_MODE before settings exist; anything but local is the workos default."""
+    return "local" if os.getenv("AUTH_MODE") == "local" else "workos"
 
 
 def _raise_if_workos_credentials_missing_in_production() -> None:
@@ -1058,9 +1038,9 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
     try:
         # Initialize settings based on environment
         settings_obj: ProductionSettings | DevelopmentSettings | SelfHostSettings
-        if env == "development":
+        if env == DeploymentKind.DEVELOPMENT:
             settings_obj = DevelopmentSettings.from_env()
-        elif env == "selfhost":
+        elif env == DeploymentKind.SELFHOST:
             # Same hard blocks as production (see _raise_if_dev_override_env),
             # then the relaxed self-host profile.
             _raise_if_dev_override_env()
@@ -1080,10 +1060,11 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
             # Hard block, not a warning — checked via os.getenv because
             # from_env() downgrades pydantic validation errors to warnings.
             _raise_if_dev_override_env()
-            # Self-host-only configuration (local auth) must never reach a
-            # production deployment — refuse loudly rather than serve an open
-            # password-registration endpoint against hosted users.
-            _raise_if_selfhost_feature_in_production()
+            # Building the profile refuses an invalid ENV/AUTH_MODE pair
+            # (production with local auth) ahead of every other guard.
+            deployment_profile(
+                DeploymentKind.PRODUCTION, _auth_mode_from_env(), unlimited_usage=False
+            )
             # Hosted deployments authenticate via AuthKit/WorkOS: missing
             # credentials must stop the boot here instead of crashing later
             # at WorkOS client construction.
@@ -1101,7 +1082,7 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
         # Validate settings after full initialization
         settings_validator.configure(
             settings_obj.SHOW_MISSING_KEY_WARNINGS,
-            is_production=settings_obj.ENV == "production",
+            is_production=settings_obj.deployment.kind is DeploymentKind.PRODUCTION,
         )
 
         settings_validator.validate_settings(settings_obj)
@@ -1118,7 +1099,7 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
         )
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
-        if env == "development":
+        if env == DeploymentKind.DEVELOPMENT:
             return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
         log.critical(f"{LogTag.STARTUP} Critical error initializing production settings!")
         raise

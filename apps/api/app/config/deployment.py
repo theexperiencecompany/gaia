@@ -1,0 +1,70 @@
+"""The one place a deployment's capabilities are decided.
+
+Every behaviour that differs between hosted production, development and a
+self-hosted instance reads a capability off settings.deployment instead of
+comparing ENV or AUTH_MODE itself.
+"""
+
+from dataclasses import dataclass
+from enum import StrEnum
+from functools import cache
+from typing import Literal
+
+
+class DeploymentKind(StrEnum):
+    """Which kind of instance this is; the value is the ENV it boots under."""
+
+    PRODUCTION = "production"
+    DEVELOPMENT = "development"
+    SELFHOST = "selfhost"
+
+
+AuthMode = Literal["workos", "local"]
+
+
+class InvalidDeploymentError(RuntimeError):
+    """Raised for an ENV/AUTH_MODE pair no deployment may run as."""
+
+
+@dataclass(frozen=True, slots=True)
+class DeploymentProfile:
+    """What this deployment does, as capabilities rather than environment names.
+
+    bills: payments are live (checkout, plan catalogue, paywall UI).
+    enforces_plans: a user's plan gates access; off means everyone is top tier.
+    enforces_usage_limits: rate, cost and cap walls block once exhausted.
+    runtime_credentials: provider keys may be stored at runtime; off means env only.
+    """
+
+    kind: DeploymentKind
+    local_auth: bool
+    bills: bool
+    enforces_plans: bool
+    enforces_usage_limits: bool
+    runtime_credentials: bool
+
+
+@cache
+def deployment_profile(
+    kind: DeploymentKind, auth_mode: AuthMode, *, unlimited_usage: bool
+) -> DeploymentProfile:
+    """Build the profile for one ENV/AUTH_MODE pair; raise on a pair that must never run.
+
+    unlimited_usage is the development-only DEV_UNLIMITED_RATE_LIMITS switch.
+    """
+    local_auth = auth_mode == "local"
+    if kind is DeploymentKind.PRODUCTION and local_auth:
+        raise InvalidDeploymentError(
+            "AUTH_MODE=local is set but ENV=production — local username/password "
+            "auth is a self-host feature and must never run against production. "
+            "Use ENV=selfhost for local auth."
+        )
+    enforces_plans = kind is not DeploymentKind.SELFHOST
+    return DeploymentProfile(
+        kind=kind,
+        local_auth=local_auth,
+        bills=kind is DeploymentKind.PRODUCTION,
+        enforces_plans=enforces_plans,
+        enforces_usage_limits=enforces_plans and not unlimited_usage,
+        runtime_credentials=kind is DeploymentKind.SELFHOST or local_auth,
+    )

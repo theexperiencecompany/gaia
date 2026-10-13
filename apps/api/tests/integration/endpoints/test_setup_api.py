@@ -131,7 +131,7 @@ class TestStatus:
             "google_oauth",
             "firecrawl",
         }
-        assert all(set(v) == {"configured"} for v in body["providers"].values())
+        assert all(set(v) == {"configured", "source"} for v in body["providers"].values())
 
     async def test_status_has_no_auth_dependency(self) -> None:
         assert not _requires("/status", get_current_user)
@@ -162,6 +162,7 @@ class TestStatus:
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         resp = await client.get(f"{API}/status")
         assert resp.json()["billing_enabled"] is True
 
@@ -221,17 +222,32 @@ class TestStatus:
         assert body["providers"]["tavily"]["configured"] is True
         assert body["needs_setup"] is True
 
-    async def test_env_fallback_counts_as_configured(self, client: AsyncClient) -> None:
-        # resolve() returns a config sourced from env fallbacks too — either way
-        # the provider counts as configured for needs_setup.
+    async def test_env_fallback_counts_as_configured_from_env(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "env-key")
+        body = (await client.get(f"{API}/status")).json()
+        assert body["providers"]["gemini"] == {"configured": True, "source": "env"}
+
+    async def test_a_saved_credential_reports_it_overrides_env(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "env-key")
         provider_service.configs["gemini"] = {
-            "api_key": "env-key",
+            "api_key": "saved-key",
             "base_url": None,
             "model": None,
             "preset": None,
         }
         body = (await client.get(f"{API}/status")).json()
-        assert body["providers"]["gemini"] == {"configured": True}
+        assert body["providers"]["gemini"] == {"configured": True, "source": "stored"}
+
+    async def test_an_unconfigured_provider_reports_unset(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", None)
+        body = (await client.get(f"{API}/status")).json()
+        assert body["providers"]["firecrawl"] == {"configured": False, "source": "unset"}
 
     async def test_seed_flags_surfaced(self, client: AsyncClient) -> None:
         body = (await client.get(f"{API}/status")).json()
@@ -747,15 +763,23 @@ class TestInstanceAdminGuard:
         probe = await client.post(f"{API}/providers/ollama/test", json={"api_key": "k"})
         assert probe.status_code == 200
 
-    async def test_guard_denies_when_env_is_not_selfhost(
+    async def test_guard_denies_without_local_auth(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Refuse the router under any non-selfhost ENV, even for the credential owner."""
-        monkeypatch.setattr(settings, "ENV", "production")
+        """Refuse the router without local auth, even for the credential owner."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         resp = await client.put(f"{API}/providers/gemini", json={"api_key": "g"})
         assert resp.status_code == 403
         assert resp.json()["detail"] == "not_instance_admin"
         assert provider_service.configs == {}
+
+    async def test_admin_allowed_in_development_with_local_auth(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: the guard demanded ENV selfhost, locking dev+local contributors out."""
+        monkeypatch.setattr(settings, "ENV", "development")
+        resp = await client.put(f"{API}/providers/ollama", json={"base_url": "http://o"})
+        assert resp.status_code == 200
 
     async def test_no_credential_row_means_no_admin(self, client: AsyncClient) -> None:
         """Pre-first-signup instance: nobody is admin yet — fail closed."""

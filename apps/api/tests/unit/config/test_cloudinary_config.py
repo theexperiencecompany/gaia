@@ -31,14 +31,17 @@ def _patch_env(settings_mock: Any, **overrides: str | None) -> None:
 
 
 class TestInitCloudinary:
-    def test_env_only_configures_from_settings(self):
+    def test_env_only_configures_from_settings(self, monkeypatch: pytest.MonkeyPatch):
+        """Nothing stored: the resolver itself serves the env key, with no caller fallback."""
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "CLOUDINARY_CLOUD_NAME", "env-cloud")
+        monkeypatch.setattr(settings, "CLOUDINARY_API_KEY", "env-key")
+        monkeypatch.setattr(
+            settings, "CLOUDINARY_API_SECRET", "env-secret"
+        )  # pragma: allowlist secret
         config_mock = MagicMock()
-        with (
-            patch(f"{MOD}.resolved_config", return_value=None),
-            patch(f"{MOD}.settings") as mock_settings,
-            patch(f"{MOD}.cloudinary.config", config_mock),
-        ):
-            _patch_env(mock_settings)
+        with patch(f"{MOD}.cloudinary.config", config_mock):
             init_cloudinary().loader_func()
 
         assert config_mock.call_args.kwargs["cloud_name"] == "env-cloud"

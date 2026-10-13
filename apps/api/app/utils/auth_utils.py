@@ -4,6 +4,7 @@ from starlette.requests import HTTPConnection
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
+from app.config.workos import get_async_workos_client
 from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -54,7 +55,7 @@ def with_local_onboarding_completed(
     out of chat; workos deployments pass through untouched and nothing writes
     back to Mongo.
     """
-    if onboarding is None or settings.AUTH_MODE != "local":
+    if onboarding is None or not settings.deployment.local_auth:
         return onboarding
     merged = onboarding.model_copy()
     merged.completed = True
@@ -164,11 +165,7 @@ async def authenticate_workos_session(
 
     Never raises: returns (None, None) on any failure.
     """
-    # Initialize WorkOS client if not provided
-    workos = workos_client or AsyncWorkOSClient(
-        api_key=settings.WORKOS_API_KEY,
-        client_id=settings.WORKOS_CLIENT_ID,
-    )
+    workos = workos_client or get_async_workos_client()
 
     try:
         # Load and authenticate the WorkOS session

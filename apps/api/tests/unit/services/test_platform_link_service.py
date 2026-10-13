@@ -25,6 +25,7 @@ from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
     disconnect_platform_account,
+    platform_requires_upgrade,
     reap_abandoned_imessage_registrations,
     register_pending_imessage_number,
     start_platform_connect,
@@ -99,6 +100,25 @@ class TestPlatform:
 
     def test_values_returns_all_platforms(self):
         assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
+
+
+class TestPlatformRequiresUpgrade:
+    async def test_premium_platform_is_free_to_link_where_plans_are_not_enforced(
+        self, sample_user_id, monkeypatch
+    ):
+        """Regression: self-host (no plans to buy) paywalled iMessage for every user."""
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        unreachable = AsyncMock(side_effect=AssertionError("no plan store without plans"))
+        with (
+            patch("app.services.payments.payment_service.redis_cache.get", unreachable),
+            patch(
+                "app.services.payments.payment_service.subscription_repository.get_active_for_user",
+                unreachable,
+            ),
+        ):
+            assert await platform_requires_upgrade(sample_user_id, Platform.IMESSAGE.value) is False
 
 
 class TestEnsureLinkable:

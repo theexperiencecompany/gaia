@@ -254,16 +254,17 @@ async def test_the_activation_checklist_never_raises_the_paywall(
 async def test_self_host_passes_everything_without_a_plan_read(
     gated_client: AsyncClient, method: str, path: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No paywall on self-host: the plan lookup is patched to raise, so reaching it fails loudly."""
-    from app.api.v1.middleware import entitlement as entitlement_module
+    """No paywall on self-host: every user resolves to Pro without a subscription or cache read."""
+    from app.config.settings import settings
 
-    monkeypatch.setattr(
-        type(entitlement_module.settings), "is_selfhost", property(lambda self: True)
-    )
-    with patch(
-        "app.decorators.entitlements.payment_service.get_cached_plan_type",
-        new_callable=AsyncMock,
-        side_effect=AssertionError("plan must not be read without billing"),
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    unreachable = AsyncMock(side_effect=AssertionError("no plan store read without plans"))
+    with (
+        patch("app.services.payments.payment_service.redis_cache.get", unreachable),
+        patch(
+            "app.services.payments.payment_service.subscription_repository.get_active_for_user",
+            unreachable,
+        ),
     ):
         response = await gated_client.request(method, path, json={"collapsed": True})
 

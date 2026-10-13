@@ -266,10 +266,6 @@ async def platform_requires_upgrade(user_id: str, platform: str) -> bool:
 
 async def require_platform_plan(user_id: str, platform: str) -> None:
     """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
-    if settings.is_selfhost:
-        # No billing on a self-hosted instance ⇒ premium platforms are linkable
-        # by everyone. Dev keeps the gate — it mirrors production.
-        return
     if await platform_requires_upgrade(user_id, platform):
         log.info(
             "platform linking refused — paid-only platform",

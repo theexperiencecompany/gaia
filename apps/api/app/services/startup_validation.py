@@ -39,7 +39,7 @@ async def validate_startup_requirements() -> None:
     if await is_payment_setup():
         await backfill_plan_tiers()
         return
-    if not settings.billing_enabled:
+    if not settings.deployment.bills:
         # Nothing is sold here (dev, self-host), so an empty catalogue is correct.
         log.info("No payment plans seeded; billing is disabled for this deployment")
         return

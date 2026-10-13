@@ -23,8 +23,6 @@ class ResendEmailProvider:
         """
         config: ProviderConfig | None = await resolve_resend_config("resend")
         api_key = config["api_key"] if config else None
-        if api_key is None:
-            api_key = settings.RESEND_API_KEY
         if not api_key:
             raise RuntimeError(
                 "Resend is not configured: store a Resend credential in "

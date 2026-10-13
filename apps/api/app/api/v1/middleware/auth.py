@@ -16,6 +16,7 @@ from app.api.v1.middleware.client_type import (
     request_client_source,
 )
 from app.config.settings import settings
+from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
@@ -139,14 +140,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self.workos: AsyncWorkOSClient | None = (
             workos_client
             if workos_client is not None
-            else (
-                AsyncWorkOSClient(
-                    api_key=settings.WORKOS_API_KEY,
-                    client_id=settings.WORKOS_CLIENT_ID,
-                )
-                if settings.AUTH_MODE == "workos"
-                else None
-            )
+            else (None if settings.deployment.local_auth else get_async_workos_client())
         )
         self.exclude_paths = exclude_paths or [
             "/docs",
@@ -192,7 +186,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # Local-mode-only public surfaces: signup and login must be reachable
         # before any session exists, and the setup status probe and provider
         # catalog are read pre-auth. In workos mode these stay authenticated.
-        if settings.AUTH_MODE == "local":
+        if settings.deployment.local_auth:
             self.exclude_paths += [
                 "/api/v1/auth/signup",
                 "/api/v1/auth/login",
@@ -250,7 +244,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # Self-host mode: authenticate via the local session JWT instead of
         # WorkOS. Everything below (agent-token fallback, cookie refresh) is
         # WorkOS-specific and skipped entirely.
-        if settings.AUTH_MODE == "local":
+        if settings.deployment.local_auth:
             return await self._dispatch_local_session(request, call_next)
 
         wos_session = request.cookies.get("wos_session")

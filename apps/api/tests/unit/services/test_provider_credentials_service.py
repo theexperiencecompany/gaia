@@ -106,9 +106,16 @@ def clean_state(monkeypatch):
         "INSTANCE_SECRET",
     ):
         monkeypatch.setattr(settings, field, None)
-    monkeypatch.setattr(settings, "ENV", "production")
+    # The store is live only where runtime credentials are; production is
+    # pinned env-only in test_prod_isolation.
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    # The snapshot is one dict shared with the LLM client; restore it in place
+    # so resolves here never leak stored configs into later test modules.
+    saved_snapshot = dict(service_module.resolved_configs)
     yield
     service_module._cache.clear()
+    service_module.resolved_configs.clear()
+    service_module.resolved_configs.update(saved_snapshot)
 
 
 @pytest.fixture(autouse=True)

@@ -7994,6 +7994,12 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"];
         };
         /**
+         * CredentialSource
+         * @description Where a provider's active credential comes from: a saved one wins over env.
+         * @enum {string}
+         */
+        CredentialSource: "stored" | "env" | "unset";
+        /**
          * CronValidationResponse
          * @description Result of validating a cron expression.
          */
@@ -12194,6 +12200,8 @@ export interface components {
              * @description Whether a usable credential or env fallback exists
              */
             configured: boolean;
+            /** @description Where the active credential comes from; a saved one overrides env */
+            source: components["schemas"]["CredentialSource"];
         };
         /**
          * ProviderCredentialBody
@@ -16116,6 +16124,7 @@ export type CreateSubscriptionRequest = components['schemas']['CreateSubscriptio
 export type CreateSubscriptionResponse = components['schemas']['CreateSubscriptionResponse'];
 export type CreateWorkflowFromTodoRequest = components['schemas']['CreateWorkflowFromTodoRequest'];
 export type CreateWorkflowRequest = components['schemas']['CreateWorkflowRequest'];
+export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];

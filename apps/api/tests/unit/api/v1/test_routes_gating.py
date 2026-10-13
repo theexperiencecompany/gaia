@@ -83,3 +83,23 @@ def test_local_mode_mounts_auth_and_setup_routes(monkeypatch):
     assert "/auth/signup" in paths
     assert "/auth/login" in paths
     assert "/setup/status" in paths
+
+
+def test_development_with_local_auth_mounts_auth_and_setup_routes(monkeypatch):
+    """A contributor running without WorkOS gets signup and the setup surface."""
+    from app.config.settings import settings
+
+    original_mode = settings.AUTH_MODE
+    original_env = settings.ENV
+    try:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        monkeypatch.setattr(settings, "ENV", "development")
+        paths = _mounted_paths()
+    finally:
+        monkeypatch.setattr(settings, "AUTH_MODE", original_mode)
+        monkeypatch.setattr(settings, "ENV", original_env)
+        _mounted_paths()
+
+    assert "/auth/signup" in paths
+    assert "/setup/status" in paths
+    assert "/setup/providers/{provider}" in paths

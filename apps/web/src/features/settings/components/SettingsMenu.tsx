@@ -35,7 +35,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -255,9 +255,8 @@ export default function SettingsMenu({
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { isPaid, isUnknown } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  const { data: setupStatus } = useSetupStatus();
   // Self-host instances have no billing — the entries make no sense there.
-  const billingHidden = setupStatus?.billing_enabled === false;
+  const billingHidden = !useBillingEnabled();
   const { unseen: unseenReleases } = useReleases();
 
   const whatsNewMenu = useNestedMenu();

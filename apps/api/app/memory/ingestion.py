@@ -14,7 +14,6 @@ import time
 from typing import TypedDict, cast
 import uuid
 
-from app.config.settings import settings
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
     AGENDA_ITEM_TTL_DAYS,
@@ -110,10 +109,6 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     falls back to the authoritative Postgres COUNT (re-seeding the cache) so
     the hard cap stays exact.
     """
-    if settings.is_selfhost:
-        # No plan tiers on a self-hosted instance ⇒ memory is uncapped there.
-        # Dev keeps the cap — it mirrors production.
-        return None
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:

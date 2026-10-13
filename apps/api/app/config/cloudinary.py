@@ -33,8 +33,6 @@ def init_cloudinary() -> None:
     """
     config: ProviderConfig | None = resolved_config("cloudinary")
     api_key = config["api_key"] if config else None
-    if api_key is None:
-        api_key = settings.CLOUDINARY_API_KEY
     cloud_name = settings.CLOUDINARY_CLOUD_NAME
     api_secret = settings.CLOUDINARY_API_SECRET
     if not (cloud_name and api_key and api_secret):

@@ -311,7 +311,9 @@ async def resolve_lane(
     if comms_lane is not None:
         return comms_lane, plan
 
-    if plan == PlanType.FREE:
+    # Without plans every user is Pro, yet the paid model is a hosted tier: the
+    # instance's own configured lane serves everyone.
+    if plan == PlanType.FREE or not settings.deployment.enforces_plans:
         return _default_lane(), plan
 
     if await _pro_monthly_budget_exhausted(user_id):
@@ -345,10 +347,6 @@ async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
     Fails open (False) on infra errors — never punish a paying user for a
     Redis hiccup.
     """
-    if settings.is_selfhost:
-        # No paid lane on a self-hosted instance ⇒ no economic guard; the
-        # configured model always serves. Dev keeps the guard.
-        return False
     try:
         spent = await get_cost(user_id, RateLimitPeriod.MONTH)
     except Exception as e:

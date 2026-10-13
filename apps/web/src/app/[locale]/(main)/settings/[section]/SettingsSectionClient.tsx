@@ -7,7 +7,7 @@ import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SectionComponent } from "@/features/settings/config/sectionComponents";
 import type { SettingsSection } from "@/features/settings/config/sectionKeys";
 import { BILLING_ONLY_SETTINGS_KEYS } from "@/features/settings/config/settingsConfig";
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
 
 interface SettingsSectionClientProps {
   readonly section: SettingsSection;
@@ -18,11 +18,10 @@ export default function SettingsSectionClient({
 }: SettingsSectionClientProps) {
   const router = useRouter();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
-  const { data: setupStatus } = useSetupStatus();
 
   // Self-host instances have no billing — deep links to billing-only
   // sections redirect out instead of rendering.
-  const billingHidden = setupStatus?.billing_enabled === false;
+  const billingHidden = !useBillingEnabled();
 
   useEffect(() => {
     if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {

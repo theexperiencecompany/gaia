@@ -34,6 +34,7 @@ from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
     LLM_PROVIDER_PRIORITY,
     PRESETS,
+    CredentialSource,
     ProviderPreset,
 )
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -94,6 +95,9 @@ class ProviderConfiguredState(BaseModel):
     """Per-provider readiness as the wizard reads it: "can this serve a request?"."""
 
     configured: bool = Field(description="Whether a usable credential or env fallback exists")
+    source: CredentialSource = Field(
+        description="Where the active credential comes from; a saved one overrides env"
+    )
 
 
 class SetupStatusResponse(BaseModel):
@@ -183,13 +187,17 @@ async def get_setup_status() -> SetupStatusResponse:
     """
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.any_exists()
-    configured = {p: await _is_usably_configured(p) for p in CREDENTIAL_PROVIDERS}
+    sources = {p: await _credential_source(p) for p in CREDENTIAL_PROVIDERS}
+    configured = {p: source is not CredentialSource.UNSET for p, source in sources.items()}
     return SetupStatusResponse(
         auth_mode=settings.AUTH_MODE,
         has_admin_account=has_admin_account,
         needs_setup=_needs_setup(has_admin_account, configured),
-        billing_enabled=settings.billing_enabled,
-        providers={p: ProviderConfiguredState(configured=c) for p, c in configured.items()},
+        billing_enabled=settings.deployment.bills,
+        providers={
+            p: ProviderConfiguredState(configured=configured[p], source=source)
+            for p, source in sources.items()
+        },
         plans_seeded=await is_payment_setup(),
     )
 
@@ -226,20 +234,20 @@ async def stored_credential_exists(provider: str) -> bool:
     return await provider_credentials_repository.exists(provider)
 
 
-async def _is_usably_configured(provider: str) -> bool:
-    """Whether ``provider`` can actually serve a request.
+async def _credential_source(provider: str) -> CredentialSource:
+    """Return where provider's active credential comes from; UNSET when it cannot serve a request.
 
-    A stored credential always counts. Env fallbacks count only when the env
-    var was EXPLICITLY set — Ollama's ``OLLAMA_BASE_URL`` has a code default,
-    and counting that default as 'configured' made brand-new instances report
-    needs_setup=false and bounce off the wizard with no working LLM.
+    Env fallbacks count only when the env var was EXPLICITLY set — Ollama's
+    OLLAMA_BASE_URL has a code default, and counting it made brand-new
+    instances report needs_setup=false with no working LLM.
     """
     if await stored_credential_exists(provider):
-        return True
+        return CredentialSource.STORED
     # Env-fallback semantics live in ONE place (the credential service) so
-    # this endpoint can never disagree with what the LLM/search layers
-    # actually resolve (e.g. Ollama's code-default URL is not "configured").
-    return _env_fallback(provider) is not None
+    # this endpoint can never disagree with what the LLM/search layers resolve.
+    if _env_fallback(provider) is not None:
+        return CredentialSource.ENV
+    return CredentialSource.UNSET
 
 
 def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
@@ -247,7 +255,7 @@ def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
     llm_ready = any(configured[p] for p in _LLM_PROVIDER_KEYS)
     if not llm_ready:
         return True
-    return settings.AUTH_MODE == "local" and not has_admin_account
+    return settings.deployment.local_auth and not has_admin_account
 
 
 @router.get("/providers")

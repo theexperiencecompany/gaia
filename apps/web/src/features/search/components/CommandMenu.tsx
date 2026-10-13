@@ -17,7 +17,7 @@ import React, {
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { track } from "@/lib/analytics";
 
@@ -170,9 +170,8 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
   const { isPaid, isUnknown } = useIsPaid();
-  const { data: setupStatus } = useSetupStatus();
   // Self-host instances have no billing — the upgrade CTA makes no sense there.
-  const billingHidden = setupStatus?.billing_enabled === false;
+  const billingHidden = !useBillingEnabled();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 

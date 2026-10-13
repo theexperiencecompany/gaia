@@ -169,7 +169,7 @@ class TieredRateLimiter:
     ) -> dict[str, UsageInfo]:
         """Read current counters; raise when any non-zero window is exhausted.
 
-        enforce=False (self-host, where billing is disabled) reads and returns
+        enforce=False (a deployment without usage limits) reads and returns
         the same counters but never raises: usage stays tracked while limits
         stop applying.
         """
@@ -201,10 +201,9 @@ class TieredRateLimiter:
         feature_key: str,
         user_plan: PlanType,
     ) -> dict[str, UsageInfo]:
-        # Self-host tracks usage but never enforces it: every raise below is
-        # skipped while counters and rollups continue as on SaaS. Dev keeps
-        # enforcing, mirroring production.
-        enforce = not settings.is_selfhost
+        # Without enforcement every raise below is skipped while counters and
+        # rollups continue, so usage charts still read true.
+        enforce = settings.deployment.enforces_usage_limits
 
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}

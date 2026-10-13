@@ -506,8 +506,6 @@ def init_composio_service() -> ComposioService:
     """
     config: ProviderConfig | None = resolved_config("composio")
     api_key = config["api_key"] if config else None
-    if api_key is None:
-        api_key = settings.COMPOSIO_KEY
     if not api_key:
         raise RuntimeError(
             "COMPOSIO_KEY is not set in settings and no composio credential is stored"

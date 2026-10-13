@@ -4461,6 +4461,16 @@
         "title": "CreateWorkflowRequest",
         "type": "object"
       },
+      "CredentialSource": {
+        "description": "Where a provider's active credential comes from: a saved one wins over env.",
+        "enum": [
+          "stored",
+          "env",
+          "unset"
+        ],
+        "title": "CredentialSource",
+        "type": "string"
+      },
       "CronValidationResponse": {
         "description": "Result of validating a cron expression.",
         "properties": {
@@ -13184,10 +13194,15 @@
             "description": "Whether a usable credential or env fallback exists",
             "title": "Configured",
             "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CredentialSource",
+            "description": "Where the active credential comes from; a saved one overrides env"
           }
         },
         "required": [
-          "configured"
+          "configured",
+          "source"
         ],
         "title": "ProviderConfiguredState",
         "type": "object"

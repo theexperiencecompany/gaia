@@ -7,6 +7,7 @@ Brand icons resolve client-side from the favicon service via favicon_domain.
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TypedDict
 
 from app.constants.llm import (
@@ -118,6 +119,14 @@ HOSTED_ONE_SHOT_PROVIDERS: dict[ModelUse, LLMProviderName] = {
 def _catalog_chat_model(provider: LLMProviderName) -> str:
     """Return the chat model a setup card prefills; empty when the operator must choose one."""
     return LLM_MODEL_PROFILES[provider].chat or ""
+
+
+class CredentialSource(StrEnum):
+    """Where a provider's active credential comes from: a saved one wins over env."""
+
+    STORED = "stored"
+    ENV = "env"
+    UNSET = "unset"
 
 
 class ProviderPreset(TypedDict):

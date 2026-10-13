@@ -456,10 +456,7 @@ async def enforce_daily_cost_budget(
     MANY). Raises the same RateLimitExceededException (429) as the count
     limiter so the frontend toast/upgrade-modal path renders identically.
     """
-    if settings.is_selfhost or settings.DEV_UNLIMITED_RATE_LIMITS:
-        # Either bypass alone skips the wall: self-host records spend but never
-        # blocks (no plans to upgrade to); DEV_UNLIMITED_RATE_LIMITS never
-        # blocks a dev user or eval harness, and is refused in prod.
+    if not settings.deployment.enforces_usage_limits:
         return
     origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)

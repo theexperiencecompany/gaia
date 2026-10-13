@@ -819,15 +819,14 @@ class TestInitComposioService:
         assert service.composio is fake_sdk
 
     def test_env_fallback_when_nothing_is_stored(self):
+        from app.config.settings import settings
         from app.services.composio import composio_service as mod
 
         fake_sdk = MagicMock()
         with (
-            patch.object(mod, "resolved_config", return_value=None),
-            patch.object(mod, "settings") as mock_settings,
+            patch.object(settings, "COMPOSIO_KEY", "env-key"),
             patch.object(mod, "Composio", return_value=fake_sdk) as mock_composio_cls,
         ):
-            mock_settings.COMPOSIO_KEY = "env-key"
             service = mod.init_composio_service().loader_func()
         assert mock_composio_cls.call_args.kwargs["api_key"] == "env-key"
         assert service.composio is fake_sdk

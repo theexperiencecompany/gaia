@@ -11,10 +11,10 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from workos import WorkOSClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
+from app.config.workos import get_workos_client
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -50,20 +50,6 @@ router = APIRouter()
 #: ``AuthenticatedUser``'s per-auth-path flags — see ``get_me`` for why they are
 #: serialized only when set.
 _AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
-
-_workos_client: WorkOSClient | None = None
-
-
-def _workos() -> WorkOSClient:
-    """Lazy WorkOS client (see oauth._workos): module-level construction
-    crashed AUTH_MODE=local boots, where WORKOS_API_KEY is unset; the logout
-    route only touches it in workos mode."""
-    global _workos_client
-    if _workos_client is None:
-        _workos_client = WorkOSClient(
-            api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
-        )
-    return _workos_client
 
 
 # exclude_none: the per-auth-path flags and optional profile fields are only
@@ -388,7 +374,7 @@ async def logout(
     # Local mode: no hosted session to revoke; the JWT dies with the cookie.
     # This route still passes the auth middleware, so a valid session is
     # required to reach this point.
-    if settings.AUTH_MODE == "local":
+    if settings.deployment.local_auth:
         log.set(operation="logout")
         log.audit("logged out", actor=user.user_id, mode="local")
         # No logout_url: there is no hosted logout page, so the client stays put
@@ -411,7 +397,7 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = _workos().user_management.load_sealed_session(
+        session = get_workos_client().user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )

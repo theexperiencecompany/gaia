@@ -144,7 +144,7 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: false,
         has_admin_account: false,
         billing_enabled: false,
-        providers: { openrouter: { configured: false } },
+        providers: { openrouter: { configured: false, source: "unset" } },
       },
       LLM_KEYS,
       3000,
@@ -172,8 +172,8 @@ describe("evaluateSetupReadiness", () => {
         has_admin_account: true,
         billing_enabled: true,
         providers: {
-          gemini: { configured: true },
-          tavily: { configured: false },
+          gemini: { configured: true, source: "stored" },
+          tavily: { configured: false, source: "unset" },
         },
       },
       LLM_KEYS,
@@ -191,8 +191,8 @@ describe("evaluateSetupReadiness", () => {
         has_admin_account: true,
         billing_enabled: false,
         providers: {
-          ollama: { configured: true },
-          openrouter: { configured: false },
+          ollama: { configured: true, source: "stored" },
+          openrouter: { configured: false, source: "unset" },
         },
       },
       LLM_KEYS,
@@ -213,7 +213,7 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,
-        providers: { tavily: { configured: true } },
+        providers: { tavily: { configured: true, source: "stored" } },
       },
       LLM_KEYS,
       3000,
@@ -234,7 +234,7 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         billing_enabled: false,
-        providers: { openrouter: { configured: true } },
+        providers: { openrouter: { configured: true, source: "stored" } },
       },
       LLM_KEYS,
       3000,
@@ -470,7 +470,7 @@ describe("checkSetupReadiness", () => {
       plans_seeded: true,
       has_admin_account: true,
       billing_enabled: true,
-      providers: { openrouter: { configured: true } },
+      providers: { openrouter: { configured: true, source: "stored" } },
     });
 
     const results = await checkSetupReadiness({
@@ -493,7 +493,7 @@ describe("checkSetupReadiness", () => {
       plans_seeded: true,
       has_admin_account: true,
       billing_enabled: false,
-      providers: { openrouter: { configured: true } },
+      providers: { openrouter: { configured: true, source: "stored" } },
     });
 
     const results = await checkSetupReadiness({
@@ -514,7 +514,7 @@ describe("checkSetupReadiness", () => {
       plans_seeded: true,
       has_admin_account: true,
       billing_enabled: false,
-      providers: { openai: { configured: true } },
+      providers: { openai: { configured: true, source: "stored" } },
     });
 
     const results = await checkSetupReadiness({

@@ -26,7 +26,6 @@ from starlette.routing import compile_path
 
 from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
-from app.config.settings import settings
 from app.constants.http import RETRY_AFTER_HEADER
 from app.decorators.entitlements import (
     SubscriptionRequiredException,
@@ -85,9 +84,6 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        # No plans, no paywall on self-host (dev keeps the gate — it mirrors prod).
-        if settings.is_selfhost:
-            return await call_next(request)
         # CORS preflight carries no credentials and is answered by CORSMiddleware, which
         # sits *inside* this one — blocking it here breaks cross-origin calls with an
         # opaque CORS failure rather than a readable 402.

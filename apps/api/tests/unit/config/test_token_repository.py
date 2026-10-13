@@ -133,13 +133,12 @@ class TestTokenRepositoryInit:
     @patch("app.config.token_repository.get_db_session")
     @patch("app.config.token_repository.settings")
     @patch("app.config.token_repository.OAuth")
-    async def test_lazy_client_falls_back_to_env(
+    async def test_lazy_client_uses_the_env_secret_the_resolver_serves(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
     ) -> None:
         from app.config.token_repository import TokenRepository
 
         mock_settings.GOOGLE_CLIENT_ID = "env_id"
-        mock_settings.GOOGLE_CLIENT_SECRET = "env_secret"  # pragma: allowlist secret
         mock_oauth_instance = MagicMock()
         mock_oauth_cls.return_value = mock_oauth_instance
         registered_client = MagicMock()
@@ -147,9 +146,15 @@ class TestTokenRepositoryInit:
 
         repo = TokenRepository()
 
+        env_config = {
+            "api_key": "env_secret",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         with patch(
             "app.config.token_repository.resolve_provider_config",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=env_config),
         ):
             assert await repo._ensure_google_client() is registered_client
         assert (
