@@ -27,6 +27,8 @@ from app.config.feature_flags import (
     KILL_SWITCH_REASON,
     FeatureFlag,
     UserToggle,
+    VariantFlagSpec,
+    VariantT,
     kill_switch_key,
 )
 from app.constants.analytics import FEATURE_CHOICE_PERSON_PROPERTY_PREFIX, POSTHOG_PROVIDER_KEY
@@ -62,6 +64,20 @@ def _boolean_answer(key: str, answer: object) -> bool | None:
     log.warning(
         "Feature flag answered a variant, not a boolean; ignoring it",
         flag=key,
+        answer_type=type(answer).__name__,
+    )
+    return None
+
+
+def _variant_answer(spec: VariantFlagSpec[VariantT], answer: object) -> VariantT | None:
+    """Return PostHog's answer as one of the spec's variants, or None when it gave none or an unknown one."""
+    if answer is None:
+        return None
+    if isinstance(answer, str) and answer in {member.value for member in spec.variants}:
+        return spec.variants(answer)
+    log.warning(
+        "Variant flag answered a value outside its variants; serving the default",
+        flag=spec.key.value,
         answer_type=type(answer).__name__,
     )
     return None
@@ -183,23 +199,64 @@ async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | Non
 
 
 def _track_evaluation(
-    user_id: str, flag: FeatureFlag, enabled: bool, fallback_reason: FlagFallbackReason
+    user_id: str,
+    flag: FeatureFlag,
+    enabled: bool,
+    fallback_reason: FlagFallbackReason,
 ) -> None:
-    """Emit one event per user, flag and reason a day, for paths the SDK never sees.
+    """Emit one event per user, flag and reason a day, for paths the SDK never sees."""
+    _capture_unevaluated(
+        user_id,
+        FeatureFlagEvaluated(flag=flag.value, enabled=enabled, fallback_reason=fallback_reason),
+    )
 
-    Enqueue-only, and capture logs its own delivery failures; the at-most-once
-    gate keeps one per day, and the reason is in its key so a kill engaged
-    mid-day still shows up the same day.
+
+def _capture_unevaluated(user_id: str, event: FeatureFlagEvaluated) -> None:
+    """Capture a fallback evaluation at most once per user, flag and reason a day.
+
+    Enqueue-only, and capture logs its own delivery failures; the reason is in
+    the key so a kill engaged mid-day still shows up the same day.
     """
     today = analytics_day_start(datetime.now(UTC))
     capture(
         UserId(user_id),
-        FeatureFlagEvaluated(flag=flag.value, enabled=enabled, fallback_reason=fallback_reason),
+        event,
         dedupe=Dedupe(
-            key=f"{flag.value}:{fallback_reason}:{today.date().isoformat()}",
+            key=f"{event.flag}:{event.fallback_reason}:{today.date().isoformat()}",
             occurred_at=today,
         ),
     )
+
+
+async def get_variant(spec: VariantFlagSpec[VariantT], user_id: str) -> VariantT:
+    """Evaluate a multivariate flag for a user, live on every call; PostHog fails open to the spec's default."""
+    client = _get_posthog_client()
+    variant: VariantT | None = None
+    reason: FlagFallbackReason = "posthog_unconfigured"
+    if client is not None:
+        try:
+            answer = await asyncio.to_thread(client.get_feature_flag, spec.key.value, user_id)
+        except Exception as e:
+            log.warning(
+                "Variant flag evaluation failed, serving the default",
+                flag=spec.key.value,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            reason = "evaluation_error"
+        else:
+            variant = _variant_answer(spec, answer)
+            reason = "flag_unevaluated"
+    if variant is None:
+        variant = spec.default
+        _capture_unevaluated(
+            user_id,
+            FeatureFlagEvaluated(
+                flag=spec.key.value, variant=variant.value, fallback_reason=reason
+            ),
+        )
+    log.set(flags={spec.key.value: variant.value})
+    return variant
 
 
 def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:

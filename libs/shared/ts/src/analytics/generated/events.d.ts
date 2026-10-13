@@ -783,7 +783,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "flag": string;
-    "enabled": boolean;
+    "enabled"?: boolean;
+    "variant"?: string;
     "fallback_reason": "posthog_unconfigured" | "evaluation_error" | "flag_unevaluated" | "killed" | "user_choice";
   };
   "feedback:message_submitted": {

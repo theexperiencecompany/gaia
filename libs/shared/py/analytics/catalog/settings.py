@@ -130,5 +130,7 @@ class FeatureFlagEvaluated(ServerEvent):
     at_most_once_ttl: ClassVar[timedelta | None] = timedelta(hours=48)
 
     flag: Identifier
-    enabled: bool
+    # A boolean flag reports enabled; a multivariate flag reports the variant served.
+    enabled: bool | None = None
+    variant: Identifier | None = None
     fallback_reason: FlagFallbackReason

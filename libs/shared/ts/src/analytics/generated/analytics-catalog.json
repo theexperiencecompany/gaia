@@ -3387,8 +3387,29 @@
             "type": "string"
           },
           "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Enabled"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Variant"
           },
           "fallback_reason": {
             "enum": [
@@ -3402,7 +3423,7 @@
             "type": "string"
           }
         },
-        "required": ["flag", "enabled", "fallback_reason"],
+        "required": ["flag", "fallback_reason"],
         "title": "FeatureFlagEvaluated",
         "type": "object"
       }
