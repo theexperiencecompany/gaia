@@ -8,6 +8,9 @@ import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
+import { InviteButton } from "@/features/referrals/components/InviteButton";
+import { REFERRAL_UI_COPY } from "@/features/referrals/referralCopy";
+import type { InviteSender } from "@/features/referrals/stores/inviteStore";
 import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
 import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
@@ -42,44 +45,62 @@ type LinkTarget = "_blank" | undefined;
 /** The link preview as `POST /fetch-url-metadata` returns it. */
 type UrlMetadata = URLResponse;
 
-function EmailPreview({
-  email,
-  name,
-  avatar,
-  onAvatarError,
-}: {
+interface EmailPreviewProps {
   email: string;
   name: string | null;
   avatar: string | null;
   onAvatarError: (url: string) => void;
-}) {
+  /** Sends a GAIA invite to this address; absent when the viewer can't invite (not Pro, or their own address). */
+  sendInvite?: InviteSender;
+}
+
+export function EmailPreview({
+  email,
+  name,
+  avatar,
+  onAvatarError,
+  sendInvite,
+}: EmailPreviewProps) {
   return (
-    <div className="flex w-full items-center gap-3">
-      {avatar ? (
-        <Image
-          width={44}
-          height={44}
-          alt={name ?? email}
-          className="h-11 w-11 shrink-0 rounded-full object-cover"
-          src={avatar}
-          onError={() => onAvatarError(avatar)}
-        />
-      ) : (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-lg font-medium text-zinc-300">
-          {email[0]?.toUpperCase()}
-        </div>
-      )}
-      <div className="min-w-0">
-        {name && (
-          <div className="truncate text-sm font-medium text-white">{name}</div>
+    <div className="flex w-full flex-col gap-3">
+      <div className="flex w-full items-center gap-3">
+        {avatar ? (
+          <Image
+            width={44}
+            height={44}
+            alt={name ?? email}
+            className="h-11 w-11 shrink-0 rounded-full object-cover"
+            src={avatar}
+            onError={() => onAvatarError(avatar)}
+          />
+        ) : (
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-lg font-medium text-zinc-300">
+            {email[0]?.toUpperCase()}
+          </div>
         )}
-        <a
-          className="block truncate text-xs text-zinc-400 hover:underline"
-          href={`mailto:${email}`}
-        >
-          {email}
-        </a>
+        <div className="min-w-0">
+          {name && (
+            <div className="truncate text-sm font-medium text-white">
+              {name}
+            </div>
+          )}
+          <a
+            className="block truncate text-xs text-zinc-400 hover:underline"
+            href={`mailto:${email}`}
+          >
+            {email}
+          </a>
+        </div>
       </div>
+      {sendInvite && (
+        <InviteButton
+          email={email}
+          surface="hover_card"
+          send={sendInvite}
+          label={REFERRAL_UI_COPY.inviteToGaia}
+          fullWidth
+        />
+      )}
     </div>
   );
 }
