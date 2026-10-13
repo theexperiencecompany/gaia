@@ -42,12 +42,13 @@ describe("parseAssignedEnvKeys", () => {
 });
 
 describe("collectMachineSecrets", () => {
-  it("generates all three secrets on a fresh install", () => {
+  it("generates every secret, the instance secret included, on a fresh install", () => {
     const secrets = collectMachineSecrets(null);
     expect(Object.keys(secrets).sort()).toEqual([
       "AGENT_SECRET",
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
+      "INSTANCE_SECRET",
     ]);
     for (const value of Object.values(secrets)) {
       expect(value).toMatch(/^[0-9a-f]{64}$/);
@@ -66,6 +67,11 @@ describe("collectMachineSecrets", () => {
     // Only the missing one is generated.
     expect(Object.keys(secrets)).toEqual(["EMAIL_UNSUBSCRIBE_SECRET"]);
     expect(secrets.EMAIL_UNSUBSCRIBE_SECRET).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("never adds an instance secret to an existing install's .env", () => {
+    const secrets = collectMachineSecrets("ENV=selfhost\n");
+    expect(secrets).not.toHaveProperty("INSTANCE_SECRET");
   });
 
   it("treats blank values as missing and completes them", () => {

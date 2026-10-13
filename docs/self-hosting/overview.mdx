@@ -86,7 +86,7 @@ Self-hosted instances run the same code as GAIA Cloud, with a configuration prof
 
 - **Minimal required configuration.** The instance runs with `ENV=selfhost`. The only required values are database URLs (which Compose provides) and three machine secrets — `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, and `EMAIL_UNSUBSCRIBE_SECRET` — which `gaia up` generates for you.
 - **Local accounts, not WorkOS.** Self-host sets `AUTH_MODE=local`, which enables email-and-password sign-in. Hosted and development deployments use `AUTH_MODE=workos`; see [Environment variables](/configuration/environment-variables).
-- **One generated instance secret.** Your instance creates a random `INSTANCE_SECRET` on first boot and stores it in the database, where it signs sessions and encrypts stored provider keys. For stricter setups you can set `INSTANCE_SECRET` yourself as an environment variable — it then takes precedence.
+- **One generated instance secret.** `INSTANCE_SECRET` signs sessions and encrypts the provider keys you save in Settings. `gaia up` generates it into `.env` on a fresh install, so the key lives apart from the database. Without it, the instance generates one on first boot and keeps it in the database alongside the encrypted keys, which means a database dump alone is enough to read them.
 - **No Infisical.** Self-host resolves all configuration locally and never contacts Infisical, even if leftover credentials exist in the environment.
 - **Unlimited usage.** Usage is tracked locally for insights, but plan limits are never enforced.
 - **No payments.** There is no billing integration in self-host mode; every user gets the Free plan automatically and billing UI is hidden.

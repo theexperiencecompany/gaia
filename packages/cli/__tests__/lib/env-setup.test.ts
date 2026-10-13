@@ -137,6 +137,7 @@ describe("runEnvSetup env policy", () => {
       "AGENT_SECRET",
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
+      "INSTANCE_SECRET",
     ]) {
       const generated = extract(firstContent, name);
       expect(generated).toBeDefined();

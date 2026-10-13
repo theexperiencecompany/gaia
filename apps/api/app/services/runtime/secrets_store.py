@@ -1,8 +1,9 @@
-"""Instance secret: the machine-local root secret for a GAIA deployment.
+"""Instance secret: the root secret that signs sessions and encrypts stored credentials.
 
-Resolution order is env override, then the persisted Mongo secret, then
-generate and persist atomically with race losers adopting the winner.
-Rotating the secret invalidates every stored credential and session token.
+INSTANCE_SECRET in the environment is the normal path (the CLI generates it on a
+fresh install) and keeps the key apart from the ciphertext. Without it the secret
+is generated into Mongo, next to the credentials it encrypts, so a database dump
+alone decrypts them. Rotating it invalidates every stored credential and session.
 """
 
 from base64 import urlsafe_b64encode
@@ -24,7 +25,7 @@ def fernet_key_from(instance_secret: str) -> bytes:
 
 
 async def get_instance_secret() -> str:
-    """Return the instance's root secret: env override → persisted value → generate+persist."""
+    """Return the instance's root secret: env value, else the Mongo-held one, else generate into Mongo."""
     # Annotated locally: settings attrs resolve to Any for mypy without the
     # pydantic plugin's help.
     env_secret: str | None = settings.INSTANCE_SECRET

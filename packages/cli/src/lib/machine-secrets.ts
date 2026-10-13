@@ -7,6 +7,11 @@
  * hex-encoded, openssl-rand-hex-32 equivalent) and merges them into
  * apps/api/.env with merge-don't-clobber semantics: values already present in
  * an existing .env are kept untouched, only missing ones are generated.
+ *
+ * INSTANCE_SECRET (the key that encrypts stored provider credentials) is
+ * generated on a fresh install only: an install that already has a .env may
+ * have encrypted credentials under a database-held secret, and a new env value
+ * would override it and make them unreadable.
  * @module lib/machine-secrets
  */
 
@@ -19,6 +24,9 @@ const MACHINE_SECRET_VARS = [
   "BOT_SESSION_TOKEN_SECRET",
   "EMAIL_UNSUBSCRIBE_SECRET",
 ] as const;
+
+/** Keeps the credential-encryption key out of the database it protects. */
+const FRESH_INSTALL_SECRET_VARS = ["INSTANCE_SECRET"] as const;
 
 /** Generate one machine secret (64 hex chars, ~openssl rand -hex 32). */
 export function generateMachineSecret(): string {
@@ -47,7 +55,11 @@ export function collectMachineSecrets(
 ): Record<string, string> {
   const assigned = parseAssignedEnvKeys(existingEnvContent);
   const secrets: Record<string, string> = {};
-  for (const name of MACHINE_SECRET_VARS) {
+  const names =
+    existingEnvContent === null
+      ? [...MACHINE_SECRET_VARS, ...FRESH_INSTALL_SECRET_VARS]
+      : MACHINE_SECRET_VARS;
+  for (const name of names) {
     if (!assigned.has(name)) {
       secrets[name] = generateMachineSecret();
     }

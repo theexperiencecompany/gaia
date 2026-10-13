@@ -89,7 +89,7 @@ In production and self-host, these are also required:
 | Variable           | Default    | Description                                                                                     |
 | ------------------ | ---------- | ----------------------------------------------------------------------------------------------- |
 | `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`.      |
-| `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. Optional env override — if unset, a random secret is generated on first boot and persisted in the database, surviving container recreation. Set it explicitly for stricter setups. |
+| `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. `gaia up` writes a random one into `.env` on a fresh install, which keeps the key out of the database. If it is unset, a secret is generated on first boot and stored in the database next to the credentials it encrypts, so anyone with a database dump can decrypt them. Never change it once credentials are stored. |
 | `OLLAMA_BASE_URL`  | `http://host.docker.internal:11434` | Ollama endpoint as seen by the backend. Inside Docker use `host.docker.internal`; native runs use `localhost`. |
 
 <Note>
