@@ -8,6 +8,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 from fastapi import HTTPException, UploadFile
 import pytest
 
+from app.constants.files import BlobKind
 from app.models.support_models import (
     SupportAttachment,
     SupportEmailNotification,
@@ -201,7 +202,12 @@ class TestUploadSingleAttachment:
 
         assert public_id == "support/T1_screenshot.png"
         mock_blob_store.put.assert_awaited_once_with(
-            USER_ID, public_id, b"x" * 100, resource_type="auto", content_type="image/png"
+            USER_ID,
+            public_id,
+            b"x" * 100,
+            resource_type="auto",
+            kind=BlobKind.SUPPORT_ATTACHMENT,
+            content_type="image/png",
         )
         assert attachment_meta.filename == "screenshot.png"
         assert attachment_meta.file_size == 100

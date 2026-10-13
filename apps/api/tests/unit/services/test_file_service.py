@@ -18,9 +18,11 @@ from fastapi import HTTPException
 import pytest
 
 from app.config.settings import settings
+from app.constants.files import BlobKind
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
 from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import UpdateFileRequest
+from app.services.blob_store import LocalBlobMeta
 from app.services.files.service import (
     FileService,
     _log_upload_context,
@@ -1266,6 +1268,8 @@ class TestFileServiceOnSelfHost:
 
         assert result.url == f"/api/v1/blobs/{USER_ID}/{result.public_id}"
         assert (selfhost_volume / USER_ID / result.public_id / "data").read_bytes() == content
+        meta = (selfhost_volume / USER_ID / result.public_id / "meta.json").read_text()
+        assert LocalBlobMeta.model_validate_json(meta).kind is BlobKind.CHAT_UPLOAD
         mock_file_repo.create.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -1290,7 +1294,11 @@ class TestFileServiceOnSelfHost:
         blob = selfhost_volume / USER_ID / "pub-id"
         blob.mkdir(parents=True)
         (blob / "data").write_bytes(b"stored bytes")
-        (blob / "meta.json").write_text('{"content_type": "application/pdf"}')
+        (blob / "meta.json").write_text(
+            LocalBlobMeta(
+                content_type="application/pdf", kind=BlobKind.CHAT_UPLOAD
+            ).model_dump_json()
+        )
         mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
         mock_mirror, _ = mock_sandbox_mirror
 

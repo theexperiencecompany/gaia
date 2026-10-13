@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 
+from app.constants.files import BlobKind
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
     ProfilePictureUpload,
@@ -61,6 +62,7 @@ async def update_user_profile(
                     public_id,
                     picture.data,
                     resource_type="image",
+                    kind=BlobKind.AVATAR,
                     content_type=picture.content_type,
                 )
 

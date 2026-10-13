@@ -25,10 +25,13 @@ from app.config.cloudinary import require_cloudinary
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.files import (
+    BLOB_AUDIENCE,
     BLOB_DOWNLOAD_TIMEOUT_SECONDS,
     LOCAL_BLOB_DATA_FILENAME,
     LOCAL_BLOB_META_FILENAME,
     LOCAL_BLOB_URL_PREFIX,
+    BlobAudience,
+    BlobKind,
 )
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.integrations.cloudinary import CloudinaryDestroyResult, CloudinaryUploadResult
@@ -53,6 +56,7 @@ class BlobStore(Protocol):
         content: bytes,
         *,
         resource_type: str,
+        kind: BlobKind,
         content_type: str,
     ) -> str: ...
 
@@ -66,7 +70,7 @@ class BlobStore(Protocol):
 
 
 class CloudinaryBlobStore:
-    """Public Cloudinary URLs; owner_id and content_type play no part in the call."""
+    """Public Cloudinary URLs; owner_id, kind and content_type play no part in the call."""
 
     def ensure_ready(self) -> None:
         require_cloudinary()
@@ -78,9 +82,10 @@ class CloudinaryBlobStore:
         content: bytes,
         *,
         resource_type: str,
+        kind: BlobKind,
         content_type: str,
     ) -> str:
-        del owner_id, content_type
+        del owner_id, kind, content_type
         result = await asyncio.to_thread(
             cloudinary.uploader.upload,
             io.BytesIO(content),
@@ -120,6 +125,7 @@ class LocalBlobMeta(BaseModel):
     """What the blob route needs to serve a local blob back."""
 
     content_type: str
+    kind: BlobKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +134,7 @@ class LocalBlob:
 
     path: Path
     content_type: str
+    kind: BlobKind
 
 
 def _is_mountpoint(path: Path) -> bool:
@@ -184,13 +191,14 @@ class LocalVolumeBlobStore:
         content: bytes,
         *,
         resource_type: str,
+        kind: BlobKind,
         content_type: str,
     ) -> str:
         del resource_type
         self.ensure_ready()
         key = local_blob_key(public_id)
         blob_dir = self._blob_dir(owner_id, key)
-        meta = LocalBlobMeta(content_type=content_type).model_dump_json()
+        meta = LocalBlobMeta(content_type=content_type, kind=kind).model_dump_json()
 
         def _write() -> None:
             blob_dir.mkdir(parents=True, exist_ok=True)
@@ -228,7 +236,7 @@ class LocalVolumeBlobStore:
             if not (data.is_file() and meta.is_file()):
                 return None
             parsed = LocalBlobMeta.model_validate_json(meta.read_text(encoding="utf-8"))
-            return LocalBlob(path=data, content_type=parsed.content_type)
+            return LocalBlob(path=data, content_type=parsed.content_type, kind=parsed.kind)
 
         return await asyncio.to_thread(_read_meta)
 
@@ -250,13 +258,17 @@ def ensure_local_blob_store_ready() -> None:
         local_blob_store().ensure_ready()
 
 
-async def open_owned_blob(requester_id: str, owner_id: str, key: str) -> LocalBlob:
-    """Resolve a local blob for its owner; anyone else, or a hosted deployment, gets a 404."""
+def _may_read(blob: LocalBlob, requester_id: str, owner_id: str) -> bool:
+    return requester_id == owner_id or BLOB_AUDIENCE[blob.kind] is BlobAudience.INSTANCE_MEMBERS
+
+
+async def open_readable_blob(requester_id: str, owner_id: str, key: str) -> LocalBlob:
+    """Resolve a local blob its kind lets the requester read; otherwise, or when hosted, a 404."""
     blob = (
         await local_blob_store().open(owner_id, key)
-        if settings.deployment.blob_store is BlobStoreKind.LOCAL and requester_id == owner_id
+        if settings.deployment.blob_store is BlobStoreKind.LOCAL
         else None
     )
-    if blob is None:
+    if blob is None or not _may_read(blob, requester_id, owner_id):
         raise AppError(message="File not found", status_code=404, code="blob_not_found")
     return blob

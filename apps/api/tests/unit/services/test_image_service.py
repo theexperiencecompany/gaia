@@ -1,12 +1,16 @@
 """Unit tests for image service operations."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
 
+from app.config.settings import settings
+from app.constants.files import BlobKind
 from app.models.chat_models import ImageData
+from app.services.blob_store import LocalBlobMeta
 from app.services.image_service import (
     api_generate_image,
     generate_image_stream,
@@ -93,6 +97,23 @@ class TestApiGenerateImage:
         assert result.url == "https://cdn.example.com/image.png"
         assert result.prompt == "sunset"
         assert result.improved_prompt is not None
+
+    async def test_a_self_hosted_image_is_stored_as_a_generated_image(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+        monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: True)
+        with patch(
+            "app.services.image_service.generate_image",
+            new_callable=AsyncMock,
+            return_value=b"png",
+        ):
+            result = await api_generate_image("a cat", "user-1", improve_prompt=False)
+
+        key = result.url.rsplit("/", 1)[-1]
+        meta = (tmp_path / "user-1" / key / "meta.json").read_text()
+        assert LocalBlobMeta.model_validate_json(meta).kind is BlobKind.GENERATED_IMAGE
 
     async def test_generates_image_without_prompt_improvement(self):
         with (

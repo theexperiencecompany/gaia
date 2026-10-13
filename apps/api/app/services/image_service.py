@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
+from app.constants.files import BlobKind
 from app.constants.media import PNG_MIME
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
@@ -67,6 +68,7 @@ async def api_generate_image(message: str, user_id: str, improve_prompt: bool = 
             generate_public_id(message),
             image_bytes,
             resource_type="image",
+            kind=BlobKind.GENERATED_IMAGE,
             content_type=PNG_MIME,
         )
         log.info("Image uploaded successfully. URL", image_url=image_url)

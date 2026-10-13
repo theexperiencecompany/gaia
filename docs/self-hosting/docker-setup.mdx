@@ -259,7 +259,7 @@ By default a self-hosted instance keeps every file on two local Docker volumes. 
 | `gaia-selfhost_files` | `/var/lib/gaia/files` | Files you attach in chat, generated images, profile pictures and support attachments |
 | `gaia-selfhost_workspace` | `/mnt/jfs` | Each user's workspace: the copy of their uploads the agent opens, agent artifacts, and installed skills |
 
-Both are mounted into `gaia-backend` and `arq_worker`. The browser loads a stored file from `/api/v1/blobs/...` on your own domain, with your session, and only its owner can open it. AI models never fetch a file by URL: they get its contents.
+Both are mounted into `gaia-backend` and `arq_worker`. The browser loads a stored file from `/api/v1/blobs/...` on your own domain, with your session. Profile pictures are visible to every signed-in member of the instance; everything else (chat uploads, generated images, support attachments) opens only for its owner. AI models never fetch a file by URL: they get its contents.
 
 The workspace is a plain volume. Hosted GAIA keeps workspaces in JuiceFS on object storage so cloud sandboxes can mount them, which is why the hosted stack needs FUSE; a self-hosted instance does not use JuiceFS, and its containers run without extra privileges. With the [local coding sandbox](#local-coding-sandbox) on, each user's sandbox container mounts only that user's folder of the workspace volume.
 

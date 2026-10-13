@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import HTTPException, UploadFile
 
+from app.constants.files import BlobKind
 from app.db.repositories.support_requests import support_request_repository
 from app.models.support_models import (
     SupportAttachment,
@@ -78,7 +79,12 @@ async def _upload_single_attachment(
     try:
         store.ensure_ready()
         file_url = await store.put(
-            user_id, public_id, content, resource_type="auto", content_type=content_type
+            user_id,
+            public_id,
+            content,
+            resource_type="auto",
+            kind=BlobKind.SUPPORT_ATTACHMENT,
+            content_type=content_type,
         )
 
         # Create attachment metadata

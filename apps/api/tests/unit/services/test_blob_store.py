@@ -13,6 +13,7 @@ import pytest
 
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
+from app.constants.files import BLOB_AUDIENCE, BlobKind
 from app.services.blob_store import (
     CloudinaryBlobStore,
     LocalVolumeBlobStore,
@@ -90,7 +91,12 @@ class TestCloudinaryBlobStore:
         cloudinary_sdk.upload.return_value = {"secure_url": "https://res.cloudinary.com/x.png"}
 
         url = await CloudinaryBlobStore().put(
-            "u1", "file_1_a.png", b"bytes", resource_type="image", content_type="image/png"
+            "u1",
+            "file_1_a.png",
+            b"bytes",
+            resource_type="image",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="image/png",
         )
 
         assert url == "https://res.cloudinary.com/x.png"
@@ -102,7 +108,12 @@ class TestCloudinaryBlobStore:
         cloudinary_sdk.upload.return_value = {"public_id": "x"}
         with pytest.raises(HTTPException) as raised:
             await CloudinaryBlobStore().put(
-                "u1", "x", b"b", resource_type="auto", content_type="image/png"
+                "u1",
+                "x",
+                b"b",
+                resource_type="auto",
+                kind=BlobKind.CHAT_UPLOAD,
+                content_type="image/png",
             )
         assert raised.value.status_code == 500
 
@@ -143,7 +154,12 @@ class TestLocalVolumeBlobStore:
         store = LocalVolumeBlobStore(tmp_path)
 
         url = await store.put(
-            "u1", "support/T 1_a.png", b"png", resource_type="auto", content_type="image/png"
+            "u1",
+            "support/T 1_a.png",
+            b"png",
+            resource_type="auto",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="image/png",
         )
 
         assert url == "/api/v1/blobs/u1/support_T_1_a.png"
@@ -154,7 +170,14 @@ class TestLocalVolumeBlobStore:
 
     async def test_one_owner_cannot_open_anothers_blob(self, tmp_path: Path) -> None:
         store = LocalVolumeBlobStore(tmp_path)
-        await store.put("alice", "k", b"secret", resource_type="auto", content_type="text/plain")
+        await store.put(
+            "alice",
+            "k",
+            b"secret",
+            resource_type="auto",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="text/plain",
+        )
 
         assert await store.open("bob", "k") is None
 
@@ -163,7 +186,14 @@ class TestLocalVolumeBlobStore:
         self, tmp_path: Path, key: str
     ) -> None:
         store = LocalVolumeBlobStore(tmp_path)
-        await store.put("alice", "k", b"secret", resource_type="auto", content_type="text/plain")
+        await store.put(
+            "alice",
+            "k",
+            b"secret",
+            resource_type="auto",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="text/plain",
+        )
 
         assert await store.open("bob", key) is None
 
@@ -171,20 +201,39 @@ class TestLocalVolumeBlobStore:
         assert local_blob_key("../../etc/passwd") == "_.._etc_passwd"
         (tmp_path / "files").mkdir()
         store = LocalVolumeBlobStore(tmp_path / "files")
-        await store.put("u1", "../../x", b"b", resource_type="auto", content_type="text/plain")
+        await store.put(
+            "u1",
+            "../../x",
+            b"b",
+            resource_type="auto",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="text/plain",
+        )
         assert [p.name for p in (tmp_path / "files" / "u1").iterdir()] == ["_.._x"]
 
     async def test_an_unsafe_owner_id_is_refused(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="owner"):
             await LocalVolumeBlobStore(tmp_path).put(
-                "../u1", "k", b"b", resource_type="auto", content_type="text/plain"
+                "../u1",
+                "k",
+                b"b",
+                resource_type="auto",
+                kind=BlobKind.CHAT_UPLOAD,
+                content_type="text/plain",
             )
 
     async def test_delete_removes_the_blob_and_tolerates_a_missing_one(
         self, tmp_path: Path
     ) -> None:
         store = LocalVolumeBlobStore(tmp_path)
-        await store.put("u1", "k", b"b", resource_type="auto", content_type="text/plain")
+        await store.put(
+            "u1",
+            "k",
+            b"b",
+            resource_type="auto",
+            kind=BlobKind.CHAT_UPLOAD,
+            content_type="text/plain",
+        )
 
         await store.delete("u1", "k")
         await store.delete("u1", "k")
@@ -201,8 +250,17 @@ class TestLocalVolumeBlobStore:
         monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: False)
         with pytest.raises(AppError) as raised:
             await LocalVolumeBlobStore(tmp_path).put(
-                "u1", "k", b"b", resource_type="auto", content_type="text/plain"
+                "u1",
+                "k",
+                b"b",
+                resource_type="auto",
+                kind=BlobKind.CHAT_UPLOAD,
+                content_type="text/plain",
             )
         assert raised.value.status_code == 503
         assert raised.value.code == "file_storage_not_mounted"
         assert list(tmp_path.iterdir()) == []
+
+
+def test_every_blob_kind_has_an_audience() -> None:
+    assert set(BLOB_AUDIENCE) == set(BlobKind)

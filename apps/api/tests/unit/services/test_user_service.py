@@ -9,6 +9,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.constants.files import BlobKind
 from app.models.user_models import ProfilePictureUpload, UserDocument, UserUpdateResponse
 from app.services.user_service import get_user_by_id, update_user_profile
 
@@ -218,6 +219,7 @@ class TestUpdateUserProfile:
             "user_alice_at_example_dot_com",
             b"fake_image",
             resource_type="image",
+            kind=BlobKind.AVATAR,
             content_type="image/jpeg",
         )
         update_arg = mock_update.call_args.args[1]

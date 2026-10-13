@@ -14,6 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 
 import type { CommunityIntegration } from "../types";
 
@@ -155,6 +156,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
                     alt={integration.creator.name ?? "Creator"}
                     width={100}
                     height={100}
+                    unoptimized={isPrivateBlobUrl(integration.creator.picture)}
                     className="rounded-full object-cover"
                   />
                 ) : (

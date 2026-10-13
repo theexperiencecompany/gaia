@@ -14,6 +14,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.config.deployment import BlobStoreKind
+from app.constants.files import BlobKind
 
 
 @pytest.fixture(autouse=True)
@@ -646,7 +647,9 @@ async def test_production_stores_blobs_in_cloudinary_never_on_local_disk(
 
     with patch("app.services.blob_store.cloudinary.uploader.upload") as upload:
         upload.return_value = {"secure_url": "https://res.cloudinary.com/x/file.pdf"}
-        url = await store.put("u1", "file_1", b"b", resource_type="raw", content_type="x/y")
+        url = await store.put(
+            "u1", "file_1", b"b", resource_type="raw", kind=BlobKind.CHAT_UPLOAD, content_type="x/y"
+        )
 
     assert url == "https://res.cloudinary.com/x/file.pdf"
     assert list(tmp_path.iterdir()) == []

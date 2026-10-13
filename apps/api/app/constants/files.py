@@ -1,5 +1,9 @@
 """Constants for user-uploaded file operations."""
 
+from collections.abc import Mapping
+from enum import StrEnum
+from types import MappingProxyType
+
 from app.constants.chroma import CHROMA_COLLECTION_SUFFIX
 
 # ChromaDB collection holding uploaded-file/document summaries for semantic search.
@@ -74,3 +78,32 @@ LOCAL_BLOB_RESPONSE_HEADERS = {
 }
 # Types a browser may show in place; everything else downloads.
 LOCAL_BLOB_INLINE_TYPE_PREFIXES = ("image/", "audio/", "video/", "application/pdf", "text/plain")
+
+
+class BlobKind(StrEnum):
+    """What a stored blob is; its kind decides who may read it (BLOB_AUDIENCE)."""
+
+    AVATAR = "avatar"
+    CHAT_UPLOAD = "chat_upload"
+    GENERATED_IMAGE = "generated_image"
+    SUPPORT_ATTACHMENT = "support_attachment"
+
+
+class BlobAudience(StrEnum):
+    """Who may read a blob besides its owner."""
+
+    OWNER = "owner"
+    INSTANCE_MEMBERS = "instance_members"
+
+
+# Who may read each kind of self-hosted blob. Avatars appear beside a member's
+# name (members list, marketplace creator); GAIA has no conversation sharing,
+# so a conversation's uploads and generated images stay with their owner.
+BLOB_AUDIENCE: Mapping[BlobKind, BlobAudience] = MappingProxyType(
+    {
+        BlobKind.AVATAR: BlobAudience.INSTANCE_MEMBERS,
+        BlobKind.CHAT_UPLOAD: BlobAudience.OWNER,
+        BlobKind.GENERATED_IMAGE: BlobAudience.OWNER,
+        BlobKind.SUPPORT_ATTACHMENT: BlobAudience.OWNER,
+    }
+)

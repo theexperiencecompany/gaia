@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.cache import FILES_CACHE_PATTERN
+from app.constants.files import BlobKind
 from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
@@ -163,6 +164,7 @@ class FileService:
                     upload.public_id,
                     upload.content,
                     resource_type=resource_type,
+                    kind=BlobKind.CHAT_UPLOAD,
                     content_type=content_type,
                 ),
                 generate_file_summary(

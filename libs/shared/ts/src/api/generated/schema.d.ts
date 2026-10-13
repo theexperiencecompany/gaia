@@ -247,7 +247,7 @@ export interface paths {
         };
         /**
          * Get Blob
-         * @description Stream one of the caller's own blobs; Range requests are honoured.
+         * @description Stream a blob the caller may read (BLOB_AUDIENCE); Range requests are honoured.
          */
         get: operations["blob_get_blob"];
         put?: never;
