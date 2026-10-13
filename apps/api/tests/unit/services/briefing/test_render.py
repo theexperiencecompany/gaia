@@ -23,6 +23,10 @@ class FakePage:
         self.wait_for_timeout_calls: list[int] = []
         self.screenshot_calls: list[dict[str, Any]] = []
         self.set_content_error: Exception | None = None
+        self.handlers: dict[str, list[Any]] = {}
+
+    def on(self, event: str, handler: Any) -> None:
+        self.handlers.setdefault(event, []).append(handler)
 
     async def set_content(self, html: str, **kwargs: Any) -> None:
         self.set_content_calls.append({"html": html, **kwargs})

@@ -91,13 +91,33 @@ wrong, real person's name to every other user is not an acceptable
 universally-true address **"YOU"** — honest for every recipient, and not a
 fabricated fact the way a wrong name is.
 
-## Known gaps — excluded from the rotation pool
+## Which families are sent
 
-`EXPLORER_EXCLUDED_FAMILIES` in `editions/__init__.py` excludes four
-families whose gap is deeper than a null guard or a content swap can fix:
+`EDITION_SCHEDULE` in `editions/__init__.py` picks one family per day of the
+user's week (Mon `memo`, Tue `swiss`, Wed `postal`, Thu `broadsheet`, Fri
+`playbill`, Sat `receipt`, Sun `weekly`); the skin varies by date within it.
+Every other family stays registered so an archived payload re-renders, but is
+never scheduled.
+
+## Fixed item slots — padded by the adapter, not patched here
+
+`boardingpass`, `metromap`, `menu`, `invoice`, `almanac` and `weekly` read fixed item
+positions (`today[2]`, `decisions[1]`, ...) because the founder fixture always
+held three today, three overnight and two decision items. Handed fewer, their
+page script threw and the brief rendered as a blank strip. The fix lives in
+`explorer_adapter._FIXED_SLOTS`, which pads exactly those buckets with an
+empty slot (`—`), so no file under `js/` changed;
+`tests/integration/test_edition_families_render.py` renders every family with
+a sparse brief and fails on any blank image.
+
+## Known gaps
+
+These families have a gap deeper than a null guard or a content swap can fix:
 
 - **`weekly`** (tpl-novel-e.js): renders hardcoded demo aggregates, needs a
-  real weekly-aggregate adapter.
+  real weekly-aggregate adapter. It is nonetheless the Sunday family in
+  `EDITION_SCHEDULE` by product decision, so until that adapter exists the
+  Sunday edition shows the template's demo figures.
 - **`dayline`** (tpl-poster.js) and **`flightplan`** (tpl-tech.js): position
   events on a real proportional time axis and have no sensible fallback
   position for an item with no clock time. Guarding the crash
@@ -121,4 +141,4 @@ families whose gap is deeper than a null guard or a content swap can fix:
   above) stays in the code — it's strictly more correct than the literal it
   replaced — but the family needs a content-aware layout (dynamic station
   spacing, or truncation with an approved ellipsis convention from the
-  founder) before it can re-join rotation.
+  founder) before it should be scheduled.

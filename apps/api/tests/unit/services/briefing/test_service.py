@@ -10,6 +10,7 @@ nothing is.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +28,7 @@ from app.models.briefing_models import BriefingModel, BriefingPayload
 from app.models.todo_models import TodoDocument
 from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
+from app.services.briefing.editions import family_for_date
 
 _USER = "user-1"
 _CHANNELS = ["inapp", "telegram", "email"]
@@ -115,7 +117,6 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
         service.dormancy, "reactivation_signal_since", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(service, "track", MagicMock())
-    monkeypatch.setattr(service, "choose_edition_family", AsyncMock(return_value="broadsheet"))
     return w
 
 
@@ -143,10 +144,10 @@ class TestDailyBrief:
 
         payload = _stored_payload(world)
         assert payload.headline == "Two things need you"
-        assert payload.template_family == "broadsheet"
+        assert payload.template_family == family_for_date(datetime.now(UTC).date().isoformat())
         assert [(s.title, [i.text for i in s.items]) for s in payload.sections] == [
-            ("NEEDS YOU", ["Waiting on you: Approve the Priya reply"]),
-            ("GAIA'S WORK", ["Done: Investor update"]),
+            ("NEEDS YOU", ["Approve the Priya reply"]),
+            ("GAIA'S WORK", ["Investor update"]),
         ]
         request = world.notify.await_args.args[0]
         assert [c.channel_type for c in request.channels] == _CHANNELS
@@ -169,7 +170,7 @@ class TestDailyBrief:
 
         items = [i for s in _stored_payload(world).sections for i in s.items]
         assert len(items) == MAX_BRIEF_ITEMS
-        assert [i.kind for i in items[:4]] == ["you", "you", "you", "note"]
+        assert [i.kind for i in items[:4]] == ["you", "you", "you", "failed"]
         prompt = world.agent.await_args.kwargs["request"].message
         assert "2 lower-priority item(s) are not in this brief" in prompt
 

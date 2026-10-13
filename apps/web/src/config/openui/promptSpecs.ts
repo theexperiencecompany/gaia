@@ -209,7 +209,7 @@ export const briefingSchema = z.object({
         z.object({
           text: z.string(),
           todo_id: z.string().optional(),
-          kind: z.string(),
+          kind: z.enum(["gaia", "you", "lookback", "failed", "note"]),
         }),
       ),
     }),

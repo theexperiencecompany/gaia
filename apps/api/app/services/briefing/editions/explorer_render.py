@@ -177,6 +177,7 @@ def render_explorer_edition(
         generated_local=generated_local,
         assets=assets,
         art_credit=_art_credit(),
+        family=family,
     )
 
     modules_html = "\n".join(f"<script>\n{source}\n</script>" for source in _module_sources())

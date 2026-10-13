@@ -48,7 +48,8 @@ _MARKERS: dict[str, tuple[str, str]] = {
     "needs_you": ("Your move", _ACCENT_TONE),
     "you": ("Your move", _ACCENT_TONE),
     "lookback": ("Done", _DIM_TONE),
-    "gaia": ("Done", _DIM_TONE),
+    "gaia": ("In progress", _DIM_TONE),
+    "failed": ("Failed", _ACCENT_TONE),
     "note": ("", ""),
 }
 

@@ -154,8 +154,8 @@ async def render_edition_email(
     render/upload failure so the caller can fall back to the plain HTML template.
     """
     edition_no = _edition_no(payload.get("date"))
-    # Weekly editions carry a rotation-assigned template family; the classic
-    # edition (and every daily/legacy payload) renders via render_edition.
+    # Payloads carry their schedule-assigned template family; the classic
+    # edition (and every legacy payload without one) renders via render_edition.
     family_renderer = renderer_for(payload.get("template_family"))
     render = family_renderer if family_renderer is not None else render_edition
     edition_html = render(

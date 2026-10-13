@@ -37,6 +37,7 @@ from app.constants.notifications import (
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
+    BRIEFING_ITEM_STATES,
     BriefingItemKind,
     BriefingKind,
     BriefingModel,
@@ -59,8 +60,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.context import UserClock
-from app.services.briefing.edition_rotation import choose_edition_family
-from app.services.briefing.editions import rotation_families
+from app.services.briefing.editions import family_for_date
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.utils.analytics import track
@@ -331,8 +331,8 @@ _WORK_SECTION_TITLE = "GAIA'S WORK"
 _SECTION_NUMERALS = ("I", "II")
 
 
-def _work_item(doc: TodoDocument, state: str, kind: BriefingItemKind) -> dict:
-    return {"text": f"{state}: {doc.title}", "todo_id": doc.id, "kind": kind}
+def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> dict:
+    return {"text": doc.title, "todo_id": doc.id, "kind": kind}
 
 
 def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
@@ -342,11 +342,11 @@ def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
     (finished, then running), and the whole brief stops at ``MAX_BRIEF_ITEMS``.
     Returns the sections and how many items the cap left out.
     """
-    needs_you = [_work_item(d, "Waiting on you", "you") for d in work.blocked] + [
-        _work_item(d, "Failed", "note") for d in work.failed
+    needs_you = [_work_item(d, "you") for d in work.blocked] + [
+        _work_item(d, "failed") for d in work.failed
     ]
-    gaia_work = [_work_item(d, "Done", "lookback") for d in work.completed] + [
-        _work_item(d, "In progress", "gaia") for d in work.running
+    gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
+        _work_item(d, "gaia") for d in work.running
     ]
 
     sections: list[dict] = []
@@ -363,7 +363,7 @@ def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
 
 
 def _fact_line(item: dict, art: _ArtifactFact | None) -> str:
-    line = f"- {item['text']}"
+    line = f"- {BRIEFING_ITEM_STATES[item['kind']]}: {item['text']}"
     if art:
         if art.snippet:
             line += f" | summary: {art.snippet}"
@@ -594,12 +594,7 @@ async def run_daily_briefing(user_id: str) -> None:
     )
     payload = _daily_payload(clock, voice, sections, stats, winback.is_winback)
 
-    # Daily editions rotate the template library too ("daily fun docs") —
-    # independent per-kind state, assigned only after generation succeeds and
-    # persisted forever with the payload.
-    payload.template_family = await choose_edition_family(
-        user_id, kind=BRIEFING_KIND_DAILY, families=rotation_families()
-    )
+    payload.template_family = family_for_date(clock.date_str)
     briefing = await _publish_daily(user_id, user, clock, payload)
 
     # The goodbye went out — pause the loop until a reactivation signal.
@@ -647,11 +642,7 @@ async def run_weekly_digest(user_id: str) -> None:
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
     payload.hue = hue_for_day(clock.day_of_year)
-    # Rotation advances only after generation succeeds, so a failed run does
-    # not burn this week's slot in the shuffled cycle.
-    payload.template_family = await choose_edition_family(
-        user_id, kind=BRIEFING_KIND_WEEKLY, families=rotation_families()
-    )
+    payload.template_family = family_for_date(clock.date_str)
 
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload

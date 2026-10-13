@@ -6,7 +6,10 @@ import { useState } from "react";
 
 import { ChevronDown, ChevronUp } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
-import type { BriefingPayload } from "@/types/features/briefingTypes";
+import type {
+  BriefingItemKind,
+  BriefingPayload,
+} from "@/types/features/briefingTypes";
 
 export interface BriefingCardProps {
   payload: BriefingPayload;
@@ -31,6 +34,15 @@ function deltaTone(delta: string): string {
  * airier. Any unrecognized mood (including future ones) falls back to the
  * neutral default rather than breaking.
  */
+// Mirrors BRIEFING_ITEM_STATES in apps/api/app/models/briefing_models.py.
+const ITEM_STATE_LABEL: Record<BriefingItemKind, string> = {
+  you: "Waiting on you",
+  gaia: "In progress",
+  lookback: "Done",
+  failed: "Failed",
+  note: "",
+};
+
 const MOOD_SCRIM: Record<string, string> = {
   clear: "from-zinc-900/50 via-zinc-900/10 to-zinc-900/50",
   packed: "from-zinc-900/70 via-zinc-900/30 to-zinc-900/70",
@@ -209,6 +221,11 @@ function Section({
       <ul className="mt-2 space-y-1.5">
         {section.items.map((item) => (
           <li key={item.text} className="text-sm leading-relaxed text-zinc-300">
+            {ITEM_STATE_LABEL[item.kind] && (
+              <span className="mr-2 text-xs text-zinc-500">
+                {ITEM_STATE_LABEL[item.kind]}
+              </span>
+            )}
             {item.todo_id ? (
               <Link
                 href={`/todos?todoId=${item.todo_id}`}

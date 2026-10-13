@@ -325,6 +325,13 @@ jobs:
         with:
           node: ${{ matrix.slice.node }}
           services: ${{ matrix.slice.services }}
+      # tests/integration/test_edition_families_render.py rasterizes every
+      # briefing edition family through real headless Chromium; the browser is
+      # not part of the uv environment, so the integration slice fetches it.
+      - name: Install headless Chromium for the edition render test
+        if: matrix.slice.name == 'integration'
+        working-directory: apps/api
+        run: uv run --frozen playwright install chromium-headless-shell
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
       - name: Detect parallelism

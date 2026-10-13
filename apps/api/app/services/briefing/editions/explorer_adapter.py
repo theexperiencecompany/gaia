@@ -2,12 +2,11 @@
 
 The 20 templates in ``editions/explorer/js/`` were designed against a fixed
 data shape (see ``explorer-contract.md``'s ``editionData()`` and its Node
-verification snippet): three positional buckets (today/overnight/decisions)
-plus a stats tuple. Our payload (``app/models/briefing_models.py``) is
-looser — a variable number of numbered sections, free-form item text, no
-per-item time field. This module bridges the two, gracefully, so a payload
-that doesn't match the daily-brief's usual I/II/III shape still renders
-rather than crashing the templates.
+verification snippet): three buckets (today/overnight/decisions) plus a
+stats tuple. Our payload (``app/models/briefing_models.py``) is looser — a
+variable number of sections, free-form item text, no per-item time field.
+This module bridges the two by each item's ``kind``, never by which section
+it sat in, so any section layout renders rather than crashing the templates.
 
 ``ed`` values are passed through **unescaped** — every vendored template
 HTML-escapes its own text via a local ``esc()`` helper, so pre-escaping here
@@ -40,29 +39,29 @@ _MONTHS = [
 _ITEM_TIME_PREFIX_RE = re.compile(r"^(\d{1,2}:\d{2}\s*[AaPp][Mm])\s*[-–—]\s*(.+)$")
 _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 
-# Reuses the gaia edition's marker vocabulary (`editions/gaia.py` _MARKERS) —
-# the same words regardless of which family rendered the brief — condensed
-# to the short caps tags the explorer templates expect (e.g. "REVIEW",
-# "SHIP", "DONE" in the contract's sample data).
+# The item's state as the short caps tag the explorer templates expect (e.g.
+# "REVIEW", "SHIP", "DONE" in the contract's sample data). The item text never
+# repeats it: the payload carries the state in ``kind`` and the title in ``text``.
 _KIND_TAGS: dict[str, str] = {
     "proposal": "APPROVAL",
     "you": "YOUR MOVE",
     "needs_you": "YOUR MOVE",
-    "gaia": "DONE",
+    "gaia": "IN PROGRESS",
     "lookback": "DONE",
+    "failed": "FAILED",
     "note": "",
 }
 
-# Where an item from a 4th+ section (beyond today/overnight/decisions) gets
-# folded, keyed by its kind: gaia/lookback read as overnight work, you/
-# proposal read as something needing the reader's call, a bare note reads as
-# a today highlight.
+# Which bucket an item renders in, by kind: GAIA's work (finished or running)
+# is the overnight column, anything waiting on the reader is a decision, and a
+# failure or plain note is a today highlight. Unknown kinds read as notes.
 _KIND_TO_BUCKET: dict[str, str] = {
     "gaia": "overnight",
     "lookback": "overnight",
     "you": "decisions",
     "needs_you": "decisions",
     "proposal": "decisions",
+    "failed": "today",
     "note": "today",
 }
 
@@ -100,6 +99,25 @@ _PLACEHOLDER_DECISION: "ExplorerDecisionItem" = {
     "verb": "Review",
     "label": "Nothing pending your review",
     "note": None,
+}
+
+# An unused fixed slot: the em dash is the vendored set's own mark for a missing
+# value (see explorer/README.md, "Null guards").
+_EMPTY_SLOT_LABEL = "—"
+
+# Families whose render reads fixed item slots — (today, overnight, decisions)
+# item counts — because the founder fixture always held 3/3/2 items. Handed
+# fewer, the page script throws and the raster comes out blank, so build_ed
+# pads these buckets with empty slots. Read off the vendored js/ (which never
+# changes in place); tests/integration/test_edition_families_render.py renders
+# every family with a sparse brief and fails if this table falls behind.
+_FIXED_SLOTS: dict[str, tuple[int, int, int]] = {
+    "boardingpass": (3, 3, 2),
+    "metromap": (3, 3, 2),
+    "menu": (3, 3, 0),
+    "invoice": (3, 3, 0),
+    "almanac": (2, 0, 0),
+    "weekly": (3, 0, 0),
 }
 
 
@@ -178,6 +196,7 @@ def build_ed(
     generated_local: str,
     assets: dict[str, str],
     art_credit: str,
+    family: str = "",
 ) -> ExplorerEdition:
     """Build the vendored templates' ``ed`` object from a
     ``BriefingPayload.model_dump()`` dict.
@@ -191,9 +210,19 @@ def build_ed(
         assets: Asset key -> data URI map (``ed.assets`` / ``ed.art.src``).
         art_credit: The vendored credits.json entry for ART1, e.g.
             ``"Wheat Field with Cypresses — Vincent van Gogh"``.
+        family: The explorer family rendering this ``ed``; families that read
+            fixed item slots get their short buckets padded (``_FIXED_SLOTS``).
     """
     date_parts = _date_parts(str(payload.get("date", "")))
     today, overnight, decisions = _bucket_sections(payload.get("sections") or [])
+    min_today, min_overnight, min_decisions = _FIXED_SLOTS.get(family, (0, 0, 0))
+    today += [{**_PLACEHOLDER_TODAY, "label": _EMPTY_SLOT_LABEL}] * (min_today - len(today))
+    overnight += [{**_PLACEHOLDER_OVERNIGHT, "label": _EMPTY_SLOT_LABEL}] * (
+        min_overnight - len(overnight)
+    )
+    decisions += [{**_PLACEHOLDER_DECISION, "label": _EMPTY_SLOT_LABEL}] * (
+        min_decisions - len(decisions)
+    )
     art_title, art_artist = _split_credit(art_credit)
 
     return {
@@ -328,30 +357,18 @@ def _map_decision_item(item: dict) -> ExplorerDecisionItem:
 def _bucket_sections(
     sections: list[dict],
 ) -> tuple[list[ExplorerTodayItem], list[ExplorerOvernightItem], list[ExplorerDecisionItem]]:
-    """sections[0]/[1]/[2] map to today/overnight/decisions by position (the
-    daily brief's I/II/III are exactly those semantics). A 4th+ section's
-    items fold into the nearest bucket by ``item.kind``. A bucket left
-    genuinely empty gets one honest placeholder item rather than an array a
-    template might index into unconditionally."""
-    raw_today: list[dict] = []
-    raw_overnight: list[dict] = []
-    raw_decisions: list[dict] = []
-    position_buckets = (raw_today, raw_overnight, raw_decisions)
+    """Every item goes to the bucket its ``kind`` names, in payload order. A
+    bucket left genuinely empty gets one honest placeholder item rather than an
+    array a template might index into unconditionally — so "Nothing pending
+    your review" shows only when nothing is waiting on the reader."""
+    raw: dict[str, list[dict]] = {"today": [], "overnight": [], "decisions": []}
+    for section in sections:
+        for item in section.get("items") or []:
+            raw[_KIND_TO_BUCKET.get(_item_kind(item), "today")].append(item)
 
-    for index, section in enumerate(sections):
-        items = section.get("items") or []
-        if index < len(position_buckets):
-            position_buckets[index].extend(items)
-            continue
-        for item in items:
-            target = _KIND_TO_BUCKET.get(_item_kind(item), "today")
-            {"today": raw_today, "overnight": raw_overnight, "decisions": raw_decisions}[
-                target
-            ].append(item)
-
-    today = [_map_today_item(i) for i in raw_today] or [_PLACEHOLDER_TODAY]
-    overnight = [_map_overnight_item(i) for i in raw_overnight] or [_PLACEHOLDER_OVERNIGHT]
-    decisions = [_map_decision_item(i) for i in raw_decisions] or [_PLACEHOLDER_DECISION]
+    today = [_map_today_item(i) for i in raw["today"]] or [_PLACEHOLDER_TODAY]
+    overnight = [_map_overnight_item(i) for i in raw["overnight"]] or [_PLACEHOLDER_OVERNIGHT]
+    decisions = [_map_decision_item(i) for i in raw["decisions"]] or [_PLACEHOLDER_DECISION]
     return today, overnight, decisions
 
 

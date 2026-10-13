@@ -314,7 +314,8 @@ class TestItemMarkers:
             ("needs_you", "Your move", "accent"),
             ("you", "Your move", "accent"),
             ("lookback", "Done", "dim"),
-            ("gaia", "Done", "dim"),
+            ("gaia", "In progress", "dim"),
+            ("failed", "Failed", "accent"),
         ],
     )
     def test_kind_maps_to_its_marker_and_tone(self, kind: str, marker: str, tone: str) -> None:

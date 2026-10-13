@@ -44,7 +44,6 @@ from app.models.onboarding_models import (
 )
 from app.models.user_models import (
     BioStatus,
-    EditionRotation,
     OnboardingPhase,
     OnboardingPreferences,
     PlatformLinkRecord,
@@ -819,20 +818,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"briefing_bootstrap": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def get_edition_rotation(self, user_id: str, kind: str) -> EditionRotation | None:
-        """The user's persisted edition rotation state for ``kind``, if any."""
-        user = await self.get(user_id)
-        return (user.edition_rotations or {}).get(kind) if user else None
-
-    async def set_edition_rotation(self, user_id: str, kind: str, state: EditionRotation) -> None:
-        """Persist the advanced rotation state for ``kind`` (see edition_rotation)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"edition_rotations.{kind}": state.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

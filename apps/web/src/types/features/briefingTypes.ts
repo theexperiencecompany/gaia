@@ -8,10 +8,13 @@ export interface BriefingStat {
   delta?: string;
 }
 
+/** The item's state; `text` is only its title. Mirrors `BriefingItemKind`. */
+export type BriefingItemKind = "gaia" | "you" | "lookback" | "failed" | "note";
+
 export interface BriefingSectionItem {
   text: string;
   todo_id?: string;
-  kind: string;
+  kind: BriefingItemKind;
 }
 
 export interface BriefingSection {

@@ -252,23 +252,6 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
     return out
 
 
-class EditionRotation(BaseModel):
-    """Persisted shuffled-cycle state for one edition kind's template families.
-
-    ``cycle`` is a permutation of every eligible family; ``index`` points at the
-    family the NEXT edition will use. A cycle whose family set no longer matches
-    the registry is discarded and reshuffled (see edition_rotation). Stored
-    per kind (``daily``/``weekly``) on the user doc.
-
-    Both fields are required: a rotation missing either one describes no
-    position in any cycle, so defaulting them would only ever hand
-    ``advance_rotation`` a state it has to throw away.
-    """
-
-    cycle: list[str]
-    index: int
-
-
 class AuthenticatedUser(TypedDict, total=False):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 
@@ -328,7 +311,6 @@ class AuthenticatedUser(TypedDict, total=False):
     briefing_dormancy: dict[str, Any] | None
     briefing_channel_priority: list[str] | None
     day_zero_hello: dict[str, Any] | None
-    edition_rotations: dict[str, EditionRotation] | None
     # Usage-limit upsell email dedupe + activity badge tier (usage system).
     last_limit_email_sent: datetime | None
     highest_activity_tier: str | None
@@ -408,9 +390,6 @@ class UserDocument(MongoDocument):
     briefing_dormancy: dict[str, Any] | None = None
     briefing_channel_priority: list[str] | None = None
     day_zero_hello: dict[str, Any] | None = None
-    # Edition template rotation per briefing kind (shuffled full cycle; see
-    # edition_rotation). Keys: "daily" | "weekly".
-    edition_rotations: dict[str, EditionRotation] | None = None
     # Usage-limit upsell email dedupe (1/week — see send_limit_reached_email).
     last_limit_email_sent: datetime | None = None
     # Best activity-badge tier ever reached (monotonic; drives first-time

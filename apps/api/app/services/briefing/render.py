@@ -58,6 +58,11 @@ async def render_html_to_image(
 
     Returns:
         Encoded image bytes in the requested format.
+
+    Raises:
+        RuntimeError: A script on the page threw. The document is then partly
+            or wholly unrendered (an empty root screenshots as a blank strip),
+            so it must never reach a reader as if it were the brief.
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=_CHROMIUM_LAUNCH_ARGS)
@@ -67,7 +72,11 @@ async def render_html_to_image(
                 device_scale_factor=options.device_scale_factor,
             )
             page = await context.new_page()
+            page_errors: list[str] = []
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
             await page.set_content(html, wait_until="networkidle", timeout=options.timeout_ms)
+            if page_errors:
+                raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
             await page.wait_for_timeout(_FONT_SETTLE_MS)
             if options.image_format == "jpeg":
                 image = await page.screenshot(
