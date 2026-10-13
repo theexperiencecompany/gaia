@@ -12,7 +12,7 @@ from httpx import AsyncClient
 import pytest
 import time_machine
 
-from app.models.reminder_models import ReminderDocument
+from app.models.reminder_models import ReminderCreation, ReminderDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.reminders import ReminderCreated, ReminderDeleted
 from tests.conftest import FAKE_USER
@@ -107,7 +107,7 @@ class TestCreateReminder:
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
                 new_callable=AsyncMock,
-                return_value="rem_new",
+                return_value=ReminderCreation(reminder_id="rem_new", created=True),
             ),
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
@@ -151,7 +151,7 @@ class TestReminderAnalytics:
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
                 new_callable=AsyncMock,
-                return_value="rem_new",
+                return_value=ReminderCreation(reminder_id="rem_new", created=True),
             ),
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
@@ -165,6 +165,29 @@ class TestReminderAnalytics:
         assert resp.status_code == 201
         mock_capture.assert_called_once_with(UserId(USER_ID), ReminderCreated(is_recurring=False))
 
+    async def test_an_existing_identical_reminder_is_returned_and_not_counted(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
+                new_callable=AsyncMock,
+                return_value=ReminderCreation(reminder_id="rem_old", created=False),
+            ),
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
+                new_callable=AsyncMock,
+                return_value=_reminder_model("rem_old"),
+            ) as get_reminder,
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.post(API, json=_create_payload())
+
+        assert resp.status_code == 201
+        assert resp.json()["id"] == "rem_old"
+        get_reminder.assert_awaited_once_with("rem_old", user_id=USER_ID)
+        mock_capture.assert_not_called()
+
     async def test_create_recurring_reminder_captures_is_recurring(
         self, client: AsyncClient
     ) -> None:
@@ -174,7 +197,7 @@ class TestReminderAnalytics:
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
                 new_callable=AsyncMock,
-                return_value="rem_recur",
+                return_value=ReminderCreation(reminder_id="rem_recur", created=True),
             ),
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",

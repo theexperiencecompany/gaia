@@ -2,8 +2,8 @@
 
 Two concerns kept together because they share the user/conversation shape:
 :func:initialize_new_conversation writes the conversation row and returns the
-init SSE chunk; :func:save_conversation_async writes the user + bot messages
-on stream end. Spend is NOT billed here — every model call is metered once, at
+init SSE chunk; :func:save_user_message writes the user message as the turn
+begins and :func:save_bot_reply writes the reply when it ends. Spend is NOT billed here — every model call is metered once, at
 the point of the call, by LLMAccountingMiddleware (see
 app.services.llm_metering); a second pass over the stream's aggregate
 usage_metadata used to re-count the turn against chat_messages as well.
@@ -15,11 +15,11 @@ frontend chunk.
 """
 
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import json
 import re
 
-from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
+from app.constants.chat import ARTIFACT_REF_RE, USER_MESSAGE_TYPE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageKind, MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ConversationInitializedFrame
@@ -99,37 +99,21 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
     return ARTIFACT_REF_RE.sub(_sub, message)
 
 
-async def save_conversation_async(
+async def save_user_message(
     body: MessageRequestWithHistory,
     user: AuthenticatedUser,
     conversation_id: str,
-    complete_message: str,
-    tool_data: Mapping[str, object],
-    metadata: dict[str, object],
     user_message_id: str,
-    bot_message_id: str,
-    bot_timestamp: datetime | None = None,
-    error: str | None = None,
-    follow_up_actions: list[str] | None = None,
-    kind: MessageKind = MessageKind.TEXT,
-    reacts_to_message_id: str | None = None,
 ) -> None:
-    """Persist the finished turn to Mongo and bill token usage.
+    """Persist the turn's user message before any agent work runs.
 
-    Artifact URLs are baked absolute so a stale frontend chunk still renders.
-    bot_timestamp stamps the turn at comms-completion time, keeping user and
-    comms messages sorted ahead of a delegated executor answer in voice mode.
-    kind and reacts_to_message_id stamp a REACT turn as a one-emoji acknowledgment.
+    Written ahead of the reply because the work it asks for commits on its own:
+    a turn that dies mid-run must still show the user what they asked.
     """
-    bot_timestamp = bot_timestamp or datetime.now(UTC)
-    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
-
-    user_content = user_message_content_from(body)
-
     user_message = MessageModel(
-        type="user",
-        response=user_content,
-        date=user_timestamp.isoformat(),
+        type=USER_MESSAGE_TYPE,
+        response=user_message_content_from(body),
+        date=datetime.now(UTC).isoformat(),
         fileIds=body.fileIds,
         fileData=body.fileData,
         selectedTool=body.selectedTool,
@@ -139,7 +123,34 @@ async def save_conversation_async(
         platform_message_id=body.platform_message_id,
     )
     user_message.message_id = user_message_id
+    await update_messages(
+        UpdateMessagesRequest(conversation_id=conversation_id, messages=[user_message]),
+        user=user,
+    )
 
+
+async def save_bot_reply(
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    complete_message: str,
+    tool_data: Mapping[str, object],
+    metadata: dict[str, object],
+    bot_message_id: str,
+    bot_timestamp: datetime | None = None,
+    error: str | None = None,
+    follow_up_actions: list[str] | None = None,
+    kind: MessageKind = MessageKind.TEXT,
+    reacts_to_message_id: str | None = None,
+) -> None:
+    """Persist the turn's reply to Mongo; the user message was saved when the turn began.
+
+    Artifact URLs are baked absolute so a stale frontend chunk still renders.
+    bot_timestamp stamps the reply at comms-completion time, keeping it sorted
+    ahead of a delegated executor answer in voice mode.
+    kind and reacts_to_message_id stamp a REACT turn as a one-emoji acknowledgment.
+    """
+    bot_timestamp = bot_timestamp or datetime.now(UTC)
     rendered_message = absolutize_artifact_urls(complete_message, conversation_id)
 
     bot_message = MessageModel(
@@ -164,7 +175,7 @@ async def save_conversation_async(
     await update_messages(
         UpdateMessagesRequest(
             conversation_id=conversation_id,
-            messages=[user_message, bot_message],
+            messages=[bot_message],
         ),
         user=user,
     )
