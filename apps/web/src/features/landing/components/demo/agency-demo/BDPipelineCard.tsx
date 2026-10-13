@@ -62,7 +62,7 @@ export default function BDPipelineCard() {
                 {item.company}: {item.value}
               </span>
               {item.hot && (
-                <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-400">
+                <span className="rounded-full bg-emerald-400/10 px-1.5 py-0.5 text-xs text-emerald-400">
                   Hot
                 </span>
               )}

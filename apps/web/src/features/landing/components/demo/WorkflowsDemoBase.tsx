@@ -76,7 +76,7 @@ export function WorkflowsDemoBase({
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1"
+                  className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   <span className="text-xs font-medium text-emerald-400">

@@ -34,7 +34,7 @@ export default function ClientReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Status Report: TechCorp
         </span>
-        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-400">
+        <span className="rounded-full bg-emerald-400/10 px-1.5 py-0.5 text-xs text-emerald-400">
           Draft ready
         </span>
       </div>
@@ -54,31 +54,31 @@ export default function ClientReportCard() {
           />
           Completed this week:
         </p>
-        {COMPLETED_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {COMPLETED_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
           <Loading03Icon width={12} height={12} className="text-amber-400" />
           In Progress:
         </p>
-        {IN_PROGRESS_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {IN_PROGRESS_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
           <Calendar03Icon width={12} height={12} className="text-zinc-400" />
           Next Week:
         </p>
-        {NEXT_WEEK_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {NEXT_WEEK_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
           <Target02Icon width={12} height={12} className="text-zinc-400" />

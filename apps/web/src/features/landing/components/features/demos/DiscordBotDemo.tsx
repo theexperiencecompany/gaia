@@ -39,7 +39,7 @@ export default function DiscordBotDemo() {
             <span className="text-xs font-bold text-white">G</span>
           </div>
           <div className="w-0.5 h-4 rounded-full bg-zinc-600" />
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-400">
             <span className="text-xs font-bold text-white">D</span>
           </div>
         </div>

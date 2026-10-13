@@ -69,7 +69,7 @@ export default function RedditCreatedCard({
                   <Link
                     href={`https://reddit.com${item.data.permalink}`}
                     target="_blank"
-                    className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-colors hover:text-orange-400"
+                    className="ml-auto flex items-center gap-1.5 text-xs text-orange-400 transition-colors hover:text-orange-400"
                   >
                     View on Reddit
                     <LinkSquare02Icon className="h-3.5 w-3.5" />
@@ -81,7 +81,7 @@ export default function RedditCreatedCard({
                     <Link
                       href={(item.data as RedditPostCreatedData).url || ""}
                       target="_blank"
-                      className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-colors hover:text-orange-400"
+                      className="ml-auto flex items-center gap-1.5 text-xs text-orange-400 transition-colors hover:text-orange-400"
                     >
                       View on Reddit
                       <LinkSquare02Icon className="h-3.5 w-3.5" />

@@ -486,7 +486,8 @@ function CurvedBubble({
           style={{
             position: "absolute",
             bottom: 0,
-            [isMe ? "right" : "left"]: -7,
+            right: isMe ? -7 : undefined,
+            left: isMe ? undefined : -7,
             width: 20,
             height: 18,
             background: tailColor,

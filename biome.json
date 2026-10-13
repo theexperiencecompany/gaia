@@ -188,8 +188,7 @@
         "./config/biome-rules/status-opacity.grit",
         "./config/biome-rules/no-card-shadow.grit",
         "./config/biome-rules/prefer-divider.grit",
-        "./config/biome-rules/rounded-lg-card.grit",
-        "./config/biome-rules/z-index-lint.grit"
+        "./config/biome-rules/rounded-lg-card.grit"
       ]
     },
     {

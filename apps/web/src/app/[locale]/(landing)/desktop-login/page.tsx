@@ -162,7 +162,7 @@ export default function DesktopLoginPage() {
 
           {status === "error" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-400/20">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="24"

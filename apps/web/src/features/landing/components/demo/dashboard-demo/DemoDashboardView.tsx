@@ -397,7 +397,7 @@ function DemoConversationsCard() {
                   </h4>
                   {conversation.starred && (
                     <StarIcon
-                      className="flex-shrink-0 text-yellow-500"
+                      className="flex-shrink-0 text-yellow-400"
                       width={14}
                       height={14}
                     />
@@ -488,7 +488,7 @@ export default function DemoDashboardView() {
       label: "tasks due",
     },
     {
-      icon: <Alert01Icon className="w-7 h-7 text-red-500" />,
+      icon: <Alert01Icon className="w-7 h-7 text-red-400" />,
       count: 1,
       label: "overdue task",
     },
@@ -498,7 +498,7 @@ export default function DemoDashboardView() {
       label: "unread emails",
     },
     {
-      icon: <ZapIcon className="w-7 h-7 text-amber-500" />,
+      icon: <ZapIcon className="w-7 h-7 text-amber-400" />,
       count: 2,
       label: "workflows",
     },

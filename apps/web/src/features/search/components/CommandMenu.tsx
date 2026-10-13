@@ -411,7 +411,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               {/* Footer */}
               <div className={COMMAND_MENU_STYLES.footer}>
                 <p className={COMMAND_MENU_STYLES.footerText}>
-                  Type to search, use ↑↓ to navigate, ↵ to select, ESC to close
+                  Type to search, use <Kbd keys={["up", "down"]} /> to navigate,{" "}
+                  <Kbd keys={["enter"]} /> to select, <Kbd keys={["escape"]} />{" "}
+                  to close
                 </p>
               </div>
             </Command>

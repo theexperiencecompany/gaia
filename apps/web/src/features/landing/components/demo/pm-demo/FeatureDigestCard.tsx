@@ -25,7 +25,7 @@ export default function FeatureDigestCard() {
             <span className="text-xs font-medium text-zinc-300">
               API &amp; Integrations (5 requests)
             </span>
-            <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-400">
+            <span className="rounded-full bg-amber-400/10 px-1.5 py-0.5 text-xs text-amber-400">
               High Volume
             </span>
           </div>
@@ -76,7 +76,7 @@ export default function FeatureDigestCard() {
             <span className="text-xs font-medium text-zinc-300">
               SSO / Enterprise Auth (1 request)
             </span>
-            <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-xs text-red-400">
+            <span className="rounded-full bg-red-400/10 px-1.5 py-0.5 text-xs text-red-400">
               High Priority
             </span>
           </div>

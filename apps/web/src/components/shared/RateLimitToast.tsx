@@ -93,7 +93,7 @@ export const showRateLimitToast = ({
     duration: isUpgradeRequired ? 10000 : 8000, // Longer duration for upgrade prompts
     icon: (
       <Icon
-        className={isUpgradeRequired ? "text-yellow-500" : "text-red-500"}
+        className={isUpgradeRequired ? "text-yellow-400" : "text-red-400"}
         size={20}
       />
     ),

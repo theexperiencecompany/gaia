@@ -691,7 +691,7 @@ function TermsClosing() {
         The Experience Company, Inc.
         <br />
         Email:{" "}
-        <a className="text-blue-500 underline" href="mailto:support@heygaia.so">
+        <a className="text-blue-400 underline" href="mailto:support@heygaia.so">
           support@heygaia.so
         </a>
       </p>

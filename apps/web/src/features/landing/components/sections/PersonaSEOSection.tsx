@@ -1,5 +1,6 @@
 "use client";
 
+import { Cancel01Icon } from "@icons";
 import type { FAQPage, WithContext } from "schema-dts";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -70,7 +71,11 @@ export default function PersonaSEOSection({
               key={point}
               className="flex items-start gap-3 rounded-2xl bg-zinc-800/60 p-5"
             >
-              <span className="mt-0.5 shrink-0 text-red-400">✕</span>
+              <Cancel01Icon
+                width={18}
+                height={18}
+                className="mt-1 shrink-0 text-red-400"
+              />
               <p className="leading-relaxed text-zinc-300">{point}</p>
             </div>
           ))}

@@ -51,7 +51,7 @@ export default function SprintReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Sprint 24 Report
         </span>
-        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
           Completed
         </span>
       </div>

@@ -80,7 +80,7 @@ function buildDashboardSections({
   }
   if (overdueTodosCount > 0) {
     sections.push({
-      icon: <Alert01Icon className="w-7 h-7 text-red-500" />,
+      icon: <Alert01Icon className="w-7 h-7 text-red-400" />,
       count: overdueTodosCount,
       label: overdueTodosCount === 1 ? "overdue task" : "overdue tasks",
     });
@@ -94,7 +94,7 @@ function buildDashboardSections({
   }
   if (activeWorkflows > 0) {
     sections.push({
-      icon: <ZapIcon className="w-7 h-7 text-amber-500" />,
+      icon: <ZapIcon className="w-7 h-7 text-amber-400" />,
       count: activeWorkflows,
       label: activeWorkflows === 1 ? "workflow" : "workflows",
     });

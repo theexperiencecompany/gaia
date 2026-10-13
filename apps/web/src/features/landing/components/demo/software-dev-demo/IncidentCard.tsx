@@ -32,7 +32,7 @@ export default function IncidentCard() {
         <span className="text-xs font-medium text-zinc-300">
           P1 Incident: /api/payments/webhook
         </span>
-        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
+        <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">
           Active
         </span>
       </div>

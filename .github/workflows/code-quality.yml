@@ -437,7 +437,7 @@ jobs:
           # .oxlintrc.json re-judges files the PR never touched.
           echo "::group::oxlint shadcn"
           OXLINT_STATUS=0
-          OXLINT_OUT=$(pnpm --filter ./apps/web exec oxlint --format unix --max-warnings=4 2>&1) || OXLINT_STATUS=$?
+          OXLINT_OUT=$(pnpm --filter ./apps/web exec oxlint --format unix 2>&1) || OXLINT_STATUS=$?
           echo "$OXLINT_OUT"
           echo "::endgroup::"
           # oxlint prints app-relative paths; the verdict needs repo-relative ones.
@@ -446,12 +446,12 @@ jobs:
           FINDINGS=$(wc -l < "$RUNNER_TEMP/shadcn-lint.jsonl" 2>/dev/null || echo 0)
           if [ "$OXLINT_STATUS" -ne 0 ]; then
             ci_verdict_die --lane shadcn-lint --status fail \
-              --summary "design-system lint: $FINDINGS finding(s) over the 0-error / 4-warning budget" \
+              --summary "design-system lint: $FINDINGS finding(s)" \
               --findings "$RUNNER_TEMP/shadcn-lint.jsonl" \
               --advice "Reproduce: pnpm --filter ./apps/web exec oxlint. Each message names the prop or token to use instead (DESIGN.md)."
           fi
           ci_verdict --lane shadcn-lint --status pass \
-            --summary "design-system lint: 0 errors, warnings within the cap of 4"
+            --summary "design-system lint: 0 findings"
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict

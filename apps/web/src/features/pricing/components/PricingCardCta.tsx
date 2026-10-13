@@ -40,7 +40,7 @@ export function PricingCardCta({
   return (
     <div className="px-6 pb-4">
       {paymentError && (
-        <div className="mb-3 rounded-xl bg-red-500/10 p-3">
+        <div className="mb-3 rounded-xl bg-red-400/10 p-3">
           <p className="text-sm text-red-400">{paymentError}</p>
         </div>
       )}

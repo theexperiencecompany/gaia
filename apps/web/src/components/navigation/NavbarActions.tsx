@@ -36,7 +36,7 @@ export function NavbarActions({
           });
         }}
       >
-        <Button variant="secondary" className="group text-white">
+        <Button variant="glass" className="group">
           <div className="flex items-center">
             <Github className="mr-1 size-4 fill-white" />
             <span className="ml-1 lg:hidden">Star</span>

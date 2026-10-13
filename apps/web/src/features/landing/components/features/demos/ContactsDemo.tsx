@@ -39,7 +39,7 @@ function ContactCard() {
             </div>
           </div>
           <div className="flex shrink-0 gap-1.5">
-            <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
+            <span className="flex items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">
               {getToolCategoryIcon("gmail", {
                 width: 10,
                 height: 10,
@@ -47,7 +47,7 @@ function ContactCard() {
               })}
               Gmail
             </span>
-            <span className="flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400">
+            <span className="flex items-center gap-1 rounded-full bg-orange-400/10 px-2 py-0.5 text-xs font-medium text-orange-400">
               {getToolCategoryIcon("hubspot", {
                 width: 10,
                 height: 10,

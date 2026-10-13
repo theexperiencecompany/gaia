@@ -24,7 +24,7 @@
         "allow": ["layout"],
         "contracts": [
           {
-            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Checkbox|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Progress|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
+            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
             "allow": [
               "layout",
               "typography",
@@ -32,17 +32,15 @@
               "opacity-0",
               "group-hover:opacity-100",
               "transition",
-              "transition-colors",
-              "transition-transform",
-              "transition-opacity",
-              "transition-all",
               "duration-150",
               "duration-200",
               "duration-300",
               "hover:bg-transparent",
               "bg-red-400/10",
               "bg-yellow-400/10",
-              "bg-blue-400/10"
+              "bg-blue-400/10",
+              "bg-emerald-400/10",
+              "bg-amber-400/10"
             ]
           },
           {
@@ -54,8 +52,6 @@
               "rounded-2xl",
               "sm:text-lg",
               "rounded-full",
-              "before:rounded-xl",
-              "before:rounded-full",
               "font-semibold",
               "text-sm",
               "text-base",
@@ -73,7 +69,6 @@
               "shape",
               "typography",
               "color",
-              "border-0",
               "shadow-none",
               "transition-[background-color,box-shadow]"
             ]
@@ -128,7 +123,7 @@
           },
           {
             "pattern": "^SidebarHeader$",
-            "allow": ["layout", "spacing", "electron-drag"]
+            "allow": ["spacing", "electron-drag"]
           },
           {
             "pattern": "^SheetContent$",
@@ -152,16 +147,12 @@
             "pattern": "^Checkbox$",
             "allow": [
               "layout",
-              "typography",
-              "text-*",
-              "mt-1",
               "bg-zinc-900",
               "border-dashed",
               "border-1",
-              "before:border-0",
-              "border-red-500",
-              "border-yellow-500",
-              "border-blue-500",
+              "border-red-400",
+              "border-yellow-400",
+              "border-blue-400",
               "border-zinc-500",
               "before:border-0!"
             ]
@@ -179,17 +170,11 @@
         "allow": [
           "*-zinc-*",
           "*-emerald-400",
-          "*-emerald-500",
           "*-amber-400",
-          "*-amber-500",
           "*-red-400",
-          "*-red-500",
           "*-blue-400",
-          "*-blue-500",
           "*-yellow-400",
-          "*-yellow-500",
           "*-orange-400",
-          "*-orange-500",
           "*-violet-400",
           "*-lime-400",
           "*-purple-400",
@@ -226,7 +211,6 @@
           "layout",
           "text-[9px]",
           "transition-[width]",
-          "transition-[max-height]",
           "transition-[left,width]",
           "transition-[height]",
           "transition-[filter,opacity]",
@@ -271,27 +255,25 @@
       }
     ],
     "shadcn/no-inline-styles": [
-      "warn",
+      "error",
       {
         "message": "Inline style sets {{property|a spread style object}} \u2014 use classes; only measured geometry and dynamic Google-pill colors may be inline (see the .oxlintrc.json overrides)."
       }
     ],
     "shadcn/no-unknown-classes": [
-      "warn",
+      "error",
       {
         "allow": [
           "ph-no-capture",
-          "tool-icon-btn",
           "slash-command-dropdown",
           "compact-chat",
           "mermaid",
           "colored",
-          "markdown-table",
           "chat-demo-thread"
         ]
       }
     ],
-    "shadcn/require-static-classes": "warn"
+    "shadcn/require-static-classes": "error"
   },
   "overrides": [
     {
@@ -299,7 +281,8 @@
       "rules": {
         "shadcn/no-restyle": "off",
         "shadcn/no-arbitrary-values": "off",
-        "shadcn/require-static-classes": "off"
+        "shadcn/require-static-classes": "off",
+        "shadcn/no-inline-styles": "off"
       }
     },
     {
@@ -317,7 +300,7 @@
       "files": ["src/features/calendar/components/**"],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "width",
@@ -341,7 +324,7 @@
       "files": ["src/features/landing/components/iphone/**"],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "background",
@@ -398,7 +381,7 @@
       "files": ["src/components/ui/shine-border.tsx"],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "background",
@@ -419,7 +402,7 @@
       "files": ["src/features/landing/components/shared/TextSoftBlurIn.tsx"],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": ["display"]
           }
@@ -430,7 +413,7 @@
       "files": ["src/components/ui/holo-card/**"],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "position",
@@ -464,7 +447,7 @@
       ],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "transform",
@@ -503,7 +486,7 @@
       ],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "backgroundColor",
@@ -537,7 +520,7 @@
       ],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "width",
@@ -567,7 +550,7 @@
       ],
       "rules": {
         "shadcn/no-inline-styles": [
-          "warn",
+          "error",
           {
             "allow": [
               "width",
@@ -599,6 +582,12 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/code-block/**"],
+      "rules": {
+        "shadcn/no-inline-styles": "off"
       }
     }
   ]

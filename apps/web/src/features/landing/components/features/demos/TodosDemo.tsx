@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import ChatDemo from "../../demo/founders-demo/ChatDemo";
 import type { ChatMessage } from "../../demo/founders-demo/types";
 
@@ -26,8 +27,9 @@ function TaskCreatedCard() {
               </span>
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
-            Task created ✓
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+            Task created
+            <Tick02Icon width={12} height={12} />
           </span>
         </div>
       </div>

@@ -84,7 +84,7 @@ export default function RedditSearchCard({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-center gap-1.5 text-xs">
-                        <span className="font-semibold text-orange-500">
+                        <span className="font-semibold text-orange-400">
                           {post.subreddit}
                         </span>
                         <span className="text-zinc-500">u/{post.author}</span>
@@ -92,7 +92,7 @@ export default function RedditSearchCard({
                           {formatTime(post.created_utc)}
                         </span>
                       </div>
-                      <h4 className="line-clamp-2 text-sm leading-snug font-medium text-white group-hover:text-orange-500">
+                      <h4 className="line-clamp-2 text-sm leading-snug font-medium text-white group-hover:text-orange-400">
                         {post.title}
                       </h4>
                     </div>
@@ -107,7 +107,7 @@ export default function RedditSearchCard({
 
                   {/* Stats */}
                   <div className="flex items-center gap-3 text-xs">
-                    <div className="flex items-center gap-1 text-orange-500">
+                    <div className="flex items-center gap-1 text-orange-400">
                       <ArrowUp02Icon width={18} height={18} />
                       <span className="font-medium tabular-nums">
                         {formatNumber(post.score)}

@@ -88,7 +88,7 @@ export default function RedditCommentCard({
                   </div>
 
                   {/* Score */}
-                  <div className="flex items-center gap-1 text-xs text-orange-500">
+                  <div className="flex items-center gap-1 text-xs text-orange-400">
                     <ArrowUp02Icon width={18} height={18} />
                     <span className="font-medium tabular-nums">
                       {formatNumber(comment.score)}
@@ -106,7 +106,7 @@ export default function RedditCommentCard({
                   <Link
                     href={`https://reddit.com${comment.permalink}`}
                     isExternal
-                    className="inline-flex items-center text-xs text-orange-500 transition-colors hover:text-orange-400"
+                    className="inline-flex items-center text-xs text-orange-400 transition-colors hover:text-orange-400"
                   >
                     View on Reddit
                     <ArrowUpRight01Icon className="ml-1 h-3.5 w-3.5" />

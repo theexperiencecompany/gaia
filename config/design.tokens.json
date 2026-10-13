@@ -160,22 +160,22 @@
     "priority-high": {
       "$value": {
         "colorSpace": "srgb",
-        "components": [0.937, 0.267, 0.267],
-        "hex": "#ef4444"
+        "components": [0.973, 0.443, 0.443],
+        "hex": "#f87171"
       }
     },
     "priority-medium": {
       "$value": {
         "colorSpace": "srgb",
-        "components": [0.918, 0.702, 0.031],
-        "hex": "#eab308"
+        "components": [0.98, 0.8, 0.082],
+        "hex": "#facc15"
       }
     },
     "priority-low": {
       "$value": {
         "colorSpace": "srgb",
-        "components": [0.231, 0.51, 0.965],
-        "hex": "#3b82f6"
+        "components": [0.376, 0.647, 0.98],
+        "hex": "#60a5fa"
       }
     }
   },

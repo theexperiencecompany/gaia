@@ -33,9 +33,9 @@ colors:
   error: "#f87171"
   info: "#60a5fa"
   destructive: "#7f1d1d"
-  priority-high: "#ef4444"
-  priority-medium: "#eab308"
-  priority-low: "#3b82f6"
+  priority-high: "#f87171"
+  priority-medium: "#facc15"
+  priority-low: "#60a5fa"
 
 typography:
   display:
@@ -171,19 +171,15 @@ components:
     textColor: "{colors.on-surface}"
     rounded: "{rounded.md}"
   chip-status-success:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.success}"
     rounded: "{rounded.full}"
   chip-status-warning:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.warning}"
     rounded: "{rounded.full}"
   chip-status-error:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.error}"
     rounded: "{rounded.full}"
   chip-status-info:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.info}"
     rounded: "{rounded.full}"
   chip-status-pending:
@@ -191,15 +187,12 @@ components:
     textColor: "{colors.neutral-300}"
     rounded: "{rounded.full}"
   chip-priority-high:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-high}"
     rounded: "{rounded.full}"
   chip-priority-medium:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-medium}"
     rounded: "{rounded.full}"
   chip-priority-low:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-low}"
     rounded: "{rounded.full}"
   tooltip:
@@ -314,9 +307,11 @@ Always `/10` opacity background with matching text. Never solid color background
 | Error | `bg-red-400/10` | `text-red-400` |
 | Info | `bg-blue-400/10` | `text-blue-400` |
 | Pending | `bg-zinc-700/50` | `text-zinc-400` |
-| Priority high | `bg-red-500/10` | `text-red-500` |
-| Priority medium | `bg-yellow-500/10` | `text-yellow-500` |
-| Priority low | `bg-blue-500/10` | `text-blue-500` |
+| Priority high | `bg-red-400/10` | `text-red-400` |
+| Priority medium | `bg-yellow-400/10` | `text-yellow-400` |
+| Priority low | `bg-blue-400/10` | `text-blue-400` |
+
+Status and priority hues are the `-400` shade only; `-500` is a lint error (`no-raw-colors`).
 
 ### Selection
 
@@ -667,7 +662,7 @@ Empty state pattern (no shared component — build inline):
 - Do use Sileo for toasts — it is mounted globally; just call the toast function.
 - Do truncate long strings in constrained containers with `truncate` or `line-clamp-N`.
 - Don't put `border-`, `ring-`, or `outline-` anywhere in the card tree. Depth comes from tonal layering only.
-- Don't use `rounded-lg` on card containers. It is the Shadcn default and visually too cramped — use `rounded-xl` (16px).
+- Don't use `rounded-lg` on card containers. Outer cards are `rounded-3xl`, inner surfaces `rounded-2xl` (the card contract).
 - Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `×`) as UI elements. Always use icon components from `@icons`.
 - Don't use solid color backgrounds for status states. Always pair `/10` background with full color text.
 - Don't import from `framer-motion` — import from `motion/react`. `AnimatePresence` is required for exit animations.

@@ -77,19 +77,19 @@ export default function OneOnOnePrepCard() {
         <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           From last 1:1 (Feb 20)
         </p>
-        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
-          <p className="text-xs text-zinc-400">
-            • Action: you&apos;d get clarity on Q2 roadmap, not yet shared
-          </p>
-          <p className="flex items-center gap-1 text-xs text-zinc-400">
-            • Action: she&apos;d ramp on Rust, 2 merged PRs using it{" "}
-            <CheckmarkCircle02Icon
-              width={12}
-              height={12}
-              className="text-emerald-400"
-            />
-          </p>
-        </div>
+        <ul className="list-disc space-y-1 rounded-xl bg-zinc-900 p-2.5 pl-6.5 text-xs text-zinc-400">
+          <li>Action: you&apos;d get clarity on Q2 roadmap, not yet shared</li>
+          <li>
+            <span className="inline-flex items-center gap-1">
+              Action: she&apos;d ramp on Rust, 2 merged PRs using it
+              <CheckmarkCircle02Icon
+                width={12}
+                height={12}
+                className="text-emerald-400"
+              />
+            </span>
+          </li>
+        </ul>
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">

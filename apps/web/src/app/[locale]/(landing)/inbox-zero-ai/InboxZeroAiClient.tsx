@@ -1,6 +1,6 @@
 "use client";
 
-import { MinusSignIcon } from "@icons";
+import { Cancel01Icon, MinusSignIcon } from "@icons";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
@@ -180,7 +180,11 @@ export default function InboxZeroAiClient() {
               delay={i * 0.08}
               className="flex items-start gap-3 rounded-2xl bg-zinc-800/60 p-5"
             >
-              <span className="mt-0.5 shrink-0 text-red-400">✕</span>
+              <Cancel01Icon
+                width={18}
+                height={18}
+                className="mt-1 shrink-0 text-red-400"
+              />
               <p className="text-lg leading-relaxed text-zinc-300">{point}</p>
             </AnimatedCard>
           ))}

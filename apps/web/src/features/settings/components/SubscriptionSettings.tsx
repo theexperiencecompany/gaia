@@ -86,7 +86,7 @@ export function SubscriptionSettings() {
           {priceFormatted}{" "}
           <span className="text-zinc-600">/ {billingCycle}</span>
           {cancellationScheduled ? (
-            <span className="ml-3 text-xs text-amber-500">
+            <span className="ml-3 text-xs text-amber-400">
               Cancellation scheduled · access until{" "}
               {subscription?.next_billing_date
                 ? formatDate(subscription.next_billing_date)
