@@ -1,3 +1,6 @@
+import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
+import { COMPOSE_PROJECT_BY_MODE } from "../../lib/docker.js";
+import { localOrigin } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { checkAllServices, getDockerStatus } from "../../lib/healthcheck.js";
 import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
@@ -14,13 +17,18 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
     : undefined;
   const mode = (repoPath && (await detectSetupMode(repoPath))) || "developer";
 
-  const [services, docker] = await Promise.all([
+  const [services, docker, readiness] = await Promise.all([
     checkAllServices(mode, portOverrides),
     getDockerStatus(mode),
+    fetchDependencyReadiness(
+      localOrigin(mode, portOverrides ?? {}),
+      COMPOSE_PROJECT_BY_MODE[mode],
+    ),
   ]);
 
   store.updateData("services", services);
   store.updateData("docker", docker);
+  store.updateData("readiness", readiness);
 
   const upCount = services.filter((s) => s.status === "up").length;
   const totalCount = services.length;

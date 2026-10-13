@@ -2,6 +2,10 @@ import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+import type {
+  DependencyCheck,
+  DependencyReadiness,
+} from "../../lib/dependency-readiness.js";
 import type { ContainerStatus } from "../../lib/docker.js";
 import type { ServiceStatus } from "../../lib/healthcheck.js";
 import { Header } from "../components/Header.js";
@@ -12,6 +16,7 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const [state, setState] = useState(store.currentState);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const readiness = state.data.readiness as DependencyReadiness | undefined;
 
   useEffect(() => {
     const update = () => setState({ ...store.currentState });
@@ -119,6 +124,46 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
                 ))}
             </Box>
           </Box>
+
+          {readiness && (
+            <Box
+              flexDirection="column"
+              borderStyle="round"
+              borderColor="gray"
+              paddingX={2}
+              paddingY={1}
+              marginTop={1}
+            >
+              <Text bold>Dependencies (/health/ready)</Text>
+              {!readiness.reachable && (
+                <Text color="red">{readiness.detail}</Text>
+              )}
+              {readiness.reachable &&
+                readiness.dependencies.map((dependency: DependencyCheck) => (
+                  <Box key={dependency.name} flexDirection="column">
+                    <Box>
+                      <Box width={22}>
+                        <Text>{dependency.name}</Text>
+                      </Box>
+                      <Box width={10}>
+                        <Text color={dependency.ok ? "green" : "red"} bold>
+                          {dependency.ok ? "\u2713 OK" : "\u2717 FAIL"}
+                        </Text>
+                      </Box>
+                      <Box width={10}>
+                        <Text color="gray">{dependency.latency_ms}ms</Text>
+                      </Box>
+                      {dependency.error_type && (
+                        <Text color="red">{dependency.error_type}</Text>
+                      )}
+                    </Box>
+                    {dependency.fix && (
+                      <Text color="gray"> Fix: {dependency.fix}</Text>
+                    )}
+                  </Box>
+                ))}
+            </Box>
+          )}
 
           {state.data.docker && (
             <Box

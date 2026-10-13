@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
+import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
 import {
   type ComposeContainerInfo,
   type ComposeProject,
@@ -351,6 +352,49 @@ export async function checkApiHealth(apiUrl: string): Promise<CheckResult> {
       fix: "Start the stack with 'gaia start' (self-host) or 'gaia dev' (developer mode).",
     };
   }
+}
+
+/**
+ * One result per backing service from /health/ready. Skipped when the API did
+ * not answer: the API health failure already explains why.
+ */
+export async function checkDependencies(options: {
+  apiHealthy: boolean;
+  origin: string;
+  project: ComposeProject;
+}): Promise<CheckResult[]> {
+  const base: Pick<CheckResult, "id" | "label" | "severity"> = {
+    id: "dependencies",
+    label: "Dependencies",
+    severity: "blocker",
+  };
+  if (!options.apiHealthy) {
+    return [{ ...base, state: "skipped", detail: "API unreachable" }];
+  }
+  const readiness = await fetchDependencyReadiness(
+    options.origin,
+    options.project,
+  );
+  if (!readiness.reachable) {
+    return [
+      {
+        ...base,
+        state: "fail",
+        detail: readiness.detail,
+        fix: "Run 'gaia update': an API or proxy older than this CLI does not serve /health/ready.",
+      },
+    ];
+  }
+  return readiness.dependencies.map((dependency) => ({
+    id: `dependency-${dependency.name}`,
+    label: `Dependency: ${dependency.name}`,
+    severity: "blocker",
+    state: dependency.ok ? "ok" : "fail",
+    detail: dependency.ok
+      ? `${dependency.latency_ms}ms`
+      : `${dependency.error_type ?? "failed"} after ${dependency.latency_ms}ms`,
+    fix: dependency.fix,
+  }));
 }
 
 export async function checkWebReachable(webPort: number): Promise<CheckResult> {

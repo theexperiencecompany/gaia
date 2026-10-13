@@ -4,6 +4,7 @@
  */
 
 import { runCommandUI } from "../../lib/command-runner.js";
+import type { DependencyReadiness } from "../../lib/dependency-readiness.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runStatusFlow } from "./flow.js";
 
@@ -42,8 +43,28 @@ interface PlainDocker {
 function printStatusSnapshot(store: CLIStore): void {
   const services = (store.currentState.data.services ?? []) as PlainService[];
   const docker = store.currentState.data.docker as PlainDocker | undefined;
+  const readiness = store.currentState.data.readiness as
+    | DependencyReadiness
+    | undefined;
   printServices(services);
+  printReadiness(readiness);
   printDocker(docker);
+}
+
+function printReadiness(readiness: DependencyReadiness | undefined): void {
+  if (!readiness) return;
+  console.log("\nDependencies (/health/ready):");
+  if (!readiness.reachable) {
+    console.log(`  unavailable: ${readiness.detail}`);
+    return;
+  }
+  for (const dependency of readiness.dependencies) {
+    const name = dependency.name.padEnd(12);
+    const tag = dependency.ok ? "OK  " : "FAIL";
+    const error = dependency.error_type ? `  ${dependency.error_type}` : "";
+    console.log(`  ${name} ${tag}  ${dependency.latency_ms}ms${error}`);
+    if (dependency.fix) console.log(`    Fix: ${dependency.fix}`);
+  }
 }
 
 function statusTag(status: PlainService["status"]): string {

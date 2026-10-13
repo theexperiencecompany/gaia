@@ -1,7 +1,7 @@
 # Single-origin entrypoint for the self-host stack (proxy profile in
 # docker-compose.selfhost.yml). /api/v1 — REST, SSE streams and the WebSocket —
-# goes to gaia-backend; everything else is the Next.js app. Same origin means no
-# CORS and host-only session cookies, on any hostname or IP.
+# and /health/ready go to gaia-backend; everything else is the Next.js app.
+# Same origin means no CORS and host-only session cookies, on any hostname or IP.
 #
 # GAIA_SITE_ADDRESS comes from compose: GAIA_DOMAIN when set, else ":80".
 # GAIA_DOMAIN unset: plain HTTP on :80 (published as WEB_HOST_PORT) for any host.
@@ -10,6 +10,11 @@
 # doctor probes work before DNS points here.
 
 (gaia) {
+	# Per-dependency readiness for `gaia status` / `gaia doctor` and platform probes.
+	handle /health/ready {
+		reverse_proxy gaia-backend:8000
+	}
+
 	handle /api/v1/* {
 		reverse_proxy gaia-backend:8000 {
 			# Chat replies stream as SSE; never buffer a response.

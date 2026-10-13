@@ -13,13 +13,14 @@ import {
   COMPOSE_PROJECT_BY_MODE,
   type ComposeProject,
 } from "../../lib/docker.js";
-import { localApiUrl } from "../../lib/endpoints.js";
+import { localApiUrl, localOrigin } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
 import {
   checkApiHealth,
   checkComposeContainers,
+  checkDependencies,
   checkDiskHeadroom,
   checkDockerDaemon,
   checkMemoryHeadroom,
@@ -49,6 +50,8 @@ export function hasBlockingFailure(report: DoctorReport): boolean {
 /** Resolved context shared by the checks (host ports, compose project). */
 interface DoctorContext {
   repoPath: string | null;
+  /** Where the API answers on this machine for the detected mode. */
+  origin: string;
   /** API base (`…/api/v1`) on this machine for the detected mode. */
   apiUrl: string;
   webPort: number;
@@ -67,6 +70,7 @@ async function resolveContext(): Promise<DoctorContext> {
   return {
     repoPath,
     // Unconfigured repos probe the self-host origin, the default install.
+    origin: localOrigin(mode ?? "selfhost", overrides),
     apiUrl: localApiUrl(mode ?? "selfhost", overrides),
     webPort: resolvePort(overrides, 3000),
     overrides,
@@ -107,6 +111,15 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   // 3. API health.
   const api = await checkApiHealth(ctx.apiUrl);
   results.push(api);
+
+  // 3b. Every backing service the API needs, from /health/ready.
+  results.push(
+    ...(await checkDependencies({
+      apiHealthy: api.state === "ok",
+      origin: ctx.origin,
+      project: ctx.project ?? COMPOSE_PROJECT_BY_MODE.selfhost,
+    })),
+  );
 
   // 4. Setup readiness (warning-level, per unconfigured item).
   results.push(

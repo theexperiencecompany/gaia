@@ -15,10 +15,11 @@ export const DEFAULT_API_PORT = 8000;
 export const DEFAULT_HTTPS_PORT = 3443;
 
 /**
- * The API base (`…/api/v1`) on this machine. Self-host serves it through the
- * proxy on the web port; developer mode runs the API on its own port.
+ * Where the API answers on this machine for the detected mode. Self-host
+ * serves it through the proxy on the web port; developer mode runs the API on
+ * its own port. `/health/ready` lives at this origin.
  */
-export function localApiUrl(
+export function localOrigin(
   mode: SetupMode,
   portOverrides: Record<number, number>,
 ): string {
@@ -26,5 +27,13 @@ export function localApiUrl(
     mode === "selfhost"
       ? (portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT)
       : (portOverrides[DEFAULT_API_PORT] ?? DEFAULT_API_PORT);
-  return `http://localhost:${port}/api/v1`;
+  return `http://localhost:${port}`;
+}
+
+/** The API base (`…/api/v1`) on this machine. */
+export function localApiUrl(
+  mode: SetupMode,
+  portOverrides: Record<number, number>,
+): string {
+  return `${localOrigin(mode, portOverrides)}/api/v1`;
 }
