@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import ExitStack
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -100,6 +100,24 @@ class TestBlockingStartupHonorsStrategy:
         await unified_startup("arq_worker")  # must not raise
 
         auto_init_spy.assert_awaited_once()
+
+
+class TestBootRefusesAnUnusableBlobStore:
+    async def test_the_blob_store_check_failing_aborts_before_any_service(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        refused = RuntimeError("blob volume not writable")
+        monkeypatch.setattr(
+            provider_registration,
+            "ensure_local_blob_store_ready",
+            MagicMock(side_effect=refused),
+        )
+
+        with pytest.raises(RuntimeError) as raised:
+            await unified_startup("arq_worker")
+
+        assert raised.value is refused
+        auto_init_spy.assert_not_awaited()
 
 
 class TestMainAppRegistersTheBroadcastListener:

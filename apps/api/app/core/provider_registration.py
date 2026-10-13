@@ -54,6 +54,7 @@ from app.helpers.lifespan_helpers import (
     init_websocket_broadcast_listener,
     init_workflow_service,
 )
+from app.services.blob_store import ensure_local_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
@@ -196,6 +197,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # (sync Composio custom tools) can dispatch coroutines back onto the loop the
     # Motor/Redis clients are bound to instead of spinning a fresh one.
     capture_running_loop()
+
+    # Before anything serves: a local blob volume that cannot take writes stops the boot.
+    ensure_local_blob_store_ready()
 
     log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
 

@@ -25,6 +25,7 @@ from pydantic_settings import SettingsConfigDict
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.deployment import (
     AuthMode,
+    BlobStoreKind,
     DeploymentKind,
     DeploymentProfile,
     deployment_profile,
@@ -129,8 +130,10 @@ class CommonSettings(BaseAppSettings):
     # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), which is
     # also what mounts the Docker socket it needs.
     LOCAL_CODE_SANDBOX: bool = False
-    # Where blobs live when settings.deployment.local_file_storage is on; the
-    # self-host compose mounts the gaia-selfhost_files volume here.
+    # Where files live; unset is the deployment's default (see deployment_profile).
+    BLOB_STORE: BlobStoreKind | None = None
+    # Where blobs live under BLOB_STORE=local; the self-host compose mounts the
+    # gaia-selfhost_files volume here.
     LOCAL_FILE_STORAGE_PATH: str = "/var/lib/gaia/files"
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
@@ -209,6 +212,7 @@ class CommonSettings(BaseAppSettings):
             self.AUTH_MODE,
             unlimited_usage=self.DEV_UNLIMITED_RATE_LIMITS,
             local_code_sandbox=self.LOCAL_CODE_SANDBOX,
+            blob_store=self.BLOB_STORE,
         )
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
@@ -1010,6 +1014,12 @@ def _auth_mode_from_env() -> AuthMode:
     return "local" if os.getenv("AUTH_MODE") == "local" else "workos"
 
 
+def _blob_store_from_env() -> BlobStoreKind | None:
+    """Read BLOB_STORE before settings exist; an unknown value raises."""
+    value = os.getenv("BLOB_STORE")
+    return BlobStoreKind(value) if value else None
+
+
 def _raise_if_workos_credentials_missing_in_production() -> None:
     """Hard-block a hosted production boot without WorkOS credentials.
 
@@ -1075,6 +1085,7 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
                 _auth_mode_from_env(),
                 unlimited_usage=False,
                 local_code_sandbox=False,
+                blob_store=_blob_store_from_env(),
             )
             # Hosted deployments authenticate via AuthKit/WorkOS: missing
             # credentials must stop the boot here instead of crashing later

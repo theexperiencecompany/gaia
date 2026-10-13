@@ -13,6 +13,8 @@ from typing import Any
 from pydantic import ValidationError
 import pytest
 
+from app.config.deployment import BlobStoreKind
+
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cache():
@@ -87,6 +89,17 @@ def test_local_auth_error_names_the_misconfiguration(monkeypatch):
     monkeypatch.setenv("AUTH_MODE", "local")
 
     with pytest.raises(RuntimeError, match=r"AUTH_MODE=local.*ENV=production"):
+        get_settings()
+
+
+def test_a_local_blob_store_blocks_production_boot(monkeypatch):
+    """Hosted files never land on a container disk, whatever BLOB_STORE says."""
+    from app.config.settings import get_settings
+
+    _isolate_boot_env(monkeypatch)
+    monkeypatch.setenv("BLOB_STORE", "local")
+
+    with pytest.raises(RuntimeError, match=r"BLOB_STORE=local.*ENV=production"):
         get_settings()
 
 
@@ -627,7 +640,7 @@ async def test_production_stores_blobs_in_cloudinary_never_on_local_disk(
     from app.services.blob_store import CloudinaryBlobStore, blob_store
 
     monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
-    assert settings.deployment.local_file_storage is False
+    assert settings.deployment.blob_store is BlobStoreKind.CLOUDINARY
     store = blob_store()
     assert isinstance(store, CloudinaryBlobStore)
 

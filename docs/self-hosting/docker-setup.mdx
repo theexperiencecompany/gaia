@@ -86,7 +86,7 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
 | **LLM providers** | Managed keys via Infisical | Bring your own — OpenAI / OpenRouter / Gemini / Ollama / any OpenAI-compatible gateway via Settings; keys encrypted with the instance secret |
-| **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume, served to the owner only; no account needed — see [File storage](#file-storage) |
+| **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume by default, no account needed; Cloudinary with `BLOB_STORE=cloudinary` — see [File storage](#file-storage) |
 | **Workspace storage** | Hosted R2 + JuiceFS (managed) | Local `gaia-selfhost_workspace` volume; no object store or FUSE needed — see [File storage](#file-storage) |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
 | **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
@@ -252,7 +252,7 @@ The self-host Compose file includes the following services:
 
 ## File storage
 
-A self-hosted instance keeps every file on two local Docker volumes. No Cloudinary, R2 or other storage account is needed, and attaching files works on a fresh install.
+By default a self-hosted instance keeps every file on two local Docker volumes. No Cloudinary, R2 or other storage account is needed, and attaching files works on a fresh install.
 
 | Volume | Mounted at | Holds |
 | --- | --- | --- |
@@ -263,11 +263,18 @@ Both are mounted into `gaia-backend` and `arq_worker`. The browser loads a store
 
 The workspace is a plain volume. Hosted GAIA keeps workspaces in JuiceFS on object storage so cloud sandboxes can mount them, which is why the hosted stack needs FUSE; a self-hosted instance does not use JuiceFS, and its containers run without extra privileges. With the [local coding sandbox](#local-coding-sandbox) on, each user's sandbox container mounts only that user's folder of the workspace volume.
 
-<Note>
-`CLOUDINARY_*`, `R2_*` and `JUICEFS_META_URL_TEMPLATE` are used only by the hosted deployment. A self-hosted instance ignores them.
-</Note>
+`R2_*` and `JUICEFS_META_URL_TEMPLATE` are used only by the hosted deployment. A self-hosted instance ignores them.
 
-If the files volume is missing (for example, a platform deploy without a disk at `/var/lib/gaia/files`), attaching a file fails with *"File uploads are not set up on this instance"* and names the fix, rather than saving into a container that a restart would wipe.
+### Choosing where files live
+
+`BLOB_STORE` picks the store for uploaded and generated files:
+
+| `BLOB_STORE` | Files live in | Use it when |
+| --- | --- | --- |
+| `local` (the self-host default) | The `gaia-selfhost_files` volume at `LOCAL_FILE_STORAGE_PATH` | The backend and the worker run on one host and share the volume: `gaia up`, a VPS, Dokploy |
+| `cloudinary` | Your Cloudinary account (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) | The platform attaches a disk to one service only, as on Render and Railway |
+
+With `local`, the backend and the worker refuse to start when `LOCAL_FILE_STORAGE_PATH` is not a mounted, writable volume, and the error names the fix, rather than saving files into a container that a restart would wipe. Cloudinary URLs are public to anyone who has the link; local files are served only to the users allowed to see them.
 
 ## Local coding sandbox
 

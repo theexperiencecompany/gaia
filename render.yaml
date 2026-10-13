@@ -19,6 +19,16 @@ envVarGroups:
         value: /app/apps/api
       - key: CHROMADB_PORT
         value: "8000"
+      # A Render disk attaches to one service, so the backend and the worker
+      # cannot share a files volume: files go to Cloudinary instead.
+      - key: BLOB_STORE
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       # Machine secrets. Generated once; never rotate them after first boot.
       - key: AGENT_SECRET
         generateValue: true
@@ -74,13 +84,6 @@ services:
       url: ghcr.io/theexperiencecompany/gaia:latest
     # The local embedding model loads ~1.8 GB on first memory use.
     plan: 2c-4g
-    # Uploaded and generated files (LOCAL_FILE_STORAGE_PATH). A Render disk
-    # attaches to one service, so files the worker would store (images from a
-    # scheduled workflow) fail loudly instead of landing on its ephemeral disk.
-    disk:
-      name: gaia-files
-      mountPath: /var/lib/gaia/files
-      sizeGB: 10
     envVars:
       - fromGroup: gaia-app
       - key: WORKER_TYPE

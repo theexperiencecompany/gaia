@@ -2,7 +2,7 @@
 
 Every uploaded or generated blob (chat uploads, generated images, profile
 pictures, support attachments) goes through blob_store(). The deployment's
-local_file_storage capability picks the backend; callers never branch on it.
+blob_store (BLOB_STORE) picks the backend; callers never branch on it.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import io
+import os
 from pathlib import Path
 import re
 import shutil
@@ -21,6 +22,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.config.cloudinary import require_cloudinary
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.files import (
     BLOB_DOWNLOAD_TIMEOUT_SECONDS,
@@ -158,6 +160,17 @@ class LocalVolumeBlobStore:
                 status_code=503,
                 code="file_storage_not_mounted",
             )
+        if not os.access(self.root, os.W_OK):
+            raise AppError(
+                message="File uploads are not set up on this instance.",
+                why=f"{self.root} is not writable by the API's user.",
+                fix=(
+                    "Give the API's user write access to LOCAL_FILE_STORAGE_PATH, or set "
+                    "BLOB_STORE=cloudinary with Cloudinary credentials."
+                ),
+                status_code=503,
+                code="file_storage_not_writable",
+            )
 
     def _blob_dir(self, owner_id: str, key: str) -> Path:
         if not _SAFE_ID_RE.match(owner_id):
@@ -226,16 +239,22 @@ def local_blob_store() -> LocalVolumeBlobStore:
 
 def blob_store() -> BlobStore:
     """Return the deployment's blob store."""
-    if settings.deployment.local_file_storage:
+    if settings.deployment.blob_store is BlobStoreKind.LOCAL:
         return local_blob_store()
     return CloudinaryBlobStore()
+
+
+def ensure_local_blob_store_ready() -> None:
+    """Refuse to boot when BLOB_STORE=local and its volume cannot take uploads."""
+    if settings.deployment.blob_store is BlobStoreKind.LOCAL:
+        local_blob_store().ensure_ready()
 
 
 async def open_owned_blob(requester_id: str, owner_id: str, key: str) -> LocalBlob:
     """Resolve a local blob for its owner; anyone else, or a hosted deployment, gets a 404."""
     blob = (
         await local_blob_store().open(owner_id, key)
-        if settings.deployment.local_file_storage and requester_id == owner_id
+        if settings.deployment.blob_store is BlobStoreKind.LOCAL and requester_id == owner_id
         else None
     )
     if blob is None:

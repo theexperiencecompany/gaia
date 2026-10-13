@@ -11,11 +11,13 @@ from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.services.blob_store import (
     CloudinaryBlobStore,
     LocalVolumeBlobStore,
     blob_store,
+    ensure_local_blob_store_ready,
     local_blob_key,
 )
 from app.utils.errors import AppError
@@ -45,6 +47,40 @@ def test_selfhost_stores_on_the_local_volume(monkeypatch: pytest.MonkeyPatch) ->
     store = blob_store()
     assert isinstance(store, LocalVolumeBlobStore)
     assert store.root == Path("/data/files")
+
+
+def test_selfhost_may_choose_cloudinary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.CLOUDINARY)
+    assert isinstance(blob_store(), CloudinaryBlobStore)
+
+
+class TestBootCheck:
+    def test_an_unwritable_local_volume_stops_the_boot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+        tmp_path.chmod(0o500)
+        try:
+            with pytest.raises(AppError) as raised:
+                ensure_local_blob_store_ready()
+        finally:
+            tmp_path.chmod(0o700)
+        assert raised.value.code == "file_storage_not_writable"
+
+    def test_a_writable_local_volume_boots(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+        ensure_local_blob_store_ready()
+
+    def test_cloudinary_never_checks_a_local_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.CLOUDINARY)
+        monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", "/nonexistent/gaia-files")
+        ensure_local_blob_store_ready()
 
 
 class TestCloudinaryBlobStore:
@@ -133,6 +169,7 @@ class TestLocalVolumeBlobStore:
 
     async def test_public_ids_cannot_escape_the_owner_directory(self, tmp_path: Path) -> None:
         assert local_blob_key("../../etc/passwd") == "_.._etc_passwd"
+        (tmp_path / "files").mkdir()
         store = LocalVolumeBlobStore(tmp_path / "files")
         await store.put("u1", "../../x", b"b", resource_type="auto", content_type="text/plain")
         assert [p.name for p in (tmp_path / "files" / "u1").iterdir()] == ["_.._x"]
