@@ -56,10 +56,6 @@ WINBACK_THRESHOLD: Final[int] = 3
 IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
 
-# Weekly digest hours-saved heuristic: every completed GAIA todo is credited this
-# many minutes of user time. Named so the estimate is auditable, not magic.
-MINUTES_SAVED_PER_GAIA_TODO: Final[int] = 20
-
 # Existing-user rollout: a briefing whose user still lacks a derivable goal is
 # held (bootstrap interview pending) until a goal memory arrives or this many
 # days pass, after which a triage-derived best-effort briefing fires.

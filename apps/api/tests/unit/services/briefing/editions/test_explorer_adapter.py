@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from app.services.briefing.editions.explorer_adapter import build_ed
+from app.services.briefing.editions.explorer_render import explorer_family_ids
 
 ASSETS = {"ART1": "data:image/jpeg;base64,AAAA", "BAND": "data:image/webp;base64,BBBB"}
 CREDIT = "Wheat Field with Cypresses — Vincent van Gogh"
@@ -235,11 +236,10 @@ class TestContent:
             **overrides,
         )
 
-    def test_today_is_the_first_ask_then_the_calendar(self) -> None:
+    def test_today_is_the_calendar_only(self) -> None:
         today = _build(self._daily())["content"]["today"]
 
         assert today == [
-            {"time": None, "t24": None, "label": "the Priya reply", "note": None, "tag": "APPROVE"},
             {
                 "time": "11:00 AM",
                 "t24": "11:00",
@@ -250,10 +250,24 @@ class TestContent:
             {"time": None, "t24": None, "label": "Offsite", "note": None, "tag": ""},
         ]
 
-    def test_no_status_word_ever_reaches_a_today_tag(self) -> None:
-        today = _build(self._daily())["content"]["today"]
+    @pytest.mark.parametrize("family", sorted({"edition", *explorer_family_ids()}))
+    def test_no_item_appears_in_two_sections_in_any_family(self, family: str) -> None:
+        content = build_ed(
+            self._daily(),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family=family,
+        )["content"]
 
-        assert {row["tag"] for row in today} <= {"APPROVE", ""}
+        labels = [
+            row["label"]
+            for bucket in ("today", "overnight", "decisions")
+            for row in content[bucket]
+            if row["label"] != "—"
+        ]
+        assert len(labels) == len(set(labels)), labels
 
     def test_a_failed_run_is_a_decision_to_retry_never_a_today_item(self) -> None:
         content = _build(self._daily())["content"]
@@ -271,12 +285,6 @@ class TestContent:
             ("Investor update", "DONE"),
             ("Q4 hiring plan", "IN PROGRESS"),
         ]
-
-    def test_with_no_ask_the_next_calendar_event_leads(self) -> None:
-        payload = self._daily()
-        payload["sections"] = []
-
-        assert _build(payload)["content"]["today"][0]["label"] == "Sequoia"
 
     def test_review_placeholder_shows_only_when_nothing_waits_on_the_user(self) -> None:
         nothing = _build(_payload(sections=[]))["content"]["decisions"]
@@ -377,7 +385,11 @@ class TestFixedSlots:
         )["content"]
 
         assert [d["label"] for d in content["decisions"]] == ["a slot", "—"]
-        assert [r["label"] for r in content["today"]] == ["a slot", "—", "—"]
+        assert [r["label"] for r in content["today"]] == [
+            "Nothing on the calendar today",
+            "—",
+            "—",
+        ]
 
     def test_a_full_bucket_is_never_padded(self) -> None:
         payload = _payload(

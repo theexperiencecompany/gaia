@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
-    MINUTES_SAVED_PER_GAIA_TODO,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
 )
@@ -327,5 +326,4 @@ async def gather_week(user_id: str, clock: UserClock) -> BriefingWeek:
         shipped=shipped[:WEEK_LIST_LIMIT],
         handled=handled[:WEEK_LIST_LIMIT],
         ahead=ahead[:WEEK_LIST_LIMIT],
-        hours_saved=round(sum(d.gaia for d in days) * MINUTES_SAVED_PER_GAIA_TODO / 60),
     )

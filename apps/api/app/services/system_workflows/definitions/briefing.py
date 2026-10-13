@@ -58,10 +58,10 @@ def _daily_briefing() -> CreateWorkflowRequest:
 def _weekly_digest() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Weekly Digest",
-        description="Sunday zoom-out: your week's completed work and hours saved.",
+        description="Sunday zoom-out: your week's completed work.",
         prompt=(
             "Generate the user's weekly digest: summarize the week's completed work (by GAIA "
-            "and by the user), estimate hours saved. Emit one structured payload."
+            "and by the user). Emit one structured payload."
         ),
         is_system_workflow=True,
         system_workflow_key=WEEKLY_DIGEST_WORKFLOW_KEY,
@@ -76,8 +76,8 @@ def _weekly_digest() -> CreateWorkflowRequest:
                 title="Summarize the week",
                 category="gaia",
                 description=(
-                    "Aggregate the week's completed todos (GAIA's and the user's), estimate "
-                    "hours saved, and compile the weekly digest payload."
+                    "Aggregate the week's completed todos (GAIA's and the user's) and "
+                    "compile the weekly digest payload."
                 ),
             ),
         ],

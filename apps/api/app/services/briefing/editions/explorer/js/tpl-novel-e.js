@@ -93,7 +93,6 @@
       days: wk.days,
       stats: [
         you + gaia ? { fig: String(you + gaia), label: "tasks done", sub: split } : null,
-        wk.hoursSaved ? { fig: String(wk.hoursSaved), label: "hours saved", sub: "by GAIA's work" } : null,
       ].filter(Boolean),
       shipped: wk.shipped.map(esc),
       quiet: wk.handled.map(esc),

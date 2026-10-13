@@ -91,13 +91,13 @@ class BriefingWeekDay(BaseModel):
 
 class BriefingWeek(BaseModel):
     """The real week the weekly edition draws: Monday-to-Sunday completions,
-    what shipped, what GAIA handled, and the calendar ahead."""
+    what shipped, what GAIA handled, and the calendar ahead. Every field is
+    counted or read, never estimated."""
 
     days: list[BriefingWeekDay] = Field(min_length=7, max_length=7)
     shipped: list[str] = Field(default_factory=list)
     handled: list[str] = Field(default_factory=list)
     ahead: list[BriefingEvent] = Field(default_factory=list)
-    hours_saved: int = Field(default=0, ge=0)
 
 
 class BriefingPayload(BaseModel):

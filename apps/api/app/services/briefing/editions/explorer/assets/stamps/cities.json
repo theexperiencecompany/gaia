@@ -2,426 +2,511 @@
  {
   "slug": "jakarta",
   "name": "Jakarta",
-  "country": "Indonesia"
+  "country": "Indonesia",
+  "url": null
  },
  {
   "slug": "dhaka",
   "name": "Dhaka",
-  "country": "Bangladesh"
+  "country": "Bangladesh",
+  "url": null
  },
  {
   "slug": "tokyo",
   "name": "Tokyo",
-  "country": "Japan"
+  "country": "Japan",
+  "url": null
  },
  {
   "slug": "delhi",
   "name": "Delhi",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "shanghai",
   "name": "Shanghai",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "guangzhou",
   "name": "Guangzhou",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "cairo",
   "name": "Cairo",
-  "country": "Egypt"
+  "country": "Egypt",
+  "url": null
  },
  {
   "slug": "manila",
   "name": "Manila",
-  "country": "Philippines"
+  "country": "Philippines",
+  "url": null
  },
  {
   "slug": "kolkata",
   "name": "Kolkata",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "seoul",
   "name": "Seoul",
-  "country": "South Korea"
+  "country": "South Korea",
+  "url": null
  },
  {
   "slug": "karachi",
   "name": "Karachi",
-  "country": "Pakistan"
+  "country": "Pakistan",
+  "url": null
  },
  {
   "slug": "mumbai",
   "name": "Mumbai",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "sao_paulo",
   "name": "São Paulo",
-  "country": "Brazil"
+  "country": "Brazil",
+  "url": null
  },
  {
   "slug": "bangkok",
   "name": "Bangkok",
-  "country": "Thailand"
+  "country": "Thailand",
+  "url": null
  },
  {
   "slug": "mexico_city",
   "name": "Mexico City",
-  "country": "Mexico"
+  "country": "Mexico",
+  "url": null
  },
  {
   "slug": "beijing",
   "name": "Beijing",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "lahore",
   "name": "Lahore",
-  "country": "Pakistan"
+  "country": "Pakistan",
+  "url": null
  },
  {
   "slug": "istanbul",
   "name": "Istanbul",
-  "country": "Turkey"
+  "country": "Turkey",
+  "url": null
  },
  {
   "slug": "moscow",
   "name": "Moscow",
-  "country": "Russia"
+  "country": "Russia",
+  "url": null
  },
  {
   "slug": "ho_chi_minh_city",
   "name": "Ho Chi Minh City",
-  "country": "Vietnam"
+  "country": "Vietnam",
+  "url": null
  },
  {
   "slug": "buenos_aires",
   "name": "Buenos Aires",
-  "country": "Argentina"
+  "country": "Argentina",
+  "url": null
  },
  {
   "slug": "new_york_city",
   "name": "New York City",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "shenzhen",
   "name": "Shenzhen",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "bengaluru",
   "name": "Bengaluru",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "osaka",
   "name": "Osaka",
-  "country": "Japan"
+  "country": "Japan",
+  "url": null
  },
  {
   "slug": "lagos",
   "name": "Lagos",
-  "country": "Nigeria"
+  "country": "Nigeria",
+  "url": null
  },
  {
   "slug": "los_angeles",
   "name": "Los Angeles",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "chennai",
   "name": "Chennai",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "kinshasa",
   "name": "Kinshasa",
-  "country": "DR Congo"
+  "country": "DR Congo",
+  "url": null
  },
  {
   "slug": "bogota",
   "name": "Bogotá",
-  "country": "Colombia"
+  "country": "Colombia",
+  "url": null
  },
  {
   "slug": "lima",
   "name": "Lima",
-  "country": "Peru"
+  "country": "Peru",
+  "url": null
  },
  {
   "slug": "london",
   "name": "London",
-  "country": "United Kingdom"
+  "country": "United Kingdom",
+  "url": null
  },
  {
   "slug": "rio_de_janeiro",
   "name": "Rio de Janeiro",
-  "country": "Brazil"
+  "country": "Brazil",
+  "url": null
  },
  {
   "slug": "paris",
   "name": "Paris",
-  "country": "France"
+  "country": "France",
+  "url": null
  },
  {
   "slug": "hyderabad",
   "name": "Hyderabad",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "tehran",
   "name": "Tehran",
-  "country": "Iran"
+  "country": "Iran",
+  "url": null
  },
  {
   "slug": "taipei",
   "name": "Taipei",
-  "country": "Taiwan"
+  "country": "Taiwan",
+  "url": null
  },
  {
   "slug": "luanda",
   "name": "Luanda",
-  "country": "Angola"
+  "country": "Angola",
+  "url": null
  },
  {
   "slug": "bandung",
   "name": "Bandung",
-  "country": "Indonesia"
+  "country": "Indonesia",
+  "url": null
  },
  {
   "slug": "kuala_lumpur",
   "name": "Kuala Lumpur",
-  "country": "Malaysia"
+  "country": "Malaysia",
+  "url": null
  },
  {
   "slug": "dar_es_salaam",
   "name": "Dar es Salaam",
-  "country": "Tanzania"
+  "country": "Tanzania",
+  "url": null
  },
  {
   "slug": "suzhou",
   "name": "Suzhou",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "ahmedabad",
   "name": "Ahmedabad",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "hangzhou",
   "name": "Hangzhou",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "wuhan",
   "name": "Wuhan",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "tianjin",
   "name": "Tianjin",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "alexandria",
   "name": "Alexandria",
-  "country": "Egypt"
+  "country": "Egypt",
+  "url": null
  },
  {
   "slug": "nagoya",
   "name": "Nagoya",
-  "country": "Japan"
+  "country": "Japan",
+  "url": null
  },
  {
   "slug": "johannesburg",
   "name": "Johannesburg",
-  "country": "South Africa"
+  "country": "South Africa",
+  "url": null
  },
  {
   "slug": "chongqing",
   "name": "Chongqing",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "riyadh",
   "name": "Riyadh",
-  "country": "Saudi Arabia"
+  "country": "Saudi Arabia",
+  "url": null
  },
  {
   "slug": "surat",
   "name": "Surat",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "surabaya",
   "name": "Surabaya",
-  "country": "Indonesia"
+  "country": "Indonesia",
+  "url": null
  },
  {
   "slug": "pune",
   "name": "Pune",
-  "country": "India"
+  "country": "India",
+  "url": null
  },
  {
   "slug": "khartoum",
   "name": "Khartoum",
-  "country": "Sudan"
+  "country": "Sudan",
+  "url": null
  },
  {
   "slug": "nanjing",
   "name": "Nanjing",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "santiago",
   "name": "Santiago",
-  "country": "Chile"
+  "country": "Chile",
+  "url": null
  },
  {
   "slug": "chicago",
   "name": "Chicago",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "chengdu",
   "name": "Chengdu",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "xian",
   "name": "Xi'an",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "hong_kong",
   "name": "Hong Kong",
-  "country": "Hong Kong"
+  "country": "Hong Kong",
+  "url": null
  },
  {
   "slug": "dongguan",
   "name": "Dongguan",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "foshan",
   "name": "Foshan",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "shenyang",
   "name": "Shenyang",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "baghdad",
   "name": "Baghdad",
-  "country": "Iraq"
+  "country": "Iraq",
+  "url": null
  },
  {
   "slug": "addis_ababa",
   "name": "Addis Ababa",
-  "country": "Ethiopia"
+  "country": "Ethiopia",
+  "url": null
  },
  {
   "slug": "madrid",
   "name": "Madrid",
-  "country": "Spain"
+  "country": "Spain",
+  "url": null
  },
  {
   "slug": "harbin",
   "name": "Harbin",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "houston",
   "name": "Houston",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "dallas",
   "name": "Dallas",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "toronto",
   "name": "Toronto",
-  "country": "Canada"
+  "country": "Canada",
+  "url": null
  },
  {
   "slug": "miami",
   "name": "Miami",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "belo_horizonte",
   "name": "Belo Horizonte",
-  "country": "Brazil"
+  "country": "Brazil",
+  "url": null
  },
  {
   "slug": "singapore",
   "name": "Singapore",
-  "country": "Singapore"
+  "country": "Singapore",
+  "url": null
  },
  {
   "slug": "philadelphia",
   "name": "Philadelphia",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "atlanta",
   "name": "Atlanta",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "fukuoka",
   "name": "Fukuoka",
-  "country": "Japan"
+  "country": "Japan",
+  "url": null
  },
  {
   "slug": "barcelona",
   "name": "Barcelona",
-  "country": "Spain"
+  "country": "Spain",
+  "url": null
  },
  {
   "slug": "saint_petersburg",
   "name": "Saint Petersburg",
-  "country": "Russia"
+  "country": "Russia",
+  "url": null
  },
  {
   "slug": "qingdao",
   "name": "Qingdao",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "dalian",
   "name": "Dalian",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "washington_dc",
   "name": "Washington, D.C.",
-  "country": "United States"
+  "country": "United States",
+  "url": null
  },
  {
   "slug": "yangon",
   "name": "Yangon",
-  "country": "Myanmar"
+  "country": "Myanmar",
+  "url": null
  },
  {
   "slug": "jinan",
   "name": "Jinan",
-  "country": "China"
+  "country": "China",
+  "url": null
  },
  {
   "slug": "guadalajara",
   "name": "Guadalajara",
-  "country": "Mexico"
+  "country": "Mexico",
+  "url": null
  }
 ]

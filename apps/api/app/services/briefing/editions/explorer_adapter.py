@@ -6,9 +6,9 @@ verification snippet): three buckets (today/overnight/decisions) plus a
 stats tuple. Our payload (``app/models/briefing_models.py``) is looser, so this
 module maps it by meaning, never by position:
 
-- ``today`` is the day ahead: the first thing waiting on the user, then their
-  calendar. A status word (DONE, FAILED) is never a today tag, because several
-  families set the today tag as the headline of the row.
+- ``today`` is the user's calendar for the day. Every item lives in exactly one
+  bucket, so an ask is never repeated here; and since several families set the
+  today tag as the row's headline, it is never a status word.
 - ``overnight`` is GAIA's work, finished or running, plus any plain note.
 - ``decisions`` is every ask, including a failed run to retry.
 - ``stats`` come from the payload's tallies; an unknown or zero figure is
@@ -180,7 +180,6 @@ class ExplorerWeek(TypedDict):
     shipped: list[str]
     handled: list[str]
     ahead: list[ExplorerAheadItem]
-    hoursSaved: int
 
 
 class ExplorerEdition(TypedDict):
@@ -362,12 +361,6 @@ def _event_row(event: dict) -> ExplorerTodayItem:
     }
 
 
-def _lead_row(item: dict) -> ExplorerTodayItem:
-    """The first ask, as the day's lead: its verb is the row's tag (headline)."""
-    verb, label = _decision_verb(str(item.get("text", "")))
-    return {"time": None, "t24": None, "label": label, "note": None, "tag": verb.upper()}
-
-
 def _overnight_row(item: dict) -> ExplorerOvernightItem:
     _, t24, label = _split_time_prefix(str(item.get("text", "")))
     return {
@@ -393,7 +386,6 @@ def _build_buckets(
     gets one honest placeholder rather than an array a template might index
     into unconditionally."""
     items = _items(sections)
-    asks = [i for i in items if i.get("kind") in _DECISION_KINDS]
     decision_items = [
         i for i in items if i.get("kind") in _DECISION_KINDS or i.get("kind") == "failed"
     ]
@@ -401,7 +393,7 @@ def _build_buckets(
         i for i in items if i.get("kind") not in _DECISION_KINDS and i.get("kind") != "failed"
     ]
 
-    today = ([_lead_row(asks[0])] if asks else []) + [_event_row(e) for e in calendar]
+    today = [_event_row(e) for e in calendar]
     return (
         today or [_PLACEHOLDER_TODAY],
         [_overnight_row(i) for i in overnight_items] or [_PLACEHOLDER_OVERNIGHT],
@@ -438,7 +430,6 @@ def _build_week(week: dict | None) -> ExplorerWeek | None:
             {"day": date.fromisoformat(e["date"]).strftime("%a"), "label": str(e["title"])}
             for e in week.get("ahead") or []
         ],
-        "hoursSaved": int(week.get("hours_saved") or 0),
     }
 
 

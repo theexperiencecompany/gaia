@@ -36,7 +36,6 @@ from app.models.user_models import ShuffleBag
 from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
-from app.services.briefing.editions.stamps import STAMP_CITY_WEIGHTS
 
 _USER = "user-1"
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
@@ -198,17 +197,39 @@ class TestDailyBrief:
             _CHANNELS,
         )
 
-    async def test_an_air_mail_brief_records_its_stamp_city(self, world: World) -> None:
+    @staticmethod
+    def _postal_first(world: World) -> None:
         pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
         pool.remove("postal")
         world.bags["edition_family"] = ShuffleBag(order=["postal", *pool], index=0)
+
+    async def test_an_air_mail_brief_records_its_stamp_city(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
+        )
+        self._postal_first(world)
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
         assert payload.template_family == "postal"
-        assert payload.stamp_city in STAMP_CITY_WEIGHTS
+        assert payload.stamp_city in {"paris", "tokyo", "lima"}
         assert world.bags["stamp_city"].order[0] == payload.stamp_city
+
+    async def test_before_the_stamps_are_uploaded_air_mail_carries_no_city(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(service, "hosted_stamp_weights", dict)
+        self._postal_first(world)
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.template_family == "postal"
+        assert payload.stamp_city is None
+        assert "stamp_city" not in world.bags
 
     async def test_a_non_postal_brief_draws_no_stamp(self, world: World) -> None:
         pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]

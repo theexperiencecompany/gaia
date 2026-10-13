@@ -1,14 +1,15 @@
 """Air Mail city stamps: the founder's 85 city artworks and their postage.
 
-``explorer/assets/stamps/`` holds one ~600px WebP per city, ``cities.json``
-(slug, name, country) and ``countries.json`` (postcard-rate denomination and
-Latin-script air-mail etiquette per country). A brief's stamp city is drawn from
-the user's shuffle bag (``STAMP_CITY_WEIGHTS``); ``stamp_for`` turns it into the
-``city`` skin the vendored ``postal`` template reads, so the stamp art, the
-"GAIA Post · CITY" line, the denomination and the postmark all name one city.
+The artworks are hosted on Cloudinary (uploaded once by
+``scripts/upload_city_stamps.py``), never committed. ``explorer/assets/stamps/``
+holds ``cities.json`` (slug, name, country, hosted URL — null until uploaded)
+and ``countries.json`` (postcard-rate denomination and Latin-script air-mail
+etiquette per country). A brief's stamp city is drawn from the user's shuffle
+bag over the hosted cities; ``stamp_for`` turns it into the ``city`` skin the
+vendored ``postal`` template reads, so the stamp art, the "GAIA Post · CITY"
+line, the denomination and the postmark all name one city.
 """
 
-import base64
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -45,6 +46,7 @@ class _City(TypedDict):
     slug: str
     name: str
     country: str
+    url: str | None
 
 
 class _Postage(TypedDict):
@@ -65,7 +67,10 @@ def _postage() -> dict[str, _Postage]:
     return data
 
 
-STAMP_CITY_WEIGHTS: dict[str, int] = dict.fromkeys(_cities(), 1)
+def hosted_stamp_weights() -> dict[str, int]:
+    """The drawable stamp cities — every catalogued city whose art is uploaded,
+    once per pass of the user's stamp bag."""
+    return {slug: 1 for slug, city in _cities().items() if city["url"]}
 
 
 def stamp_for(slug: str) -> Stamp:
@@ -85,9 +90,9 @@ def stamp_for(slug: str) -> Stamp:
     }
 
 
-def stamp_asset_uri(slug: str) -> str:
-    """The city's stamp art as a data URI, inlined into the render document."""
-    if slug not in _cities():
-        raise KeyError(f"unknown stamp city: {slug!r}")
-    encoded = base64.b64encode((_STAMPS_DIR / f"{slug}.webp").read_bytes()).decode()
-    return f"data:image/webp;base64,{encoded}"
+def stamp_asset_url(slug: str) -> str:
+    """The city's hosted stamp art, loaded by the render page as the stamp image."""
+    url = _cities()[slug]["url"] if slug in _cities() else None
+    if not url:
+        raise KeyError(f"stamp city {slug!r} has no hosted art (run scripts/upload_city_stamps.py)")
+    return url

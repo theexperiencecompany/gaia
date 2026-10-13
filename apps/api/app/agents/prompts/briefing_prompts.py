@@ -301,7 +301,6 @@ def build_weekly_digest_prompt(
     *,
     date_local: str,
     week_summary_block: str,
-    hours_saved: int,
 ) -> str:
     """Assemble the weekly digest contract (kind=weekly payload)."""
 
@@ -313,13 +312,13 @@ only. Produce ONE structured payload.
 ## THE WEEK
 {week_summary_block}
 
-Estimated time saved this week: about {hours_saved} hours.
 {_ITEM_QUALITY}
 
 ## VOICE
 Warm but not saccharine; write like a person, vary sentence length, open on the
 point. The headline names the week's shape in one plain line. Stats carry the
-week's real totals (completed by GAIA, completed by you, hours saved).
+week's real totals (completed by GAIA, completed by you); never estimate a
+figure you were not given.
 Set mood to "weekly". The caption is one witty line worth sharing.
 
 ## NEXT WEEK'S EDGE

@@ -67,13 +67,24 @@ _DAILY = {
         "shipped": ["Closed the Acme renewal"],
         "handled": ["Filed every October receipt"],
         "ahead": [{"date": "2026-10-19", "start": "09:00", "title": "Board call"}],
-        "hours_saved": 2,
     },
     "generated_at": "6:02 AM",
     "mood": "packed",
     "caption": "Coffee first, Priya second.",
     "hue": 120,
 }
+# The weekly family only ever renders the weekly recap, which carries its own
+# week-level headline (build_weekly_digest_prompt asks for the week's shape).
+_WEEKLY_HEADLINE = "A steady week: twelve things done, four of them by you."
+
+
+def _as_rendered(family: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """The payload as the pipeline would hand it to ``family``."""
+    if family == "weekly":
+        return {**payload, "headline": _WEEKLY_HEADLINE, "mood": "weekly"}
+    return payload
+
+
 _QUIET = {
     **_DAILY,
     "headline": "A quiet morning.",
@@ -95,6 +106,7 @@ _FIXTURE_STRINGS = (
     "approval-flow",
     "CI green",
     "of 100",
+    "hours saved",
     "02:14",
     "Sunday 18:00",
 )
@@ -139,7 +151,9 @@ async def _visible_text(html: str) -> str:
 @pytest.mark.parametrize("payload", [_DAILY, _QUIET], ids=["daily", "quiet"])
 @pytest.mark.parametrize("family", _FAMILIES)
 async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, Any]) -> None:
-    png = await render_html_to_image(_render_html(family, payload), ImageRenderOptions())
+    png = await render_html_to_image(
+        _render_html(family, _as_rendered(family, payload)), ImageRenderOptions()
+    )
 
     assert _png_height(png) >= _MIN_HEIGHT_PX * ImageRenderOptions().device_scale_factor
     assert len(png) >= _MIN_PNG_BYTES
@@ -151,12 +165,15 @@ async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, An
 async def test_family_prints_the_brief_and_nothing_invented(
     family: str, payload: dict[str, Any]
 ) -> None:
+    payload = _as_rendered(family, payload)
     text = await _visible_text(_render_html(family, payload))
 
     assert " ".join(payload["headline"].split()).lower() in " ".join(text.split()).lower()
+    if family == "weekly":
+        assert "11:00 with sequoia" not in text.lower(), "weekly printed the daily headline"
     for fixture in _FIXTURE_STRINGS:
         assert fixture not in text, f"{family} printed demo fixture text {fixture!r}"
-    if payload is _DAILY and family != "weekly":
+    if payload is _DAILY:
         flat = " ".join(text.split()).lower()
         missing = [p for p in _DAILY_PHRASES if p.lower() not in flat]
         assert not missing, f"{family} dropped {missing}"

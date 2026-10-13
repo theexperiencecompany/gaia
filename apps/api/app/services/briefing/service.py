@@ -68,7 +68,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.context import UserClock
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
-from app.services.briefing.editions.stamps import STAMP_CITY_WEIGHTS
+from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.skim import build_skim, full_brief_url, split_for_caption
 from app.services.notification_service import notification_service
@@ -510,10 +510,15 @@ async def _draw_from_bag(user_id: str, bag: BriefingBag, weights: Mapping[str, i
 async def _assign_edition(user_id: str, payload: BriefingPayload, family: str) -> None:
     """Record the edition family on the payload, and for Air Mail its stamp."""
     payload.template_family = family
-    if family == POSTAL_FAMILY:
-        payload.stamp_city = await _draw_from_bag(
-            user_id, BriefingBag.STAMP_CITY, STAMP_CITY_WEIGHTS
-        )
+    if family != POSTAL_FAMILY:
+        return
+    stamp_cities = hosted_stamp_weights()
+    if not stamp_cities:
+        # Until scripts/upload_city_stamps.py has run, Air Mail draws its stamp
+        # from the template's own vendored city art, as before the city stamps.
+        log.warning("briefing.no_hosted_stamps", user_id=user_id)
+        return
+    payload.stamp_city = await _draw_from_bag(user_id, BriefingBag.STAMP_CITY, stamp_cities)
 
 
 def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
@@ -654,7 +659,7 @@ async def run_daily_briefing(user_id: str) -> None:
 
 
 async def run_weekly_digest(user_id: str) -> None:
-    """Zoom out on the week: completed work (GAIA's and the user's), hours saved."""
+    """Zoom out on the week: completed work, GAIA's and the user's."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
     user = await get_user_by_id(user_id)
     if not user:
@@ -677,7 +682,6 @@ async def run_weekly_digest(user_id: str) -> None:
     prompt = build_weekly_digest_prompt(
         date_local=clock.date_str,
         week_summary_block=_format_week(completed),
-        hours_saved=week.hours_saved,
     )
 
     # Bounded: a stalled agent run must fail the cron loudly, not hang the
