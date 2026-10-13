@@ -81,6 +81,7 @@
             "group": "Self-Hosting",
             "pages": [
               "self-hosting/overview",
+              "self-hosting/one-click-deploy",
               "self-hosting/composio-integrations"
             ]
           },
@@ -115,6 +116,7 @@
               "self-hosting/overview",
               "self-hosting/cli-setup",
               "self-hosting/docker-setup",
+              "self-hosting/one-click-deploy",
               "self-hosting/composio-integrations",
               "configuration/environment-variables",
               "configuration/docker"

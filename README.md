@@ -73,19 +73,21 @@ gaia up                       # add --yes for no prompts, --domain gaia.example.
 # → http://localhost:3000
 ```
 
-`gaia up` checks prerequisites (offering to install [Docker](https://docs.docker.com/get-docker/) if it's missing), clones the repo, generates the configuration, pulls the published images and starts everything behind a single port. You finish setup in the browser. After that:
+`gaia up` checks prerequisites (offering to install [Docker](https://docs.docker.com/get-docker/) if it's missing), clones the repo, generates the configuration, pulls the published images and starts everything behind a single port. You finish setup in the browser — one AI provider key is all it needs (OpenAI, OpenRouter, Gemini, or a local Ollama), or pass it up front with `--llm-provider openai --llm-key sk-...`. Plan for about 8 GB of RAM. After that:
 
 ```bash
-gaia status   # health-check every service
-gaia logs     # stream logs
-gaia stop     # stop everything
-gaia start    # bring it back up
-gaia update   # pull the latest GAIA and restart
+gaia status   # every service and database, with latency
+gaia doctor   # what's broken, with a fix for each problem
+gaia update   # move to the GAIA release this CLI ships
+gaia backup   # dump MongoDB + PostgreSQL
+gaia stop     # stop everything; gaia start brings it back
 ```
+
+No terminal? Deploy with [cloud-init on any VPS, Render, Railway, Dokploy or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). Code execution and file uploads are opt-in on self-host; the guide says what each needs.
 
 Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
 
-Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
+Your ongoing cost is model API usage plus an 8 GB server — the [one-click deploy guide](https://docs.heygaia.io/self-hosting/one-click-deploy) compares what that costs on each provider.
 
 ## Workflows
 
@@ -183,7 +185,7 @@ What *is* stored is under your control:
 <details>
 <summary><b>Can I use my own API keys and models?</b></summary>
 
-**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
+**Self-hosted:** yes. Add, replace or remove providers any time in Settings → AI Providers (or via environment variables), so you can swap freely.
 
 **Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
 

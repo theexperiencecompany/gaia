@@ -1,5 +1,5 @@
 # Render Blueprint for a self-hosted GAIA. Deploy: Render Dashboard -> New ->
-# Blueprint -> this repository. Full guide, including the three values to fill
+# Blueprint -> this repository. Full guide, including the values to fill
 # in once the services exist: docs/self-hosting/one-click-deploy.mdx.
 #
 # Topology mirrors infra/docker/docker-compose.selfhost.yml: one public Caddy
@@ -35,7 +35,7 @@ services:
   - type: web
     name: gaia
     runtime: docker
-    dockerfilePath: ./deploy/render/proxy.Dockerfile
+    dockerfilePath: ./deploy/proxy.Dockerfile
     dockerContext: .
     plan: 0.5c-512mb
     healthCheckPath: /api/v1/ping

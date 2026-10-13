@@ -18,7 +18,7 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
 - **Git** — only if you use the `git clone` alternative in step 1 (`sudo apt-get install -y git` on Ubuntu/Debian).
 - **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
 - **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
-- **No API keys to boot** — the stack starts with no provider keys. Add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
+- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...`, add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
 - **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
 
 ## Quick Start — 2 minutes
@@ -81,11 +81,11 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 
 | Area | Cloud (heygaia.io) | Self-Host (`ENV=selfhost`) |
 | --- | --- | --- |
-| **Auth** | WorkOS / AuthKit — Google OAuth, hosted sessions | Local email + password, single admin account, `AUTH_MODE=local` |
-| **Billing** | Dodo Payments — plans and limits enforced | No billing integration; Free plan auto-seeds, `billing_enabled=false`, usage tracked locally only |
+| **Auth** | WorkOS / AuthKit — Google OAuth, hosted sessions | Local email + password, `AUTH_MODE=local`; the first account is the admin, others join by invite link (Settings → Members) |
+| **Billing** | Dodo Payments — plans and limits enforced | No billing integration and no plan limits: every user gets every feature; usage tracked locally only |
 | **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
-| **LLM providers** | Managed keys via Infisical | Bring your own — OpenRouter / Gemini / Ollama / OpenCode / Nous via Settings; keys encrypted with the instance secret |
+| **LLM providers** | Managed keys via Infisical | Bring your own — OpenAI / OpenRouter / Gemini / Ollama / any OpenAI-compatible gateway via Settings; keys encrypted with the instance secret |
 | **File uploads** | Cloudinary (managed) | Bring your own Cloudinary account via `CLOUDINARY_*`; without it, attaching a file fails with a clear "not set up" message — see [Required configuration](#required-configuration) |
 | **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it the agent cannot open uploads or keep artifacts, and the backend logs `JuiceFSUnavailable` |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
@@ -93,7 +93,7 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
 | **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
 | **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
-| **Updates** | Deployed by the team | `gaia update` — pulls the latest code and images and restarts; volumes survive |
+| **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |
 | **Backups** | Managed | `gaia backup` / `gaia restore` — you own the dumps; see [Backups](#backups) |
 
 ## Prerequisites
@@ -152,13 +152,14 @@ gaia/
 │       ├── .env                         # Compose settings written by gaia up
 │       ├── docker-compose.selfhost.yml  # Self-host stack (pulls images)
 │       ├── docker-compose.build.yml     # Override: build images from source
+│       ├── docker-compose.sandbox.yml   # Override: local code sandbox (Docker socket)
 │       └── selfhost/Caddyfile           # Single-origin proxy routes
 └── ...
 ```
 
 The self-host stack is `infra/docker/docker-compose.selfhost.yml`, project name `gaia-selfhost`. Every command below runs from `infra/docker/` and passes `-f docker-compose.selfhost.yml` — Compose only auto-detects the default filename, so without `-f` you'd hit the development compose file instead. Containers have no fixed names, so address them by service name through Compose (`docker compose -f docker-compose.selfhost.yml logs gaia-backend`, not `docker logs gaia-backend`); this also lets a development stack (project `gaia-dev`) run beside a self-hosted one.
 
-The stack is image-only: it pulls the multi-arch (amd64 and arm64) images `ghcr.io/theexperiencecompany/gaia` (API and worker) and `ghcr.io/theexperiencecompany/gaia-web`, all pinned to the same `GAIA_VERSION` tag (default `latest`). Set `GAIA_VERSION` in `infra/docker/.env` to pin a release.
+The stack is image-only: it pulls the multi-arch (amd64 and arm64) images `ghcr.io/theexperiencecompany/gaia` (API and worker) and `ghcr.io/theexperiencecompany/gaia-web`, all pinned to the same `GAIA_VERSION` tag (default `latest`). `gaia update` sets `GAIA_VERSION` in `infra/docker/.env` to the release your CLI ships (`v<CLI version>`); set it yourself to pin another tag.
 
 ### Building from source
 
@@ -202,7 +203,7 @@ The self-host Compose file includes the following services:
   <Accordion icon="globe" title="Proxy (proxy)">
     **Caddy single-origin entrypoint** (compose profile `proxy`)
     - Port: `${WEB_HOST_PORT:-3000}` → 80, and `${HTTPS_HOST_PORT:-3443}` → 443 for HTTPS
-    - Routes `/api/v1/*` to `gaia-backend:8000` and everything else to `gaia-web:3000`; routes live in `infra/docker/selfhost/Caddyfile`
+    - Routes `/api/v1/*` and `/health/ready` to `gaia-backend:8000` and everything else to `gaia-web:3000`; routes live in `infra/docker/selfhost/Caddyfile` (override the upstreams with `GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM`)
     - Runs only when the `proxy` profile is active — `gaia up` writes `COMPOSE_PROFILES=proxy` to `infra/docker/.env`. Leave it off if your platform brings its own proxy (see [Using your own reverse proxy](#using-your-own-reverse-proxy))
 
   </Accordion>
@@ -219,7 +220,7 @@ The self-host Compose file includes the following services:
     **FastAPI Python Application**
     - Internal port 8000, served through the proxy at `/api/v1`
     - RESTful API and WebSocket support
-    - Health endpoint at `/health`
+    - Liveness at `/health`; per-dependency readiness at `/health/ready` (also served through the proxy, and what `gaia status` / `gaia doctor` read)
     - Mounts the JuiceFS workspace (see [below](#persistent-workspace-storage-juicefs-and-fuse)) and reaches host services via `host.docker.internal`
 
   </Accordion>
@@ -426,13 +427,13 @@ docker compose -f docker-compose.selfhost.yml ps
 ```
 
 - `proxy` — Caddy admin endpoint probe
-- `gaia-backend` — HTTP health endpoint (`/health`)
+- `gaia-backend` — HTTP liveness endpoint (`/health`); `curl http://localhost:3000/health/ready` reports each dependency
 - `gaia-web` — HTTP probe on port 3000
 - `postgres` — `pg_isready`
 - `redis` — `redis-cli ping`
-- `mongo` — `mongosh ping`
+- `mongo` — TCP connection check
 - `chromadb` — TCP connection check
-- `rabbitmq` — `rabbitmqctl status`
+- `rabbitmq` — TCP connection check
 - `arq_worker` — liveness probe on the worker process (PID 1 must still be arq)
 
 ## Networking
@@ -487,11 +488,12 @@ HTTPS_HOST_PORT=443
 
 ### Using your own reverse proxy
 
-Platforms that bring their own proxy (Coolify, Dokploy, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:
+Platforms that bring their own proxy (Dokploy, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:
 
 | Path        | Target              |
 | ----------- | ------------------- |
 | `/api/v1/*` | `gaia-backend:8000` |
+| `/health/ready` | `gaia-backend:8000` |
 | everything else | `gaia-web:3000` |
 
 Keep SSE responses unbuffered and allow WebSocket upgrades on `/api/v1`. Your proxy must overwrite, not append to, client-sent `X-Forwarded-For`, because the backend trusts it.
@@ -509,7 +511,7 @@ Data is persisted using Docker volumes (prefixed `gaia-selfhost_`, except `gaia-
 | `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
 | `gaia-selfhost_juicefs_cache` | JuiceFS local chunk cache (speed only, safe to delete) |
 | `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
-| `gaia-sandbox-workspace` | Local sandbox per-user workspace ([local coding sandbox](#local-coding-sandbox); survives recreation) |
+| `gaia-sandbox-workspace` | Local sandbox workspace, shared by every user's sandbox container — only with [`--code-sandbox`](#local-coding-sandbox) |
 | `gaia-selfhost_caddy_data` | Proxy TLS certificates and keys |
 | `gaia-selfhost_caddy_config` | Proxy runtime config |
 
@@ -645,13 +647,16 @@ The stack boots in less, but steady-state use is what sets the 8 GB minimum: the
 gaia update
 ```
 
-It fetches the latest `master` into your checkout, shows what changed, and after you confirm (or with `--yes`) runs `git pull --ff-only` and restarts the services on freshly pulled images, rebuilding locally only when the web image's `Dockerfile` or `package.json` changed. It never runs `down -v` and keeps `infra/docker/.env`. By hand, from `infra/docker/`:
+It moves the install to the release your CLI ships: pulls that release's images first (a missing tag changes nothing), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version with the commits in between. It never runs `down -v` and keeps your `.env` files. For a newer release, update the CLI first, then rerun it. By hand, from the repo root:
 
 ```bash
-git pull
+git fetch origin tag cli-v0.7.0 && git checkout --detach cli-v0.7.0
+# set GAIA_VERSION=v0.7.0 in infra/docker/.env, then from infra/docker/:
 docker compose -f docker-compose.selfhost.yml pull
 docker compose -f docker-compose.selfhost.yml up -d
 ```
+
+Contributors running their own checkout use `gaia update --git`, which pulls the current branch and rebuilds the images from source.
 
 Named volumes survive the upgrade. After upgrading, watch for vector-index failures: an embedding-model bump makes previously stored vectors stale, and indexing failures are logged (and flagged for later reindexing) rather than taking writes down:
 
@@ -728,7 +733,7 @@ On first boot GAIA generates a root secret and persists it inside MongoDB (the `
     The backend reaches Ollama through `http://host.docker.internal:11434`, which the Compose file wires via `extra_hosts: host.docker.internal:host-gateway`. If the test fails: confirm Ollama is running (`curl http://localhost:11434/api/tags` on the host), and on Linux start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections from the Docker gateway.
   </Accordion>
   <Accordion icon="stethoscope" title="Something else is broken">
-    Run `gaia doctor` — it walks the stack (Docker daemon, containers, API health, setup status, web reachability, disk headroom) and prints a named fix for each problem it finds.
+    Run `gaia doctor` — it walks the stack (Docker daemon, containers, API health, each dependency from `/health/ready`, setup status, web reachability, disk and memory headroom, release drift) and prints a named fix for each problem it finds.
   </Accordion>
 </AccordionGroup>
 

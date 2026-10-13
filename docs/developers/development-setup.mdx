@@ -25,7 +25,6 @@ icon: "laptop-code"
   <Accordion icon="docker" title="Docker & Docker Compose">
     - Docker Desktop or Docker Engine
     - Docker Compose v2+
-    - At least 4GB of available RAM
     - 10GB of free disk space
   </Accordion>
 
@@ -69,7 +68,18 @@ icon: "laptop-code"
     mise run setup
     ```
 
-    Creates any missing `.env` files from their examples (`apps/api/.env`, `apps/web/.env`, `apps/mobile/.env` — existing files are never overwritten), installs JS and Python dependencies, downloads the voice models, and starts the Docker infrastructure. Add your keys to `apps/api/.env` — see [Environment Variables](/configuration/environment-variables). Team members with Infisical access can instead prefix any task with `mise infisical`.
+    Creates any missing `.env` files from their examples (`apps/api/.env`, `apps/web/.env`, `apps/mobile/.env` — existing files are never overwritten), installs JS and Python dependencies, downloads the voice models, and starts the Docker infrastructure. Team members with Infisical access can instead prefix any task with `mise infisical`.
+  </Step>
+
+  <Step title="Pick a sign-in mode and an AI key">
+    You don't need a WorkOS account. Add these to `apps/api/.env`:
+
+    ```bash
+    AUTH_MODE=local          # email + password sign-in, no WorkOS
+    OPENAI_API_KEY=sk-...    # or any one provider key; see Environment Variables
+    ```
+
+    With `AUTH_MODE=local`, open http://localhost:3000/signup after starting and create the first account. Leave `AUTH_MODE` unset to use WorkOS (fill the `WORKOS_*` values). Everything else is optional — see [Environment Variables](/configuration/environment-variables).
   </Step>
 
   <Step title="Start development">
@@ -77,7 +87,7 @@ icon: "laptop-code"
     mise dev
     ```
 
-    Runs the API and web app natively with hot reload (API on port 8000, web on 3000) and the infrastructure in Docker. `mise dev` uses the real WorkOS login; `mise dev --agent` skips login with the dev auth bypass.
+    Runs the API and web app natively with hot reload (API on port 8000, web on 3000) and the infrastructure in Docker. `mise dev --agent` skips sign-in entirely with the dev auth bypass.
   </Step>
 </Steps>
 

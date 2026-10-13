@@ -21,7 +21,7 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 </Note>
 
 <Tip>
-  **Automated Setup**: Self-hosting? Run `gaia up` — it writes a complete working configuration (`ENV=selfhost`), generates every required secret, and starts the stack. See [Self-hosting overview](/self-hosting/overview). The [GAIA CLI](/cli/installation) can also discover required variables interactively via `gaia init`.
+  **Automated Setup**: Self-hosting? Run `gaia up` — it writes a complete working configuration (`ENV=selfhost`), generates every required secret, and starts the stack. See [Self-hosting overview](/self-hosting/overview). Contributors can use the interactive `gaia init` wizard instead.
 </Tip>
 
 ---
@@ -140,8 +140,10 @@ In production and self-host, these are also required:
 <Note>
   `AUTH_MODE` selects the sign-in method: `workos` routes users through
   WorkOS's AuthKit hosted UI, while `local` enables first-party email +
-  password accounts (the self-host default — the first account created becomes
-  the instance admin and registration closes after it). The three `WORKOS_*`
+  password accounts (the self-host default, also usable in development so
+  contributors need no WorkOS account — the first account created becomes the
+  instance admin, and others join by invite link from Settings → Members). The
+  three `WORKOS_*`
   variables are validated and required only when `AUTH_MODE=workos`.
 </Note>
 
@@ -209,6 +211,7 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 | `COMPOSIO_KEY`            | Composio integration key         |
 | `COMPOSIO_WEBHOOK_SECRET` | Webhook verification secret      |
 | `E2B_API_KEY`             | E2B code sandbox API key         |
+| `LOCAL_CODE_SANDBOX`      | Self-host only: run code in local Docker containers when no E2B key is set. Set by the `docker-compose.sandbox.yml` override (`gaia up --code-sandbox`), which also mounts the Docker socket; never set it by hand |
 | `RESEND_API_KEY`          | Resend email API key             |
 | `RESEND_AUDIENCE_ID`      | Resend audience ID               |
 | `BLOG_BEARER_TOKEN`       | Bearer token for blog management |
