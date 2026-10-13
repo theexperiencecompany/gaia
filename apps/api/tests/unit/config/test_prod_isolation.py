@@ -585,3 +585,33 @@ async def test_production_refuses_to_store_a_credential(production_profile: None
 
     with pytest.raises(RuntimeError, match="environment only"):
         await service.upsert("resend", api_key="k")
+
+
+async def test_production_comms_uses_the_env_openai_key_over_a_stored_one(
+    monkeypatch: pytest.MonkeyPatch, production_profile: None
+) -> None:
+    """Comms in production runs on env OPENAI_API_KEY; a stored OpenAI row is never seen."""
+    from unittest.mock import AsyncMock
+
+    from app.config.settings import settings
+    from app.services.providers import provider_credentials_service as service
+
+    store_read = AsyncMock(side_effect=AssertionError("production read the stored OpenAI key"))
+    monkeypatch.setattr(service.provider_credentials_repository, "find_by_provider", store_read)
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "env-openai-key")
+    monkeypatch.setitem(
+        service.resolved_configs,
+        "openai",
+        service.ProviderConfig(api_key="stored-openai-key", base_url=None, model=None, preset=None),
+    )
+    service._cache.clear()
+
+    resolved = await service.resolve("openai")
+
+    assert resolved is not None
+    assert resolved["api_key"] == "env-openai-key"
+    # The LLM client reads this same snapshot when it builds the comms client.
+    snapshot = service.resolved_configs["openai"]
+    assert snapshot is not None
+    assert snapshot["api_key"] == "env-openai-key"
+    store_read.assert_not_awaited()
