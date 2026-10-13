@@ -15,6 +15,7 @@ import { ArrowRight02Icon, Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
   isAnyLlmConfigured,
@@ -50,6 +51,8 @@ function readDismissedSnapshot(): string[] {
 export function SetupChecklistCard() {
   const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
+  // Instance setup is the admin's job; a member could not act on any item.
+  const isMember = useCurrentUser().role === "member";
   const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
 
   // Read localStorage after mount so SSR and hydration agree.
@@ -94,7 +97,7 @@ export function SetupChecklistCard() {
     dismissedKeys.length === items.length &&
     items.every((item) => dismissedKeys.includes(item.key));
 
-  if (!status || items.length === 0 || isDismissed) return null;
+  if (!status || isMember || items.length === 0 || isDismissed) return null;
 
   const handleDismiss = () => {
     const keys = items.map((item) => item.key);

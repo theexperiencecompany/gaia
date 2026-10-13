@@ -1,3 +1,4 @@
+import { toErrorEnvelope } from "@shared/api";
 import type {
   AuthenticatedUserResponse,
   OnboardingPreferences,
@@ -20,10 +21,9 @@ export type UserInfo = AuthenticatedUserResponse;
 
 /**
  * Normalizes a failed localLogin/localSignup/changePassword call into the
- * pieces the auth forms branch on. The backend answers with FastAPI-wrapped
- * bodies — `{ detail: { error_code, message } }` (401 `invalid_credentials`,
- * 403 `registration_closed`) or plain `{ detail: "..." }` / `{ message: "..." }`.
- * Same extraction contract as the shapes handled in lib/api/outcome.ts.
+ * pieces the auth forms branch on: the HTTP status plus the `ErrorEnvelope`'s
+ * `code` (401 `invalid_credentials`, 403 `registration_closed` /
+ * `invite_invalid`) and `message`.
  */
 export function getLocalAuthError(error: unknown): {
   status?: number;
@@ -33,26 +33,11 @@ export function getLocalAuthError(error: unknown): {
   const response = (
     error as { response?: { status?: number; data?: unknown } } | undefined
   )?.response;
-  const data = response?.data as
-    | {
-        detail?: { error_code?: string; message?: string } | string;
-        message?: string;
-      }
-    | undefined;
-
-  const detail = data?.detail;
+  const envelope = toErrorEnvelope(response?.data);
   return {
     status: response?.status,
-    errorCode:
-      typeof detail === "object" && detail !== null
-        ? detail.error_code
-        : undefined,
-    message:
-      (typeof detail === "object" && detail !== null
-        ? detail.message
-        : typeof detail === "string"
-          ? detail
-          : undefined) ?? data?.message,
+    errorCode: envelope?.code ?? undefined,
+    message: envelope?.message ?? undefined,
   };
 }
 
@@ -66,8 +51,12 @@ export const authApi = {
   localLogin: (email: string, password: string) =>
     localAuthApi.login(email, password, {}),
 
-  localSignup: (name: string | undefined, email: string, password: string) =>
-    localAuthApi.signup(name, email, password, {}),
+  localSignup: (
+    name: string | undefined,
+    email: string,
+    password: string,
+    invite: string | undefined,
+  ) => localAuthApi.signup(name, email, password, invite, {}),
 
   // Wrong current password 401s as invalid_credentials, never toasted — the
   // caller extracts it with getLocalAuthError and renders it inline.

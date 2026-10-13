@@ -4,4 +4,6 @@ export const API_ERROR_CODES = {
   INTEGRATION_NOT_CONNECTED: "INTEGRATION_NOT_CONNECTED",
   INVALID_CREDENTIALS: "invalid_credentials",
   REGISTRATION_CLOSED: "registration_closed",
+  INVITE_INVALID: "invite_invalid",
+  CANNOT_REMOVE_ADMIN: "cannot_remove_admin",
 } as const;

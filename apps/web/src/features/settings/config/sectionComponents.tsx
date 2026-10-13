@@ -8,6 +8,7 @@ import DevicesSettings from "@/features/settings/components/DevicesSettings";
 import ExperimentalFeaturesSettings from "@/features/settings/components/ExperimentalFeaturesSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
+import { MembersSettings } from "@/features/settings/components/MembersSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
@@ -38,6 +39,7 @@ const SECTION_PANELS: Record<
   profile: () => <ProfileCardSettings />,
   "linked-accounts": () => <LinkedAccountsSettings />,
   providers: () => <ProvidersSettings />,
+  members: () => <MembersSettings />,
   subscription: () => <SubscriptionSettings />,
   usage: () => <UsageSettings />,
   preferences: (setModalAction) => (

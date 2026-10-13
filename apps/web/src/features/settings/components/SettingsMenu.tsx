@@ -34,6 +34,7 @@ import {
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
@@ -45,7 +46,11 @@ import {
 } from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
+import {
+  isSettingsSectionAllowed,
+  settingsPageItems,
+  socialMediaItems,
+} from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
 
@@ -257,6 +262,7 @@ export default function SettingsMenu({
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   // Self-host instances have no billing — the entries make no sense there.
   const billingHidden = !useBillingEnabled();
+  const { role } = useCurrentUser();
   const { unseen: unseenReleases } = useReleases();
 
   const whatsNewMenu = useNestedMenu();
@@ -336,8 +342,10 @@ export default function SettingsMenu({
       title: undefined,
       showDivider: true,
       items: [
-        ...settingsPageItems.filter((item) =>
-          quickSettingsKeys.includes(item.key),
+        ...settingsPageItems.filter(
+          (item) =>
+            quickSettingsKeys.includes(item.key) &&
+            isSettingsSectionAllowed(item.key, role),
         ),
         {
           key: "keyboard_shortcuts",

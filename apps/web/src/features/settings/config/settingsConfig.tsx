@@ -1,3 +1,4 @@
+import type { InstanceRole } from "@gaia/shared/api/generated";
 import {
   AiWebBrowsingIcon,
   Brain02Icon,
@@ -12,6 +13,7 @@ import {
   NotificationIcon,
   PuzzleIcon,
   UserCircleIcon,
+  UserGroupIcon,
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
@@ -67,6 +69,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
       />
     ),
     href: "/settings/providers",
+  },
+  {
+    key: "members",
+    label: "Members",
+    icon: UserGroupIcon,
+    href: "/settings/members",
   },
   {
     key: "notifications",
@@ -154,6 +162,21 @@ export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
  * from navigation and redirected away on self-host (billing_enabled=false).
  */
 export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
+
+/**
+ * Whether a self-host account with this role may open a settings section.
+ * Members is the instance admin's; AI Providers holds instance-wide keys a
+ * member cannot change. Hosted accounts carry no role and keep every section
+ * except Members.
+ */
+export function isSettingsSectionAllowed(
+  key: string,
+  role: InstanceRole | undefined,
+): boolean {
+  if (key === "members") return role === "admin";
+  if (key === "providers") return role !== "member";
+  return true;
+}
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {

@@ -5,6 +5,7 @@ export const VALID_SECTIONS = [
   "profile",
   "linked-accounts",
   "providers",
+  "members",
   "subscription",
   "usage",
   "preferences",
