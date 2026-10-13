@@ -1163,7 +1163,7 @@ export interface EventProperties {
   "paywall:modal_viewed": {
     "dismissible": boolean;
     "has_discount_code": boolean;
-    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
+    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "settings_referrals" | "desktop_popup_mirror";
   };
   "pin:viewed": {
     "conversation_id": string;

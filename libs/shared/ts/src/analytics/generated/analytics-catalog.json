@@ -5513,6 +5513,7 @@
                   "settings_upsell",
                   "settings_linked_accounts",
                   "settings_usage",
+                  "settings_referrals",
                   "desktop_popup_mirror"
                 ],
                 "type": "string"
