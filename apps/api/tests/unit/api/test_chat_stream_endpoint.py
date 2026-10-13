@@ -425,21 +425,13 @@ _DESKTOP_TURN = {
 }
 
 
-_OWNED_CONVERSATIONS = {
-    ("conv-1", FAKE_USER.user_id),
-    ("conv-of-user-2", FAKE_USER_2.user_id),
-}
-
-
-async def _owns(conversation_id: str, *, user_id: str) -> bool:
-    return (conversation_id, user_id) in _OWNED_CONVERSATIONS
-
-
 @pytest.fixture
-def accepted_turn() -> Iterator[MagicMock]:
+def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMock]:
     """Clear the rate and cost gates and stub the background run, leaving the capture real-path."""
+    owned_conversations.update(
+        {("conv-1", FAKE_USER.user_id), ("conv-of-user-2", FAKE_USER_2.user_id)}
+    )
     with (
-        patch("app.api.v1.endpoints.chat.conversation_repository.exists", new=_owns),
         patch(
             "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
             new_callable=AsyncMock,

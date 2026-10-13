@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.redis import redis_cache
-from app.db.repositories.conversations import conversation_repository
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from tests.conftest import FAKE_USER
@@ -55,14 +54,9 @@ def fresh_redis_client():
 
 
 @pytest.fixture(autouse=True)
-def owns_the_test_conversation():
+def owns_the_test_conversation(owned_conversations):
     """FAKE_USER owns the conversation _VALID_BODY names; chat-stream 404s any other."""
-
-    async def _exists(conversation_id: str, *, user_id: str) -> bool:
-        return (conversation_id, user_id) == (_VALID_BODY["conversation_id"], FAKE_USER.user_id)
-
-    with patch.object(conversation_repository, "exists", side_effect=_exists):
-        yield
+    owned_conversations.add((_VALID_BODY["conversation_id"], FAKE_USER.user_id))
 
 
 @pytest.fixture(autouse=True)

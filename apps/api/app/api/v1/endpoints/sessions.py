@@ -16,11 +16,11 @@ from pydantic import BaseModel, Field
 
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.analytics_service import capture
+from app.services.conversation_service import require_owned_conversation
 from app.services.storage import (
     ArtifactInfo,
     JuiceFSUnavailable,
@@ -66,15 +66,6 @@ class PinRequest(BaseModel):
 
 class PinResponse(BaseModel):
     pinned_path: str = Field(..., description="/workspace/... path of the pinned copy")
-
-
-async def _assert_owns(user_id: str, conv_id: str) -> None:
-    """403 unless (user_id, conv_id) is a conversation owned by this user."""
-    if not await conversation_repository.exists(conv_id, user_id=user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conversation not found or not owned by this user",
-        )
 
 
 def _serve(host_path: Path, *, is_artifact: bool, filename: str) -> FileResponse:
@@ -126,7 +117,7 @@ async def list_session_artifacts(
 ) -> list[ArtifactInfo]:
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         items = await list_artifacts(user_id, conv_id)
     except JuiceFSUnavailable as e:
@@ -155,7 +146,7 @@ async def get_artifact_file(
 ) -> FileResponse:
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "artifacts", path)
     return _serve(host_path, is_artifact=True, filename=path.rsplit("/", 1)[-1])
 
@@ -167,7 +158,7 @@ async def list_uploads(
 ) -> list[ArtifactInfo]:
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         items = await list_user_uploaded(user_id, conv_id)
     except JuiceFSUnavailable as e:
@@ -196,7 +187,7 @@ async def get_upload_file(
 ) -> FileResponse:
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "uploaded", path)
     return _serve(host_path, is_artifact=False, filename=path.rsplit("/", 1)[-1])
 
@@ -220,7 +211,7 @@ async def pin_artifact(
 ) -> PinResponse:
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         pinned_path = await pin_session_artifact(
             user_id, conv_id, payload.path, payload.target_name

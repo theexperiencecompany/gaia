@@ -23,11 +23,9 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.client_type import request_client_source
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
-from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
-from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -36,10 +34,10 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
+from app.services.conversation_service import require_owned_conversation
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
-from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
@@ -168,15 +166,8 @@ async def chat_stream_endpoint(
         selected_tool=body.selectedTool,
     )
 
-    # A foreign conversation answers exactly like a missing one, so ids cannot be probed.
-    if body.conversation_id is not None and not await conversation_repository.exists(
-        body.conversation_id, user_id=user_id
-    ):
-        raise AppError(
-            message="Conversation not found",
-            status_code=status.HTTP_404_NOT_FOUND,
-            code=CONVERSATION_NOT_FOUND,
-        )
+    if body.conversation_id is not None:
+        await require_owned_conversation(body.conversation_id, user_id)
 
     # Idempotency: the client stamps each SEND with a turn_id that survives its
     # retries. First claim wins atomically; a duplicate POST gets a 409 instead
