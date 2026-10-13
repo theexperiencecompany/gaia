@@ -12357,7 +12357,7 @@ export interface components {
         ReferralCopyVariant: "gift" | "earn" | "time_back" | "insider";
         /**
          * ReferralInviteRequest
-         * @description A batch of addresses to invite; each is judged on its own, so one bad address fails nothing.
+         * @description A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.
          */
         ReferralInviteRequest: {
             /** Emails */

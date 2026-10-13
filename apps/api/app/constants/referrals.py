@@ -163,6 +163,7 @@ INVITE_NO_SENDER_EMAIL_WHY = (
 INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite"
 INVITE_SEND_FAILED_WHY = "Gmail refused the message"
 INVITE_SEND_FAILED_FIX = "Reconnect Gmail in Settings, or try again"
+INVITE_PROVIDER_REFUSED_WHY = "the email provider refused the message"
 
 PRO_PLAN_MISSING_MESSAGE = "Referral offer unavailable"
 PRO_PLAN_MISSING_WHY = "a Pro plan in the catalogue has no positive price to discount"

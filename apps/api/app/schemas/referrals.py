@@ -80,7 +80,7 @@ class ReferralSuggestionsResponse(ResponseModel):
 
 
 class ReferralInviteRequest(BaseModel):
-    """A batch of addresses to invite; each is judged on its own, so one bad address fails nothing."""
+    """A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing."""
 
     emails: list[str] = Field(min_length=1, max_length=INVITE_BATCH_MAX)
     surface: ReferralInviteSurface

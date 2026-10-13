@@ -34,6 +34,7 @@ from app.services.referrals.codes import ensure_code
 from app.services.referrals.gift import gift_code_for_checkout, pending_gift_referral
 from app.services.referrals.invites import send_invites, unsubscribe_invite_recipient
 from app.services.referrals.offer import ProPlans
+from app.utils.errors import AppError
 from app.utils.notification.unsubscribe import UnsubscribeScope, sign_unsubscribe_token
 
 pytestmark = pytest.mark.service
@@ -261,8 +262,9 @@ class TestInvites:
         request = ReferralInviteRequest(emails=[friend], surface=ReferralInviteSurface.PAGE)
         mail.gaia.side_effect = [RuntimeError("resend down"), None]
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(AppError) as refused:
             await send_invites(sender.id, request)
+        assert refused.value.status_code == 502
         assert await referral_invite_repository.invited_by(sender.id) == set()
 
         assert (await send_invites(sender.id, request)).results[

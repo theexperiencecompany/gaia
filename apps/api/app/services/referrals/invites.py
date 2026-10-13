@@ -21,6 +21,7 @@ from app.constants.referrals import (
     INVITE_NO_SENDER_EMAIL_MESSAGE,
     INVITE_NO_SENDER_EMAIL_WHY,
     INVITE_PRICE_LINE,
+    INVITE_PROVIDER_REFUSED_WHY,
     INVITE_REGULAR_PRICE_LINE,
     INVITE_SEND_FAILED_FIX,
     INVITE_SEND_FAILED_MESSAGE,
@@ -175,9 +176,17 @@ async def _invite_one(batch: _Batch, address: str | None) -> ReferralInviteStatu
         return ReferralInviteStatus.ALREADY_INVITED
     try:
         await _send(batch, address)
-    except Exception:
+    except AppError:
         await referral_invite_repository.release(claim.id)
         raise
+    except Exception as e:
+        await referral_invite_repository.release(claim.id)
+        raise AppError(
+            message=INVITE_SEND_FAILED_MESSAGE,
+            why=INVITE_PROVIDER_REFUSED_WHY,
+            status_code=502,
+            meta={"channel": batch.channel.value, "error_type": type(e).__name__},
+        ) from e
     capture(
         UserId(batch.sender.id),
         ReferralInviteSent(invite_surface=batch.surface.value, channel=batch.channel.value),

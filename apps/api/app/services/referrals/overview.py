@@ -91,6 +91,6 @@ async def resolve_referral_code(code: str) -> ReferralResolveResponse:
     return ReferralResolveResponse(
         valid=True,
         referrer_first_name=first_name_of(owner),
-        referrer_picture=owner.picture,
+        referrer_picture=owner.picture or None,
         offer=offer,
     )
