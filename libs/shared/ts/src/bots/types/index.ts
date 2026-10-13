@@ -9,7 +9,7 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
+ * - Domain types: BotTodo, BotConversation (workflows use the generated API types)
  */
 
 /**
@@ -132,21 +132,6 @@ export interface RedeemedLinkCode {
   delivered: boolean;
   /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
   firstContact: string[];
-}
-
-export interface BotWorkflow {
-  id: string;
-  name: string;
-  description: string;
-  status: "active" | "inactive" | "draft";
-  triggers?: Record<string, unknown>[];
-  steps?: Record<string, unknown>[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface BotWorkflowListResponse {
-  workflows: BotWorkflow[];
 }
 
 export interface BotWorkflowExecutionRequest {

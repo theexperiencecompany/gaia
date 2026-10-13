@@ -28,7 +28,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -40,7 +40,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -52,7 +52,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -64,13 +64,13 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "name",
-          description: "BotWorkflow name",
+          description: "Workflow name",
           required: true,
           type: "string",
         },
         {
           name: "description",
-          description: "BotWorkflow description",
+          description: "Workflow description",
           required: true,
           type: "string",
         },

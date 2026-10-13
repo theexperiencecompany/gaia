@@ -1,5 +1,11 @@
 import axios, { type AxiosInstance } from "axios";
 import type {
+  CreateWorkflowRequest,
+  WorkflowWithIntegrations as Workflow,
+  WorkflowListResponse,
+  WorkflowResponse,
+} from "../../api/generated";
+import type {
   AuthStatus,
   BotConversation,
   BotConversationListResponse,
@@ -8,10 +14,8 @@ import type {
   BotTodo,
   BotTodoListResponse,
   BotUserContext,
-  BotWorkflow,
   BotWorkflowExecutionRequest,
   BotWorkflowExecutionResponse,
-  BotWorkflowListResponse,
   ChatRequest,
   RedeemedLinkCode,
   SettingsResponse,
@@ -297,9 +301,9 @@ export class GaiaClient {
    * Lists all workflows for the authenticated user.
    * Uses the regular /api/v1/workflows endpoint via bot middleware auth.
    */
-  async listWorkflows(ctx: BotUserContext): Promise<BotWorkflowListResponse> {
+  async listWorkflows(ctx: BotUserContext): Promise<WorkflowListResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<BotWorkflowListResponse>(
+      const { data } = await this.client.get<WorkflowListResponse>(
         "/api/v1/workflows",
         { headers: this.userHeaders(ctx) },
       );
@@ -311,15 +315,11 @@ export class GaiaClient {
    * Creates a new workflow.
    */
   async createWorkflow(
-    request: {
-      name: string;
-      description: string;
-      steps?: Record<string, unknown>[];
-    },
+    request: CreateWorkflowRequest,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<Workflow> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.post<WorkflowResponse>(
         "/api/v1/workflows",
         request,
         { headers: this.userHeaders(ctx) },
@@ -334,9 +334,9 @@ export class GaiaClient {
   async getWorkflow(
     workflowId: string,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<Workflow> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.get<WorkflowResponse>(
         `/api/v1/workflows/${encodeURIComponent(workflowId)}`,
         { headers: this.userHeaders(ctx) },
       );
