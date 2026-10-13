@@ -65,8 +65,8 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
       cta: "Send the gift",
     },
     chatCard: {
-      title: "Know someone who'd love GAIA too?",
-      cta: "Send the gift",
+      title: "Who's the busiest person you know? 🎁",
+      cta: "Send them a gift",
     },
     landing: {
       title: (referrer) => `${referrer} sent you a gift!`,
@@ -92,7 +92,7 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
       cta: "Share your link",
     },
     chatCard: {
-      title: "Your next month could be free!",
+      title: "Turn your friends into free months",
       cta: "Share your link",
     },
     landing: {
@@ -119,8 +119,8 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
       cta: "Pass it on",
     },
     chatCard: {
-      title: "Know someone who could use their time back?",
-      cta: "Pass it on",
+      title: "Know someone who never has a spare minute?",
+      cta: "Give them time back",
     },
     landing: {
       title: (referrer) => `${referrer} is giving you hours back`,
@@ -146,8 +146,8 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
       cta: "Share your link",
     },
     chatCard: {
-      title: "Want to bring a friend in?",
-      cta: "Share your link",
+      title: "GAIA's better with your people on it",
+      cta: "Bring them in",
     },
     landing: {
       title: (referrer) => `${referrer} saved you a spot`,

@@ -6,7 +6,7 @@ import { REFERRAL_COPY } from "../referralCopy";
 import { offerPrices } from "../utils/offerPrices";
 import { ReferralShareCard } from "./share/ReferralShareCard";
 
-/** Under a big task that just finished: shown only when the server grants this week's nudge. */
+/** Under a reply that just finished: shown only when the server grants this week's nudge. */
 export function ChatReferralCard({ turnId }: Readonly<{ turnId: string }>) {
   const state = useReferralMe();
   const ready = state.status === "ready";
