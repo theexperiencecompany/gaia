@@ -84,6 +84,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
+    HOSTED_COMMS_ONLY_PROVIDERS,
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
@@ -256,10 +257,24 @@ def chat_model(provider: LLMProviderName) -> str | None:
     """Return the model a provider's chat lane runs: the operator's configured one, else the catalog's.
 
     None only when neither exists (a custom endpoint saved without a model).
+    Production's comms-only providers always run the catalog model.
     """
+    catalog = LLM_MODEL_PROFILES[provider].chat
+    if _is_hosted_comms_only(provider):
+        return catalog
     config = _provider_config(provider)
     configured = config.get("model") if config else None
-    return configured or LLM_MODEL_PROFILES[provider].chat
+    return configured or catalog
+
+
+def _is_hosted_comms_only(provider: LLMProviderName) -> bool:
+    """Whether production keeps provider to comms' own lane (see HOSTED_COMMS_ONLY_PROVIDERS)."""
+    return settings.ENV == "production" and provider in HOSTED_COMMS_ONLY_PROVIDERS
+
+
+def _chat_priority() -> tuple[LLMProviderName, ...]:
+    """Return the providers a default lane or fallback may take, in order; comms-only ones never in production."""
+    return tuple(p for p in LLM_PROVIDER_PRIORITY if not _is_hosted_comms_only(p))
 
 
 @cache
@@ -506,7 +521,7 @@ def init_openai_llm() -> LanguageModelLike:
     config: ProviderConfig = _require_provider_config(LLMProviderName.OPENAI, "api_key")
     llm = without_sdk_retry(
         ChatOpenAI(
-            model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.OPENAI].chat,
+            model=chat_model(LLMProviderName.OPENAI),
             reasoning_effort=COMMS_REASONING_EFFORT,
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
@@ -628,7 +643,7 @@ def chat_route(exclude: LLMProviderName | None = None) -> tuple[LLMProviderName,
     with no model (a custom endpoint saved without one) is skipped.
     """
     available = _get_available_providers()
-    for name in LLM_PROVIDER_PRIORITY:
+    for name in _chat_priority():
         if name == exclude or name not in available:
             continue
         if model := chat_model(name):
@@ -660,8 +675,16 @@ def _get_ordered_providers(
     if fallback_enabled or not ordered:
         ordered.extend(
             LLMProvider(name=name, instance=remaining_providers[name])
-            for name in LLM_PROVIDER_PRIORITY
+            for name in _chat_priority()
             if name in remaining_providers
+        )
+
+    # Registered as alternatives so comms can select them by name, never as the primary.
+    if fallback_enabled and ordered:
+        ordered.extend(
+            LLMProvider(name=name, instance=instance)
+            for name, instance in remaining_providers.items()
+            if _is_hosted_comms_only(name)
         )
 
     return ordered

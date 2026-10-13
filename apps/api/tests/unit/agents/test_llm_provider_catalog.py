@@ -6,6 +6,7 @@ loud, naming the role, when none of them can. Production must not move at all.
 """
 
 from collections.abc import Iterator
+from typing import cast
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -17,11 +18,13 @@ from app.agents.llm.client import (
     _build_default_llm,
     _build_gemini_one_shot,
     _build_openai_wire_one_shot,
+    _get_ordered_providers,
     one_shot_route,
     resolve_model,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
+from app.agents.llm.types import ProviderLLM
 from app.constants.llm import LLMProviderName, ModelUse
 from app.constants.providers import CREDENTIAL_PROVIDERS
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -136,6 +139,42 @@ class TestProductionRoutingIsPinned:
             "google/gemini-3.5-flash-lite",
             "deepseek/deepseek-v4-flash-0731",
         ]
+
+    async def test_without_gemini_openai_is_never_the_executors_fallback(self) -> None:
+        client_module._runtime_configs["gemini"] = None
+        lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
+
+        assert lane.fallback() is None
+
+    async def test_without_openrouter_or_gemini_the_default_lane_stays_openrouter(
+        self,
+    ) -> None:
+        """OpenAI is comms-only in production; a missing OpenRouter key fails loud at load time."""
+        client_module._runtime_configs["openrouter"] = None
+        client_module._runtime_configs["gemini"] = None
+
+        lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
+
+        assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4-flash-0731")
+
+    def test_openai_is_registered_last_as_a_by_name_alternative(self) -> None:
+        available = {
+            LLMProviderName(name): cast(ProviderLLM, object())
+            for name in ("openai", "gemini", "openrouter")
+        }
+
+        ordered = _get_ordered_providers(available, None, True)
+
+        assert [p.name for p in ordered] == ["openrouter", "gemini", "openai"]
+
+    async def test_comms_ignores_a_stored_openai_model(self) -> None:
+        client_module._runtime_configs["openai"] = _config(api_key="sk-openai", model="gpt-4o")
+
+        lane, _ = await resolve_lane(None, AgentRole.COMMS)
+        llm = client_module.init_openai_llm().loader_func()
+
+        assert lane.model == "gpt-5.6-luna"
+        assert llm.default.model_name == "gpt-5.6-luna"
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch

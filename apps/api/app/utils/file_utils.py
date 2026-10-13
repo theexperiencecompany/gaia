@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Union, cast
 from langchain_core.messages import BaseMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model, with_llm_retry
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -18,6 +19,7 @@ from app.constants.files import (
     DOC_MIME,
     DOCX_MIME,
     EPUB_MIME,
+    IMAGE_SUMMARY_NO_VISION_PROVIDER,
     LOCAL_EXTRACTION_TIMEOUT_SECONDS,
     MAX_CHUNK_CHARS,
     MAX_INDEXED_CHUNKS,
@@ -148,13 +150,18 @@ class DocumentProcessor:
             )
             return _IMAGE_SUMMARY_UNAVAILABLE
 
-        description = await describe_image(
-            inline.base64,
-            inline.mime_type,
-            prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
-            label="file_image_summary",
-            user_id=self.user_id,
-        )
+        try:
+            description = await describe_image(
+                inline.base64,
+                inline.mime_type,
+                prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
+                label="file_image_summary",
+                user_id=self.user_id,
+            )
+        except LLMNotConfiguredError as e:
+            # The upload still lands; the summary says plainly why it is blind.
+            log.warning(f"{LogTag.TOOL} No vision provider for an uploaded image", error=str(e))
+            return IMAGE_SUMMARY_NO_VISION_PROVIDER
         return description or _IMAGE_SUMMARY_UNAVAILABLE
 
     async def process_doc(self, data: bytes) -> list[DocumentSummaryModel]:

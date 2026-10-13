@@ -11,7 +11,8 @@ from langchain_core.messages import AIMessage
 from PIL import Image
 import pytest
 
-from app.constants.files import SUMMARY_LLM_MAX_CONCURRENCY
+from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils import file_utils, local_document_parser
@@ -229,6 +230,16 @@ class TestProcessImage:
         with _mock_vision("A scenic mountain view"):
             result = await processor.process_image(_encode_image("PNG"))
         assert result == "A scenic mountain view"
+
+    async def test_no_vision_provider_degrades_to_an_explicit_summary(
+        self, processor: DocumentProcessor
+    ) -> None:
+        """An upload on an Ollama-only instance must still land, saying why it was not described."""
+        no_vision = AsyncMock(side_effect=LLMNotConfiguredError("no vision provider"))
+        with patch("app.utils.file_utils.describe_image", no_vision):
+            result = await processor.process_image(_encode_image("PNG"))
+
+        assert result == IMAGE_SUMMARY_NO_VISION_PROVIDER
 
     async def test_the_mime_is_sniffed_from_the_bytes_not_assumed(
         self, processor: DocumentProcessor
