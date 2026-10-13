@@ -5,16 +5,9 @@ import { Select, SelectItem } from "@heroui/select";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useQuietHoursSettings } from "@/features/settings/hooks/useQuietHoursSettings";
+import { formatHour12 } from "@/utils/date/hours";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-
-/** "22" -> "10:00 PM" in the viewer's locale. */
-function hourLabel(hour: number): string {
-  return new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 const EDGES: { edge: keyof QuietHours; label: string }[] = [
   { edge: "start_hour", label: "Starts at" },
@@ -47,7 +40,7 @@ export function QuietHoursSettings() {
             }}
           >
             {HOURS.map((hour) => (
-              <SelectItem key={String(hour)}>{hourLabel(hour)}</SelectItem>
+              <SelectItem key={String(hour)}>{formatHour12(hour)}</SelectItem>
             ))}
           </Select>
         </SettingsRow>

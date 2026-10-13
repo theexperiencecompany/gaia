@@ -416,21 +416,22 @@ function QuietHoursSection() {
   });
   const quiet = quietQuery.data;
 
-  const handleTimeChange = useCallback(
-    (edge: QuietHoursEdge, _evt: DateTimePickerEvent, date?: Date) => {
-      if (Platform.OS === "android") {
-        setPicker(null);
-      }
-      if (!date || !quiet) return;
-      const next: QuietHours = { ...quiet, [edge]: date.getHours() };
-      if (next.start_hour === next.end_hour) {
-        Alert.alert("Quiet hours", "Start and end must be different hours.");
-        return;
-      }
-      mutation.mutate(next);
-    },
-    [mutation, quiet],
-  );
+  const handleTimeChange = (
+    edge: QuietHoursEdge,
+    _evt: DateTimePickerEvent,
+    date?: Date,
+  ) => {
+    if (Platform.OS === "android") {
+      setPicker(null);
+    }
+    if (!date || !quiet) return;
+    const next: QuietHours = { ...quiet, [edge]: date.getHours() };
+    if (next.start_hour === next.end_hour) {
+      Alert.alert("Quiet hours", "Start and end must be different hours.");
+      return;
+    }
+    mutation.mutate(next);
+  };
 
   if (!quiet) {
     return (
