@@ -5,12 +5,14 @@ import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
 import Image from "next/image";
 import { useTransition } from "react";
+import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { referralsApi } from "@/features/referrals/api/referralsApi";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
@@ -245,7 +247,10 @@ function UseCaseMetaInfo({
   );
 }
 
-/** Creating the workflow behind a use case, gated on being signed in. */
+/**
+ * Creating the workflow behind a use case. A signed-out visitor signs in and
+ * comes back to this page; a community workflow's creator is credited first.
+ */
 function useCreateFromUseCase(
   useCase: UseCaseDetailClientProps["useCase"],
   communityWorkflow: UseCaseDetailClientProps["communityWorkflow"],
@@ -253,11 +258,15 @@ function useCreateFromUseCase(
   const [isCreating, startCreateTransition] = useTransition();
   const { createWorkflow } = useWorkflowCreation();
   const { selectWorkflow } = useWorkflowSelection();
-  const { isAuthenticated, openLoginModal } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const handleCreateWorkflow = () => {
     if (!isAuthenticated) {
-      openLoginModal();
+      startCreateTransition(async () => {
+        if (communityWorkflow)
+          await referralsApi.creditWorkflow(communityWorkflow.id);
+        handleAuthLogin(window.location.pathname);
+      });
       return;
     }
     const workflowRequest = buildWorkflowRequest(useCase, communityWorkflow);

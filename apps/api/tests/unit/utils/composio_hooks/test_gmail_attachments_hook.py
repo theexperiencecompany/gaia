@@ -13,9 +13,10 @@ the shared before-hook acts on) is tested in test_file_upload_hooks.py.
 
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.models.integrations.gmail import GmailComposeArguments
@@ -44,9 +45,18 @@ from app.utils.composio_hooks.gmail_hooks import (
 )
 from app.utils.composio_hooks.registry import ComposioHookRegistry, HookAbortError
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.referrals import ReferralSentWithGaiaAppended
 
 HOOKS = "app.utils.composio_hooks.gmail_hooks"
 SHARED = "app.utils.composio_hooks.file_upload_hooks"
+
+
+@pytest.fixture(autouse=True)
+def _sent_with_gaia_off():
+    """Send as a user who never turned the Sent with GAIA line on."""
+    with patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value=None)):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -552,6 +562,59 @@ class TestBeforeHookHappyPath:
         with patch(f"{HOOKS}.current_stream_writer", return_value=sent.append):
             gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
         assert sent == []
+
+
+class TestSentWithGaia:
+    """The opt-in invite line GAIA signs its own mail with."""
+
+    LINK = "https://heygaia.io/invite/aryan-k7f2"
+    USER_ID = "64b7f0c2a1b2c3d4e5f60718"
+
+    def _send(self, lookup: AsyncMock, *, user_id: str | None = USER_ID) -> tuple[dict, list[dict]]:
+        sent: list[dict] = []
+        params: dict = {"arguments": {"to": "r@x.com", "subject": "Hi", "body": "Hello"}}
+        if user_id:
+            params["user_id"] = user_id
+        with (
+            patch(f"{HOOKS}.sent_with_gaia_link", lookup),
+            patch(f"{HOOKS}.current_stream_writer", return_value=sent.append),
+            patch(f"{HOOKS}.capture") as capture,
+        ):
+            out = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        self.capture: MagicMock = capture
+        return out["arguments"], sent
+
+    def test_a_user_who_turned_it_on_gets_the_line_in_the_mail_and_the_card(self):
+        args, sent = self._send(AsyncMock(return_value=self.LINK))
+
+        assert args["body"].endswith(
+            f'href="{self.LINK}" style="color:#00bbff;text-decoration:none;">GAIA</a></p>'
+        )
+        assert "Sent with" in args["body"] and args["body"].startswith("<")
+        assert sent[0]["email_sent_data"][0]["body"] == args["body"]
+        self.capture.assert_called_once_with(
+            UserId(self.USER_ID), ReferralSentWithGaiaAppended(tool="GMAIL_SEND_EMAIL")
+        )
+
+    def test_off_leaves_the_body_alone(self):
+        args, _ = self._send(AsyncMock(return_value=None))
+
+        assert "Sent with" not in args["body"]
+        self.capture.assert_not_called()
+
+    def test_a_failed_lookup_still_sends_the_normalised_mail(self):
+        args, sent = self._send(AsyncMock(side_effect=ServerSelectionTimeoutError("down")))
+
+        assert args["is_html"] is True and args["recipient_email"] == "r@x.com"
+        assert "Sent with" not in args["body"] and sent
+        self.capture.assert_not_called()
+
+    def test_a_call_with_no_user_never_looks_anyone_up(self):
+        lookup = AsyncMock(return_value=self.LINK)
+        args, _ = self._send(lookup, user_id=None)
+
+        lookup.assert_not_called()
+        assert "Sent with" not in args["body"]
 
 
 class TestComposePreviewDefaults:

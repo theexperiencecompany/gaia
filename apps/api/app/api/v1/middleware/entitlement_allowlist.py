@@ -54,6 +54,7 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/workflows/explore",  # the public template catalogue; use-case pages read it
     "/api/v1/desktop/releases",  # public download lookup for the landing page
     "/api/v1/referrals/resolve/",  # the invite landing page a friend opens before signup
+    "/api/v1/referrals/workflow-credit/",  # a visitor's Use on a community workflow, pre-signup
     # ── Referrals: a lapsed referrer sees "subscribe first", not the paywall ─
     "/api/v1/referrals/me",  # gates itself with a 403 the referral page renders
     # ── Support: a blocked user must be able to tell us they are blocked ───

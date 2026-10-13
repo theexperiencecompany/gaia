@@ -88,6 +88,40 @@ class TestResolve:
         assert _ref_cookie(response) == []
 
 
+class TestWorkflowCredit:
+    async def test_an_eligible_creator_is_credited_with_a_workflow_sourced_cookie(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with patch(f"{ENDPOINT}.workflow_creator_code", AsyncMock(return_value="aryan-k7f2")):
+            response = await unauthed_client.post(f"{URL}/workflow-credit/wf_abc")
+
+        assert response.status_code == 200
+        assert response.json() == {"credited": True}
+        (cookie,) = _ref_cookie(response)
+        assert cookie.startswith(f"{REFERRAL_COOKIE_NAME}=aryan-k7f2..workflow;")
+
+    async def test_a_creator_who_cannot_refer_credits_nobody(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with patch(f"{ENDPOINT}.workflow_creator_code", AsyncMock(return_value=None)):
+            response = await unauthed_client.post(f"{URL}/workflow-credit/wf_abc")
+
+        assert response.json() == {"credited": False}
+        assert _ref_cookie(response) == []
+
+    async def test_an_earlier_invite_link_keeps_the_friend(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with patch(f"{ENDPOINT}.workflow_creator_code", AsyncMock(return_value="aryan-k7f2")):
+            response = await unauthed_client.post(
+                f"{URL}/workflow-credit/wf_abc",
+                headers={"cookie": f"{REFERRAL_COOKIE_NAME}=priya-ab23"},
+            )
+
+        assert response.json() == {"credited": False}
+        assert _ref_cookie(response) == []
+
+
 class TestMe:
     async def test_without_a_subscription_the_page_gets_a_coded_403(
         self, client: AsyncClient
@@ -103,6 +137,26 @@ class TestMe:
             ),
         ):
             response = await client.get(f"{URL}/me")
+
+        assert response.status_code == 403
+        assert response.json()["code"] == REFERRAL_SUBSCRIPTION_REQUIRED
+
+
+class TestWeeklyCard:
+    async def test_without_a_subscription_there_is_no_link_to_share(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.services.referrals.overview.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.referrals.weekly_card.load_user",
+                AsyncMock(return_value=AsyncMock(id="u")),
+            ),
+        ):
+            response = await client.get(f"{URL}/weekly-card")
 
         assert response.status_code == 403
         assert response.json()["code"] == REFERRAL_SUBSCRIPTION_REQUIRED

@@ -3974,6 +3974,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/weekly-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Weekly Card
+         * @description Last week's time saved and the link to share it; show says whether chat surfaces it today.
+         */
+        get: operations["referrals_get_my_weekly_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/workflow-credit/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Credit Workflow Creator
+         * @description Public: a logged-out visitor chose to use a community workflow; credit its creator if they sign up.
+         */
+        post: operations["referrals_credit_workflow_creator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reminders": {
         parameters: {
             query?: never;
@@ -11373,6 +11413,11 @@ export interface components {
              * @description Preferred communication style: brief, detailed, casual, professional
              */
             response_style?: string | null;
+            /**
+             * Sent With Gaia
+             * @description Sign mail GAIA writes for the user with a small 'Sent with GAIA' invite line
+             */
+            sent_with_gaia?: boolean | null;
         };
         /**
          * OnboardingRequest
@@ -12515,6 +12560,34 @@ export interface components {
              * @description Ranked by how often you interact
              */
             suggestions: components["schemas"]["ReferralSuggestion"][];
+        };
+        /**
+         * ReferralWeeklyCardResponse
+         * @description The Monday recap card: last week's time saved, and the link to share it with.
+         */
+        ReferralWeeklyCardResponse: {
+            /** Code */
+            code: string;
+            copy_variant: components["schemas"]["ReferralCopyVariant"];
+            /** Share Link */
+            share_link: string;
+            /**
+             * Show
+             * @description Whether chat surfaces the card today
+             */
+            show: boolean;
+            stats: components["schemas"]["TimeSavedSummary"];
+        };
+        /**
+         * ReferralWorkflowCreditResponse
+         * @description Whether pressing Use on a community workflow credited its creator for the visitor's signup.
+         */
+        ReferralWorkflowCreditResponse: {
+            /**
+             * Credited
+             * @description False when the creator can't refer anyone or an earlier link already won
+             */
+            credited: boolean;
         };
         /** ReferredFriend */
         ReferredFriend: {
@@ -13879,6 +13952,39 @@ export interface components {
          * @enum {string}
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
+        /**
+         * TimeSavedSummary
+         * @description What GAIA did for a user over a window, and the time that work is estimated to have saved.
+         */
+        TimeSavedSummary: {
+            /**
+             * Actions
+             * @description Metered actions on the activity heatmap
+             */
+            actions: number;
+            /**
+             * Minutes Saved
+             * @description Estimated from per-kind constants, never measured
+             */
+            minutes_saved: number;
+            /**
+             * Window End
+             * Format: date-time
+             * @description End of the window, exclusive
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             * @description Start of the window, inclusive
+             */
+            window_start: string;
+            /**
+             * Workflow Runs
+             * @description Workflow runs that succeeded
+             */
+            workflow_runs: number;
+        };
         /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
@@ -16223,6 +16329,8 @@ export type ReferralResolveResponse = components['schemas']['ReferralResolveResp
 export type ReferralSuggestion = components['schemas']['ReferralSuggestion'];
 export type ReferralSuggestionReason = components['schemas']['ReferralSuggestionReason'];
 export type ReferralSuggestionsResponse = components['schemas']['ReferralSuggestionsResponse'];
+export type ReferralWeeklyCardResponse = components['schemas']['ReferralWeeklyCardResponse'];
+export type ReferralWorkflowCreditResponse = components['schemas']['ReferralWorkflowCreditResponse'];
 export type ReferredFriend = components['schemas']['ReferredFriend'];
 export type ReferredFriendStatus = components['schemas']['ReferredFriendStatus'];
 export type RegenerateStepsRequest = components['schemas']['RegenerateStepsRequest'];
@@ -16301,6 +16409,7 @@ export type SupportRequestStatus = components['schemas']['SupportRequestStatus']
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type TimeSavedSummary = components['schemas']['TimeSavedSummary'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
@@ -27161,6 +27270,102 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_get_my_weekly_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralWeeklyCardResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_credit_workflow_creator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralWorkflowCreditResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

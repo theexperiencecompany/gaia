@@ -1,5 +1,6 @@
 """Referral routes: the owner's page, the public invite landing, invites, suggestions and opt-out."""
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, Response
@@ -15,6 +16,7 @@ from app.constants.referrals import (
     INVITE_UNSUBSCRIBE_PROMPT,
     REFERRAL_COOKIE_NAME,
     ReferralCopyVariant,
+    ReferralSource,
 )
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.schemas.referrals import (
@@ -23,6 +25,8 @@ from app.schemas.referrals import (
     ReferralMeResponse,
     ReferralResolveResponse,
     ReferralSuggestionsResponse,
+    ReferralWeeklyCardResponse,
+    ReferralWorkflowCreditResponse,
 )
 from app.services.referrals.attribution import ReferralAttribution, first_touch_cookie
 from app.services.referrals.invites import (
@@ -32,6 +36,8 @@ from app.services.referrals.invites import (
 )
 from app.services.referrals.overview import get_referral_overview, resolve_referral_code
 from app.services.referrals.suggestions import suggest_invitees
+from app.services.referrals.weekly_card import get_weekly_card
+from app.services.referrals.workflow_credit import workflow_creator_code
 from app.utils.notification.unsubscribe import (
     UNSUBSCRIBE_INVALID_HTML,
     render_unsubscribe_confirmation,
@@ -63,22 +69,67 @@ async def resolve_code(
     """Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie."""
     log.set(referral={"operation": "resolve", "landing_variant": landing_variant})
     result = await resolve_referral_code(code)
-    cookie = first_touch_cookie(
-        request.cookies.get(REFERRAL_COOKIE_NAME),
+    cookie_set = _set_first_touch_cookie(
+        request,
+        response,
         ReferralAttribution(code=code, landing_variant=landing_variant),
         valid=result.valid,
     )
-    if cookie is not None:
-        response.set_cookie(
-            key=REFERRAL_COOKIE_NAME,
-            value=cookie,
-            max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
-            httponly=True,
-            secure=settings.ENV == "production",
-            samesite="lax",
-        )
-    log.set_ns("referral", valid=result.valid, cookie_set=cookie is not None)
+    log.set_ns("referral", valid=result.valid, cookie_set=cookie_set)
     return result
+
+
+@router.post("/workflow-credit/{workflow_id}")
+@limiter.limit("60/minute")
+async def credit_workflow_creator(
+    request: Request,
+    response: Response,
+    workflow_id: str,
+) -> ReferralWorkflowCreditResponse:
+    """Public: a logged-out visitor chose to use a community workflow; credit its creator if they sign up."""
+    log.set(referral={"operation": "workflow_credit", "workflow_id": workflow_id})
+    code = await workflow_creator_code(workflow_id)
+    credited = code is not None and _set_first_touch_cookie(
+        request,
+        response,
+        ReferralAttribution(code=code, source=ReferralSource.WORKFLOW),
+        valid=True,
+    )
+    log.set_ns("referral", cookie_set=credited)
+    return ReferralWorkflowCreditResponse(credited=credited)
+
+
+@router.get("/weekly-card")
+async def get_my_weekly_card(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> ReferralWeeklyCardResponse:
+    """Last week's time saved and the link to share it; show says whether chat surfaces it today."""
+    log.set(user={"id": user_id}, referral={"operation": "weekly_card"})
+    result = await get_weekly_card(user_id, datetime.now(UTC))
+    log.set_ns(
+        "referral",
+        weekly_card_shown=result.show,
+        minutes_saved=result.stats.minutes_saved,
+    )
+    return result
+
+
+def _set_first_touch_cookie(
+    request: Request, response: Response, clicked: ReferralAttribution, *, valid: bool
+) -> bool:
+    """Write the 30-day attribution cookie unless an earlier valid click already holds it."""
+    cookie = first_touch_cookie(request.cookies.get(REFERRAL_COOKIE_NAME), clicked, valid=valid)
+    if cookie is None:
+        return False
+    response.set_cookie(
+        key=REFERRAL_COOKIE_NAME,
+        value=cookie,
+        max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
+        httponly=True,
+        secure=settings.ENV == "production",
+        samesite="lax",
+    )
+    return True
 
 
 @router.get("/suggestions")

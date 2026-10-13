@@ -222,6 +222,10 @@ class OnboardingPreferences(BaseModel):
     custom_instructions: str | None = Field(
         default=None, max_length=500, description="Custom instructions for the AI assistant"
     )
+    sent_with_gaia: bool | None = Field(
+        default=None,
+        description="Sign mail GAIA writes for the user with a small 'Sent with GAIA' invite line",
+    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("other_need")

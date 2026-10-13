@@ -21,4 +21,14 @@ export const referralsApi = {
 
   sendInvites: (emails: string[], surface: ReferralInviteSurface) =>
     api.post("/api/v1/referrals/invites", { body: { emails, surface } }),
+
+  /** Browser-only, logged out: credits the workflow's creator through the same first-touch cookie. */
+  creditWorkflow: (workflowId: string) =>
+    api.post("/api/v1/referrals/workflow-credit/{workflow_id}", {
+      path: { workflow_id: workflowId },
+      silent: true,
+    }),
+
+  getWeeklyCard: () =>
+    api.get("/api/v1/referrals/weekly-card", { silent: true }),
 };

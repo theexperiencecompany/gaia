@@ -5,6 +5,8 @@ The wire contract these describe is mirrored in TypeScript at
 both together.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.schemas.common import ResponseModel
@@ -90,3 +92,13 @@ class UsageSummary(ResponseModel):
     features: dict[str, FeatureUsageSummary]
     budget: UsageBudget
     last_updated: str
+
+
+class TimeSavedSummary(ResponseModel):
+    """What GAIA did for a user over a window, and the time that work is estimated to have saved."""
+
+    window_start: datetime = Field(description="Start of the window, inclusive")
+    window_end: datetime = Field(description="End of the window, exclusive")
+    actions: int = Field(description="Metered actions on the activity heatmap")
+    workflow_runs: int = Field(description="Workflow runs that succeeded")
+    minutes_saved: int = Field(description="Estimated from per-kind constants, never measured")

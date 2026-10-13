@@ -57,6 +57,7 @@ class SettingsPreferencesChanged(ServerEvent):
     ]
     fields: list[Identifier] | None = None
     has_custom_instructions: bool | None = None
+    sent_with_gaia: bool | None = None
     voice_id: Identifier | None = None
     is_starred: bool | None = None
     mode: Identifier | None = None

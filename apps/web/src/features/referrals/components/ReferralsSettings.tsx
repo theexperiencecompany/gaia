@@ -11,6 +11,7 @@ import {
 } from "../hooks/useReferrals";
 import { REFERRAL_UI_COPY } from "../referralCopy";
 import { ReferralsView } from "./page/layouts";
+import { SentWithGaiaToggle } from "./SentWithGaiaToggle";
 
 /** Settings → Referrals: the layout and angle the server picked, with live friends and suggestions. */
 export function ReferralsSettings() {
@@ -28,13 +29,18 @@ export function ReferralsSettings() {
       return <ReferralsError onRetry={state.retry} />;
     case "ready":
       return (
-        <ReferralsView
-          layout={state.me.layout_variant}
-          copyVariant={state.me.copy_variant}
-          me={state.me}
-          suggestions={suggestions ?? []}
-          send={sendReferralInvite}
-        />
+        <>
+          <ReferralsView
+            layout={state.me.layout_variant}
+            copyVariant={state.me.copy_variant}
+            me={state.me}
+            suggestions={suggestions ?? []}
+            send={sendReferralInvite}
+          />
+          <div className="mx-auto w-full max-w-2xl pb-8">
+            <SentWithGaiaToggle />
+          </div>
+        </>
       );
   }
 }

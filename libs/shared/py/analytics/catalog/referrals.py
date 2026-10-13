@@ -11,6 +11,7 @@ __all__ = [
     "ReferralInviteSent",
     "ReferralInviteUndone",
     "ReferralRewardGranted",
+    "ReferralSentWithGaiaAppended",
     "ReferralShareClicked",
     "ReferralSignupAttributed",
 ]
@@ -35,6 +36,8 @@ class ReferralSignupAttributed(ServerEvent):
 
     referrer_id: ObjectIdStr
     landing_variant: Identifier | None = None
+    # What brought them: someone's invite link, or a creator's public workflow.
+    source: Literal["invite_link", "workflow"]
 
 
 class ReferralConverted(ServerEvent):
@@ -59,6 +62,15 @@ class ReferralRewardGranted(ServerEvent):
     months: int
 
 
+class ReferralSentWithGaiaAppended(ServerEvent):
+    """GAIA added the opt-in "Sent with GAIA" invite line to an email it wrote for the user."""
+
+    event: ClassVar[str] = "referral:sent_with_gaia_appended"
+    budget_per_user_day: ClassVar[int] = 250
+
+    tool: Identifier
+
+
 ReferralCopyVariantName = Literal["gift", "earn", "time_back", "insider"]
 
 
@@ -68,7 +80,7 @@ class ReferralShareClicked(WebEvent):
     event: ClassVar[str] = "referral:share_clicked"
     budget_per_user_day: ClassVar[int] = 50
 
-    surface: Literal["page", "sidebar", "post_payment"]
+    surface: Literal["page", "sidebar", "post_payment", "weekly_stats"]
     channel: Literal["native", "whatsapp", "sms", "x", "linkedin", "email", "copy", "qr"]
     copy_variant: ReferralCopyVariantName
 
@@ -79,7 +91,7 @@ class ReferralCardDismissed(WebEvent):
     event: ClassVar[str] = "referral:card_dismissed"
     budget_per_user_day: ClassVar[int] = 10
 
-    surface: Literal["sidebar", "post_payment"]
+    surface: Literal["sidebar", "post_payment", "weekly_stats"]
     copy_variant: ReferralCopyVariantName
 
 
