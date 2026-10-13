@@ -1,17 +1,16 @@
 from collections.abc import AsyncGenerator
-import io
 import json
 import re
 import uuid
 
-import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
+from app.constants.media import PNG_MIME
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
-from app.models.integrations.cloudinary import CloudinaryUploadResult
+from app.services.blob_store import blob_store
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import (
     ImageGenerationNotConfiguredError,
@@ -29,8 +28,8 @@ def generate_public_id(refined_text: str, max_length: int = 50) -> str:
     return f"generated_image_{slug}_{unique_suffix}"
 
 
-async def api_generate_image(message: str, improve_prompt: bool = True) -> ImageData:
-    """Generate an image from the prompt and upload it to Cloudinary."""
+async def api_generate_image(message: str, user_id: str, improve_prompt: bool = True) -> ImageData:
+    """Generate an image from the prompt and store it in the blob store under the user."""
     log.set(
         component="image_service",
         operation="generate_image",
@@ -62,14 +61,14 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
 
         image_bytes = await generate_image(message)
 
-        upload_result = cloudinary.uploader.upload(
-            io.BytesIO(image_bytes),
+        # Both image generators return PNG (gpt-image-1's default output format).
+        image_url = await blob_store().put(
+            user_id,
+            generate_public_id(message),
+            image_bytes,
             resource_type="image",
-            public_id=generate_public_id(message),
-            overwrite=True,
+            content_type=PNG_MIME,
         )
-
-        image_url = CloudinaryUploadResult.model_validate(upload_result).secure_url
         log.info("Image uploaded successfully. URL", image_url=image_url)
 
         return ImageData(
@@ -118,7 +117,7 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextR
         raise HTTPException(status_code=500) from e
 
 
-async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
+async def generate_image_stream(query_text: str, user_id: str) -> AsyncGenerator[str, None]:
     """Stream image generation as SSE lines.
 
     Runs after the request's http_request event has emitted, so it needs its
@@ -134,7 +133,7 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
             yield f"data: {json.dumps({'status': 'generating_image'})}\n\n"
 
             # Get image result with the new structure
-            image_result = await api_generate_image(query_text)
+            image_result = await api_generate_image(query_text, user_id)
 
             # Format the response to match the expected frontend format
             yield f"data: {json.dumps({'image_data': image_result.model_dump()})}\n\n"

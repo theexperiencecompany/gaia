@@ -21,6 +21,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.local_auth is False
     assert profile.hosted_models is True
     assert profile.catalog_composio_auth_configs is True
+    assert profile.local_file_storage is False
 
 
 def test_production_with_local_auth_is_refused() -> None:
@@ -43,6 +44,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.hosted_models is False
     assert profile.catalog_composio_auth_configs is False
     assert profile.local_code_sandbox is False
+    assert profile.local_file_storage is True
 
 
 def test_selfhost_runs_the_local_code_sandbox_only_when_opted_in() -> None:
@@ -80,6 +82,7 @@ def test_development_mirrors_production_enforcement_without_billing() -> None:
     assert profile.runtime_credentials is False
     assert profile.hosted_models is False
     assert profile.catalog_composio_auth_configs is True
+    assert profile.local_file_storage is False
 
 
 def test_development_with_local_auth_gets_the_setup_surface() -> None:

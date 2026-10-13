@@ -12,6 +12,7 @@ from httpx import AsyncClient
 
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from tests.conftest import FAKE_USER
 
 API = "/api/v1"
 
@@ -48,7 +49,7 @@ class TestImageGenerate:
         assert body["url"] == "https://res.cloudinary.com/test/image.jpg"
         assert body["prompt"] == "a cat"
         assert body["improved_prompt"] == "a cat, studio lighting"
-        mock_generate.assert_awaited_once_with("a cat")
+        mock_generate.assert_awaited_once_with("a cat", FAKE_USER.user_id)
 
     async def test_missing_message_is_rejected(self, client: AsyncClient):
         resp = await client.post(f"{API}/image/generate", json={})
@@ -125,8 +126,9 @@ class TestImageStream:
     """POST /api/v1/image/generate/stream."""
 
     async def test_stream_emits_status_image_and_done_frames(self, client: AsyncClient):
-        async def fake_stream(query_text: str):
+        async def fake_stream(query_text: str, user_id: str):
             assert query_text == "a cat"
+            assert user_id == FAKE_USER.user_id
             yield 'data: {"status": "generating_image"}\n\n'
             yield 'data: {"image_data": {"url": "https://cdn/x", "prompt": "a cat", "improved_prompt": null}}\n\n'
             yield "data: [DONE]\n\n"

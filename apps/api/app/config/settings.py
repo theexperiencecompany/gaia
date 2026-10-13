@@ -129,6 +129,9 @@ class CommonSettings(BaseAppSettings):
     # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), which is
     # also what mounts the Docker socket it needs.
     LOCAL_CODE_SANDBOX: bool = False
+    # Where blobs live when settings.deployment.local_file_storage is on; the
+    # self-host compose mounts the gaia-selfhost_files volume here.
+    LOCAL_FILE_STORAGE_PATH: str = "/var/lib/gaia/files"
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None

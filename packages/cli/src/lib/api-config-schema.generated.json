@@ -149,7 +149,7 @@
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       },
@@ -158,7 +158,7 @@
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       },
@@ -167,15 +167,33 @@
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       }
     ],
     "name": "Cloudinary Media Storage",
     "description": "Cloudinary media storage service",
-    "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+    "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
     "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "SHARE_GRANT_SECRET",
+        "required": false,
+        "category": "File Sharing",
+        "description": "HMAC signing secret for single-purpose file-share grants",
+        "affectedFeatures": "File attachments fetched by Composio during tool execution",
+        "defaultValue": null,
+        "docsUrl": null
+      }
+    ],
+    "name": "File Sharing",
+    "description": "HMAC signing secret for single-purpose file-share grants",
+    "affectedFeatures": "File attachments fetched by Composio during tool execution"
   },
   {
     "requiredInProd": true,
@@ -395,6 +413,42 @@
     "description": "E2B secure code execution environment",
     "affectedFeatures": "Code execution and sandboxed environments",
     "docsUrl": "https://e2b.dev/docs"
+  },
+  {
+    "requiredInProd": false,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "BROWSER_HOST_URL",
+        "required": false,
+        "category": "Browser Host",
+        "description": "gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+        "affectedFeatures": "Autonomous browser automation (the browser_task tool)",
+        "defaultValue": null,
+        "docsUrl": null
+      },
+      {
+        "name": "BROWSER_HOST_KEY",
+        "required": false,
+        "category": "Browser Host",
+        "description": "gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+        "affectedFeatures": "Autonomous browser automation (the browser_task tool)",
+        "defaultValue": null,
+        "docsUrl": null
+      },
+      {
+        "name": "BROWSER_FALLBACK_HOST_URL",
+        "required": false,
+        "category": "Browser Host",
+        "description": "gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+        "affectedFeatures": "Autonomous browser automation (the browser_task tool)",
+        "defaultValue": null,
+        "docsUrl": null
+      }
+    ],
+    "name": "Browser Host",
+    "description": "gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+    "affectedFeatures": "Autonomous browser automation (the browser_task tool)"
   },
   {
     "requiredInProd": true,

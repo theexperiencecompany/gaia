@@ -7,9 +7,9 @@ from app.constants.chroma import CHROMA_COLLECTION_SUFFIX
 # Chroma server do not read or delete each other's documents.
 CHROMA_DOCUMENTS_COLLECTION = "documents" + CHROMA_COLLECTION_SUFFIX
 
-# Timeout for downloading a Cloudinary-hosted upload when seeding it into a
-# freshly created conversation's sandbox.
-FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS = 30.0
+# Timeout for downloading a Cloudinary-hosted blob (e.g. seeding an upload into
+# a freshly created conversation's sandbox).
+BLOB_DOWNLOAD_TIMEOUT_SECONDS = 30.0
 
 # MIME types of upload-allowed office documents, routed to local extraction.
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -57,3 +57,11 @@ SHARE_GRANT_MAX_BYTES = 25 * 1024 * 1024
 IMAGE_SUMMARY_NO_VISION_PROVIDER = (
     "Image not described: no configured AI provider on this instance can read images."
 )
+
+# Self-host blobs are served by the authenticated blob route under this path.
+# Stored relative: the self-host web and API share one origin, and a relative
+# URL survives a change of domain.
+LOCAL_BLOB_URL_PREFIX = "/api/v1/blobs"
+# Inside each local blob's directory: its bytes and its metadata.
+LOCAL_BLOB_DATA_FILENAME = "data"
+LOCAL_BLOB_META_FILENAME = "meta.json"

@@ -84,11 +84,11 @@ class TestApiGenerateImage:
                 return_value=b"fake_image_bytes",
             ),
             patch(
-                "app.services.image_service.cloudinary.uploader.upload",
+                "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/image.png"},
             ),
         ):
-            result = await api_generate_image("sunset", improve_prompt=True)
+            result = await api_generate_image("sunset", "user-1", improve_prompt=True)
 
         assert result.url == "https://cdn.example.com/image.png"
         assert result.prompt == "sunset"
@@ -102,11 +102,11 @@ class TestApiGenerateImage:
                 return_value=b"fake_bytes",
             ),
             patch(
-                "app.services.image_service.cloudinary.uploader.upload",
+                "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/img.png"},
             ),
         ):
-            result = await api_generate_image("a cat", improve_prompt=False)
+            result = await api_generate_image("a cat", "user-1", improve_prompt=False)
 
         assert result.url == "https://cdn.example.com/img.png"
         assert result.prompt == "a cat"
@@ -121,7 +121,7 @@ class TestApiGenerateImage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await api_generate_image("test", improve_prompt=False)
+                await api_generate_image("test", "user-1", improve_prompt=False)
 
             assert exc_info.value.status_code == 500
 
@@ -134,7 +134,7 @@ class TestApiGenerateImage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await api_generate_image("test", improve_prompt=False)
+                await api_generate_image("test", "user-1", improve_prompt=False)
 
             assert exc_info.value.status_code == 500
 
@@ -147,7 +147,7 @@ class TestApiGenerateImage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await api_generate_image("test", improve_prompt=False)
+                await api_generate_image("test", "user-1", improve_prompt=False)
 
             assert exc_info.value.status_code == 500
             # The body reaches the client; pin it, not just the status.
@@ -164,7 +164,7 @@ class TestApiGenerateImage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await api_generate_image("", improve_prompt=True)
+                await api_generate_image("", "user-1", improve_prompt=True)
 
             assert exc_info.value.status_code == 500
 
@@ -182,13 +182,13 @@ class TestApiGenerateImage:
                 return_value=b"bytes",
             ),
             patch(
-                "app.services.image_service.cloudinary.uploader.upload",
+                "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/same.png"},
             ),
         ):
             # message is "hello" and response is empty, so refined = "hello"
             # which equals original, so improved_prompt should be None
-            result = await api_generate_image("hello", improve_prompt=True)
+            result = await api_generate_image("hello", "user-1", improve_prompt=True)
 
         assert result.improved_prompt is None
 
@@ -244,7 +244,7 @@ class TestGenerateImageStream:
             return_value=image_result,
         ):
             chunks = []
-            async for chunk in generate_image_stream("sunset"):
+            async for chunk in generate_image_stream("sunset", "user-1"):
                 chunks.append(chunk)
 
         assert len(chunks) == 3
@@ -268,7 +268,7 @@ class TestGenerateImageStream:
             side_effect=Exception("generation failed"),
         ):
             chunks = []
-            async for chunk in generate_image_stream("fail"):
+            async for chunk in generate_image_stream("fail", "user-1"):
                 chunks.append(chunk)
 
         assert len(chunks) == 3
@@ -293,11 +293,11 @@ class TestApiGenerateImagePins:
                 return_value=b"img",
             ),
             patch(
-                "app.services.image_service.cloudinary.uploader.upload",
+                "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/img.png"},
             ) as upload,
         ):
-            await api_generate_image("a cat", improve_prompt=False)
+            await api_generate_image("a cat", "user-1", improve_prompt=False)
 
         log.set.assert_called_once_with(
             component="image_service", operation="generate_image", improve_prompt=False
@@ -322,7 +322,7 @@ class TestApiGenerateImagePins:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await api_generate_image("test", improve_prompt=False)
+                await api_generate_image("test", "user-1", improve_prompt=False)
 
         assert exc_info.value.status_code == 503
         assert exc_info.value.detail == IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE
@@ -340,11 +340,11 @@ class TestApiGenerateImagePins:
                 return_value=b"img",
             ),
             patch(
-                "app.services.image_service.cloudinary.uploader.upload",
+                "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/img.png"},
             ),
         ):
-            result = await api_generate_image("a cat", improve_prompt=True)
+            result = await api_generate_image("a cat", "user-1", improve_prompt=True)
 
         # refined text is "<original>, <improvement>" — both parts stripped+joined
         assert result.improved_prompt == "a cat, a watercolor cat"

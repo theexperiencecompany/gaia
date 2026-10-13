@@ -102,7 +102,8 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         "Cloudinary Media Storage",
         ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"],
         "Cloudinary media storage service",
-        "File uploads, image storage, and support ticket attachments",
+        "File uploads, image storage, and support ticket attachments on hosted "
+        "deployments (a self-hosted instance stores them on a local volume)",
         True,
         True,
         "https://cloudinary.com/documentation/cloudinary_credentials",

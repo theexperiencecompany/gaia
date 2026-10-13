@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Annotated, Any, TypedDict
@@ -772,3 +773,11 @@ class UserUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
     picture: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfilePictureUpload:
+    """A validated profile picture: its bytes and its image MIME type."""
+
+    data: bytes
+    content_type: str

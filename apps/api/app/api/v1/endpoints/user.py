@@ -24,6 +24,7 @@ from app.models.user_models import (
     AuthenticatedUserResponse,
     LogoutResponse,
     OnboardingSubdocument,
+    ProfilePictureUpload,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
@@ -116,7 +117,7 @@ async def update_me(
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
     # Process profile picture if provided
-    picture_data = None
+    picture_upload: ProfilePictureUpload | None = None
     if picture and picture.size and picture.size > 0:
         # Validate file type
         allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
@@ -131,14 +132,16 @@ async def update_me(
         if picture.size > max_size:
             raise HTTPException(status_code=400, detail="File size too large. Maximum size is 5MB")
 
-        picture_data = await picture.read()
+        picture_upload = ProfilePictureUpload(
+            data=await picture.read(), content_type=picture.content_type
+        )
         log.set(picture_size_bytes=picture.size)
 
-    updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
+    updated_user = await update_user_profile(user_id=user_id, name=name, picture=picture_upload)
 
     changed_fields = [
         field
-        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        for field, changed in (("name", name is not None), ("picture", picture_upload is not None))
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
@@ -146,7 +149,7 @@ async def update_me(
         UserId(user_id),
         ProfileUpdated(
             changed_field_count=len(changed_fields),
-            has_picture_upload=picture_data is not None,
+            has_picture_upload=picture_upload is not None,
         ),
     )
     log.set(outcome="success")

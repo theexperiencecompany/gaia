@@ -114,7 +114,10 @@ class SettingsValidator:
                     "CLOUDINARY_API_SECRET",
                 ],
                 description="Cloudinary media storage service",
-                affected_features="File uploads, image storage, and support ticket attachments",
+                affected_features=(
+                    "File uploads, image storage, and support ticket attachments on hosted "
+                    "deployments (a self-hosted instance stores them on a local volume)"
+                ),
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",
             )

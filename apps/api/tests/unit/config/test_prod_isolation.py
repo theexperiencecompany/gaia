@@ -615,3 +615,25 @@ async def test_production_comms_uses_the_env_openai_key_over_a_stored_one(
     assert snapshot is not None
     assert snapshot["api_key"] == "env-openai-key"
     store_read.assert_not_awaited()
+
+
+async def test_production_stores_blobs_in_cloudinary_never_on_local_disk(
+    monkeypatch: pytest.MonkeyPatch, production_profile: None, tmp_path
+) -> None:
+    """Hosted uploads keep their public Cloudinary URL; the self-host volume is never written."""
+    from unittest.mock import patch
+
+    from app.config.settings import settings
+    from app.services.blob_store import CloudinaryBlobStore, blob_store
+
+    monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+    assert settings.deployment.local_file_storage is False
+    store = blob_store()
+    assert isinstance(store, CloudinaryBlobStore)
+
+    with patch("app.services.blob_store.cloudinary.uploader.upload") as upload:
+        upload.return_value = {"secure_url": "https://res.cloudinary.com/x/file.pdf"}
+        url = await store.put("u1", "file_1", b"b", resource_type="raw", content_type="x/y")
+
+    assert url == "https://res.cloudinary.com/x/file.pdf"
+    assert list(tmp_path.iterdir()) == []

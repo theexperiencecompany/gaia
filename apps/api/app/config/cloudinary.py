@@ -59,7 +59,7 @@ def require_cloudinary() -> None:
     raise AppError(
         message=(
             "File uploads are not set up on this instance. Ask the admin to add "
-            "Cloudinary credentials (see the self-hosting docs)."
+            "Cloudinary credentials."
         ),
         why="Uploaded files are stored in Cloudinary, and no Cloudinary account is configured.",
         fix=(
