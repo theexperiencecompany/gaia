@@ -101,12 +101,18 @@ the same PR ran 3.6 min on an idle box vs 11.3 min loaded.
 
 `cpu-slots.sh` is a weighted counting semaphore over a token pool in a
 HOST-SHARED dir (`/run/gaia-ci/cpu-slots`, or `$HOME/ci-cache/cpu-slots` — shared
-across every runner instance because they share `$HOME`; deliberately NOT
-`RUNNER_LOCAL_CACHE`, which is per-instance and would give each runner its own
-budget). A lane takes tokens equal to its real thread appetite and releases them
-at the end, so the concurrent heavy work is capped at the pool size and lanes
-queue instead of thrash. Pool size is `GAIA_CPU_TOKENS`, defaulting to one and a
-half times the thread count (`nproc * 3 / 2`, 24 on the box).
+across every runner instance because they share `$HOME`; never keyed by
+`RUNNER_NAME`, which would give each runner its own budget). A lane takes tokens
+equal to its real thread appetite and releases them at the end, so the
+concurrent heavy work is capped at the pool size and lanes queue instead of
+thrash. Pool size is `GAIA_CPU_TOKENS`, defaulting to one and a half times the
+thread count (`nproc * 3 / 2`, 24 on the box).
+
+`RUNNER_LOCAL_CACHE` is per runner USER, not per instance: every instance on
+the box resolves it to the same `$HOME/ci-cache`. A tool cache that two jobs
+must not share — mypy's, trivy's DB — goes under
+`$RUNNER_LOCAL_CACHE/<tool>/$RUNNER_NAME`; run-dir files that must not collide
+are keyed by `RUNNER_INDEX`.
 
 That default is measured, not assumed, and it has been three values. The floor
 is the test-python slices' static worker shares (5+7+4 = the 16 threads by

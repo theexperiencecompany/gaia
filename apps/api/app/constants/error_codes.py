@@ -18,3 +18,6 @@ FEATURE_KILLED = "FEATURE_KILLED"
 
 # 403 — referral routes need an active subscription; the web shows a "subscribe first" state.
 REFERRAL_SUBSCRIPTION_REQUIRED = "REFERRAL_SUBSCRIPTION_REQUIRED"
+
+# 404 — the conversation does not exist or belongs to another user (never told apart).
+CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND"
