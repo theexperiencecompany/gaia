@@ -367,11 +367,11 @@ class TestCreateReminderIsIdempotent:
     ):
         mock_repo.create.return_value = _reminder_document()
 
-        async def lease_name(user_id: str, title: str) -> str:
+        async def lease_name(user_id: str, title: str, repeat: str | None = None) -> str:
             redis_client.lock.reset_mock()
             payload = StaticReminderPayload(title=title, body=sample_payload.body)
             request = CreateReminderRequest(
-                agent=AgentType.STATIC, payload=payload, scheduled_at=future_time
+                agent=AgentType.STATIC, payload=payload, scheduled_at=future_time, repeat=repeat
             )
             await scheduler.create_reminder(request, user_id)
             (name,), kwargs = redis_client.lock.call_args
@@ -387,6 +387,7 @@ class TestCreateReminderIsIdempotent:
         assert await lease_name(FAKE_USER_ID, "Water") == same
         assert await lease_name(FAKE_USER_ID, "Stretch") != same
         assert await lease_name("another-user", "Water") != same
+        assert await lease_name(FAKE_USER_ID, "Water", repeat="0 9 * * *") != same
 
     async def test_no_lease_fails_loud_instead_of_risking_a_twin(
         self, scheduler, mock_repo, mock_scheduler_base, redis_client, future_time, sample_payload
