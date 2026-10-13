@@ -1,11 +1,13 @@
 """Repository for the instance_settings collection: instance-wide key/value state.
 
 One document per logical setting (key secrets holds the generated instance
-secret, key setup the wizard progress). Keyed by the business key field and
+secret, key setup the wizard progress, key composio_auth_configs the admin's
+Composio auth config ids). Keyed by the business key field and
 written as upserts. No cache: reads are rare and must observe the latest
 persisted value.
 """
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.runtime_models import InstanceSettingsDocument, InstanceSettingsUpdate
 
@@ -21,6 +23,15 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
     async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
         """Return the single document stored under key, or None."""
         return await self._find_one({"key": key})
+
+    async def set_value(self, key: str, value: dict[str, object]) -> None:
+        """Insert or replace the value stored under key in one round trip."""
+        await self._apply_raw_update_unfetched(
+            {"key": key},
+            {"$set": {"value": value}},
+            scope=REPO_GLOBAL_SCOPE,
+            upsert=True,
+        )
 
     async def set_if_absent(self, key: str, value: dict[str, object]) -> bool:
         """Atomically insert value only when key does not exist yet.

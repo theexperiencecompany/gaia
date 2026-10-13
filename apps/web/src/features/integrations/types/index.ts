@@ -55,6 +55,8 @@ export interface Integration {
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
+  /** Composio integration this instance has no auth config for; Connect cannot work. */
+  instanceSetupRequired?: boolean;
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
   requiresAuth?: boolean;

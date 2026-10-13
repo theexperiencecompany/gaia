@@ -45,7 +45,9 @@ def mock_composio():
 
 @pytest.fixture
 def mock_config():
-    with patch(f"{MODULE}.get_integration_by_config", return_value=None) as get_config:
+    with patch(
+        f"{MODULE}.integration_for_auth_config", new_callable=AsyncMock, return_value=None
+    ) as get_config:
         yield get_config
 
 

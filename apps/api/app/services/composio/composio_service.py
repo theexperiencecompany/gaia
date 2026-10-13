@@ -5,15 +5,20 @@ from typing import cast
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
 import composio_client
-from composio_client.types import ConnectedAccountRetrieveResponse
+from composio_client.types import AuthConfigListParams, ConnectedAccountRetrieveResponse
+from composio_client.types.auth_config_list_response import Item as AuthConfigItem
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config.oauth_config import get_composio_social_configs
+from app.config.oauth_config import get_composio_integrations_by_provider
 from app.config.settings import settings
-from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT, COMPOSIO_SERVICE_PROVIDER
+from app.constants.integrations import (
+    COMPOSIO_ACCOUNT_LIST_LIMIT,
+    COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
+    COMPOSIO_SERVICE_PROVIDER,
+)
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.integrations.composio import ComposioConnectLink
@@ -23,6 +28,10 @@ from app.models.trigger_config import TriggerConfig
 # that builds a Composio client, not just where an entrypoint imports app.patches.
 # Without the user_id-injection patch, custom tools 500 with "Missing user_id in auth_credentials".
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
+from app.services.composio.auth_config_resolver import (
+    auth_config_id_for,
+    resolve_auth_configs,
+)
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
@@ -41,7 +50,7 @@ from app.utils.composio_hooks.registry import (
 from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
-COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
+COMPOSIO_INTEGRATIONS = get_composio_integrations_by_provider()
 
 
 class _ComposioEventTotals(BaseModel):
@@ -93,10 +102,12 @@ class ComposioService:
         self, provider: str, user_id: str, state_token: str
     ) -> ComposioConnectLink:
         """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
-        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+        integration = COMPOSIO_INTEGRATIONS.get(provider)
+        if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
-
-        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+        auth_config_id = await auth_config_id_for(integration)
+        if auth_config_id is None:
+            raise ValueError(f"{integration.name} is not set up on this instance")
 
         log.set(composio_provider=provider, composio_user_id=user_id)
         try:
@@ -108,7 +119,7 @@ class ComposioService:
                 None,
                 lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
-                    auth_config_id=config.auth_config_id,
+                    auth_config_id=auth_config_id,
                     callback_url=_callback_url(state_token),
                     allow_multiple=True,
                 ),
@@ -340,13 +351,16 @@ class ComposioService:
     async def check_connection_status(self, providers: list[str], user_id: str) -> dict[str, bool]:
         """Check if a user has active connections for given providers."""
         log.set(composio_user_id=user_id, composio_providers=providers)
-        result = {}
-        required_auth_config_ids = []
-
+        result = dict.fromkeys(providers, False)
+        resolved = await resolve_auth_configs()
+        auth_config_provider_map: dict[str, str] = {}
         for provider in providers:
-            result[provider] = False
-            if provider in COMPOSIO_SOCIAL_CONFIGS:
-                required_auth_config_ids.append(COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id)
+            integration = COMPOSIO_INTEGRATIONS.get(provider)
+            auth_config = resolved.get(integration.id) if integration else None
+            if auth_config is not None:
+                auth_config_provider_map[auth_config.auth_config_id] = provider
+        if not auth_config_provider_map:
+            return result
 
         try:
             loop = asyncio.get_event_loop()
@@ -354,17 +368,11 @@ class ComposioService:
                 None,
                 lambda: self.composio.connected_accounts.list(
                     user_ids=[user_id],
-                    auth_config_ids=required_auth_config_ids,
+                    auth_config_ids=list(auth_config_provider_map),
                     statuses=["ACTIVE"],
                     limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
                 ),
             )
-
-            auth_config_provider_map = {}
-            for provider in providers:
-                if provider in COMPOSIO_SOCIAL_CONFIGS:
-                    auth_config_id = COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id
-                    auth_config_provider_map[auth_config_id] = provider
 
             for account in user_accounts.items:
                 if not account.auth_config.is_disabled and account.status == "ACTIVE":
@@ -383,6 +391,20 @@ class ComposioService:
                 error_type=type(e).__name__,
             )
             return result
+
+    async def list_enabled_auth_configs(self) -> list[AuthConfigItem]:
+        """Return every enabled auth config in this key's Composio project, across all pages."""
+        configs: list[AuthConfigItem] = []
+        cursor: str | None = None
+        while True:
+            params: AuthConfigListParams = {"limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            page = await asyncio.to_thread(self.composio.auth_configs.list, **params)
+            configs.extend(item for item in page.items if item.status == "ENABLED")
+            if not page.next_cursor:
+                return configs
+            cursor = page.next_cursor
 
     def get_connected_account_by_id(
         self, connected_account_id: str
@@ -418,14 +440,20 @@ class ComposioService:
     async def delete_all_connected_accounts(self, user_id: str, provider: str) -> int:
         """Revoke every account, of any status, the user holds on the provider; returns how many."""
         log.set(composio_user_id=user_id, composio_provider=provider)
-        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+        integration = COMPOSIO_INTEGRATIONS.get(provider)
+        if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
-
-        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+        auth_config_id = await auth_config_id_for(integration)
+        if auth_config_id is None:
+            log.info(
+                f"{LogTag.COMPOSIO} Integration not set up on this instance; no accounts to revoke",
+                provider=provider,
+            )
+            return 0
         user_accounts = await asyncio.to_thread(
             lambda: self.composio.connected_accounts.list(
                 user_ids=[user_id],
-                auth_config_ids=[config.auth_config_id],
+                auth_config_ids=[auth_config_id],
                 limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
             )
         )

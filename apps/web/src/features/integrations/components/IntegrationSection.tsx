@@ -7,6 +7,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { Integration } from "../types";
 
@@ -69,21 +70,27 @@ const IntegrationRow: React.FC<{
           </Chip>
         )}
 
-        {(isAvailable || needsAttention) && !isConnected && (
-          <Button
-            variant="flat"
-            size="sm"
-            color={needsAttention ? "warning" : "primary"}
-            startContent={
-              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
-            }
-            onPress={() => {
-              onConnect(integration.id);
-            }}
-          >
-            {CONNECT_ACTION_LABEL[state]}
-          </Button>
+        {integration.instanceSetupRequired && !isConnected && (
+          <InstanceSetupNotice />
         )}
+
+        {(isAvailable || needsAttention) &&
+          !isConnected &&
+          !integration.instanceSetupRequired && (
+            <Button
+              variant="flat"
+              size="sm"
+              color={needsAttention ? "warning" : "primary"}
+              startContent={
+                needsAttention ? <RedoIcon width={16} height={16} /> : undefined
+              }
+              onPress={() => {
+                onConnect(integration.id);
+              }}
+            >
+              {CONNECT_ACTION_LABEL[state]}
+            </Button>
+          )}
       </div>
     </div>
   );

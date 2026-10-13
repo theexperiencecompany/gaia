@@ -726,7 +726,7 @@ class TestInstanceAdminGuard:
             f"{API}/providers/openrouter", json={"api_key": "attacker-key"}
         )
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "not_instance_admin"
+        assert resp.json()["message"] == "not_instance_admin"
         assert provider_service.configs == {}
 
     async def test_delete_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
@@ -770,7 +770,7 @@ class TestInstanceAdminGuard:
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         resp = await client.put(f"{API}/providers/gemini", json={"api_key": "g"})
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "not_instance_admin"
+        assert resp.json()["message"] == "not_instance_admin"
         assert provider_service.configs == {}
 
     async def test_admin_allowed_in_development_with_local_auth(

@@ -4373,6 +4373,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/composio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Composio Setup
+         * @description Each Composio integration's auth config in effect, plus matches found in the Composio project.
+         */
+        get: operations["setup_get_composio_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio/auth-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Composio Auth Configs
+         * @description Replace the instance's stored auth config ids and return the updated view.
+         */
+        put: operations["setup_put_composio_auth_configs"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup/providers": {
         parameters: {
             query?: never;
@@ -7394,6 +7434,68 @@ export interface components {
              * @description Generated email subject line
              */
             subject: string;
+        };
+        /**
+         * ComposioAuthConfigCandidate
+         * @description An enabled auth config in the admin's Composio project for this integration's toolkit.
+         */
+        ComposioAuthConfigCandidate: {
+            /**
+             * Id
+             * @description Composio auth config id (ac_...)
+             */
+            id: string;
+            /**
+             * Name
+             * @description Name the admin gave it in Composio
+             */
+            name: string;
+        };
+        /**
+         * ComposioAuthConfigSource
+         * @description Where the auth config an integration connects through comes from.
+         * @enum {string}
+         */
+        ComposioAuthConfigSource: "stored" | "env" | "catalog";
+        /**
+         * ComposioIntegrationSetup
+         * @description One Composio integration and the auth config it connects through on this instance.
+         */
+        ComposioIntegrationSetup: {
+            /**
+             * Auth Config Id
+             * @description The id in effect; None means not set up
+             */
+            auth_config_id: string | null;
+            /**
+             * Detected
+             * @description Matching auth configs found in the Composio project
+             */
+            detected: components["schemas"]["ComposioAuthConfigCandidate"][];
+            /** Integration Id */
+            integration_id: string;
+            /** Name */
+            name: string;
+            /** @description Where the id in effect comes from */
+            source: components["schemas"]["ComposioAuthConfigSource"] | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit slug the auth config must belong to
+             */
+            toolkit: string;
+        };
+        /**
+         * ComposioSetupResponse
+         * @description GET /setup/composio: the per-integration view the admin panel renders.
+         */
+        ComposioSetupResponse: {
+            /**
+             * Composio Configured
+             * @description Whether a Composio API key resolves
+             */
+            composio_configured: boolean;
+            /** Integrations */
+            integrations: components["schemas"]["ComposioIntegrationSetup"][];
         };
         /**
          * ComposioWebhookAckResponse
@@ -11101,6 +11203,11 @@ export interface components {
             /** Id */
             id: string;
             /**
+             * Instancesetuprequired
+             * @default false
+             */
+            instanceSetupRequired?: boolean;
+            /**
              * Isfeatured
              * @default false
              */
@@ -12924,6 +13031,19 @@ export interface components {
         SandboxToolSchemaRequest: {
             /** Tool Name */
             tool_name: string;
+        };
+        /**
+         * SaveComposioAuthConfigsRequest
+         * @description The full set of auth config ids to store; integrations left out are cleared.
+         */
+        SaveComposioAuthConfigsRequest: {
+            /**
+             * Auth Configs
+             * @description Integration id to Composio auth config id
+             */
+            auth_configs: {
+                [key: string]: string;
+            };
         };
         /**
          * SaveSocialProfilesResponse
@@ -16145,6 +16265,10 @@ export type CommunityIntegrationCreator = components['schemas']['CommunityIntegr
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
 export type CommunityListResponse = components['schemas']['CommunityListResponse'];
 export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
+export type ComposioAuthConfigCandidate = components['schemas']['ComposioAuthConfigCandidate'];
+export type ComposioAuthConfigSource = components['schemas']['ComposioAuthConfigSource'];
+export type ComposioIntegrationSetup = components['schemas']['ComposioIntegrationSetup'];
+export type ComposioSetupResponse = components['schemas']['ComposioSetupResponse'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
@@ -16444,6 +16568,7 @@ export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
+export type SaveComposioAuthConfigsRequest = components['schemas']['SaveComposioAuthConfigsRequest'];
 export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfilesResponse'];
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
@@ -28243,6 +28368,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderCatalogResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_composio_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioSetupResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_put_composio_auth_configs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveComposioAuthConfigsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioSetupResponse"];
                 };
             };
             /** @description Unprocessable Entity */

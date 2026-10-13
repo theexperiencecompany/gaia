@@ -17,6 +17,7 @@ __all__ = [
     "IntegrationCustomUpdated",
     "IntegrationDisconnected",
     "IntegrationError",
+    "IntegrationInstanceSetupSaved",
     "IntegrationInstructionsUpdated",
     "IntegrationPrimaryChanged",
     "McpConnectionTested",
@@ -108,6 +109,17 @@ class IntegrationPrimaryChanged(ServerEvent):
 
     integration_id: Identifier
     account_count: int
+
+
+class IntegrationInstanceSetupSaved(ServerEvent):
+    """A self-host admin saved which Composio auth config each integration connects through."""
+
+    event: ClassVar[str] = "integration:instance_setup_saved"
+    budget_per_user_day: ClassVar[int] = 50
+
+    stored_count: int
+    set_up_count: int
+    total_count: int
 
 
 class IntegrationInstructionsUpdated(ServerEvent):

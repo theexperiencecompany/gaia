@@ -19,6 +19,10 @@ from app.schemas.integrations.responses import (
     MyIntegrationItem,
     MyIntegrationsResponse,
 )
+from app.services.composio.auth_config_resolver import (
+    composio_integrations,
+    resolve_auth_configs,
+)
 from app.services.integrations.integration_connection_service import build_integrations_config
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_status import get_all_integrations_status
@@ -54,10 +58,29 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
 
 async def get_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
     """Return the cached catalog from Mongo without external status checks."""
-    return cast(
+    snapshot = cast(
         MyIntegrationsResponse,
         await _get_cached_my_integrations_snapshot(user_id),
     )
+    return await _flag_instance_setup(snapshot)
+
+
+async def _flag_instance_setup(snapshot: MyIntegrationsResponse) -> MyIntegrationsResponse:
+    """Mark Composio integrations this instance has no auth config for.
+
+    Applied outside the per-user cache: an admin's save must show at once.
+    """
+    resolved = await resolve_auth_configs()
+    missing = {i.id for i in composio_integrations() if i.id not in resolved}
+    if not missing:
+        return snapshot
+    items = [
+        item.model_copy(update={"instance_setup_required": True})
+        if item.source == "platform" and item.id in missing
+        else item
+        for item in snapshot.integrations
+    ]
+    return snapshot.model_copy(update={"integrations": items})
 
 
 def _apply_live_status_overlay(

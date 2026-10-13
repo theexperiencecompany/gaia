@@ -474,7 +474,9 @@ class TestComposioCallback:
         new_callable=AsyncMock,
         return_value=NEW_ACCOUNT,
     )
-    @patch("app.services.oauth.composio_callback.get_integration_by_config")
+    @patch(
+        "app.services.oauth.composio_callback.integration_for_auth_config", new_callable=AsyncMock
+    )
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
@@ -517,7 +519,9 @@ class TestComposioCallback:
         )
 
     @pytest.mark.usefixtures("stubbed_oauth_side_effects")
-    @patch("app.services.oauth.composio_callback.get_integration_by_config")
+    @patch(
+        "app.services.oauth.composio_callback.integration_for_auth_config", new_callable=AsyncMock
+    )
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",

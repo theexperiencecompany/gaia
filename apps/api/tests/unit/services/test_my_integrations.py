@@ -11,18 +11,21 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.models.integration_models import (
     IntegrationResponse,
     StoredIntegrationTool,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
+from app.models.runtime_models import InstanceSettingsDocument
 from app.schemas.integrations.responses import (
     IntegrationConfigItem,
     IntegrationsConfigResponse,
     MyIntegrationItem,
     MyIntegrationsResponse,
 )
+from app.services.composio import auth_config_resolver
 from app.services.integrations import my_integrations
 from app.services.integrations.my_integrations import get_integration_tools, get_my_integrations
 from app.utils.errors import AppError
@@ -129,6 +132,35 @@ class TestGetMyIntegrations:
 
         assert result.integrations[0].status == "not_connected"
         mock_deps.status.assert_not_awaited()
+
+    async def test_composio_integrations_this_instance_cannot_connect_are_flagged(
+        self,
+        mock_deps: SimpleNamespace,
+        mock_redis_cache: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {})
+        stored = InstanceSettingsDocument(key="composio_auth_configs", value={"slack": "ac_s"})
+        monkeypatch.setattr(
+            auth_config_resolver,
+            "instance_settings_repository",
+            SimpleNamespace(find_by_key=AsyncMock(return_value=stored)),
+        )
+        auth_config_resolver.invalidate_auth_config_cache()
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[
+                _config_item(),
+                _config_item(id="slack", name="Slack", slug="slack"),
+                _config_item(id="deepwiki", name="DeepWiki", slug="deepwiki", managed_by="mcp"),
+            ]
+        )
+
+        result = await my_integrations.get_my_integrations_snapshot(USER_ID)
+        auth_config_resolver.invalidate_auth_config_cache()
+
+        flagged = {item.id: item.instance_setup_required for item in result.integrations}
+        assert flagged == {"github": True, "slack": False, "deepwiki": False}
 
     @pytest.mark.regression
     async def test_auth_mcp_uses_reconciled_status_over_connected_mongo_record(

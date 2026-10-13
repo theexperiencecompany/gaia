@@ -13,7 +13,11 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
-from app.constants.integrations import INTEGRATION_STATUS_CONNECTED, MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import (
+    INTEGRATION_STATUS_CONNECTED,
+    MAX_ACCOUNTS_PER_INTEGRATION,
+    NOT_SET_UP_ON_INSTANCE,
+)
 from app.constants.log_tags import LogTag
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
@@ -25,6 +29,7 @@ from app.schemas.integrations.responses import (
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
 )
+from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
@@ -353,6 +358,15 @@ async def connect_composio_integration(
 ) -> ConnectIntegrationResponse:
     """Start a Composio sign-in: a new account, or a fresh one for an expired account in place."""
     log.set(integration={"provider": provider, "action": "connect_composio"})
+    integration = get_integration_by_id(integration_id)
+    if integration is None or await auth_config_id_for(integration) is None:
+        log.set(integration={"provider": provider, "status": "not_set_up"})
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=integration_name,
+            error=f"{integration_name} {NOT_SET_UP_ON_INSTANCE}",
+        )
     composio_service = get_composio_service()
 
     record = await get_account_record(user_id, integration_id)
