@@ -1,12 +1,12 @@
+import type {
+  ReferralCopyVariant,
+  ReferralResolveResponse,
+} from "@shared/api/generated";
 import { ImageResponse } from "next/og";
 import {
   REFERRAL_COPY,
   REFERRAL_UI_COPY,
 } from "@/features/referrals/referralCopy";
-import type {
-  ReferralCopyVariant,
-  ReferralResolveResponse,
-} from "@/features/referrals/types/contract";
 import { offerPrices } from "@/features/referrals/utils/offerPrices";
 import {
   colors,
@@ -203,7 +203,7 @@ function GiftTicketArt({
 
 function InviteOgCard({ invite, code, copyVariant, baseUrl }: InviteOgProps) {
   const prices = offerPrices(invite.offer);
-  const referrer = invite.referrer_first_name ?? "A friend";
+  const referrer = invite.referrer_first_name ?? REFERRAL_UI_COPY.unnamedFriend;
   const { og } = REFERRAL_COPY[copyVariant];
 
   return (
@@ -297,7 +297,8 @@ export async function renderInviteOgImage(
   props: InviteOgProps,
 ): Promise<ImageResponse> {
   const prices = offerPrices(props.invite.offer);
-  const referrer = props.invite.referrer_first_name ?? "A friend";
+  const referrer =
+    props.invite.referrer_first_name ?? REFERRAL_UI_COPY.unnamedFriend;
   const { og } = REFERRAL_COPY[props.copyVariant];
   // Google Fonts subsets to exactly these glyphs, so every rendered string belongs here.
   const sansText = [

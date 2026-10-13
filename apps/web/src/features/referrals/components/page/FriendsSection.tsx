@@ -1,6 +1,6 @@
+import type { ReferredFriend } from "@shared/api/generated";
 import type { ReactNode } from "react";
 import { REFERRAL_UI_COPY } from "../../referralCopy";
-import type { ReferredFriend } from "../../types/contract";
 import { FriendsList } from "../FriendsList";
 
 interface FriendsSectionProps {

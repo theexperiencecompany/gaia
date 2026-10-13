@@ -8,11 +8,13 @@ import {
   Share08Icon,
   Tick02Icon,
 } from "@icons";
+import type { ReferralCopyVariant } from "@shared/api/generated";
+import { useState } from "react";
 import { track } from "@/lib/analytics";
+import { useReferralMe } from "../hooks/useReferrals";
 import { useShareLink } from "../hooks/useShareLink";
 import { REFERRAL_COPY, REFERRAL_UI_COPY } from "../referralCopy";
-import type { ReferralCopyVariant } from "../types/contract";
-import type { OfferPrices } from "../utils/offerPrices";
+import { type OfferPrices, offerPrices } from "../utils/offerPrices";
 
 interface PostPaymentShareCardProps {
   url: string;
@@ -21,8 +23,23 @@ interface PostPaymentShareCardProps {
   onDismiss: () => void;
 }
 
+/** Chained after a confirmed payment; renders nothing until the new subscriber's link exists. */
+export function PostPaymentReferral() {
+  const state = useReferralMe();
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed || state.status !== "ready") return null;
+  return (
+    <PostPaymentShareCard
+      url={state.me.share_link}
+      prices={offerPrices(state.me.offer)}
+      copyVariant={state.me.copy_variant}
+      onDismiss={() => setDismissed(true)}
+    />
+  );
+}
+
 /** Under the payment receipt: one quiet line, the gift, one way to send it. */
-export function PostPaymentShareCard({
+function PostPaymentShareCard({
   url,
   prices,
   copyVariant,

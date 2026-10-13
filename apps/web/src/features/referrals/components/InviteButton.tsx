@@ -2,6 +2,10 @@
 
 import { Button } from "@heroui/button";
 import { Tick02Icon, UserAdd01Icon } from "@icons";
+import type {
+  ReferralInviteStatus,
+  ReferralInviteSurface,
+} from "@shared/api/generated";
 import { cn } from "@/lib/utils";
 import { REFERRAL_UI_COPY } from "../referralCopy";
 import {
@@ -9,10 +13,6 @@ import {
   useInvitePhase,
   useInviteStore,
 } from "../stores/inviteStore";
-import type {
-  ReferralInviteStatus,
-  ReferralInviteSurface,
-} from "../types/contract";
 
 type InviteButtonSurface = Exclude<ReferralInviteSurface, "agent">;
 

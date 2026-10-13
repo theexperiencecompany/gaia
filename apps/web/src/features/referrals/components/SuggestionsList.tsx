@@ -1,8 +1,10 @@
 import { Avatar } from "@heroui/avatar";
+import type { ReferralSuggestion } from "@shared/api/generated";
 import { REFERRAL_UI_COPY } from "../referralCopy";
 import type { InviteSender } from "../stores/inviteStore";
-import type { ReferralSuggestion } from "../types/contract";
 import { InviteButton } from "./InviteButton";
+
+const emailInitial = (email: string) => email.charAt(0).toUpperCase();
 
 interface SuggestionsListProps {
   suggestions: ReferralSuggestion[];
@@ -24,6 +26,8 @@ export function SuggestionsList({ suggestions, send }: SuggestionsListProps) {
           >
             <Avatar
               name={suggestion.name ?? suggestion.email}
+              // An address has no first and last name: "dev@pollinate.studio" is "D", not "DS".
+              getInitials={suggestion.name ? undefined : emailInitial}
               size="sm"
               className="shrink-0"
             />

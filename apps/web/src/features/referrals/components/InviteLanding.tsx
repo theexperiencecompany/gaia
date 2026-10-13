@@ -1,18 +1,19 @@
 import { Avatar } from "@heroui/avatar";
-import Image from "next/image";
-import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
-import { REFERRAL_COPY, REFERRAL_UI_COPY } from "../referralCopy";
 import type {
   ReferralCopyVariant,
   ReferralResolveResponse,
-} from "../types/contract";
+} from "@shared/api/generated";
+import Image from "next/image";
+import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
+import { REFERRAL_COPY, REFERRAL_UI_COPY } from "../referralCopy";
 import { offerPrices } from "../utils/offerPrices";
 
 /** The same wallpaper as the invite's link preview, so the click lands where the card promised. */
 const INVITE_WALLPAPER = "/images/wallpapers/bands_gradient_black.png";
 
 interface InviteLandingProps {
-  invite: ReferralResolveResponse;
+  /** Null when the code could not be resolved: the page still offers a way in. */
+  invite: ReferralResolveResponse | null;
   copyVariant: ReferralCopyVariant;
   signupHref: string;
 }
@@ -23,8 +24,8 @@ export function InviteLanding({
   copyVariant,
   signupHref,
 }: InviteLandingProps) {
-  const prices = offerPrices(invite.offer);
-  const referrer = invite.valid ? invite.referrer_first_name : null;
+  const referrer = invite?.valid ? invite.referrer_first_name : null;
+  const prices = invite ? offerPrices(invite.offer) : null;
 
   return (
     <main className="w-full bg-primary-bg p-3 sm:p-6">
@@ -44,7 +45,7 @@ export function InviteLanding({
           {referrer && (
             <div className="mb-10 flex items-center gap-3 rounded-full bg-white/10 py-1.5 pr-5 pl-1.5 backdrop-blur-xl">
               <Avatar
-                src={invite.referrer_picture ?? undefined}
+                src={invite?.referrer_picture ?? undefined}
                 name={referrer}
                 size="sm"
                 className="size-9"
@@ -61,7 +62,7 @@ export function InviteLanding({
               : REFERRAL_UI_COPY.landingFallbackTitle}
           </h1>
 
-          {referrer && (
+          {referrer && prices && (
             <p className="mt-6 text-lg leading-7 font-light text-zinc-200 tabular-nums sm:text-2xl sm:leading-8">
               <span className="mr-2 text-zinc-400 line-through decoration-zinc-400/70">
                 {prices.regular}

@@ -1,11 +1,11 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
+import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
 import { getElectronAPI } from "@/lib/electron/api";
 import { toast } from "@/lib/toast";
-import type { ReferralCopyVariant } from "../types/contract";
 import {
   channelHref,
   type LinkChannel,

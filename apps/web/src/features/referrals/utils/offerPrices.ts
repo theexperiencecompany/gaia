@@ -1,5 +1,5 @@
+import type { ReferralOffer } from "@shared/api/generated";
 import { formatWholeOrCents } from "@/features/pricing/utils/money";
-import type { ReferralOffer } from "../types/contract";
 
 /** The friend's monthly gift as display strings, read from the live offer (never hardcoded). */
 export interface OfferPrices {

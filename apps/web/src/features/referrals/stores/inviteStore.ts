@@ -1,10 +1,10 @@
-import { create } from "zustand";
-import { devtools } from "zustand/middleware";
-import { track } from "@/lib/analytics";
 import type {
   ReferralInviteStatus,
   ReferralInviteSurface,
-} from "../types/contract";
+} from "@shared/api/generated";
+import { create } from "zustand";
+import { devtools } from "zustand/middleware";
+import { track } from "@/lib/analytics";
 
 /** The "sending" beat before the undo window opens, so the click reads as acknowledged. */
 const INVITE_ACK_MS = 600;

@@ -1,6 +1,6 @@
+import type { ReferralMeResponse } from "@shared/api/generated";
 import { formatDateUTC } from "@shared/utils";
 import { REFERRAL_UI_COPY } from "../referralCopy";
-import type { ReferralMeResponse } from "../types/contract";
 
 interface EarnedSummaryProps {
   me: ReferralMeResponse;

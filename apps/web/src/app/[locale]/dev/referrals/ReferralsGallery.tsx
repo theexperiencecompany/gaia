@@ -17,9 +17,6 @@ import { useGalleryParams } from "./galleryParams";
 
 const VIEW_LABELS: Record<GalleryView, string> = {
   page: "Settings page",
-  sidebar: "Sidebar",
-  post_payment: "Post-payment",
-  hover_card: "Hover card",
   landing: "Landing",
   og: "OG image",
 };

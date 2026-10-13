@@ -9,8 +9,8 @@ import {
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
 import { InviteButton } from "@/features/referrals/components/InviteButton";
+import { useHoverCardInvite } from "@/features/referrals/hooks/useReferrals";
 import { REFERRAL_UI_COPY } from "@/features/referrals/referralCopy";
-import type { InviteSender } from "@/features/referrals/stores/inviteStore";
 import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
 import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
@@ -50,17 +50,16 @@ interface EmailPreviewProps {
   name: string | null;
   avatar: string | null;
   onAvatarError: (url: string) => void;
-  /** Sends a GAIA invite to this address; absent when the viewer can't invite (not Pro, or their own address). */
-  sendInvite?: InviteSender;
 }
 
-export function EmailPreview({
+function EmailPreview({
   email,
   name,
   avatar,
   onAvatarError,
-  sendInvite,
 }: EmailPreviewProps) {
+  // Undefined unless the viewer is Pro and this is not their own address.
+  const sendInvite = useHoverCardInvite(email);
   return (
     <div className="flex w-full flex-col gap-3">
       <div className="flex w-full items-center gap-3">

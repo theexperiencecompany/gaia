@@ -1,13 +1,14 @@
 "use client";
 
 import { GiftIcon } from "@icons";
+import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useRouter } from "next/navigation";
 import { SidebarPromo } from "@/components/layout/sidebar/SidebarPromo";
 import { track } from "@/lib/analytics";
+import { useReferralMe } from "../hooks/useReferrals";
 import { useShareLink } from "../hooks/useShareLink";
 import { REFERRAL_COPY, REFERRAL_SIDEBAR_COPY } from "../referralCopy";
-import type { ReferralCopyVariant } from "../types/contract";
-import type { OfferPrices } from "../utils/offerPrices";
+import { type OfferPrices, offerPrices } from "../utils/offerPrices";
 
 /** Where the card sends people whose browser has no share sheet. */
 const REFERRALS_SETTINGS_HREF = "/settings/referrals";
@@ -19,8 +20,21 @@ interface SidebarReferralPromoProps {
   copyVariant: ReferralCopyVariant;
 }
 
-/** The sidebar promo card, for Pro users: share the link where it can, else open the page. */
-export function SidebarReferralPromo({
+/** The Pro user's sidebar slot: their live invite link, or nothing until it loads. */
+export function SidebarReferralSlot() {
+  const state = useReferralMe();
+  if (state.status !== "ready") return null;
+  return (
+    <SidebarReferralPromo
+      url={state.me.share_link}
+      prices={offerPrices(state.me.offer)}
+      copyVariant={state.me.copy_variant}
+    />
+  );
+}
+
+/** The sidebar promo card: share the link where the platform can, else open the page. */
+function SidebarReferralPromo({
   url,
   prices,
   copyVariant,

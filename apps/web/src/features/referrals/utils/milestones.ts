@@ -7,7 +7,7 @@ const FIRST_MILESTONES = [1, 3, 5];
 const NICE_STEPS = [1, 2.5, 5];
 const FIRST_NICE_DECADE = 10;
 /** How many markers the bar shows at once. */
-export const VISIBLE_MILESTONES = 5;
+const VISIBLE_MILESTONES = 5;
 
 function milestoneAt(index: number): number {
   if (index < FIRST_MILESTONES.length) return FIRST_MILESTONES[index];

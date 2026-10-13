@@ -3,9 +3,9 @@ import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
 import { GiftIcon, UserAdd01Icon } from "@icons";
+import type { ReferredFriend } from "@shared/api/generated";
 import { formatDate } from "@shared/utils";
 import { REFERRAL_UI_COPY } from "../referralCopy";
-import type { ReferredFriend } from "../types/contract";
 
 interface FriendsListProps {
   friends: ReferredFriend[];
@@ -30,7 +30,7 @@ export function FriendsList({ friends }: FriendsListProps) {
       <ul className="divide-y divide-zinc-800/60">
         {friends.map((friend) => (
           <FriendRow
-            key={`${friend.first_name}-${friend.joined_at}`}
+            key={`${friend.joined_at}-${friend.first_name ?? ""}`}
             friend={friend}
           />
         ))}
@@ -41,13 +41,12 @@ export function FriendsList({ friends }: FriendsListProps) {
 
 function FriendRow({ friend }: { friend: ReferredFriend }) {
   const isPaid = friend.status === "paid";
+  const name = friend.first_name ?? REFERRAL_UI_COPY.unnamedFriend;
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <Avatar name={friend.first_name} size="sm" className="shrink-0" />
+      <Avatar name={name} size="sm" className="shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-200">
-          {friend.first_name}
-        </p>
+        <p className="truncate text-sm font-medium text-zinc-200">{name}</p>
         <p className="text-xs text-zinc-500 tabular-nums">
           {friend.paid_at
             ? REFERRAL_UI_COPY.subscribedOn(formatDate(friend.paid_at))

@@ -2,12 +2,12 @@
 
 import { Button } from "@heroui/button";
 import { Copy01Icon, Share08Icon, Tick02Icon } from "@icons";
+import type { ReferralCopyVariant } from "@shared/api/generated";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { cn } from "@/lib/utils";
 import { type ShareSurface, useShareLink } from "../../hooks/useShareLink";
 import { REFERRAL_COPY, REFERRAL_UI_COPY } from "../../referralCopy";
-import type { ReferralCopyVariant } from "../../types/contract";
 import type { OfferPrices } from "../../utils/offerPrices";
 import { ShareChannels } from "./ShareChannels";
 

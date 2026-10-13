@@ -1,7 +1,7 @@
 import type {
   ReferralCopyVariant,
   ReferralSuggestionReason,
-} from "./types/contract";
+} from "@shared/api/generated";
 import type { OfferPrices } from "./utils/offerPrices";
 
 /**
@@ -138,6 +138,16 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
   },
 };
 
+/** Landing angles the browser picks between (2 to 3 live at once); the pick rides on /resolve. */
+export const LIVE_LANDING_VARIANTS: readonly ReferralCopyVariant[] = [
+  "gift",
+  "earn",
+  "time_back",
+];
+
+/** A link preview renders before any browser picks a landing angle, so it always speaks gift. */
+export const INVITE_OG_VARIANT: ReferralCopyVariant = "gift";
+
 /** The sidebar card reads the same for everyone: the earn angle is the clearest at that size. */
 export const REFERRAL_SIDEBAR_COPY = {
   title: "Your next month, free",
@@ -166,6 +176,7 @@ export const REFERRAL_UI_COPY = {
     n === 1 ? "1 friend on the way" : `${n} friends on the way`,
   nextBill: (date: string) => `Next bill moves to ${date}`,
   friendsTitle: "Friends",
+  unnamedFriend: "A friend",
   friendsEmpty:
     "Your first friend who subscribes gets you a free month. Who's it going to be?",
   joinedOn: (date: string) => `Joined ${date}`,
@@ -192,6 +203,12 @@ export const REFERRAL_UI_COPY = {
   landingPrice: (p: OfferPrices) => giftPrice(p, "your"),
   thenRegular: (p: OfferPrices) => `then ${p.regular}/month`,
   landingFrom: (referrer: string) => `From ${referrer}`,
+  subscribeFirstTitle: "Gifts come with GAIA Pro",
+  subscribeFirstBody:
+    "Subscribe and you'll get a link that gives friends GAIA for less, plus a free month for you every time one joins.",
+  subscribeFirstCta: "See plans",
+  loadFailedTitle: "Couldn't load your invite link",
+  tryAgain: "Try again",
   ogTicketLabel: "A GIFT FOR YOU",
   ogDomain: "heygaia.io",
   landingFallbackTitle: "Meet GAIA",

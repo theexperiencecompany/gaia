@@ -1,13 +1,13 @@
 "use client";
 
-import { REFERRAL_COPY } from "../../referralCopy";
-import type { InviteSender } from "../../stores/inviteStore";
 import type {
   ReferralCopyVariant,
   ReferralLayoutVariant,
   ReferralMeResponse,
   ReferralSuggestion,
-} from "../../types/contract";
+} from "@shared/api/generated";
+import { REFERRAL_COPY } from "../../referralCopy";
+import type { InviteSender } from "../../stores/inviteStore";
 import { offerPrices } from "../../utils/offerPrices";
 import { EarnedSummary } from "../EarnedSummary";
 import { MilestoneBar } from "../MilestoneBar";

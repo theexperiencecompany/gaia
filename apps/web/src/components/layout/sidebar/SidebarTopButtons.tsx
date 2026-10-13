@@ -20,6 +20,7 @@ import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
 import { toMajorUnits } from "@/features/pricing/utils/money";
+import { SidebarReferralSlot } from "@/features/referrals/components/SidebarReferralPromo";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -119,6 +120,8 @@ export default function SidebarTopButtons() {
           }
         />
       )}
+      {/* Pro users get the invite card in the same slot; the two never show together. */}
+      {isPaid && <SidebarReferralSlot />}
 
       <div className="flex w-full flex-col gap-0.5">
         {buttonData.map(({ route, icon, label }) => {

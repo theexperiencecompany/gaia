@@ -1,4 +1,3 @@
-import type { InviteSender } from "@/features/referrals/stores/inviteStore";
 import type {
   ReferralCopyVariant,
   ReferralLayoutVariant,
@@ -7,7 +6,8 @@ import type {
   ReferralResolveResponse,
   ReferralSuggestion,
   ReferredFriend,
-} from "@/features/referrals/types/contract";
+} from "@shared/api/generated";
+import type { InviteSender } from "@/features/referrals/stores/inviteStore";
 
 export const FIXTURE_OFFER: ReferralOffer = {
   currency: "USD",
@@ -18,14 +18,7 @@ export const FIXTURE_OFFER: ReferralOffer = {
   yearly_discount_minor: 3000,
 };
 
-export const GALLERY_VIEWS = [
-  "page",
-  "sidebar",
-  "post_payment",
-  "hover_card",
-  "landing",
-  "og",
-] as const;
+export const GALLERY_VIEWS = ["page", "landing", "og"] as const;
 export type GalleryView = (typeof GALLERY_VIEWS)[number];
 
 export const COPY_VARIANTS: readonly ReferralCopyVariant[] = [
