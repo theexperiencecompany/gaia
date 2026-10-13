@@ -158,11 +158,6 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-def _secret_or_none(api_key: str | None) -> SecretStr | None:
-    """Wrap an API key exactly as pydantic coerces one into a SecretStr | None field."""
-    return None if api_key is None else SecretStr(api_key)
-
-
 # Runtime provider configuration: the async credential service mirrors results
 # into a plain snapshot below so sync paths (lazy loaders) read without awaiting.
 # Until the first refresh lands, consumers read env fallback directly.
