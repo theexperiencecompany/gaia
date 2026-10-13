@@ -2,7 +2,7 @@
 
 import re
 
-from app.constants.email import MAILTO_PREFIX
+from app.constants.email import GMAIL_CANONICAL_DOMAIN, GMAIL_DOMAINS, MAILTO_PREFIX
 
 # Separators an email local part uses between name words, plus the trailing
 # digits people append to disambiguate ("john.doe83").
@@ -40,6 +40,19 @@ def derive_name_from_email(email: str) -> str:
         if (stripped := _TRAILING_DIGITS.sub("", word))
     ]
     return " ".join(words) if words else local_part
+
+
+def email_identity(email: str) -> str:
+    """Return the one address every spelling of a mailbox delivers to, for same-person checks.
+
+    Lowercases, drops a +tag, and for Gmail drops the dots and folds
+    googlemail.com into gmail.com: a.ryan+x@googlemail.com -> aryan@gmail.com.
+    """
+    local, _, domain = email.strip().lower().rpartition("@")
+    local = local.partition("+")[0]
+    if domain in GMAIL_DOMAINS:
+        return f"{local.replace('.', '')}@{GMAIL_CANONICAL_DOMAIN}"
+    return f"{local}@{domain}"
 
 
 def is_email_target(value: str) -> bool:

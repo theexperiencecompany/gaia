@@ -7,7 +7,14 @@ from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 import time_machine
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
+from app.config.feature_flags import (
+    FEATURE_FLAGS,
+    REFERRAL_COPY_FLAG,
+    REFERRAL_LAYOUT_FLAG,
+    FeatureFlag,
+    FeatureStage,
+    kill_switch_key,
+)
 from app.config.settings import CommonSettings, ProductionSettings, settings as app_settings
 from app.constants.analytics import ANALYTICS_DAY_TIMEZONE
 from app.constants.error_codes import FEATURE_KILLED
@@ -21,9 +28,11 @@ from app.constants.feature_flags import (
     FEATURE_USER_NOT_FOUND_MESSAGE,
     FEATURE_USER_NOT_FOUND_WHY,
 )
+from app.constants.referrals import ReferralCopyVariant, ReferralLayoutVariant
 from app.models.user_models import UserDocument
 from app.services.feature_flags import (
     _get_posthog_client,
+    get_variant,
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
@@ -777,3 +786,42 @@ class TestSetUserFlagRefusals:
             answer = await set_user_flag(USER_ID, "BROWSER_OBSCURA", False)
 
         assert (answer.enabled, answer.available, answer.unavailable_reason) == (False, True, None)
+
+
+class TestVariantFlags:
+    async def test_a_known_variant_is_served_as_its_enum_member(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.return_value = "time_back"
+
+        assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.TIME_BACK
+        mock_client.get_feature_flag.assert_called_once_with("REFERRAL_COPY_VARIANT", USER_ID)
+        evaluated.assert_not_called()
+
+    @pytest.mark.parametrize("answer", [None, True, False, "control", "TICKET", 3])
+    async def test_no_answer_or_an_unknown_one_serves_the_default_and_counts_it(
+        self, answer: object, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.return_value = answer
+
+        assert await get_variant(REFERRAL_LAYOUT_FLAG, USER_ID) is ReferralLayoutVariant.TICKET
+        assert evaluated.call_args.args == (
+            UserId(USER_ID),
+            FeatureFlagEvaluated(
+                flag="REFERRAL_LAYOUT_VARIANT", variant="ticket", fallback_reason="flag_unevaluated"
+            ),
+        )
+
+    async def test_a_failing_posthog_serves_the_default(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
+
+        assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.GIFT
+        assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
+
+    async def test_unconfigured_posthog_serves_the_default(
+        self, no_client: None, evaluated: MagicMock
+    ) -> None:
+        assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.GIFT
+        assert evaluated.call_args.args[1].fallback_reason == "posthog_unconfigured"

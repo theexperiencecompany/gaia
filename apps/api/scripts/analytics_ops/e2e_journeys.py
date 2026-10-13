@@ -21,6 +21,7 @@ from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.referral_models import ReferralInviteStatus, ReferralInviteSurface
 from app.models.user_models import (
     OnboardingNeed,
     OnboardingPhase,
@@ -43,6 +44,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.schemas.referrals import ReferralInviteRequest
 from shared.py.analytics import UserId
 
 from .posthog_api import REPO_ROOT
@@ -58,6 +60,8 @@ PRO_PRICE_CENTS = 2000
 CURRENCY = "USD"
 BILLING_COUNTRY = "US"
 SIM_REPLY = "[[say:analytics e2e]]"
+# Resend's delivery sink: accepts the invite and mails no one.
+REFERRAL_INVITEE = "delivered@resend.dev"
 # The ARQ worker runs a manual workflow; a sim run finishes in seconds.
 WORKFLOW_RUN_TIMEOUT_S = 120.0
 WORKFLOW_POLL_INTERVAL_S = 1.0
@@ -223,6 +227,21 @@ def payment(stack: Stack) -> None:
     with stack.client() as api:
         _send_webhook(api, signer, DodoWebhookEventType.SUBSCRIPTION_ACTIVE, subscription)
         _send_webhook(api, signer, DodoWebhookEventType.PAYMENT_SUCCEEDED, paid)
+
+
+def referral_invite(stack: Stack) -> None:
+    """Invite one friend from the referral page, now that the payment made this user Pro."""
+    request = ReferralInviteRequest(emails=[REFERRAL_INVITEE], surface=ReferralInviteSurface.PAGE)
+    with stack.client() as api:
+        sent = _expect(
+            api.post(
+                "/referrals/invites", json=request.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.OK,
+        )
+    statuses = [result["status"] for result in sent.json()["results"]]
+    if statuses != [ReferralInviteStatus.SENT.value]:
+        raise JourneyError(f"/referrals/invites did not send the invite: {statuses}")
 
 
 def chat(stack: Stack) -> None:

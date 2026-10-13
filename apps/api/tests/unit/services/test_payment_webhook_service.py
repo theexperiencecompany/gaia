@@ -69,6 +69,7 @@ pytestmark = pytest.mark.usefixtures(
     "mock_paywall_resume",
     "mock_subscription_plan_cache_drop",
     "mock_queue_inbox_desk",
+    "mock_no_referral",
 )
 
 
@@ -483,6 +484,36 @@ class TestHandlePaymentSucceeded:
         assert result.payment_id == "pay_001"
         assert result.subscription_id == "sub_xyz789"
         assert "success" in result.message.lower()
+
+    async def test_a_payment_is_offered_to_the_referral_program(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_pay_ref")
+
+        paid = mock_no_referral.conversion.await_args.args[0]
+        assert paid.payment_id == PAYMENT_DATA_PAYLOAD["payment_id"]
+
+    async def test_a_failed_reward_delivery_fails_the_delivery_so_dodo_retries(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        mock_no_referral.conversion.side_effect = ConnectionError("dodo unreachable")
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        result = await webhook_service.process_webhook(event_data, "wh_pay_ref_fail")
+
+        assert result.status == "failed"
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_pay_ref_fail")
 
     async def test_tracks_analytics_event(
         self,
