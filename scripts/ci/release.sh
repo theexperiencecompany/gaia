@@ -54,22 +54,31 @@ source "$(dirname "$0")/lib/image-repos.sh"
 # timezone handling) can never silently produce a tag the images don't carry.
 #
 # VERSION_SCHEME is production | develop; deploys only run from master, where
-# the scheme is production, and anything else resolves to empty tags. The
-# outputs are empty when that group was not released this run (the deploy then
-# falls back to :latest via the compose file's ${VAR:-latest} defaults).
+# the scheme is production. The outputs are empty when that group was not
+# released this run (the deploy then falls back to :latest via the compose
+# file's ${VAR:-latest} defaults).
 cmd_resolve_image_tags() {
 
   : "${VERSION_SCHEME:?VERSION_SCHEME is required}"
   : "${APPS_RELEASE_OUTCOME:?APPS_RELEASE_OUTCOME is required}"
   : "${BOTS_RELEASE_OUTCOME:?BOTS_RELEASE_OUTCOME is required}"
 
-  # Production scheme: YYMM.DD.<short sha>. Anchored so :latest and dev tags
-  # never match.
-  local TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$'
+  # The tag shape each nx.json versionScheme produces, anchored so :latest and
+  # the other scheme's tags never match. Branch runs resolve their develop tag
+  # too: the multi-arch API manifest needs it, and deploys stay master-only.
+  local TAG_RE
+  case "$VERSION_SCHEME" in
+    production) TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$' ;;
+    develop) TAG_RE='^develop-[0-9a-f]{6,12}$' ;;
+    *)
+      echo "::error::release: unknown VERSION_SCHEME '$VERSION_SCHEME'" >&2
+      return 1
+      ;;
+  esac
 
   # Prints the group's tag on stdout (empty = group not released). Fails loud
   # when a released group's local images carry no/ambiguous/mismatched
-  # production tags, or when the tag cannot be made to exist in GHCR — a deploy
+  # tags of this run's scheme, or when the tag cannot be made to exist in GHCR — a deploy
   # pinned to a missing tag would fail far later, on the Swarm host.
   resolve_group() {
     local group="$1" outcome="$2"
@@ -86,11 +95,11 @@ cmd_resolve_image_tags() {
     for repo in "${repos[@]}"; do
       candidates=$(docker image ls --format '{{.Tag}}' "$GHCR_NAMESPACE/$repo" | grep -E "$TAG_RE" || true)
       if [[ -z "$candidates" ]]; then
-        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local production tag matching $TAG_RE" >&2
+        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local $VERSION_SCHEME tag matching $TAG_RE" >&2
         return 1
       fi
       if [[ "$(echo "$candidates" | wc -l)" -ne 1 ]]; then
-        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple production tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
+        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple $VERSION_SCHEME tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
         return 1
       fi
       if [[ -z "$tag" ]]; then
@@ -120,13 +129,9 @@ cmd_resolve_image_tags() {
     echo "$tag"
   }
 
-  local apps_tag="" bots_tag=""
-  if [[ "$VERSION_SCHEME" = "production" ]]; then
-    apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
-    bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
-  else
-    echo "release: scheme is '$VERSION_SCHEME' (not production) — deploys are disabled off-master, skipping tag resolution"
-  fi
+  local apps_tag bots_tag
+  apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
+  bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
 
   {
     echo "apps_tag=$apps_tag"
