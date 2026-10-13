@@ -11,8 +11,8 @@ import { runUpFlow } from "./flow.js";
 function printPlainSummary(store: CLIStore): void {
   const data = store.currentState.data;
   if (data.error || !data.finished) return;
-  const webPort = (data.upWebPort as number) ?? 3000;
-  const apiPort = (data.upApiPort as number) ?? 8000;
+  const webUrl = data.upWebUrl as string;
+  const apiUrl = data.upApiUrl as string;
   if (data.upNoStart !== true && data.upStillStarting === true) {
     console.info("\nGAIA is still starting...");
     console.info("  Containers are up but not answering yet.");
@@ -21,17 +21,10 @@ function printPlainSummary(store: CLIStore): void {
     console.info("\nGAIA is ready!");
   }
   if (data.upNoStart !== true) {
-    console.info(`  Web: http://localhost:${webPort}`);
-    console.info(`  API: http://localhost:${apiPort}`);
+    console.info(`  Web: ${webUrl}`);
+    console.info(`  API: ${apiUrl}`);
   }
-  console.info(
-    `Finish setup in your browser: http://localhost:${webPort}/setup`,
-  );
-  if (data.webDriftDetected === true) {
-    console.info(
-      "Note: Web source changed since last build — run 'gaia up --build' to rebuild",
-    );
-  }
+  console.info(`Finish setup in your browser: ${webUrl}/setup`);
   console.info(
     "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
   );
@@ -42,9 +35,8 @@ export async function runUp(
     yes?: boolean;
     llmKey?: string;
     llmProvider?: LlmProvider;
-    apiPort?: number;
+    domain?: string;
     webPort?: number;
-    pull?: boolean;
     build?: boolean;
     noStart?: boolean;
     forceDevTree?: boolean;

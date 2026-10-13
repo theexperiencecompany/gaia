@@ -12,7 +12,6 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execa } from "execa";
 import {
   createUpAnswerResolver,
   DEFAULT_INSTALL_DIR,
@@ -21,13 +20,14 @@ import {
   type UpFlags,
   validateLlmFlags,
 } from "../../lib/answers.js";
-import { readConfig, writeConfig } from "../../lib/config.js";
+import { readConfig, updateConfig, writeConfig } from "../../lib/config.js";
+import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
 import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
-import { startServices } from "../../lib/service-starter.js";
+import { detectSetupMode, startServices } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
@@ -84,52 +84,6 @@ export function detectBuildPhase(logLine: string): string | null {
   return null;
 }
 
-/** Marker of a developer checkout (as opposed to a plain install). */
-function hasMiseToml(repoPath: string): boolean {
-  return fs.existsSync(path.join(repoPath, "mise.toml"));
-}
-
-/**
- * Detect whether `apps/web` source has changed since the running `gaia-web`
- * image was built. v1 heuristic: if the container exists and git reports local
- * changes or a recent pull touched `apps/web/`, warn the user to rebuild.
- * Never throws — returns false on any detection failure.
- */
-export async function detectWebDrift(repoPath: string): Promise<boolean> {
-  // Container must exist; otherwise there is nothing stale.
-  try {
-    await execa("docker", ["inspect", "gaia-web"]);
-  } catch {
-    return false;
-  }
-
-  // Local modifications to apps/web/
-  try {
-    const { stdout } = await execa(
-      "git",
-      ["status", "--porcelain", "--", "apps/web/"],
-      { cwd: repoPath },
-    );
-    if (stdout.trim().length > 0) return true;
-  } catch {
-    // ignore — try next heuristic
-  }
-
-  // Recent pull changed apps/web/ (HEAD@{1} may not exist on fresh clones)
-  try {
-    const { stdout } = await execa(
-      "git",
-      ["diff", "--name-only", "HEAD@{1}", "HEAD", "--", "apps/web/"],
-      { cwd: repoPath },
-    );
-    if (stdout.trim().length > 0) return true;
-  } catch {
-    // HEAD@{1} missing or not a git repo — not drift
-  }
-
-  return false;
-}
-
 export async function runUpFlow(
   store: CLIStore,
   options: UpFlags = {},
@@ -179,7 +133,12 @@ export async function runUpFlow(
   }
 
   try {
-    await ensureDocker(store);
+    if (
+      (await ensureDocker(store, { assumeYes: options.yes === true })) ===
+      "relaunch"
+    ) {
+      return;
+    }
   } catch (e) {
     store.setError(e as Error);
     return;
@@ -187,23 +146,23 @@ export async function runUpFlow(
 
   // 2. Ports — conflict-derived alternatives, then explicit flag overrides
   //    win (user intent beats automatic fallback).
-  const portOverrides = await runPortChecks(store);
+  const portOverrides = await runPortChecks(store, "selfhost");
   if (portOverrides === null) {
     return;
   }
   Object.assign(portOverrides, portOverridesFromFlags(options));
 
-  // 3. Dev-tree guardrail: operating on a checkout that contains mise.toml
-  //    but is NOT the recorded install likely means a developer's working
-  //    tree — rewriting its .env files would clobber dev config.
+  // 3. Never rewrite a developer-mode checkout's .env; an unconfigured or
+  //    self-host one (a half-finished first run) is safe to resume.
   if (
-    hasMiseToml(targetPath) &&
+    !needsClone &&
     targetPath !== recordedInstall &&
-    !options.forceDevTree
+    !options.forceDevTree &&
+    (await detectSetupMode(targetPath)) === "developer"
   ) {
     store.setError(
       new Error(
-        `${targetPath} looks like a developer checkout (contains mise.toml) but is not your recorded GAIA install.\n` +
+        `${targetPath} is configured as a developer checkout (apps/api/.env is in developer mode).\n` +
           "'gaia up' would overwrite its environment files.\n" +
           "Re-run with --force-dev-tree to proceed anyway.",
       ),
@@ -243,19 +202,25 @@ export async function runUpFlow(
     store.setStatus("Repository ready!");
     await delay(500);
   }
+  // Record the install before anything else can fail, so a rerun resumes
+  // this checkout instead of tripping over it.
+  updateConfig({ repoPath: targetPath });
 
   // 5. Environment — selfhost pipeline with pre-sourced answers; prompts
   //    never block because the answer resolver covers them.
   await runEnvSetup(store, targetPath, "selfhost", portOverrides, {
     llmProvider: options.llmProvider,
     llmKey: options.llmKey,
+    domain: options.domain,
   });
   if (store.currentState.error) {
     return;
   }
 
-  const webPort = portOverrides[3000] ?? 3000;
-  const apiPort = portOverrides[8000] ?? 8000;
+  const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
+  const webUrl = options.domain
+    ? `https://${options.domain}`
+    : `http://localhost:${webPort}`;
 
   // 6. Start — pull-first fast path, local build fallback.
   if (options.noStart) {
@@ -263,29 +228,11 @@ export async function runUpFlow(
     store.setStatus(
       "Environment ready. Start services later with 'gaia start'.",
     );
-    finishUp(store, targetPath, webPort, apiPort, {
+    finishUp(store, targetPath, webUrl, {
       noStart: true,
       customProvider: options.llmProvider === "custom",
     });
     return;
-  }
-
-  // Web drift detection (v1): if apps/web source changed since last build and
-  // gaia-web container exists, warn to rebuild. Don't auto-rebuild (slow).
-  if (!options.build) {
-    try {
-      const drifted = await detectWebDrift(targetPath);
-      if (drifted) {
-        store.updateData("webDriftDetected", true);
-        // Visible in both TUI (finished screen) and plain summary; also
-        // briefly in the status line before it is overwritten by start progress.
-        store.setStatus(
-          "Web source changed since last build — run 'gaia up --build' to rebuild",
-        );
-      }
-    } catch {
-      // never block start on drift check failure
-    }
   }
 
   try {
@@ -295,12 +242,14 @@ export async function runUpFlow(
     return;
   }
 
-  // Compose returning is not the stack answering — wait for API health + web
-  // before pointing at a browser. On timeout the finish screen says so and
-  // exit stays 0 (services keep running).
-  const readiness = await waitForUpReadiness(store, { apiPort, webPort });
+  // Compose returning is not the stack answering. Probe localhost: the proxy
+  // answers there even before a GAIA_DOMAIN resolves. A timeout exits 0.
+  const readiness = await waitForUpReadiness(store, {
+    apiUrl: localApiUrl("selfhost", portOverrides),
+    webPort,
+  });
 
-  finishUp(store, targetPath, webPort, apiPort, {
+  finishUp(store, targetPath, webUrl, {
     noStart: false,
     customProvider: options.llmProvider === "custom",
     stillStarting: !readiness.ready,
@@ -312,18 +261,18 @@ export async function runUpFlow(
   if (readiness.ready) {
     const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
     if (!options.yes && isTTY && os.platform() === "darwin") {
-      const setupUrl = `http://localhost:${webPort}/setup`;
+      const setupUrl = `${webUrl}/setup`;
       execFile("open", [setupUrl], () => undefined);
     }
   }
 }
 
 /**
- * Compose start with the pull-first fast path: pre-built registry images
- * when possible, local build fallback — unless --build forces a build or
- * --pull restricts to pull-only.
+ * Compose start from the published images, or from a local build with --build.
+ * A failed start never turns into a build behind the user's back: building is
+ * slow and CPU-heavy, and it would hide why the images did not come up.
  *
- * @throws Error from the last failed start attempt.
+ * @throws Error naming --build when the images cannot be pulled or started.
  */
 async function startSelfhostServices(
   store: CLIStore,
@@ -360,67 +309,27 @@ async function startSelfhostServices(
   };
   const onStatus = (status: string) => store.setStatus(status);
 
-  if (options.build) {
-    await startServices(
-      repoPath,
-      "selfhost",
-      onStatus,
-      portOverrides,
-      logHandler,
-      {
-        build: true,
-      },
-    );
-    store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyComplete", true);
-    return;
+  if (!options.build) {
+    store.setStatus("Pulling GAIA images from the registry...");
   }
-
-  // Pull pre-built images first (fast); fall back to building locally
-  // unless --pull restricted us to pull-only.
-  let pullError: Error | null = null;
   try {
-    store.setStatus("Pulling pre-built images from registry...");
     await startServices(
       repoPath,
       "selfhost",
       onStatus,
       portOverrides,
       logHandler,
-      {
-        pull: true,
-      },
+      // A rerun keeps the images it has; `gaia update` refreshes them.
+      options.build ? { build: true } : { pull: "missing" },
     );
-    store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyComplete", true);
-    return;
   } catch (e) {
-    pullError = e as Error;
-  }
-
-  const reason = pullError.message.split("\n")[0] ?? "unknown error";
-  if (options.pull) {
+    const reason = (e as Error).message;
     throw new Error(
-      `Pulling images failed: ${reason}\nUse --build to build images locally instead.`,
+      options.build
+        ? `Failed to build and start services: ${reason}`
+        : `Failed to start services from the published images: ${reason}\n` +
+            "Check 'gaia logs'. To build the images from this checkout instead, rerun with --build.",
     );
-  }
-  store.setStatus(
-    `Registry pull failed (${reason}) — building images locally (this takes a few minutes)...`,
-  );
-
-  try {
-    await startServices(
-      repoPath,
-      "selfhost",
-      onStatus,
-      portOverrides,
-      logHandler,
-      {
-        build: true,
-      },
-    );
-  } catch (e) {
-    throw new Error(`Failed to start services: ${(e as Error).message}`);
   }
   store.updateData("dependencyProgress", 100);
   store.updateData("dependencyComplete", true);
@@ -430,8 +339,7 @@ async function startSelfhostServices(
 function finishUp(
   store: CLIStore,
   repoPath: string,
-  webPort: number,
-  apiPort: number,
+  webUrl: string,
   flags?: {
     noStart?: boolean;
     customProvider?: boolean;
@@ -449,8 +357,8 @@ function finishUp(
   });
 
   store.updateData("setupMode", "selfhost");
-  store.updateData("upWebPort", webPort);
-  store.updateData("upApiPort", apiPort);
+  store.updateData("upWebUrl", webUrl);
+  store.updateData("upApiUrl", `${webUrl}/api/v1`);
   store.updateData("upNoStart", flags?.noStart === true);
   // Services started but never answered within the readiness budget — the
   // finished screen must say so instead of claiming GAIA is running.

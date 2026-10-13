@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeConfig } from "../../lib/config.js";
+import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
 import { portOverridesToDockerEnv } from "../../lib/env-writer.js";
 import {
@@ -44,16 +45,14 @@ export async function runInitFlow(
     return;
   }
 
-  // Check Ports
-  // Note: 8083 (Mongo Express) is only used in dev mode, but we check it here
-  // since mode selection happens later in the flow.
-  const portOverrides = await runPortChecks(store);
+  // 2. Setup Mode
+  const setupMode = await selectSetupMode(store);
+
+  // Each mode publishes different host ports, so check after choosing.
+  const portOverrides = await runPortChecks(store, setupMode);
   if (portOverrides === null) {
     return;
   }
-
-  // 2. Setup Mode
-  const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
@@ -237,7 +236,7 @@ export async function runInitFlow(
         (status) => store.setStatus(status),
         portOverrides,
         dockerLogHandler,
-        { pull: true },
+        { pull: "missing" },
       );
       pullSucceeded = true;
     } catch (e) {
@@ -282,9 +281,10 @@ export async function runInitFlow(
 
     // Compose returning is not the stack answering — wait like `gaia up`;
     // on timeout the finish screen says so, exit stays 0.
-    const apiPort = portOverrides[8000] ?? 8000;
-    const webPort = portOverrides[3000] ?? 3000;
-    const readiness = await waitForUpReadiness(store, { apiPort, webPort });
+    const readiness = await waitForUpReadiness(store, {
+      apiUrl: localApiUrl("selfhost", portOverrides),
+      webPort: portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT,
+    });
     store.updateData("stillStarting", !readiness.ready);
 
     store.setStep("Finished");

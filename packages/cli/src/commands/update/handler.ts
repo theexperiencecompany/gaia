@@ -47,9 +47,6 @@ function printManualSteps(): void {
     "  git log HEAD..origin/master --oneline -- apps/web apps/api infra/docker  # what changed",
   );
   out("  git pull --ff-only");
-  out("  # if apps/web/Dockerfile or apps/web/package.json changed:");
-  out("  gaia up --build");
-  out("  # otherwise:");
   out(
     "  gaia up   # or: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --pull always",
   );
@@ -131,9 +128,7 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
       out(`  ... and ${status.commits.length - 10} more`);
     }
   }
-  out(
-    `\nStrategy: ${status.needsRebuild ? "--build (Dockerfile/package.json changed)" : "--pull always"}`,
-  );
+  out("\nStrategy: pull the latest published images (--pull always)");
   out("Preserves infra/docker/.env and volumes (never runs down -v).");
 
   let confirmed = options.yes === true;
@@ -154,15 +149,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   }
 
   try {
-    await pullAndRestart(repoPath, status.needsRebuild, (msg) =>
-      out(`  ${msg}`),
-    );
+    await pullAndRestart(repoPath, (msg) => out(`  ${msg}`));
     out("\nAlready up to date after pull — services restarted.");
-    if (status.needsRebuild) {
-      out("Rebuilt images locally (preserved infra/docker/.env and volumes).");
-    } else {
-      out("Pulled latest images (preserved infra/docker/.env and volumes).");
-    }
+    out("Pulled latest images (preserved infra/docker/.env and volumes).");
   } catch (e) {
     // Provide the manual fallback on any failure after fetch.
     const msg = (e as Error).message;

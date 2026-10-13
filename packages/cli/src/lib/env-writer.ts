@@ -204,23 +204,45 @@ const DOCKER_PORT_VAR_MAP: Record<number, string> = {
   8080: "CHROMADB_HOST_PORT",
   8083: "MONGO_EXPRESS_HOST_PORT",
   3000: "WEB_HOST_PORT",
+  3443: "HTTPS_HOST_PORT",
 };
+
+const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = Object.fromEntries(
+  Object.entries(DOCKER_PORT_VAR_MAP).map(([port, name]) => [
+    name,
+    Number(port),
+  ]),
+);
+
+/** Self-host values for infra/docker/.env beyond port mappings. */
+export interface SelfhostComposeSettings {
+  /** Group of the Docker socket inside containers (sandbox group_add). */
+  dockerSocketGid: number;
+  /** Public domain the proxy serves over HTTPS; kept from a prior run when absent. */
+  domain?: string;
+}
+
+/** Compose profile that runs the bundled single-origin proxy. */
+const SELFHOST_PROXY_PROFILE = "proxy";
 
 export function writeDockerComposeEnv(
   repoRoot: string,
   portOverrides: Record<number, number>,
   mode?: SetupMode,
+  selfhost?: SelfhostComposeSettings,
 ): void {
   const envPath = path.join(repoRoot, "infra", "docker", ".env");
   backupIfExists(envPath);
 
   // Merge-don't-clobber: preserve existing ports, domains and unknown keys so a
-  // rerun with no new conflicts never erases a prior `CHROMADB_HOST_PORT=18080`
-  // or hand-edited `NEXT_PUBLIC_APP_URL`.
+  // rerun with no new conflicts never erases a prior `CHROMADB_HOST_PORT=18080`.
   const existingValues: EnvValues = fs.existsSync(envPath)
     ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))
     : {};
-  const merged: EnvValues = { ...existingValues };
+  // NEXT_PUBLIC_APP_URL fed the retired web runtime URL rewrite; the image now
+  // calls a same-origin /api/v1, so a stale value must not linger.
+  const { NEXT_PUBLIC_APP_URL: _retired, ...merged }: EnvValues =
+    existingValues;
 
   for (const [original, replacement] of Object.entries(portOverrides)) {
     const origPort = Number(original);
@@ -230,27 +252,11 @@ export function writeDockerComposeEnv(
     }
   }
 
-  // In selfhost mode, write the web runtime URL for the entrypoint's placeholder
-  // rewrite (runtime always wins). Preserve an explicit non-localhost domain
-  // (reverse-proxy) across reruns.
-  if (mode === "selfhost") {
-    const existingUrl = existingValues["NEXT_PUBLIC_APP_URL"];
-    const isCustomDomain =
-      !!existingUrl &&
-      !existingUrl.includes("localhost") &&
-      !existingUrl.includes("127.0.0.1");
-    if (!isCustomDomain) {
-      const webPort =
-        portOverrides[3000] ??
-        (existingValues["WEB_HOST_PORT"]
-          ? Number(existingValues["WEB_HOST_PORT"])
-          : 3000);
-      const safePort =
-        Number.isFinite(webPort) && webPort > 0 && webPort <= 65535
-          ? webPort
-          : 3000;
-      merged["NEXT_PUBLIC_APP_URL"] = `http://localhost:${safePort}`;
-    }
+  if (mode === "selfhost" && selfhost) {
+    // An explicit COMPOSE_PROFILES (e.g. a platform proxy instead) wins.
+    merged["COMPOSE_PROFILES"] ??= SELFHOST_PROXY_PROFILE;
+    merged["DOCKER_SOCKET_GID"] = String(selfhost.dockerSocketGid);
+    if (selfhost.domain) merged["GAIA_DOMAIN"] = selfhost.domain;
   }
 
   const lines: string[] = [
@@ -348,18 +354,6 @@ export function patchDockerComposePorts(repoRoot: string): void {
     fs.writeFileSync(composePath, content, "utf-8");
   }
 }
-
-const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = {
-  API_HOST_PORT: 8000,
-  POSTGRES_HOST_PORT: 5432,
-  REDIS_HOST_PORT: 6379,
-  MONGO_HOST_PORT: 27017,
-  RABBITMQ_HOST_PORT: 5672,
-  RABBITMQ_MGMT_PORT: 15672,
-  CHROMADB_HOST_PORT: 8080,
-  MONGO_EXPRESS_HOST_PORT: 8083,
-  WEB_HOST_PORT: 3000,
-};
 
 export function readDockerComposePortOverrides(
   repoRoot: string,

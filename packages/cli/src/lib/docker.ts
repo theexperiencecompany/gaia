@@ -1,4 +1,9 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { execa } from "execa";
+import type { SetupMode } from "./env-parser.js";
+
+const DOCKER_SOCKET_PATH = "/var/run/docker.sock";
 
 export interface ContainerStatus {
   name: string;
@@ -6,65 +11,59 @@ export interface ContainerStatus {
   health?: string;
 }
 
-const GAIA_CONTAINERS = [
-  "gaia-backend",
-  "gaia-web",
-  "chromadb",
-  "postgres",
-  "redis",
-  "mongo",
-  "rabbitmq",
-  "arq_worker",
-];
+/** Docker Compose project name for each setup mode (`name:` in its file). */
+export const COMPOSE_PROJECT_BY_MODE: Record<SetupMode, ComposeProject> = {
+  selfhost: "gaia-selfhost",
+  developer: "gaia-dev",
+};
 
-export async function getContainerStatuses(): Promise<ContainerStatus[]> {
-  try {
-    const { stdout } = await execa("docker", [
-      "inspect",
-      "--format",
-      "{{.Name}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
-      ...GAIA_CONTAINERS,
-    ]);
+export type ComposeProject = "gaia-selfhost" | "gaia-dev";
 
-    const inspected = new Map<string, ContainerStatus>();
-    for (const line of stdout.trim().split("\n")) {
-      if (!line) continue;
-      const [rawName, status, health] = line.split("|");
-      const name = rawName?.replace(/^\//, "") ?? "";
-      inspected.set(name, {
-        name,
-        status: status === "running" ? "running" : "stopped",
-        health: health !== "none" ? health : undefined,
-      });
-    }
+const HEALTH_IN_STATUS_RE = /\((healthy|unhealthy|health: starting)\)/;
 
-    return GAIA_CONTAINERS.map(
-      (name) => inspected.get(name) ?? { name, status: "not_found" },
-    );
-  } catch {
-    const promises = GAIA_CONTAINERS.map(
-      async (name): Promise<ContainerStatus> => {
-        try {
-          const { stdout } = await execa("docker", [
-            "inspect",
-            "--format",
-            "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
-            name,
-          ]);
-          const [status, health] = stdout.trim().split("|");
-          return {
-            name,
-            status: status === "running" ? "running" : "stopped",
-            health: health !== "none" ? health : undefined,
-          };
-        } catch {
-          return { name, status: "not_found" };
-        }
-      },
-    );
+/** Status of every container in a compose project, named by compose service. */
+export async function getContainerStatuses(
+  project: ComposeProject,
+): Promise<ContainerStatus[]> {
+  const containers = await getComposeProjectContainers(project);
+  return containers.map((c) => ({
+    name: c.service,
+    status: c.state === "running" ? "running" : "stopped",
+    health: c.health,
+  }));
+}
 
-    return Promise.all(promises);
+/**
+ * Host ports the running containers of a compose project publish. A port held
+ * by GAIA's own stack is not a conflict: a rerun must keep it, not move off it.
+ */
+export async function getProjectPublishedPorts(
+  project: ComposeProject,
+): Promise<Set<number>> {
+  const { stdout } = await execa("docker", [
+    "ps",
+    "--filter",
+    `label=com.docker.compose.project=${project}`,
+    "--format",
+    "{{.Ports}}",
+  ]);
+  const ports = new Set<number>();
+  for (const match of stdout.matchAll(/:(\d+)->/g)) {
+    ports.add(Number(match[1]));
   }
+  return ports;
+}
+
+/**
+ * Group owning the Docker socket as containers see it, for the self-host
+ * sandbox's `group_add`. Linux bind-mounts the host socket as is; Docker
+ * Desktop and OrbStack expose it root-owned (gid 0) inside their VM.
+ */
+export function getDockerSocketGid(): number {
+  if (os.platform() !== "linux" || !fs.existsSync(DOCKER_SOCKET_PATH)) {
+    return 0;
+  }
+  return fs.statSync(DOCKER_SOCKET_PATH).gid;
 }
 
 export async function isDockerRunning(): Promise<boolean> {
@@ -82,11 +81,15 @@ export interface ComposeContainerInfo {
   service: string;
   /** Raw Docker state, e.g. "running", "restarting", "exited". */
   state: string;
+  /** Healthcheck verdict when the service defines one, e.g. "healthy". */
+  health?: string;
 }
 
 /**
  * List all containers of a Docker Compose project (including stopped ones),
- * keyed by compose service name. Throws when the daemon is unreachable so
+ * keyed by compose service name. Containers carry no fixed names, so the
+ * project label is the stable handle that also keeps a dev and a self-host
+ * stack apart on one host. Throws when the daemon is unreachable so
  * callers can distinguish "daemon down" from "container missing".
  */
 export async function getComposeProjectContainers(
@@ -98,7 +101,7 @@ export async function getComposeProjectContainers(
     "--filter",
     `label=com.docker.compose.project=${project}`,
     "--format",
-    '{{.Label "com.docker.compose.service"}}|{{.State}}',
+    '{{.Label "com.docker.compose.service"}}|{{.State}}|{{.Status}}',
   ]);
 
   return parseComposePsOutput(stdout);
@@ -108,9 +111,10 @@ function parseComposePsOutput(stdout: string): ComposeContainerInfo[] {
   const containers: ComposeContainerInfo[] = [];
   for (const line of stdout.trim().split("\n")) {
     if (!line) continue;
-    const [service, state] = line.split("|");
+    const [service, state, statusText] = line.split("|");
     if (!service || !state) continue;
-    containers.push({ service, state });
+    const health = statusText?.match(HEALTH_IN_STATUS_RE)?.[1];
+    containers.push(health ? { service, state, health } : { service, state });
   }
   return containers;
 }

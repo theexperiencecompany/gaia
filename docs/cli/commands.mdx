@@ -19,6 +19,7 @@ gaia logs          # Stream logs
 gaia stop          # Stop services
 gaia status        # Check service health
 gaia doctor        # Diagnose a GAIA install
+gaia update        # Pull the latest GAIA and restart (self-host)
 gaia --version     # Show CLI version
 gaia --help        # Show all commands
 ```
@@ -37,6 +38,7 @@ gaia --help        # Show all commands
 | `gaia stop`      | Stop running GAIA services                                                   |
 | `gaia status`    | Check health and latency of GAIA services                                    |
 | `gaia doctor`    | Diagnose a GAIA install: docker, services and setup checks                   |
+| `gaia update`    | Pull the latest GAIA and restart, keeping volumes and `infra/docker/.env`     |
 | `gaia --version` | Display the current CLI version                                              |
 | `gaia --help`    | Show help and available commands                                             |
 
@@ -87,18 +89,17 @@ One-command setup: configure, pull and start GAIA (self-host).
 gaia up
 ```
 
-Combines configuration, image pull/build and startup into a single command.
+Combines configuration, image pull/build and startup into a single command. GAIA is served on one port through a bundled proxy: the web app at `/` and the API at `/api/v1`.
 
 **Options:**
 
 | Flag                     | Description                                                        |
 | ------------------------ | ------------------------------------------------------------------ |
-| `--yes`                  | Accept all defaults (no prompts)                                   |
+| `--yes`                  | Accept all defaults (no prompts), including installing Docker on apt-based Linux |
 | `--llm-key <key>`        | LLM API key for first boot                                         |
 | `--llm-provider <name>`  | Provider for `--llm-key`: `openrouter`, `gemini`, `openai`, or `custom` |
-| `--api-port <port>`      | Host port for the API                                              |
-| `--web-port <port>`      | Host port for the web app                                          |
-| `--pull`                 | Pull pre-built images only (fail instead of building)              |
+| `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
+| `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
 | `-b, --build`            | Build images locally before starting                               |
 | `--no-start`             | Configure environment only; do not start services                  |
 | `--force-dev-tree`       | Allow operating on a developer checkout that is not the install    |
@@ -106,7 +107,12 @@ Combines configuration, image pull/build and startup into a single command.
 ```bash
 # Fully non-interactive first boot
 gaia up --yes --llm-key <key> --llm-provider openrouter
+
+# Public server with HTTPS (DNS must already point at this host)
+gaia up --yes --domain gaia.example.com
 ```
+
+On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the `docker` group and relaunches itself under `sg docker`, so the same command runs to completion.
 
 ---
 
@@ -231,7 +237,7 @@ line per check with a remediation hint (`Fix: …`) on failure:
 1. **Docker daemon** — reachable via `docker info`
 2. **Compose containers** — expected services per setup mode
    (`gaia-selfhost` or `gaia-dev`) are running
-3. **API health** — `/health` answers (honors `infra/docker/.env` port overrides)
+3. **API health** — `/api/v1/ping` answers (honors `infra/docker/.env` port overrides)
 4. **Setup readiness** — models/plans seeded, LLM provider configured, admin
    account created, billing enabled; each unconfigured item is reported as a
    warning pointing at the web setup wizard
@@ -254,7 +260,7 @@ gaia doctor
   [ok]  Docker daemon
   [FAIL] Compose containers (gaia-selfhost) — gaia-web missing
          Fix: Run 'gaia start' to bring the stack up, or check 'docker compose -p gaia-selfhost logs'.
-  [ok]  API health (localhost:8000) — HTTP 200
+  [ok]  API health (http://localhost:3000/api/v1) — HTTP 200
   ...
 
 Summary: 1 blocking.
@@ -279,10 +285,10 @@ Overrides persist across restarts and are reused by `gaia start`, `gaia logs`, a
 ### Updating GAIA
 
 ```bash
-cd /path/to/gaia
-git pull
-gaia setup
+gaia update        # add --yes to skip the confirmation
 ```
+
+Fetches `origin/master` into your GAIA checkout, summarizes what changed, then runs `git pull --ff-only` and restarts the services on freshly pulled images, rebuilding locally only when the web image's `Dockerfile` or `package.json` changed. It never deletes volumes and keeps `infra/docker/.env`.
 
 ### Updating the CLI
 

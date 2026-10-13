@@ -29,11 +29,21 @@ gaia up
 
 That's the whole setup. When the command finishes it prints `http://localhost:3000` — open it, create your admin account, paste an AI provider key, and start chatting. The browser-side steps are covered in [Self-hosting overview](/self-hosting/overview).
 
+Useful flags:
+
+| Flag                 | Effect                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `--yes`              | No prompts at all; also consents to installing Docker on apt-based Linux                                  |
+| `--domain <domain>`  | Serve GAIA at `https://<domain>` with an automatic Let's Encrypt certificate (uses ports 80 and 443)        |
+| `--web-port <port>`  | Host port GAIA is served on (default 3000)                                                                |
+| `--build`            | Build the images from your checkout instead of pulling them                                              |
+| `--no-start`         | Write the configuration without starting services                                                         |
+
 ## What `gaia up` Does
 
 <Steps>
   <Step title="Prerequisite check">
-    Verifies Docker is installed and running. If Docker is missing, the CLI offers to install it for you instead of failing.
+    Verifies Docker is installed and running. If Docker is missing, the CLI offers to install it for you instead of failing. On Linux, a non-root user is added to the `docker` group and the command relaunches itself under `sg docker`, so there is no need to log out and back in.
   </Step>
 
   <Step title="Repository setup">
@@ -41,11 +51,11 @@ That's the whole setup. When the command finishes it prints `http://localhost:30
   </Step>
 
   <Step title="Environment configuration">
-    Writes minimal `.env` files with self-host defaults: `ENV=selfhost` and `AUTH_MODE=local`. The three required machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) are generated automatically — you never see or type them. Port conflicts are resolved by picking free ports.
+    Writes minimal `.env` files with self-host defaults: `ENV=selfhost` and `AUTH_MODE=local`. The three required machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) are generated automatically — you never see or type them. Port conflicts are resolved by picking free ports. Compose settings — the `proxy` profile, the web port, your domain — go to `infra/docker/.env`.
   </Step>
 
   <Step title="Start the stack">
-    Pulls the published images (falling back to a local build if needed) and starts every service via Compose.
+    Pulls the published multi-arch images (or builds them from your checkout with `--build`) and starts every service via Compose, behind a single Caddy proxy that serves both the web app and the API on one port.
   </Step>
 
   <Step title="Hand-off">
@@ -61,8 +71,9 @@ That's the whole setup. When the command finishes it prints `http://localhost:30
 | `gaia doctor`  | Diagnoses a broken stack and prints a named fix per problem          |
 | `gaia init`    | Full interactive wizard (clone, configure, start)                    |
 | `gaia setup`   | Re-configure an existing GAIA repository                             |
-| `gaia start`   | Start services (add `--pull --build` after updating)                 |
+| `gaia start`   | Start services                                                       |
 | `gaia stop`    | Stop services                                                        |
+| `gaia update`  | Pull the latest GAIA and restart, keeping your data and settings     |
 | `gaia status`  | Show which services are running                                      |
 | `gaia logs`    | Stream logs                                                          |
 | `gaia dev`     | Run in development mode (for contributors — see [Development setup](/developers/development-setup)) |
@@ -96,20 +107,14 @@ It walks the whole stack in order — Docker daemon, containers, API health endp
 
 ## Port Conflict Handling
 
-If required ports are already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative port. Infrastructure URLs in your `.env` files are automatically updated to use the alternative ports.
+A self-hosted stack publishes a single port: the proxy's. If it is already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative. The API and databases are not published to your machine at all, so they can never conflict.
 
-Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persist across restarts.
+Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persist across restarts. To change them after setup, edit that file directly:
 
-To change port assignments after setup, edit `infra/docker/.env` directly:
-
-| Variable             | Service    | Default |
-| -------------------- | ---------- | ------- |
-| `API_HOST_PORT`      | API        | 8000    |
-| `WEB_HOST_PORT`      | Web        | 3000    |
-| `POSTGRES_HOST_PORT` | PostgreSQL | 5432    |
-| `REDIS_HOST_PORT`    | Redis      | 6379    |
-| `MONGO_HOST_PORT`    | MongoDB    | 27017   |
-| `RABBITMQ_HOST_PORT` | RabbitMQ   | 5672    |
-| `CHROMADB_HOST_PORT` | ChromaDB   | 8080    |
+| Variable          | What it controls                                    | Default |
+| ----------------- | --------------------------------------------------- | ------- |
+| `WEB_HOST_PORT`   | The port GAIA is served on (HTTP)                   | 3000    |
+| `HTTPS_HOST_PORT` | The HTTPS port, used with `GAIA_DOMAIN`             | 3443    |
+| `GAIA_DOMAIN`     | Domain to serve over HTTPS (set by `--domain`)      | unset   |
 
 <Info>Restart services after editing: `gaia stop && gaia start`</Info>

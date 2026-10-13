@@ -46,7 +46,7 @@ Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your d
 | --- | --- |
 | Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
 | Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
-| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
+| Run it on your own machines | `curl -fsSL https://heygaia.io/install.sh \| sh && gaia up` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
@@ -62,29 +62,28 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-Prefer your own machines? You get your own keys and models, no caps, your data on your disks, and a bundled Grafana dashboard to watch it all — in exchange for running real infrastructure.
+Prefer your own machines? You get your own keys and models, no caps, and your data on your disks — in exchange for running real infrastructure.
 
 > [!IMPORTANT]
 > The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
 
-Needs [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
-
 ```bash
-npm install -g @heygaia/cli
-gaia init                     # choose "Self-Host (Docker)"
+curl -fsSL https://heygaia.io/install.sh | sh
+gaia up                       # add --yes for no prompts, --domain gaia.example.com for HTTPS
 # → http://localhost:3000
 ```
 
-That checks prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything. After that:
+`gaia up` checks prerequisites (offering to install [Docker](https://docs.docker.com/get-docker/) if it's missing), clones the repo, generates the configuration, pulls the published images and starts everything behind a single port. You finish setup in the browser. After that:
 
 ```bash
 gaia status   # health-check every service
 gaia logs     # stream logs
 gaia stop     # stop everything
 gaia start    # bring it back up
+gaia update   # pull the latest GAIA and restart
 ```
 
-Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
+Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
 
 Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
 

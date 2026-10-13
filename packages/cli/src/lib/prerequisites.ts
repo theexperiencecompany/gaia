@@ -2,6 +2,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import type { CLIStore } from "../ui/store.js";
+import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
+import {
+  ensureDockerGroupMembership,
+  isDockerSocketPermissionError,
+} from "./docker-group.js";
+import {
+  DEFAULT_API_PORT,
+  DEFAULT_HTTPS_PORT,
+  DEFAULT_WEB_PORT,
+} from "./endpoints.js";
+import type { SetupMode } from "./env-parser.js";
 
 export type CheckResult = "success" | "error" | "missing" | "pending";
 
@@ -10,6 +21,8 @@ export interface PrerequisiteInfo {
   installUrl: string;
   installed: boolean;
   working: boolean;
+  /** The daemon answered, but refused this user (socket permissions). */
+  permissionDenied?: boolean;
   errorMessage?: string;
 }
 
@@ -34,10 +47,57 @@ const PORT_SERVICE_MAP: Record<number, string> = {
   27017: "MongoDB",
   5672: "RabbitMQ",
   15672: "RabbitMQ Management",
-  3000: "Web Frontend",
+  [DEFAULT_WEB_PORT]: "Web Frontend",
+  [DEFAULT_HTTPS_PORT]: "Web Frontend (HTTPS)",
   8080: "ChromaDB",
   8083: "Mongo Express",
 };
+
+/**
+ * Host ports each mode publishes, by default value. Self-host publishes only
+ * its proxy; developer mode publishes every infra service plus the native
+ * API and web dev servers.
+ */
+const REQUIRED_HOST_PORTS: Record<SetupMode, readonly number[]> = {
+  selfhost: [DEFAULT_WEB_PORT, DEFAULT_HTTPS_PORT],
+  developer: [
+    DEFAULT_API_PORT,
+    5432,
+    6379,
+    27017,
+    5672,
+    15672,
+    DEFAULT_WEB_PORT,
+    8080,
+    8083,
+  ],
+};
+
+/**
+ * Port check for a mode's host ports (after overrides). Ports already
+ * published by this mode's own compose project count as available, so a
+ * rerun or `gaia doctor` against a running stack never reports GAIA itself.
+ */
+export async function checkModePorts(
+  mode: SetupMode,
+  overrides: Record<number, number> = {},
+): Promise<PortCheckResult[]> {
+  const ownPorts = await getProjectPublishedPorts(
+    COMPOSE_PROJECT_BY_MODE[mode],
+  );
+  const effective = REQUIRED_HOST_PORTS[mode].map((p) => overrides[p] ?? p);
+  const toCheck = effective.filter((p) => !ownPorts.has(p));
+  const results = await checkPortsWithFallback(toCheck);
+  const byPort = new Map(results.map((r) => [r.port, r]));
+  return effective.map(
+    (port) =>
+      byPort.get(port) ?? {
+        port,
+        service: PORT_SERVICE_MAP[port] || `Port ${port}`,
+        available: true,
+      },
+  );
+}
 
 export async function checkGit(): Promise<CheckResult> {
   try {
@@ -66,12 +126,15 @@ export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
     };
   }
 
+  let permissionDenied = false;
   try {
     await execa("docker", ["info"], { timeout: 5000 });
     working = true;
-  } catch {
-    errorMessage =
-      "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
+  } catch (e) {
+    permissionDenied = isDockerSocketPermissionError(e);
+    errorMessage = permissionDenied
+      ? "Docker is running but this user cannot reach its socket (not in the docker group)."
+      : "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
   }
 
   return {
@@ -79,6 +142,7 @@ export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
     installUrl: PREREQUISITE_URLS.docker,
     installed,
     working,
+    permissionDenied,
     errorMessage,
   };
 }
@@ -105,14 +169,34 @@ function isDebianAptLinux(): boolean {
   );
 }
 
+/** Outcome of {@link ensureDocker}. */
+export type DockerReadiness =
+  /** Docker answers this process; carry on. */
+  | "ready"
+  /**
+   * This user was just granted the docker group, which only a new process
+   * picks up: the command runner relaunches under `sg docker` and the flow
+   * must stop here (see lib/docker-group.ts).
+   */
+  | "relaunch";
+
+export interface EnsureDockerOptions {
+  /** `--yes`: consent to installing Docker and joining the docker group. */
+  assumeYes?: boolean;
+}
+
 /**
- * Ensure Docker is installed and running, installing it when the user confirms.
- * Linux apt + TTY runs the official script via sudo/sh; Linux non-TTY fails loud.
- * macOS never auto-installs (points at OrbStack / Docker Desktop); a stopped
- * daemon is an actionable start-Docker error.
+ * Ensure Docker is installed, running, and usable by this user.
+ * Linux apt installs the official engine on consent (a TTY confirm, or
+ * --yes), then grants the non-root user the docker group. macOS never
+ * auto-installs (points at OrbStack / Docker Desktop); a stopped daemon is an
+ * actionable start-Docker error.
  * @throws Error with remediation copy when Docker cannot be made available.
  */
-export async function ensureDocker(store: CLIStore): Promise<void> {
+export async function ensureDocker(
+  store: CLIStore,
+  options: EnsureDockerOptions = {},
+): Promise<DockerReadiness> {
   store.updateData("checks", {
     ...store.currentState.data.checks,
     docker: "pending",
@@ -141,23 +225,24 @@ export async function ensureDocker(store: CLIStore): Promise<void> {
       );
     }
 
-    if (!(process.stdin.isTTY === true && process.stdout.isTTY === true)) {
-      // Fail loud instead of silently continuing without Docker.
-      throw new Error(
-        `Docker is required but not installed, and there is no terminal to confirm installation.\n` +
-          `Install Docker Engine first:\n` +
-          `  curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh\n` +
-          `Then rerun this command.`,
-      );
-    }
+    if (!options.assumeYes) {
+      if (!(process.stdin.isTTY === true && process.stdout.isTTY === true)) {
+        // Fail loud instead of silently continuing without Docker.
+        throw new Error(
+          "Docker is required but not installed, and there is no terminal to confirm installation.\n" +
+            "Rerun with --yes to install it, or install Docker Engine first:\n" +
+            `  curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh`,
+        );
+      }
 
-    store.setStatus("Docker is not installed.");
-    const confirmed = await store.waitForInput("docker_install_confirm");
-    if (confirmed !== "install") {
-      throw new Error(
-        "Docker is required to continue. Install it from " +
-          `${PREREQUISITE_URLS.docker} and rerun.`,
-      );
+      store.setStatus("Docker is not installed.");
+      const confirmed = await store.waitForInput("docker_install_confirm");
+      if (confirmed !== "install") {
+        throw new Error(
+          "Docker is required to continue. Install it from " +
+            `${PREREQUISITE_URLS.docker} and rerun.`,
+        );
+      }
     }
 
     store.setStatus(
@@ -166,6 +251,14 @@ export async function ensureDocker(store: CLIStore): Promise<void> {
     await installDockerLinux();
     store.setStatus("Docker installed. Verifying...");
     info = await checkDockerDetailed();
+  }
+
+  if (info.permissionDenied) {
+    store.setStatus("Granting this user access to Docker (docker group)...");
+    await ensureDockerGroupMembership();
+    store.updateData("relaunchWithDockerGroup", true);
+    store.setStatus("Docker access granted — restarting to pick it up...");
+    return "relaunch";
   }
 
   if (!info.working) {
@@ -184,6 +277,7 @@ export async function ensureDocker(store: CLIStore): Promise<void> {
     ...store.currentState.data.checks,
     docker: "success",
   });
+  return "ready";
 }
 
 /**
@@ -235,7 +329,7 @@ export async function installMise(): Promise<boolean> {
   }
 }
 
-export async function checkPortsWithFallback(
+async function checkPortsWithFallback(
   ports: number[],
 ): Promise<PortCheckResult[]> {
   const net = await import("node:net");

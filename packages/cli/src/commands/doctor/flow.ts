@@ -9,11 +9,15 @@
  * @module commands/doctor/flow
  */
 
-import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
 import {
   COMPOSE_PROJECT_BY_MODE,
   type ComposeProject,
+} from "../../lib/docker.js";
+import { localApiUrl } from "../../lib/endpoints.js";
+import type { SetupMode } from "../../lib/env-parser.js";
+import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
+import {
   checkApiHealth,
   checkComposeContainers,
   checkDiskHeadroom,
@@ -44,9 +48,12 @@ export function hasBlockingFailure(report: DoctorReport): boolean {
 
 /** Resolved context shared by the checks (host ports, compose project). */
 interface DoctorContext {
-  apiPort: number;
+  /** API base (`…/api/v1`) on this machine for the detected mode. */
+  apiUrl: string;
   webPort: number;
   overrides: Record<number, number>;
+  /** Detected setup mode, or null when the repo is not configured. */
+  mode: SetupMode | null;
   /** Compose project name, or null when the setup mode is undetectable. */
   project: ComposeProject | null;
 }
@@ -57,9 +64,11 @@ async function resolveContext(): Promise<DoctorContext> {
   const mode = repoPath ? await detectSetupMode(repoPath) : null;
 
   return {
-    apiPort: resolvePort(overrides, 8000),
+    // Unconfigured repos probe the self-host origin, the default install.
+    apiUrl: localApiUrl(mode ?? "selfhost", overrides),
     webPort: resolvePort(overrides, 3000),
     overrides,
+    mode,
     project: mode ? COMPOSE_PROJECT_BY_MODE[mode] : null,
   };
 }
@@ -72,7 +81,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   results.push(await checkDockerDaemon());
 
   // 1b. Host port conflicts (respects infra/docker/.env overrides).
-  results.push(await checkPortConflicts(ctx.overrides));
+  results.push(await checkPortConflicts(ctx.mode ?? "selfhost", ctx.overrides));
 
   // 2. Compose project containers.
   if (!ctx.project) {
@@ -94,14 +103,14 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   }
 
   // 3. API health.
-  const api = await checkApiHealth(ctx.apiPort);
+  const api = await checkApiHealth(ctx.apiUrl);
   results.push(api);
 
   // 4. Setup readiness (warning-level, per unconfigured item).
   results.push(
     ...(await checkSetupReadiness({
       apiHealthy: api.state === "ok",
-      apiPort: ctx.apiPort,
+      apiUrl: ctx.apiUrl,
       webPort: ctx.webPort,
     })),
   );

@@ -16,19 +16,12 @@ import type { CheckResult } from "../doctor/types.js";
 /** Paths whose change matters for a self-host deploy. */
 export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
 
-/** Files whose change forces a rebuild (web image must be baked). */
-export const REBUILD_TRIGGERS = [
-  "apps/web/Dockerfile",
-  "apps/web/package.json",
-] as const;
-
 /** Summary of what `git diff --name-only HEAD..origin/master` reported. */
 export interface UpdateStatus {
   repoPath: string;
   behindCount: number;
   changedFiles: string[];
   summary: Record<string, number>;
-  needsRebuild: boolean;
   commits: string[];
 }
 
@@ -39,17 +32,6 @@ function summarizeFiles(files: string[]): Record<string, number> {
     summary[prefix] = (summary[prefix] ?? 0) + 1;
   }
   return summary;
-}
-
-export function needsRebuildFromFiles(files: string[]): boolean {
-  return files.some((f) =>
-    REBUILD_TRIGGERS.some((t) => f === t || f.startsWith(t)),
-  );
-}
-
-/** True when `apps/web` source changed — also used for rebuild heuristic. */
-function fileListNeedsRebuild(files: string[]): boolean {
-  return needsRebuildFromFiles(files);
 }
 
 export async function isGitRepo(repoPath: string): Promise<boolean> {
@@ -146,7 +128,6 @@ export async function getUpdateStatus(repoPath: string): Promise<UpdateStatus> {
     behindCount,
     changedFiles,
     summary: summarizeFiles(changedFiles),
-    needsRebuild: fileListNeedsRebuild(changedFiles),
     commits,
   };
 }
@@ -233,7 +214,6 @@ export async function checkUpdateAvailable(): Promise<CheckResult> {
  */
 export async function pullAndRestart(
   repoPath: string,
-  needsRebuild: boolean,
   onStatus?: (msg: string) => void,
 ): Promise<void> {
   if (!(await isGitRepo(repoPath))) {
@@ -261,11 +241,9 @@ export async function pullAndRestart(
   }
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
-  onStatus?.(
-    needsRebuild
-      ? "Web Dockerfile or package.json changed — rebuilding images (this can take 5-30 min on 4 GB RAM, please wait)..."
-      : "Restarting services with latest images (pull always)...",
-  );
+  // Images are published per release, so an update pulls them; building
+  // from source stays the explicit `gaia up --build`.
+  onStatus?.("Restarting services with the latest images (pull always)...");
 
   await startServices(
     repoPath,
@@ -277,7 +255,7 @@ export async function pullAndRestart(
       // already handles logs. This keeps the update flow quiet.
       void chunk;
     },
-    needsRebuild ? { build: true } : { pull: true },
+    { pull: "always" },
   );
   onStatus?.("Update complete — services restarted.");
 }

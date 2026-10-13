@@ -29,7 +29,8 @@ export interface LocalAuthResponse {
   user: LocalAuthUser;
 }
 
-const authUrl = (path: string): string => `${apiauth.getUri()}auth/${path}`;
+// Relative to apiauth's baseURL; axios inserts the separator.
+const authUrl = (path: string): string => `auth/${path}`;
 
 export const localAuthApi = {
   login: async (

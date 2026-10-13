@@ -72,10 +72,14 @@ describe("validateLlmFlags", () => {
 });
 
 describe("portOverridesFromFlags", () => {
-  it("maps api/web ports to their service ports", () => {
-    expect(portOverridesFromFlags({ apiPort: 9000, webPort: 4000 })).toEqual({
-      8000: 9000,
-      3000: 4000,
+  it("maps the web port to the proxy's default port", () => {
+    expect(portOverridesFromFlags({ webPort: 4000 })).toEqual({ 3000: 4000 });
+  });
+
+  it("moves the proxy to 80/443 for a domain", () => {
+    expect(portOverridesFromFlags({ domain: "gaia.example.com" })).toEqual({
+      3000: 80,
+      3443: 443,
     });
   });
 
@@ -134,7 +138,7 @@ describe("createUpAnswerResolver precedence", () => {
     const resolve = makeResolver({});
     // Deployment var: resolved from DEPLOYMENT_DEFAULTS via the defaults tier.
     expect(resolve("env_var", { varName: "GAIA_BACKEND_URL" })).toBe(
-      "http://gaia-backend:80",
+      "http://gaia-backend:8000",
     );
     // Infra vars never reach the chain — they're answered as skip because
     // runEnvSetup pre-applies INFRASTRUCTURE_DEFAULTS before prompting.

@@ -30,7 +30,8 @@ export type {
   StoredProviderConfig,
 };
 
-const setupUrl = (path: string): string => `${apiauth.getUri()}setup/${path}`;
+// Relative to apiauth's baseURL; axios inserts the separator.
+const setupUrl = (path: string): string => `setup/${path}`;
 
 export const setupTransport = {
   async get<T>(path: string): Promise<T> {

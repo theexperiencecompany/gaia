@@ -1,5 +1,6 @@
 import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import * as prereqs from "./prerequisites.js";
 import { runCommand } from "./service-starter.js";
@@ -53,7 +54,9 @@ export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
   }
 
   try {
-    await prereqs.ensureDocker(store);
+    // "relaunch": the command runner restarts this command with the docker
+    // group active, so this run stops here without an error.
+    if ((await prereqs.ensureDocker(store)) === "relaunch") return null;
   } catch (e) {
     store.setError(e as Error);
     return null;
@@ -109,12 +112,10 @@ export async function runDeveloperPrerequisiteChecks(
  */
 export async function runPortChecks(
   store: CLIStore,
+  mode: SetupMode,
 ): Promise<Record<number, number> | null> {
   store.setStatus("Checking Ports...");
-  const requiredPorts = [
-    8000, 5432, 6379, 27017, 5672, 15672, 3000, 8080, 8083,
-  ];
-  const portResults = await prereqs.checkPortsWithFallback(requiredPorts);
+  const portResults = await prereqs.checkModePorts(mode);
   const portOverrides: Record<number, number> = {};
   const conflicts = portResults.filter((r) => !r.available);
 

@@ -92,7 +92,8 @@ describe("getDefaultValue", () => {
   });
 
   it("returns deployment defaults", () => {
-    expect(getDefaultValue("HOST", "selfhost")).toBe("http://localhost:8000");
+    // Self-host is one origin: the API lives under the web port via the proxy.
+    expect(getDefaultValue("HOST", "selfhost")).toBe("http://localhost:3000");
     expect(getDefaultValue("FRONTEND_URL", "developer")).toBe(
       "http://localhost:3000",
     );
@@ -262,7 +263,7 @@ describe("getDeploymentDefaults", () => {
   it("returns selfhost deployment defaults", () => {
     const defaults = getDeploymentDefaults("selfhost");
     expect(defaults.SETUP_MODE).toBe("selfhost");
-    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:80"); // NOSONAR — internal Docker network URL, not a public endpoint
+    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 
   it("returns developer deployment defaults", () => {

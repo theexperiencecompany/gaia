@@ -168,6 +168,9 @@ const config: KnipConfig = {
   // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
     "wrangler",
+    // shadow-utils on the self-host box: the CLI re-runs itself under the
+    // docker group right after adding the user to it (packages/cli docker-group).
+    "sg",
     "biome",
     "clean",
     "check",

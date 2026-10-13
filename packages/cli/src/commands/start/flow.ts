@@ -1,3 +1,4 @@
+import { localApiUrl } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
   checkDockerDetailed,
@@ -69,11 +70,10 @@ export async function runStartFlow(
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
   const webPort = portOverrides[3000] ?? 3000;
-  const apiPort = portOverrides[8000] ?? 8000;
 
   store.updateData("setupMode", mode);
   store.updateData("webPort", webPort);
-  store.updateData("apiPort", apiPort);
+  store.updateData("apiUrl", localApiUrl(mode, portOverrides));
   store.updateData("dockerLogs", []);
   store.setStatus(`Starting GAIA in ${mode} mode...`);
 

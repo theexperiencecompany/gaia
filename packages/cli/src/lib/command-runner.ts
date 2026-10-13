@@ -14,6 +14,7 @@ import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
 import { type CLIStore, createStore } from "../ui/store.js";
+import { relaunchWithDockerGroup } from "./docker-group.js";
 import {
   attachPlainReporter,
   isInteractive,
@@ -80,6 +81,7 @@ async function runPlain(
   }
   try {
     await runtime.runFlow(store);
+    if (needsDockerGroupRelaunch(store)) await relaunchWithDockerGroup();
     runtime.onPlainComplete?.(store);
   } catch (error) {
     store.setError(error as Error);
@@ -115,7 +117,16 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   }
 
   unmount();
+  if (needsDockerGroupRelaunch(store)) await relaunchWithDockerGroup();
   exitForStore(store);
+}
+
+/** The flow granted the docker group and stopped for a relaunch (ensureDocker). */
+function needsDockerGroupRelaunch(store: CLIStore): boolean {
+  return (
+    !store.currentState.error &&
+    store.currentState.data.relaunchWithDockerGroup === true
+  );
 }
 
 /**

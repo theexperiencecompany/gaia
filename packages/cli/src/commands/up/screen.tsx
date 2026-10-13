@@ -74,20 +74,12 @@ const DependencyInstallStep: React.FC<{
 };
 
 const UpFinishedStep: React.FC<{
-  webPort: number;
-  apiPort: number;
+  webUrl: string;
+  apiUrl: string;
   noStart: boolean;
   stillStarting: boolean;
   customProviderNote: boolean;
-  webDriftDetected?: boolean;
-}> = ({
-  webPort,
-  apiPort,
-  noStart,
-  stillStarting,
-  customProviderNote,
-  webDriftDetected,
-}) => {
+}> = ({ webUrl, apiUrl, noStart, stillStarting, customProviderNote }) => {
   const success = !noStart && !stillStarting;
   return (
     <Box
@@ -131,13 +123,13 @@ const UpFinishedStep: React.FC<{
         <Text>
           Web:{" "}
           <Text color="cyan" bold>
-            http://localhost:{webPort}
+            {webUrl}
           </Text>
         </Text>
         <Text>
           API:{" "}
           <Text color="cyan" bold>
-            http://localhost:{apiPort}
+            {apiUrl}
           </Text>
         </Text>
       </Box>
@@ -146,7 +138,7 @@ const UpFinishedStep: React.FC<{
         <Text>
           Finish setup in your browser:{" "}
           <Text color="cyan" bold underline>
-            http://localhost:{webPort}/setup
+            {webUrl}/setup
           </Text>
         </Text>
       </Box>
@@ -155,15 +147,6 @@ const UpFinishedStep: React.FC<{
         <Box marginTop={1}>
           <Text color="gray">
             Custom LLM providers are configured in the setup wizard.
-          </Text>
-        </Box>
-      )}
-
-      {webDriftDetected && (
-        <Box marginTop={1}>
-          <Text color="yellow">
-            Web source changed since last build — run 'gaia up --build' to
-            rebuild
           </Text>
         </Box>
       )}
@@ -264,14 +247,13 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
       {state.step === "Finished" && state.data.finished && (
         <UpFinishedStep
-          webPort={state.data.upWebPort || 3000}
-          apiPort={state.data.upApiPort || 8000}
+          webUrl={state.data.upWebUrl}
+          apiUrl={state.data.upApiUrl}
           noStart={state.data.upNoStart === true}
           stillStarting={
             state.data.upNoStart !== true && state.data.upStillStarting === true
           }
           customProviderNote={state.data.customProviderNote === true}
-          webDriftDetected={state.data.webDriftDetected === true}
         />
       )}
 

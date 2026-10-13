@@ -158,6 +158,17 @@ RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
 
+# Docker CLI (client only) — the self-host local coding sandbox
+# (app/services/sandbox/local_sandbox.py) drives per-user sibling containers
+# with `docker exec`/`docker cp` through the host socket the self-host compose
+# mounts. Docker names arches x86_64/aarch64, not BuildKit's amd64/arm64.
+ARG DOCKER_CLI_VERSION=29.9.0
+RUN case "${TARGETARCH:-amd64}" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" \
+    | tar -xz -C /tmp docker/docker \
+    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker
+
 # Obscura — the browser-host engine (default; BROWSER_ENGINE=obscura). A single
 # self-contained Rust CDP server + its render worker, built from source in the
 # obscura-builder stage above (the fixed commit; v0.2.2's release tarball crashes

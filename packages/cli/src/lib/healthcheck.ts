@@ -1,4 +1,10 @@
-import { getContainerStatuses, isDockerRunning } from "./docker.js";
+import {
+  COMPOSE_PROJECT_BY_MODE,
+  getContainerStatuses,
+  isDockerRunning,
+} from "./docker.js";
+import { DEFAULT_WEB_PORT } from "./endpoints.js";
+import type { SetupMode } from "./env-parser.js";
 
 export interface ServiceStatus {
   name: string;
@@ -8,7 +14,8 @@ export interface ServiceStatus {
   details?: string;
 }
 
-const SERVICES = [
+// Developer mode publishes every service on the host.
+const DEVELOPER_SERVICES = [
   { name: "API", port: 8000, type: "http" as const, path: "/health" },
   { name: "Web", port: 3000, type: "http" as const, path: "/" },
   { name: "PostgreSQL", port: 5432, type: "tcp" as const },
@@ -18,10 +25,24 @@ const SERVICES = [
   { name: "ChromaDB", port: 8080, type: "tcp" as const },
 ];
 
+// Self-host publishes only the proxy; the API answers behind it at /api/v1
+// and the infra services are reported by container state instead.
+const SELFHOST_SERVICES = [
+  {
+    name: "API",
+    port: DEFAULT_WEB_PORT,
+    type: "http" as const,
+    path: "/api/v1/ping",
+  },
+  { name: "Web", port: DEFAULT_WEB_PORT, type: "http" as const, path: "/" },
+];
+
 export async function checkAllServices(
+  mode: SetupMode,
   portOverrides?: Record<number, number>,
 ): Promise<ServiceStatus[]> {
-  const services = SERVICES.map((service) => ({
+  const catalog = mode === "selfhost" ? SELFHOST_SERVICES : DEVELOPER_SERVICES;
+  const services = catalog.map((service) => ({
     ...service,
     port: portOverrides?.[service.port] ?? service.port,
   }));
@@ -89,7 +110,7 @@ async function checkTcpService(
   });
 }
 
-export async function getDockerStatus(): Promise<{
+export async function getDockerStatus(mode: SetupMode): Promise<{
   running: boolean;
   containers: Awaited<ReturnType<typeof getContainerStatuses>>;
 }> {
@@ -97,6 +118,6 @@ export async function getDockerStatus(): Promise<{
   if (!running) {
     return { running: false, containers: [] };
   }
-  const containers = await getContainerStatuses();
+  const containers = await getContainerStatuses(COMPOSE_PROJECT_BY_MODE[mode]);
   return { running: true, containers };
 }

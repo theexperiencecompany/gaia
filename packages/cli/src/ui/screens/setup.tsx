@@ -2,6 +2,7 @@ import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { localApiUrl } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 
 import { SETUP_STEPS, Shell } from "../components/Shell.js";
@@ -168,7 +169,7 @@ const FinishedStep: React.FC<{
   });
 
   const webPort = portOverrides?.[3000] ?? 3000;
-  const apiPort = portOverrides?.[8000] ?? 8000;
+  const apiUrl = localApiUrl(setupMode ?? "developer", portOverrides ?? {});
   const isSelfHost = setupMode === "selfhost";
 
   return (
@@ -198,7 +199,7 @@ const FinishedStep: React.FC<{
         <Text>
           API:{" "}
           <Text color="cyan" bold>
-            http://localhost:{apiPort}
+            {apiUrl}
           </Text>
         </Text>
       </Box>

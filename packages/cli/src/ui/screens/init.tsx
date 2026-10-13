@@ -9,6 +9,7 @@ import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { localApiUrl } from "../../lib/endpoints.js";
 import type { EnvCategory, EnvVar, SetupMode } from "../../lib/env-parser.js";
 
 import { Shell } from "../components/Shell.js";
@@ -146,7 +147,7 @@ const FinishedStep: React.FC<{
   });
 
   const webPort = portOverrides?.[3000] ?? 3000;
-  const apiPort = portOverrides?.[8000] ?? 8000;
+  const apiUrl = localApiUrl(setupMode ?? "developer", portOverrides ?? {});
 
   if (setupMode === "selfhost") {
     return (
@@ -185,7 +186,7 @@ const FinishedStep: React.FC<{
           <Text>
             API:{" "}
             <Text color="cyan" bold>
-              http://localhost:{apiPort}
+              {apiUrl}
             </Text>
           </Text>
         </Box>
@@ -232,7 +233,7 @@ const FinishedStep: React.FC<{
         <Text>
           API:{" "}
           <Text color="cyan" bold>
-            http://localhost:{apiPort}
+            {apiUrl}
           </Text>
         </Text>
       </Box>

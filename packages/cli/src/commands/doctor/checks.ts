@@ -13,13 +13,14 @@ import * as os from "node:os";
 import { execa } from "execa";
 import {
   type ComposeContainerInfo,
+  type ComposeProject,
   getComposeProjectContainers,
   getDiskFreeKb,
   getDockerRootDir,
   isDockerRunning,
 } from "../../lib/docker.js";
 import type { SetupMode } from "../../lib/env-parser.js";
-import { checkPortsWithFallback } from "../../lib/prerequisites.js";
+import { checkModePorts } from "../../lib/prerequisites.js";
 import { findRepoRoot } from "../../lib/service-starter.js";
 import type { CheckResult } from "./types";
 
@@ -38,14 +39,6 @@ const HTTP_TIMEOUT_MS = 5000;
 // Compose project / expected services
 // ---------------------------------------------------------------------------
 
-/** Docker Compose project name for each detected setup mode. */
-export const COMPOSE_PROJECT_BY_MODE: Record<SetupMode, ComposeProject> = {
-  selfhost: "gaia-selfhost",
-  developer: "gaia-dev",
-};
-
-export type ComposeProject = "gaia-selfhost" | "gaia-dev";
-
 /**
  * Services that must be up per mode. Developer mode runs the app processes
  * via Nx (no gaia-backend/gaia-web containers), so only core infra is
@@ -61,6 +54,7 @@ export const EXPECTED_SERVICES: Record<ComposeProject, readonly string[]> = {
     "gaia-backend",
     "gaia-web",
     "arq_worker",
+    "proxy",
   ],
   "gaia-dev": ["chromadb", "postgres", "redis", "mongo", "rabbitmq"],
 };
@@ -124,12 +118,13 @@ export function resolvePort(
 // ---------------------------------------------------------------------------
 
 /**
- * Re-checks the 8 required host ports (respecting `infra/docker/.env` overrides)
- * for conflicts with non-GAIA processes. Skipped when the Docker daemon is
- * unreachable because `checkPortsWithFallback` and `lsof` cannot run reliably
- * without it.
+ * Re-checks the mode's host ports (respecting `infra/docker/.env` overrides)
+ * for conflicts with non-GAIA processes; ports GAIA's own stack publishes are
+ * not conflicts. Skipped when the Docker daemon is unreachable because the
+ * check needs `docker ps` and `lsof`.
  */
 export async function checkPortConflicts(
+  mode: SetupMode,
   overrides: Record<number, number> = {},
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
@@ -147,14 +142,9 @@ export async function checkPortConflicts(
     };
   }
 
-  const requiredPorts = [
-    3000, 8000, 5432, 6379, 27017, 5672, 15672, 8080, 8083,
-  ];
-  const effectivePorts = requiredPorts.map((p) => overrides[p] ?? p);
-
-  let results: Awaited<ReturnType<typeof checkPortsWithFallback>>;
+  let results: Awaited<ReturnType<typeof checkModePorts>>;
   try {
-    results = await checkPortsWithFallback(effectivePorts);
+    results = await checkModePorts(mode, overrides);
   } catch {
     return {
       ...base,
@@ -180,7 +170,10 @@ export async function checkPortConflicts(
     ...base,
     state: "fail",
     detail,
-    fix: "Free the port or re-run 'gaia up' with --web-port/--api-port (or set WEB_HOST_PORT/API_HOST_PORT in infra/docker/.env).",
+    fix:
+      mode === "selfhost"
+        ? "Free the port or re-run 'gaia up' with --web-port (or set WEB_HOST_PORT in infra/docker/.env)."
+        : "Free the port or set its *_HOST_PORT override in infra/docker/.env.",
   };
 }
 
@@ -331,22 +324,22 @@ async function fetchWithTimeout(
   return fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
 }
 
-export async function checkApiHealth(apiPort: number): Promise<CheckResult> {
+export async function checkApiHealth(apiUrl: string): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "api-health",
-    label: `API health (localhost:${apiPort})`,
+    label: `API health (${apiUrl})`,
     severity: "blocker",
   };
 
   try {
-    const res = await fetchWithTimeout(`http://localhost:${apiPort}/health`);
+    const res = await fetchWithTimeout(`${apiUrl}/ping`);
     if (res.ok) {
       return { ...base, state: "ok", detail: `HTTP ${res.status}` };
     }
     return {
       ...base,
       state: "fail",
-      detail: `HTTP ${res.status} from /health`,
+      detail: `HTTP ${res.status} from ${apiUrl}/ping`,
       fix: "Check API logs: 'gaia logs', or restart the stack with 'gaia start'.",
     };
   } catch {
@@ -391,13 +384,14 @@ export async function checkWebReachable(webPort: number): Promise<CheckResult> {
 
 /** A public setup endpoint's JSON body, or why it could not be read. */
 async function readSetupEndpoint<T>(
-  apiPort: number,
+  apiUrl: string,
   endpoint: "status" | "catalog",
 ): Promise<{ data: T } | { detail: string }> {
-  const path = `/api/v1/setup/${endpoint}`;
   try {
-    const res = await fetchWithTimeout(`http://localhost:${apiPort}${path}`);
-    if (!res.ok) return { detail: `HTTP ${res.status} from ${path}` };
+    const res = await fetchWithTimeout(`${apiUrl}/setup/${endpoint}`);
+    if (!res.ok) {
+      return { detail: `HTTP ${res.status} from /api/v1/setup/${endpoint}` };
+    }
     return { data: (await res.json()) as T };
   } catch {
     return { detail: `Could not read setup ${endpoint}` };
@@ -410,7 +404,7 @@ async function readSetupEndpoint<T>(
  */
 export async function checkSetupReadiness(options: {
   apiHealthy: boolean;
-  apiPort: number;
+  apiUrl: string;
   webPort: number;
 }): Promise<CheckResult[]> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
@@ -424,8 +418,8 @@ export async function checkSetupReadiness(options: {
   }
 
   const [status, catalog] = await Promise.all([
-    readSetupEndpoint<SetupStatusPayload>(options.apiPort, "status"),
-    readSetupEndpoint<ProviderCatalogResponse>(options.apiPort, "catalog"),
+    readSetupEndpoint<SetupStatusPayload>(options.apiUrl, "status"),
+    readSetupEndpoint<ProviderCatalogResponse>(options.apiUrl, "catalog"),
   ]);
   if ("detail" in status) {
     return [{ ...base, state: "skipped", detail: status.detail }];
