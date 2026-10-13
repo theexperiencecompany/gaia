@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.reminder_models import StaticReminderPayload
+from app.constants.reminders import REMINDER_ALREADY_EXISTS_RESULT
+from app.models.reminder_models import ReminderCreation, StaticReminderPayload
 
 # ---------------------------------------------------------------------------
 # Module-level patch for rate limiting
@@ -82,7 +83,25 @@ class TestCreateReminderTool:
             scheduled_at="2026-03-21 08:00:00",
         )
         assert result == "Reminder created successfully"
-        mock_scheduler.create_reminder.assert_awaited_once()
+        mock_scheduler.create_reminder.assert_awaited_once_with(
+            mock_instance.to_create_reminder_request.return_value, user_id=FAKE_USER_ID
+        )
+
+    @patch(f"{MODULE}.reminder_scheduler")
+    async def test_an_existing_identical_reminder_is_reported_not_claimed_as_new(
+        self, mock_scheduler: MagicMock
+    ) -> None:
+        mock_scheduler.create_reminder = AsyncMock(
+            return_value=ReminderCreation(reminder_id="rem-1", created=False)
+        )
+
+        from app.agents.tools.reminder_tool import create_reminder_tool
+
+        result = await cast(Any, create_reminder_tool).coroutine(
+            config=_cfg(), payload=StaticReminderPayload(title="Tea", body="Now"), delay_seconds=60
+        )
+
+        assert result == REMINDER_ALREADY_EXISTS_RESULT
 
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest")
@@ -429,7 +448,9 @@ class TestRecurringScheduleRule:
     async def test_create_tool_refuses_the_schedule_with_a_structured_error(
         self, mock_scheduler: MagicMock, repeat: str, reason: str, message: str
     ) -> None:
-        mock_scheduler.create_reminder = AsyncMock(return_value="rem-1")
+        mock_scheduler.create_reminder = AsyncMock(
+            return_value=ReminderCreation(reminder_id="rem-1", created=True)
+        )
 
         from app.agents.tools.reminder_tool import create_reminder_tool
 
@@ -455,7 +476,9 @@ class TestRecurringScheduleRule:
     async def test_a_one_shot_a_minute_out_is_still_created(
         self, mock_scheduler: MagicMock
     ) -> None:
-        mock_scheduler.create_reminder = AsyncMock(return_value="rem-1")
+        mock_scheduler.create_reminder = AsyncMock(
+            return_value=ReminderCreation(reminder_id="rem-1", created=True)
+        )
 
         from app.agents.tools.reminder_tool import create_reminder_tool
 

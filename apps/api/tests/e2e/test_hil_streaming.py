@@ -521,7 +521,8 @@ async def hil_world(
         ),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),
-        patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+        patch("app.services.chat.stream.save_user_message", new=AsyncMock()),
+        patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
         patch.object(
             conversation_repository,
             "append_message_tool_data",
