@@ -6,6 +6,13 @@ declarative data; send/skip mechanics live in app/services/nurture.
 
 from dataclasses import dataclass
 
+from app.constants.referrals import (
+    NURTURE_SHARE_CTA_LABEL,
+    NURTURE_SHARE_SUBJECT,
+    REFERRALS_PAGE_PATH,
+    ReferralNudge,
+)
+
 
 @dataclass(frozen=True)
 class NurtureStep:
@@ -21,6 +28,7 @@ class NurtureStep:
     cta_label: str | None = None
     requires_onboarding: bool = True  # held (not skipped) until onboarding completes
     enabled: bool = True
+    nudge: ReferralNudge | None = None  # a referral pitch: also spends the referral nudge budget
 
 
 NURTURE_STEPS: tuple[NurtureStep, ...] = (
@@ -94,6 +102,18 @@ NURTURE_STEPS: tuple[NurtureStep, ...] = (
         cta_path="/settings/linked-accounts",
         cta_label="Link a channel",
     ),
+    # Day 15 is the earliest slot the caps leave free without starving a later step.
+    NurtureStep(
+        key="share_gaia",
+        day_offset=15,
+        template="nurture_share_gaia.html",
+        subject=NURTURE_SHARE_SUBJECT,
+        skip_predicate="never_used_chat",
+        context_builder="referral_gift_prices",
+        cta_path=REFERRALS_PAGE_PATH,
+        cta_label=NURTURE_SHARE_CTA_LABEL,
+        nudge=ReferralNudge.NURTURE_EMAIL,
+    ),
     NurtureStep(
         key="founder_checkin",
         day_offset=21,
@@ -110,7 +130,7 @@ NURTURE_BACKFILL_GRACE_DAYS = 2
 # Local hour (user timezone) at which nurture emails go out.
 NURTURE_SEND_HOUR_LOCAL = 9
 
-# Frequency guardrails: step day_offsets run 1,2,3,5,8,11,14,21 (earliest three
+# Frequency guardrails: step day_offsets run 1,2,3,5,8,11,14,15,21 (earliest three
 # consecutive), so a 2/week cap would starve the day-3/day-14 steps. 3/week with
 # 2-day minimum spacing fits the schedule and guarantees at most one email/2 days.
 NURTURE_MAX_EMAILS_PER_WEEK = 3

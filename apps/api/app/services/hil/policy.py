@@ -22,12 +22,19 @@ from pydantic import BaseModel, ConfigDict
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.execute.resolver import resolve_tool
 from app.agents.tools.execute.unwrap import unwrap_execute_call
-from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
+from app.constants.hil import BOT_INERT_TOOLS, HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
+from app.models.agent_models import runs_on_bot
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
-from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
+from app.services.hil.utils import (
+    configurable_of,
+    current_tool_calls,
+    raw_tool_call,
+    tool_of,
+    unpack_tool_call,
+)
 from shared.py.wide_events import log
 
 # What the gate does with one call: allow it, ask (pause for the user), or auto
@@ -117,8 +124,11 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
 
     Forced-ask tools short-circuit BEFORE the preferences read, so they pause
     even when the preference store itself is unreachable (fail closed for the
-    calls that must never slip through).
+    calls that must never slip through). A bot-inert tool on a chat platform
+    acts on nothing, so it is allowed first.
     """
+    if tool_name in BOT_INERT_TOOLS and runs_on_bot(configurable_of(request)):
+        return "allow"
     call = unpack_tool_call(request)
     if await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, call.args):
         return "ask"

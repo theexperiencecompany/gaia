@@ -1,4 +1,4 @@
-"""Referral program events: invites sent, friends attributed and converting, months earned."""
+"""Referral program events: invites sent, friends attributed and converting, months earned, nudges."""
 
 from typing import ClassVar
 
@@ -8,6 +8,8 @@ from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 __all__ = [
     "ReferralConverted",
     "ReferralInviteSent",
+    "ReferralNudgeDismissed",
+    "ReferralNudgeSent",
     "ReferralRewardGranted",
     "ReferralSignupAttributed",
 ]
@@ -54,3 +56,23 @@ class ReferralRewardGranted(ServerEvent):
     friend_id: ObjectIdStr
     delivery: Identifier
     months: int
+
+
+class ReferralNudgeSent(ServerEvent):
+    """GAIA messaged the user about sharing on its own: a pitch under the weekly cap, or a reward note."""
+
+    event: ClassVar[str] = "referral:nudge_sent"
+    # One pitch a week plus a reward note per paying friend.
+    budget_per_user_day: ClassVar[int] = 50
+
+    nudge: Identifier
+
+
+class ReferralNudgeDismissed(ServerEvent):
+    """The user dismissed a referral nudge; the dismissal that pauses nudges says so."""
+
+    event: ClassVar[str] = "referral:nudge_dismissed"
+    budget_per_user_day: ClassVar[int] = 10
+
+    nudge: Identifier
+    paused: bool

@@ -3910,6 +3910,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/nudges/chat-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Chat Card
+         * @description Ask before showing the in-chat share card: show is true at most once a week, never while paused.
+         */
+        post: operations["referrals_claim_chat_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/nudges/chat-card/dismissal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Chat Card
+         * @description Record the user closing the share card; the second dismissal pauses every nudge for 30 days.
+         */
+        post: operations["referrals_dismiss_chat_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/referrals/resolve/{code}": {
         parameters: {
             query?: never;
@@ -12350,6 +12390,14 @@ export interface components {
             url: string;
         };
         /**
+         * ReferralChatCardResponse
+         * @description Whether the chat may show its share card now; a true answer spends this week's nudge.
+         */
+        ReferralChatCardResponse: {
+            /** Show */
+            show: boolean;
+        };
+        /**
          * ReferralCopyVariant
          * @description The copy angle a referral surface speaks in; the PostHog experiment picks one.
          * @enum {string}
@@ -12436,6 +12484,14 @@ export interface components {
             offer: components["schemas"]["ReferralOffer"];
             /** Share Link */
             share_link: string;
+        };
+        /** ReferralNudgeDismissResponse */
+        ReferralNudgeDismissResponse: {
+            /**
+             * Paused
+             * @description This dismissal paused every referral nudge for 30 days
+             */
+            paused: boolean;
         };
         /**
          * ReferralOffer
@@ -16210,6 +16266,7 @@ export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
 export type RedeemLinkCodeResponse = components['schemas']['RedeemLinkCodeResponse'];
 export type RedirectConfig = components['schemas']['RedirectConfig'];
+export type ReferralChatCardResponse = components['schemas']['ReferralChatCardResponse'];
 export type ReferralCopyVariant = components['schemas']['ReferralCopyVariant'];
 export type ReferralInviteRequest = components['schemas']['ReferralInviteRequest'];
 export type ReferralInviteResponse = components['schemas']['ReferralInviteResponse'];
@@ -16218,6 +16275,7 @@ export type ReferralInviteStatus = components['schemas']['ReferralInviteStatus']
 export type ReferralInviteSurface = components['schemas']['ReferralInviteSurface'];
 export type ReferralLayoutVariant = components['schemas']['ReferralLayoutVariant'];
 export type ReferralMeResponse = components['schemas']['ReferralMeResponse'];
+export type ReferralNudgeDismissResponse = components['schemas']['ReferralNudgeDismissResponse'];
 export type ReferralOffer = components['schemas']['ReferralOffer'];
 export type ReferralResolveResponse = components['schemas']['ReferralResolveResponse'];
 export type ReferralSuggestion = components['schemas']['ReferralSuggestion'];
@@ -26948,6 +27006,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReferralMeResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_claim_chat_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralChatCardResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_dismiss_chat_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralNudgeDismissResponse"];
                 };
             };
             /** @description Unprocessable Entity */

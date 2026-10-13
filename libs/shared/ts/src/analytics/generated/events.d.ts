@@ -108,6 +108,8 @@ export type ServerEventName =
   | "rate_limit:hit"
   | "referral:converted"
   | "referral:invite_sent"
+  | "referral:nudge_dismissed"
+  | "referral:nudge_sent"
   | "referral:reward_granted"
   | "referral:signup_attributed"
   | "reminder:completed"
@@ -1220,6 +1222,19 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "invite_surface": string;
     "channel": string;
+  };
+  "referral:nudge_dismissed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "nudge": string;
+    "paused": boolean;
+  };
+  "referral:nudge_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "nudge": string;
   };
   "referral:reward_granted": {
     "actor": "user" | "agent";
