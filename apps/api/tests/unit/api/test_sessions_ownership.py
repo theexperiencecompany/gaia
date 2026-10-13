@@ -1,11 +1,12 @@
 """Every /sessions route serves only the caller's own conversation; any other id is a 404."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 import pytest
 
-from tests.conftest import FAKE_USER_2
+from tests.conftest import FAKE_USER, FAKE_USER_2
 
 _MODULE = "app.api.v1.endpoints.sessions"
 
@@ -42,3 +43,36 @@ async def test_a_conversation_the_user_does_not_own_is_not_found(
     assert resp.json() == {"message": "Conversation not found", "code": "CONVERSATION_NOT_FOUND"}
     for storage_call in (list_artifacts, list_uploaded, resolve, pin):
         storage_call.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("suffix", "storage"),
+    [
+        ("artifacts", "list_artifacts"),
+        ("artifacts/report.txt", "resolve_session_path"),
+        ("uploads", "list_user_uploaded"),
+        ("uploads/report.txt", "resolve_session_path"),
+    ],
+)
+async def test_the_owner_reaches_their_workspace(
+    client: AsyncClient,
+    owned_conversations: set[tuple[str, str]],
+    tmp_path: Path,
+    suffix: str,
+    storage: str,
+) -> None:
+    owned_conversations.add(("conv-own", FAKE_USER.user_id))
+    stored = tmp_path / "report.txt"
+    stored.write_text("hello")
+    with (
+        patch(f"{_MODULE}.list_artifacts", new_callable=AsyncMock, return_value=[]) as listed,
+        patch(f"{_MODULE}.list_user_uploaded", new_callable=AsyncMock, return_value=[]) as uploads,
+        patch(
+            f"{_MODULE}.resolve_session_path", new_callable=AsyncMock, return_value=stored
+        ) as resolve,
+    ):
+        resp = await client.get(f"/api/v1/sessions/conv-own/{suffix}")
+
+    assert resp.status_code == 200, resp.text
+    called = {"list_artifacts": listed, "list_user_uploaded": uploads}.get(storage, resolve)
+    assert called.await_args.args[:2] == (FAKE_USER.user_id, "conv-own")

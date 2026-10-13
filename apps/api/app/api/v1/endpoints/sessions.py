@@ -58,6 +58,8 @@ _SAFE_INLINE_TYPES = (
 
 
 class PinRequest(BaseModel):
+    """An artifact to copy into the user's pinned workspace folder."""
+
     path: str = Field(..., description="Path relative to the session's artifacts/")
     target_name: str | None = Field(
         default=None, description="Optional filename for the pinned copy"
@@ -65,6 +67,8 @@ class PinRequest(BaseModel):
 
 
 class PinResponse(BaseModel):
+    """Where the pinned copy now lives."""
+
     pinned_path: str = Field(..., description="/workspace/... path of the pinned copy")
 
 
@@ -115,6 +119,7 @@ async def _resolve_file(
 async def list_session_artifacts(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> list[ArtifactInfo]:
+    """List the files the agent produced in this conversation's workspace."""
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
     await require_owned_conversation(conv_id, user_id)
@@ -144,6 +149,7 @@ async def list_session_artifacts(
 async def get_artifact_file(
     conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
+    """Serve one agent-produced file from this conversation's workspace."""
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
     await require_owned_conversation(conv_id, user_id)
@@ -156,6 +162,7 @@ async def get_artifact_file(
 async def list_uploads(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> list[ArtifactInfo]:
+    """List the files the user attached in this conversation."""
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
     await require_owned_conversation(conv_id, user_id)
@@ -185,6 +192,7 @@ async def list_uploads(
 async def get_upload_file(
     conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
+    """Serve one file the user attached in this conversation."""
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
     await require_owned_conversation(conv_id, user_id)
@@ -209,6 +217,7 @@ async def pin_artifact(
     payload: PinRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> PinResponse:
+    """Copy an artifact into the user's pinned folder so it outlives the conversation."""
     user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
     await require_owned_conversation(conv_id, user_id)
