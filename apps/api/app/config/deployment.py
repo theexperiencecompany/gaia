@@ -42,11 +42,11 @@ class DeploymentProfile:
     enforces_usage_limits: rate, cost and cap walls block once exhausted.
     runtime_credentials: provider keys may be stored at runtime; off means env only.
     hosted_models: GAIA Cloud's per-role model routing and generators, not the instance's own.
-    catalog_composio_auth_configs: the catalog's Composio auth config ids exist in
-        this deployment's Composio project; off means the instance brings its own.
+    catalog_composio_auth_configs: the catalog's Composio auth configs are this project's.
     local_code_sandbox: keyless code runs on the host Docker daemon (self-host opt-in).
     local_workspace: the workspace is a local volume, not a JuiceFS mount.
     blob_store: where files live (BLOB_STORE); never local in production.
+    gaia_support: in-app support requests go to GAIA's support team.
     """
 
     kind: DeploymentKind
@@ -60,6 +60,7 @@ class DeploymentProfile:
     local_code_sandbox: bool
     local_workspace: bool
     blob_store: BlobStoreKind
+    gaia_support: bool
 
 
 @cache
@@ -103,4 +104,5 @@ def deployment_profile(
         local_workspace=kind is DeploymentKind.SELFHOST,
         blob_store=blob_store
         or (BlobStoreKind.LOCAL if kind is DeploymentKind.SELFHOST else BlobStoreKind.CLOUDINARY),
+        gaia_support=kind is not DeploymentKind.SELFHOST,
     )

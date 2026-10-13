@@ -13562,6 +13562,11 @@ export interface components {
             /** @description Where uploaded and generated files live (BLOB_STORE) */
             blob_store: components["schemas"]["BlobStoreKind"];
             /**
+             * Gaia Support
+             * @description Whether in-app support requests reach GAIA's support team
+             */
+            gaia_support: boolean;
+            /**
              * Has Admin Account
              * @description Whether the instance administrator exists
              */

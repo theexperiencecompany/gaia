@@ -123,6 +123,9 @@ class SetupStatusResponse(BaseModel):
     blob_store: BlobStoreKind = Field(
         description="Where uploaded and generated files live (BLOB_STORE)"
     )
+    gaia_support: bool = Field(
+        description="Whether in-app support requests reach GAIA's support team"
+    )
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -214,6 +217,7 @@ async def get_setup_status() -> SetupStatusResponse:
         plans_seeded=await is_payment_setup(),
         local_code_sandbox=settings.deployment.local_code_sandbox,
         blob_store=settings.deployment.blob_store,
+        gaia_support=settings.deployment.gaia_support,
     )
 
 

@@ -13,6 +13,9 @@ from fastapi import (
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
+from app.config.settings import settings
+from app.constants.email import GAIA_GITHUB_ISSUES_URL
+from app.constants.error_codes import GAIA_SUPPORT_UNAVAILABLE
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
     SupportRateLimits,
@@ -31,11 +34,24 @@ from app.services.support_service import (
     create_support_request_with_attachments,
     get_user_support_requests,
 )
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.support import SupportFormSubmitted
 from shared.py.wide_events import log
 
-router = APIRouter()
+
+def _require_gaia_support() -> None:
+    """Refuse on a self-hosted instance: its users and their data never reach GAIA's support inbox."""
+    if not settings.deployment.gaia_support:
+        raise AppError(
+            message="In-app support is not available on a self-hosted instance",
+            fix=f"Report bugs and request features on GitHub: {GAIA_GITHUB_ISSUES_URL}",
+            status_code=404,
+            code=GAIA_SUPPORT_UNAVAILABLE,
+        )
+
+
+router = APIRouter(dependencies=[Depends(_require_gaia_support)])
 
 
 @router.post(

@@ -83,6 +83,7 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | --- | --- | --- |
 | **Auth** | WorkOS / AuthKit — Google OAuth, hosted sessions | Local email + password, `AUTH_MODE=local`; the first account is the admin, others join by invite link (Settings → Members) |
 | **Billing** | Dodo Payments — plans and limits enforced | No billing integration and no plan limits: every user gets every feature; usage tracked locally only |
+| **In-app support** | Requests go to GAIA's support team | Off: nothing from your instance is sent to GAIA. The support form links to [GitHub issues](https://github.com/theexperiencecompany/gaia/issues) and [discussions](https://github.com/theexperiencecompany/gaia/discussions) instead |
 | **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
 | **LLM providers** | Managed keys via Infisical | Bring your own — OpenAI / OpenRouter / Gemini / Ollama / any OpenAI-compatible gateway via Settings; keys encrypted with the instance secret |

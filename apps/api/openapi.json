@@ -15708,6 +15708,11 @@
             "$ref": "#/components/schemas/BlobStoreKind",
             "description": "Where uploaded and generated files live (BLOB_STORE)"
           },
+          "gaia_support": {
+            "description": "Whether in-app support requests reach GAIA's support team",
+            "title": "Gaia Support",
+            "type": "boolean"
+          },
           "has_admin_account": {
             "description": "Whether the instance administrator exists",
             "title": "Has Admin Account",
@@ -15750,7 +15755,8 @@
           "providers",
           "plans_seeded",
           "local_code_sandbox",
-          "blob_store"
+          "blob_store",
+          "gaia_support"
         ],
         "title": "SetupStatusResponse",
         "type": "object"

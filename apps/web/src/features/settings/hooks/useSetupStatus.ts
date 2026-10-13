@@ -32,6 +32,15 @@ export function useBillingEnabled(): boolean {
   return data?.billing_enabled !== false;
 }
 
+/**
+ * Whether support requests reach GAIA's support team. Hosted production never
+ * serves /setup/status, so anything but an explicit `gaia_support: false` counts.
+ */
+export function useGaiaSupportAvailable(): boolean {
+  const { data } = useSetupStatus();
+  return data?.gaia_support !== false;
+}
+
 export function isProviderConfigured(
   status: SetupStatus | undefined,
   key: CredentialProvider,

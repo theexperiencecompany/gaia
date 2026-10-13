@@ -121,6 +121,7 @@ class TestStatus:
             "plans_seeded",
             "local_code_sandbox",
             "blob_store",
+            "gaia_support",
         }
         assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {
@@ -149,6 +150,20 @@ class TestStatus:
         resp = await anon_client.get(f"{API}/status")
 
         assert resp.json()["blob_store"] == blob_store.value
+
+    @pytest.mark.parametrize(("env", "gaia_support"), [("selfhost", False), ("development", True)])
+    async def test_status_says_whether_support_requests_reach_gaia(
+        self,
+        anon_client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        env: str,
+        gaia_support: bool,
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", env)
+
+        resp = await anon_client.get(f"{API}/status")
+
+        assert resp.json()["gaia_support"] is gaia_support
 
     async def test_status_has_no_auth_dependency(self) -> None:
         assert not _requires("/status", get_current_user)

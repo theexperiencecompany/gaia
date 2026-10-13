@@ -1,0 +1,72 @@
+// @vitest-environment jsdom
+/** A self-hosted instance offers GitHub instead of a support form whose requests would reach GAIA. */
+
+import type { SetupStatusResponse } from "@shared/api/generated";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+const fetchSetupStatus = vi.fn<() => Promise<SetupStatusResponse>>();
+
+vi.mock("@/features/settings/api/providersApi", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/features/settings/api/providersApi")
+    >();
+  return {
+    ...actual,
+    providersApi: { fetchSetupStatus: () => fetchSetupStatus() },
+  };
+});
+
+import ContactForm from "@/features/contact/components/ContactForm";
+import { GAIA_GITHUB_ISSUES_URL } from "@/features/support/constants/supportConstants";
+
+const status = (gaia_support: boolean): SetupStatusResponse => ({
+  auth_mode: "local",
+  billing_enabled: false,
+  has_admin_account: true,
+  registration_policy: "invite_only",
+  needs_setup: false,
+  plans_seeded: true,
+  local_code_sandbox: false,
+  blob_store: "local",
+  gaia_support,
+  providers: {},
+});
+
+function renderForm() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <ContactForm />
+    </QueryClientProvider>,
+  );
+}
+
+describe("ContactForm", () => {
+  it("links to GitHub instead of the form on a self-hosted instance", async () => {
+    fetchSetupStatus.mockResolvedValue(status(false));
+
+    renderForm();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Open an issue").closest("a")?.getAttribute("href"),
+      ).toBe(GAIA_GITHUB_ISSUES_URL),
+    );
+    expect(screen.queryByText("Submit")).toBeNull();
+  });
+
+  it("keeps the support form where requests reach GAIA", async () => {
+    fetchSetupStatus.mockResolvedValue(status(true));
+
+    renderForm();
+
+    await waitFor(() => expect(fetchSetupStatus).toHaveBeenCalled());
+    expect(screen.queryByText("Open an issue")).toBeNull();
+    expect(screen.getAllByText("Request Type").length).toBeGreaterThan(0);
+  });
+});

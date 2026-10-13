@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.settings import settings
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -469,11 +470,12 @@ class ToolRegistry:
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
-        self._add_category(
-            "support",
-            tools=[support_tool.create_support_ticket],
-            risk=CategoryRisk(destructive_tools=set()),
-        )
+        if settings.deployment.gaia_support:
+            self._add_category(
+                "support",
+                tools=[support_tool.create_support_ticket],
+                risk=CategoryRisk(destructive_tools=set()),
+            )
         # A checkout link is inert until the user chooses to pay it, so nothing
         # here is destructive — gating "show me how to upgrade" behind an
         # approval prompt would be absurd.

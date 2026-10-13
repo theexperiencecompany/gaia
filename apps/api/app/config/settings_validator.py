@@ -115,8 +115,8 @@ class SettingsValidator:
                 ],
                 description="Cloudinary media storage service",
                 affected_features=(
-                    "File uploads, image storage, and support ticket attachments on hosted "
-                    "deployments (a self-hosted instance stores them on a local volume)"
+                    "File uploads, image storage, and support ticket attachments when "
+                    "BLOB_STORE is cloudinary (hosted, or a self-host that chose it)"
                 ),
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",

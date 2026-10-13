@@ -27,3 +27,6 @@ BOT_ACCOUNT_NOT_LINKED = "BOT_ACCOUNT_NOT_LINKED"
 
 # 409 — a user-facing feature flag is killed for everyone; the choice cannot be changed now.
 FEATURE_KILLED = "FEATURE_KILLED"
+
+# 404 — a self-hosted instance sends no support request to GAIA's support team.
+GAIA_SUPPORT_UNAVAILABLE = "gaia_support_unavailable"
