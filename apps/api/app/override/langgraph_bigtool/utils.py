@@ -1,7 +1,7 @@
 """Helper functions for LangGraph bigtool tool selection formatting and type definitions."""
 
 from collections.abc import Sequence
-from typing import Annotated, NotRequired, TypedDict, cast
+from typing import Annotated, Final, NotRequired, TypedDict, cast
 
 from langchain_core.messages import (
     AnyMessage,
@@ -87,6 +87,11 @@ class State(_BigtoolState):
     remaining_steps: RemainingSteps
 
 
+#: State's managed countdown: LangGraph injects it into node input but it is no
+#: channel, so a node update must never write it back.
+REMAINING_STEPS_KEY: Final = "remaining_steps"
+
+
 # In-memory relay from `manage_system_prompts_node` to the model node, which
 # tombstones the relayed ids out of the checkpoint. Overwritten each hook pass
 # and popped before the node's update — never a state channel.
@@ -103,6 +108,23 @@ def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
         raise TypeError(f"{PRUNED_MESSAGE_IDS_KEY} must be list[str], got {type(raw).__name__}")
     pruned_ids = cast("list[str]", raw)
     return [RemoveMessage(id=message_id) for message_id in pruned_ids]
+
+
+# In-memory relay from a pre-model hook to the model node (same reason as
+# PRUNED_MESSAGE_IDS_KEY): a hook's return shapes one model call then is discarded,
+# so a message pulled in from outside the graph would show once and be lost.
+INJECTED_MESSAGES_KEY = "_injected_messages"
+
+
+def pop_injected_messages(state: State) -> list[AnyMessage]:
+    """Pop INJECTED_MESSAGES_KEY so the model node can commit its contents."""
+    raw = cast("dict[str, object]", state).pop(INJECTED_MESSAGES_KEY, None)
+    if raw is None:
+        # Absent is fine: the hook may not have run this call.
+        return []
+    if not isinstance(raw, list):
+        raise TypeError(f"{INJECTED_MESSAGES_KEY} must be a list, got {type(raw).__name__}")
+    return cast("list[AnyMessage]", raw)  # pragma: no mutate — cast is identity at runtime
 
 
 class RetrieveToolsResult(TypedDict):

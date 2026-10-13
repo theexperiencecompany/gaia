@@ -27,7 +27,6 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             has_subagent=True,
             agent_name="docgen_agent",
             tool_space="docgen",
-            handoff_tool_name="call_docgen",
             domain="creating downloadable documents (PDF, Word/docx, PowerPoint/pptx, Excel/xlsx, and CSV) from a request and its source data",
             capabilities=(
                 "writing document source in the sandbox and compiling it with "
@@ -58,7 +57,6 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             has_subagent=True,
             agent_name="gaia_knowledge_guide_agent",
             tool_space="gaia_knowledge_guide",
-            handoff_tool_name="call_gaia_knowledge_guide",
             domain="any question about GAIA itself: the product, company, agent system, integrations, pricing, architecture, philosophy, or anything else",
             capabilities=(
                 "exploring GAIA's own documentation to answer any question "

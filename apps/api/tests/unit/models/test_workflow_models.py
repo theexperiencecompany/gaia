@@ -13,6 +13,7 @@ from app.models.workflow_models import (
     PublicWorkflowStep,
     TriggerConfig,
     TriggerType,
+    Workflow,
     WorkflowDocument,
     WorkflowStep,
     WorkflowUpdate,
@@ -151,3 +152,42 @@ class TestPublicWorkflowSteps:
         assert public_workflow_steps(row) == [
             PublicWorkflowStep(id="s1", title="Summarise", description="Digest", category="general")
         ]
+
+
+def _workflow(trigger: TriggerConfig, **fields: object) -> Workflow:
+    return Workflow.model_validate(
+        {"user_id": "u1", "title": "Digest", "steps": [], "trigger_config": trigger, **fields}
+    )
+
+
+class TestWorkflowScheduleFromTrigger:
+    NEXT = datetime(2026, 10, 9, 9, 0, tzinfo=UTC)
+
+    def _cron_trigger(self) -> TriggerConfig:
+        return TriggerConfig(
+            type=TriggerType.SCHEDULE, cron_expression="0 9 * * *", next_run=self.NEXT
+        )
+
+    def test_a_cron_trigger_supplies_the_schedule_the_caller_left_out(self) -> None:
+        workflow = _workflow(self._cron_trigger())
+
+        assert (workflow.scheduled_at, workflow.repeat) == (self.NEXT, "0 9 * * *")
+
+    def test_a_schedule_the_caller_gave_is_kept(self) -> None:
+        given = datetime(2026, 10, 10, 7, 0, tzinfo=UTC)
+
+        workflow = _workflow(self._cron_trigger(), scheduled_at=given, repeat="0 7 * * *")
+
+        assert (workflow.scheduled_at, workflow.repeat) == (given, "0 7 * * *")
+
+
+class TestLegacyWorkflowText:
+    def test_a_null_description_and_prompt_read_as_empty_text(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL), description=None, prompt=None)
+
+        assert (workflow.description, workflow.prompt) == ("", "")
+
+    def test_a_record_with_no_prompt_runs_its_description(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL), description="Sum my inbox")
+
+        assert workflow.prompt == "Sum my inbox"

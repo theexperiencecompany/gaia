@@ -16,14 +16,18 @@ Add env vars
 from functools import lru_cache
 import os
 import time
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, TypedDict, Unpack
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, computed_field, field_validator
+from pydantic_settings import SettingsConfigDict
 
+from app.config.browser_host_settings import BrowserHostSettings
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.browser import BrowserAgentEffort
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+from app.constants.llm import DevLLMApi
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
@@ -34,10 +38,14 @@ from shared.py.wide_events import log
 load_dotenv()
 
 
-class BaseAppSettings(BaseSettings):
-    """Base configuration settings for the application."""
+class SettingsOverrides(TypedDict, total=False):
+    """Field values from_env forces over whatever the environment says."""
 
-    ENV: Literal["production", "development"] = "production"
+    SHOW_MISSING_KEY_WARNINGS: bool
+
+
+class BaseAppSettings(BrowserHostSettings):
+    """Base configuration settings for the application."""
 
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -49,7 +57,7 @@ class BaseAppSettings(BaseSettings):
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:  # noqa: ANN401 -- framework contract
+    def from_env(cls, **kwargs: Unpack[SettingsOverrides]) -> Self:
         """Create settings from environment variables."""
         try:
             return cls(**kwargs)
@@ -85,6 +93,8 @@ class CommonSettings(BaseAppSettings):
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
+    # Every request authenticates as this Mongo user with no WorkOS session.
+    DEV_AUTH_BYPASS_EMAIL: str | None = None
     # Comma-separated OpenRouter provider slugs to PREFER for the default-model
     # lane — fallbacks stay enabled. Set from the per-provider cache-hit table;
     # see _provider_order_kwargs in agents/llm/client.py.
@@ -93,6 +103,9 @@ class CommonSettings(BaseAppSettings):
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.
     DEV_UNLIMITED_RATE_LIMITS: bool = False
+    # The bots' HMAC key for hashed platform ids in logs; the same value here
+    # makes the API's user_hash join the bots'. Unset falls back like the bots.
+    BOT_LOG_HASH_SECRET: str | None = None
 
     # ----------------------------------------------
     # Database Connections
@@ -115,6 +128,26 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
+    # Code mode — bash-injected `gaia.execute` client letting sandbox scripts
+    # call GAIA tools back server-side. On by default; off mints no token
+    # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).
+    ENABLE_CODE_MODE: bool = True
+    # Inline each integration tool's return shape in the retrieve_tools doc so a
+    # script can be written without a get_tool_schema call. App-wide, not per user.
+    # Off by default: discovery docs carry args only and never read the observed-shape store.
+    ENABLE_INLINE_TOOL_RETURNS: bool = False
+    # Executor-free HIL ledger — gated calls register PENDING and return
+    # instead of parking the run on an interrupt. On by default; off keeps the
+    # interrupt-and-resume barrier.
+    ENABLE_HIL_LEDGER: bool = True
+    # JEV choice judge for auto mode — a structured decision call classifies first
+    # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
+    # the transport-failure fallback. On by default; a JEV outage never opens the gate.
+    ENABLE_HIL_JEV_JUDGE: bool = True
+    # JEV reply classifier for bot users' chat answers to pending approvals —
+    # one structured decision call per reply (hil-reply calibration: 0 dangerous
+    # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
+    ENABLE_HIL_JEV_REPLY: bool = True
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod
@@ -127,6 +160,8 @@ class CommonSettings(BaseAppSettings):
     # Optional coupon surfaced alongside the checkout link in every 402
     # "subscription required" response. Unset means no code is advertised.
     PAYWALL_DISCOUNT_CODE: str | None = None
+    # Coupon the founder's letter offers. Unset means the letter carries no offer.
+    FOUNDER_LETTER_DISCOUNT_CODE: str | None = None
 
     # ----------------------------------------------
     # Observability
@@ -171,16 +206,101 @@ class CommonSettings(BaseAppSettings):
             return CRAWL4AI_DEFAULT_MAX_BROWSERS
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
+    # --- Browser-Use (autonomous browser automation) ---
+    # Always on in every environment; an unreachable host fails loudly at task time.
+
+    # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
+    # stays the durable store for arbitrary user files. Optional: any unset field
+    # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str = "gaia-browser-shots"
+    R2_PUBLIC_BASE_URL: str | None = None
+    # Jev "System One" decision policy (TypeSafe AI): each step's decision is a
+    # single Jev evaluation over the page's indexed element table, not a
+    # generative chat completion. Screenshots are never sent to Jev.
+    BROWSER_USE_JEV_MODEL: str = "~typesafe/jev-latest"
+    # Which gateway serves Jev decisions: "openrouter" (default) or "vercel"
+    # (Vercel AI Gateway). Hot-swappable at boot: both speak the same
+    # {model, state, questions} decisions shape.
+    BROWSER_JEV_PROVIDER: Literal["openrouter", "vercel"] = "openrouter"
+    # Vercel AI Gateway key + model, read only when BROWSER_JEV_PROVIDER=vercel.
+    BROWSER_JEV_VERCEL_API_KEY: str | None = None
+    BROWSER_JEV_VERCEL_MODEL: str = "typesafe-ai/jev"
+    # Text helper for the loop, called only when a decision needs a typed value.
+    # deepseek-v4-flash answers a URL/value prompt in ~1.5-5s with minimal
+    # reasoning (measured 2026-09-22); forcing reasoning off made it return null.
+    BROWSER_USE_JEV_TEXT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    # The browser agent's model, the same for every user whatever their chat lane: it
+    # steers and signs off while Jev does the stepping. Served by OpenRouter.
+    BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no thinking.
+    BROWSER_AGENT_FLASH_MODE: bool = True
+
+    # Hard limits — everything is bounded so no browser task can run away. The
+    # agent's step count is only Browser-Use's required backstop: a run ends on
+    # the agent's finish or its time and cost budgets.
+    BROWSER_USE_MAX_STEPS: int = 100
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
+    # The one source: the job deadline, its TTLs and the relay's wait all derive
+    # from it (job_lifetime.py); resolving sooner resumes at once.
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Active work budget for a single step. A handoff waits after its step ends,
+    # outside this budget, so a step is never killed while the user completes one.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # --- Browser host (gaia-browser-host, our own low-RAM Chromium host) ---
+
+    # One long-lived Chromium, one isolated context per session, proxied over
+    # CDP with an authenticated screencast live view. Reached internally by
+    # service name; override locally to http://localhost:8930.
+
+    # The Chromium host when BROWSER_HOST_URL runs Obscura: every default user's run
+    # opens here and Obscura runs fall back here. It runs BROWSER_ENGINE=chromium with
+    # its OWN address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
+    BROWSER_FALLBACK_HOST_URL: str | None = None
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
+    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
+    # When unset, those links fall back to HOST.
+    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
+
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in
     # development (see register_llm_providers), so these have no effect in production.
     DEV_LLM_BASE_URL: str | None = None
     DEV_LLM_API_KEY: str | None = None
     DEV_LLM_MODEL: str | None = None
+    # Which API the endpoint is called through. OpenAI's reasoning models need
+    # "responses": their chat completions reject function tools with reasoning on.
+    DEV_LLM_API: DevLLMApi = DevLLMApi.CHAT_COMPLETIONS
     # Default model for every dev request that doesn't pick one in the chat-header
     # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
+    # Integration id -> auth config id, as JSON, for a Composio project other than
+    # production's, whose auth config ids the integration catalog hardcodes.
+    COMPOSIO_AUTH_CONFIG_OVERRIDES: dict[str, str] = Field(default_factory=dict)
 
     # Deletes a workflow conversation's LangGraph checkpoint threads before every
     # run, so run N stops replaying runs 1..N-1 (one production workflow held
@@ -247,6 +367,30 @@ class CommonSettings(BaseAppSettings):
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/slack/callback"
+
+    # Code mode (sandbox scripts calling GAIA tools via /sandbox/execute).
+    # Both unset = code mode ships dark: bash injects no execute token. The callback
+    # URL must be reachable FROM the E2B sandbox (public API base in prod).
+    SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
+    SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+
+    # Rejected at startup rather than at mint time: the token's user_id is a
+    # claim nothing else binds, so a guessable secret means running any user's
+    # tools. A deploy that sets a short one must not boot.
+    @field_validator("SANDBOX_EXECUTE_TOKEN_SECRET", mode="after")
+    @classmethod
+    def _reject_weak_sandbox_execute_secret(cls, v: str | None) -> str | None:
+        # A blank value is how a templated deploy (compose, Infisical, k8s) spells
+        # "unset" — code mode then ships dark. Only a SHORT but present secret is
+        # worth refusing to boot for; failing on "" took the whole API down once.
+        if not v:
+            return None
+        if len(v) < SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS:
+            raise ValueError(
+                "SANDBOX_EXECUTE_TOKEN_SECRET must be at least "
+                f"{SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS} characters"
+            )
+        return v
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -613,12 +757,8 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
 
-    # Every request authenticates as this Mongo user with no WorkOS session;
-    # get_settings() refuses to start in production when this is set.
-    DEV_AUTH_BYPASS_EMAIL: str | None = None
-
-    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
-    # production import path reads them) — see the note there.
+    # GAIA_SIM_MODE, OPENROUTER_BASE_URL and DEV_AUTH_BYPASS_EMAIL are declared on
+    # CommonSettings (the production import path reads them) — see the note there.
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
@@ -685,13 +825,8 @@ def _ensure_infisical_loaded() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Any:  # noqa: ANN401 -- framework contract
-    """Return the cached settings instance for the current environment.
-
-    The return stays Any: narrowing to CommonSettings produced 129 mypy errors
-    plus 4 more from from_env(**kwargs) — fixing that is a settings-model
-    redesign, not a typing fix.
-    """
+def get_settings() -> ProductionSettings | DevelopmentSettings:
+    """Return the cached settings instance for the current environment."""
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
     _ensure_infisical_loaded()
@@ -742,6 +877,11 @@ def get_settings() -> Any:  # noqa: ANN401 -- framework contract
                 raise RuntimeError(
                     "GAIA_SIM_MODE is set but ENV=production — "
                     "sim mode routes every model call to a local scripted stub."
+                )
+            if os.getenv("COMPOSIO_AUTH_CONFIG_OVERRIDES"):
+                raise RuntimeError(
+                    "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+                    "it points integrations at a non-production Composio project."
                 )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")

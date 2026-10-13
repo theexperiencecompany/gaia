@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   type ModalConfig,
@@ -101,11 +102,11 @@ export const EnhancedNotificationCard = ({
             </div>
 
             {/* Description */}
-            <p
-              className={`mb-0 text-sm ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
-            >
-              {notification.content.body}
-            </p>
+            <MarkdownRenderer
+              content={notification.content.body}
+              className={`text-sm ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
+              hideCodeToolbar
+            />
           </div>
 
           {/* Mark as read button */}

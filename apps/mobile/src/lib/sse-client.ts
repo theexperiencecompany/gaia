@@ -52,7 +52,8 @@ function getTimezone(): string {
 function computeRetryDelay(attempt: number, initialDelayMs: number): number {
   const exponential = initialDelayMs * 2 ** attempt;
   const capped = Math.min(exponential, MAX_RETRY_DELAY_MS);
-  const jitter = capped * 0.2 * Math.random();
+  // retry jitter only spreads reconnects; predictability costs nothing
+  const jitter = capped * 0.2 * Math.random(); // NOSONAR typescript:S2245
   return Math.round(capped + jitter);
 }
 

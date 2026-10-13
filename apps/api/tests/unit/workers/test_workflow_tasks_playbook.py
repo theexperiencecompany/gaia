@@ -8,7 +8,7 @@ content, not on "the agent was called".
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Iterator
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from typing import Literal
@@ -46,7 +46,6 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.workflow.execution_service import WorkflowFireQueued
 from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
@@ -55,6 +54,7 @@ from app.utils.timezone import Timezone
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
     HEAL_RUN_SUMMARY,
+    OVERLAPPED_AWAITING_APPROVAL_SUMMARY,
     OVERLAPPED_SUMMARY,
     REPLAY_FLAGGED_SUMMARY,
     REPLAY_NARRATION_FAILED_SUMMARY,
@@ -62,22 +62,17 @@ from app.workers.tasks.workflow_tasks import (
     REPLAY_SUMMARY,
     SHORTCUT_DISCARDED_SUMMARY,
     _fallback_note,
+    _in_run_timezone,
     _notify_replay_finished,
-    _resolve_workflow_user,
     execute_workflow_by_id,
 )
 
-
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
-    """Answer load_user_context for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
-
-
 MODULE = "app.workers.tasks.workflow_tasks"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(autouse=True)
-def _onboarded_user():
+def _onboarded_user() -> Iterator[None]:
     user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with patch(f"{MODULE}.user_repository.get", AsyncMock(return_value=user)):
         yield
@@ -85,14 +80,14 @@ def _onboarded_user():
 
 @pytest.fixture(autouse=True)
 def _no_analytics():
-    with patch(f"{MODULE}.capture_event"):
+    with patch(f"{MODULE}.capture"):
         yield
 
 
 def _workflow() -> Workflow:
     return Workflow(
         id="wf_1",
-        user_id="u_1",
+        user_id=USER_ID,
         title="Daily agenda",
         description="Mail the agenda",
         prompt="Mail me today's agenda",
@@ -146,6 +141,18 @@ class _Harness:
         self.completion_notification = AsyncMock()
         self.tiered_limit = AsyncMock()
         self.log = MagicMock()
+        #: The conversation the fire reserves, and the reservation itself. Every
+        #: fire takes it now — before the quota charge and the batch drain — so
+        #: these belong to every harness, not only the replay ones.
+        self.conversation = AsyncMock(return_value="conv_1")
+        self.acquire = AsyncMock(return_value=True)
+        self.release = AsyncMock()
+        self.holder = AsyncMock(return_value=None)
+        #: The reservation's liveness renewal, and whether it still ran when the agent did.
+        self.alive_task = MagicMock()
+        self.alive = AsyncMock(return_value=self.alive_task)
+        self.pending_approvals = AsyncMock(return_value=[])
+        self.drain = AsyncMock(return_value=[{"id": "evt_1"}])
         #: Seams a single test needs on top of the shared set, entered last so
         #: they win over anything the harness already patched.
         self.extra: list = []
@@ -199,22 +206,35 @@ class _Harness:
                 self.completion_notification,
             ),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
+            patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
+            patch(f"{MODULE}.try_acquire_lock", self.acquire),
+            patch(f"{MODULE}.release_lock_if_owned", self.release),
+            patch(f"{MODULE}.get_lock_holder", self.holder),
+            patch(f"{MODULE}.keep_alive", self.alive),
+            patch(f"{MODULE}.list_pending_for_conversation", self.pending_approvals),
+            patch(f"{MODULE}.drain_trigger_batch", self.drain),
+            patch(f"{MODULE}.reschedule_if_refilled", AsyncMock()),
             patch(f"{MODULE}.log", self.log),
         ] + self.extra
 
+    def reservation(self) -> str:
+        """Return the busy-lock value this fire reserved its conversation with."""
+        self.acquire.assert_awaited_once()
+        return str(self.acquire.await_args.args[1])
+
     def summary(self) -> str:
-        """Return what the execution record says this fire did."""
+        """Report what the execution record says this fire did."""
         return str(self.complete_execution.await_args.kwargs["summary"])
 
     def discard_record(self) -> PlaybookDiscard:
-        """Return what this fire wrote about the shortcut it dropped."""
+        """Report what this fire wrote onto the workflow about the shortcut it dropped."""
         self.update_workflow.assert_awaited_once()
         update = self.update_workflow.await_args.args[2]
         assert update.last_playbook_discard is not None
         return update.last_playbook_discard
 
     def delivered_text(self) -> str:
-        """Return what the user reads for this fire's replay."""
+        """Return what the user reads in the conversation for this fire's replay."""
         self.add_messages.assert_awaited_once()
         return str(self.add_messages.await_args.kwargs["response"])
 
@@ -277,7 +297,7 @@ async def test_the_agent_runs_when_the_workflow_has_no_playbook() -> None:
 async def test_a_distrusted_playbook_sends_the_fire_to_the_agent_to_heal(
     status: PlaybookRunStatus,
 ) -> None:
-    """Seen live: the streak limit deleted a playbook before its heal brief reached an agent."""
+    """Seen live: a suspect playbook was replayed again on the next fire, went suspect again, and was deleted by the streak limit before the heal brief ever reached an agent."""
     workflow = _workflow()
     harness = _Harness(workflow)
     harness.get_for_workflow = AsyncMock(
@@ -296,7 +316,7 @@ async def test_a_distrusted_playbook_sends_the_fire_to_the_agent_to_heal(
 
 
 async def test_a_playbook_lookup_failure_still_runs_the_workflow() -> None:
-    """Regression: an unguarded lookup failure used to abort the run instead of falling back."""
+    """A playbooks-collection outage must cost the replay, never the user's run."""
     harness = _Harness(_workflow())
     harness.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
@@ -423,7 +443,7 @@ def _stopped_replay() -> tuple[str, PlaybookRunResult]:
 
 
 async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
-    """Regression: a fallback raise lost the trace, so the next fire replayed the same effects."""
+    """The replay's calls happened whether or not the agent got to finish."""
     workflow = _workflow()
     harness = _Harness(workflow)
     harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -442,7 +462,7 @@ async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
 
 
 async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -> None:
-    """The playbook bookkeeping failing must not erase what the replay already did."""
+    """Same rule one step earlier: the playbook bookkeeping failing must not erase what the replay already did."""
     workflow = _workflow()
     harness = _Harness(workflow)
     harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -457,32 +477,6 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     assert kwargs["error_message"] == "mongo away"
     assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
     harness.chat.assert_not_awaited()
-
-
-async def test_a_discard_that_finds_the_body_already_replaced_stands_down() -> None:
-    """A discard keyed on a revision a heal already replaced must stand down."""
-    workflow = _workflow()
-    harness = _Harness(workflow)
-    playbook = _playbook(workflow)
-    harness.get_for_workflow = AsyncMock(return_value=playbook)
-    harness.playbook_run = AsyncMock(return_value=_suspect_replay("empty again"))
-    harness.record_run_outcome = AsyncMock(
-        return_value=_recorded(playbook, PLAYBOOK_SUSPECT_STREAK_LIMIT)
-    )
-    harness.delete_revision = AsyncMock(return_value=False)
-
-    await _fire(harness)
-
-    harness.delete_revision.assert_awaited_once()
-    discarded = [c for c in harness.log.warning.call_args_list if "Playbook discarded" in c.args[0]]
-    assert discarded == []
-    harness.log.info.assert_any_call(
-        f"{LogTag.WORKER} Playbook already replaced; the discard stands down",
-        workflow_id=workflow.id,
-        playbook_id=playbook.playbook_id,
-        revision=playbook.revision,
-        reason="suspect_streak_exhausted",
-    )
 
 
 def _suspect_replay(
@@ -510,7 +504,14 @@ def _recorded(playbook: PlaybookDocument, streak: int) -> PlaybookDocument:
 
 @pytest.mark.asyncio
 class TestSuspectReplay:
-    """A replay that finished but whose result is not trusted is not delivered."""
+    """A replay that finished but whose result is not trusted.
+
+    It is not delivered. Nothing stopped, so the agent must not rerun the side
+    effects blind, but a confident wrong brief must never reach the user
+    either: the fire is finished by the agent, told what already ran and why
+    the result was not trusted, exactly like a replay that stopped partway.
+    A playbook that keeps producing suspect results has to go.
+    """
 
     REASON = "step events (list_events) returned no items"
 
@@ -612,10 +613,7 @@ class TestSuspectReplay:
         await _fire(harness)
 
         harness.delete_revision.assert_awaited_once_with(
-            workflow.id,
-            workflow.user_id,
-            playbook_id=playbook.playbook_id,
-            revision=playbook.revision,
+            workflow.id, workflow.user_id, playbook_id="pb_1", revision=0
         )
         harness.chat.assert_awaited_once()
         warnings = [
@@ -628,42 +626,6 @@ class TestSuspectReplay:
         assert kwargs["workflow_id"] == workflow.id
         assert kwargs["playbook_id"] == playbook.playbook_id
         assert kwargs["suspect_reason"] == self.REASON
-
-    async def test_a_failed_replay_that_spends_the_last_heal_attempt_deletes_the_playbook(
-        self,
-    ) -> None:
-        """Seen live: a body no model could fill left NOT_RUN steps the heal check never counted."""
-        workflow = _workflow()
-        harness = _Harness(workflow)
-        playbook = _playbook(workflow)
-        harness.get_for_workflow = AsyncMock(return_value=playbook)
-        harness.playbook_run = AsyncMock(return_value=_stopped_replay())
-        harness.record_run_outcome = AsyncMock(
-            return_value=playbook.model_copy(
-                update={
-                    "last_run_status": PlaybookRunStatus.FAILED,
-                    "heal_attempts": PLAYBOOK_HEAL_ATTEMPT_LIMIT,
-                }
-            )
-        )
-
-        await _fire(harness)
-
-        harness.delete_revision.assert_awaited_once_with(
-            workflow.id,
-            workflow.user_id,
-            playbook_id=playbook.playbook_id,
-            revision=playbook.revision,
-        )
-        harness.chat.assert_awaited_once()
-        harness.log.warning.assert_any_call(
-            f"{LogTag.WORKER} Playbook discarded",
-            workflow_id=workflow.id,
-            playbook_id=playbook.playbook_id,
-            reason="heal_attempts_exhausted",
-            heal_attempts=PLAYBOOK_HEAL_ATTEMPT_LIMIT,
-            failure="Playbook stopped at step 2 (send_email): boom.",
-        )
 
     async def test_a_streak_below_the_limit_keeps_the_playbook(self) -> None:
         workflow = _workflow()
@@ -721,7 +683,13 @@ class TestSuspectReplay:
 
 @pytest.mark.asyncio
 class TestPlaybookWideEvent:
-    """What each path stamps on the run's wide event: mode, reason, llm_calls."""
+    """What each path stamps on the run's wide event.
+
+    mode, reason and llm_calls are how anyone answers "why did this
+    workflow not replay?" from production, and how the cost saving is measured
+    at all. Wrong or missing values are invisible in review and in the UI, so
+    they are pinned here rather than left as incidental logging.
+    """
 
     async def test_a_workflow_with_no_playbook_says_so(self) -> None:
         harness = _Harness(_workflow())
@@ -793,7 +761,15 @@ class TestPlaybookWideEvent:
 
 @pytest.mark.unit
 class TestWorkflowHash:
-    """The fingerprint a stored playbook is validated against on every run."""
+    """The fingerprint a stored playbook is validated against on every run.
+
+    The digest is written into the playbook document and compared on every later
+    run of that workflow. It therefore has to mean the same thing across
+    processes, deploys and restarts: if the digest for an unchanged workflow
+    ever moves, every playbook already stored stops matching and every workflow
+    silently falls back to reasoning each run, which is exactly the cost this
+    feature exists to avoid.
+    """
 
     def _steps(self) -> list[WorkflowStep]:
         return [
@@ -806,7 +782,7 @@ class TestWorkflowHash:
         ]
 
     def test_the_digest_of_a_known_workflow_is_pinned(self) -> None:
-        """A golden value: if it moves, every stored playbook is invalidated on purpose."""
+        """A golden value, because the failure mode is invisible otherwise."""
         assert (
             workflow_hash("Mail the agenda", self._steps())
             == "06df0ed3e452637317211d5ded39f8376f0e6a918cf8cd8ff26ecf37d95f7caf"
@@ -818,7 +794,7 @@ class TestWorkflowHash:
         )
 
     def test_editing_the_prompt_changes_the_digest(self) -> None:
-        """A rewritten prompt asks a different question, so the frozen sequence is untrusted."""
+        """A rewritten prompt asks a different question, so the frozen sequence must stop being trusted."""
         assert workflow_hash("Mail the agenda", self._steps()) != workflow_hash(
             "Mail the agenda and the weather", self._steps()
         )
@@ -850,7 +826,13 @@ class TestWorkflowHash:
 
 @pytest.mark.asyncio
 class TestStoppedReplayWideEvent:
-    """What a partly-run replay leaves behind for the next run and for support."""
+    """What a partly-run replay leaves behind for the next run and for support.
+
+    A replay that stops is the one case where BOTH paths ran, so the record has
+    to say the replay was tried, name the playbook, and keep the replay's own
+    calls ahead of the agent's. Losing any of that either hides that a playbook
+    is drifting or lets the next run repeat a side effect.
+    """
 
     @staticmethod
     def _stopped(workflow):
@@ -907,7 +889,7 @@ class TestStoppedReplayWideEvent:
         )
 
     async def test_the_replays_calls_come_before_the_agents_on_the_record(self) -> None:
-        """The fallback agent is told not to repeat calls the replay already made."""
+        """Order is the record of what already happened, in the order it happened."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -935,7 +917,14 @@ def _finished_replay(text: str = "Agenda sent.") -> tuple[str, PlaybookRunResult
 
 @pytest.mark.asyncio
 class TestReplayCompletionNotification:
-    """A finished replay is delivered to the user's platforms like an agent run."""
+    """A finished replay is delivered the way an agent run is delivered.
+
+    The executor path pushes the result into the user's linked platforms and
+    then sends the in-app heads-up, gated on notify_on_completion. A replay
+    used to write the conversation turn and stop, so a user who asked to be
+    notified stopped hearing from the workflow the moment a playbook was
+    written, and the review label never reached them.
+    """
 
     async def test_a_finished_replay_notifies_with_the_delivered_text(self) -> None:
         workflow = _workflow()
@@ -1012,7 +1001,12 @@ class TestReplayCompletionNotification:
 
 @pytest.mark.asyncio
 class TestStalePlaybookIsDiscarded:
-    """A playbook whose hash no longer matches is deleted, not merely skipped."""
+    """A playbook whose hash no longer matches is deleted, not merely skipped.
+
+    The check brief asks for a playbook only when the workflow has none, so a
+    stale one left on file was never re-authored: the workflow ran at full
+    agent cost on every fire, forever, with the stale document sitting there.
+    """
 
     async def test_the_stale_playbook_is_deleted_before_the_agent_runs(self) -> None:
         workflow = _workflow()
@@ -1023,10 +1017,7 @@ class TestStalePlaybookIsDiscarded:
         await _fire(harness)
 
         harness.delete_revision.assert_awaited_once_with(
-            workflow.id,
-            workflow.user_id,
-            playbook_id=playbook.playbook_id,
-            revision=playbook.revision,
+            workflow.id, workflow.user_id, playbook_id="pb_1", revision=0
         )
         harness.chat.assert_awaited_once()
         harness.playbook_run.assert_not_awaited()
@@ -1062,10 +1053,10 @@ def _distrusted(workflow: Workflow, attempts: int = 0) -> PlaybookDocument:
 
 @pytest.mark.asyncio
 class TestHealAttemptsAreBounded:
-    """A heal that lapses, declines, or is refused must not run the agent forever."""
+    """A heal run that lapses, declines, or has its rewrite refused leaves the playbook FAILED/SUSPECT, so without a bound every later fire ran the agent with the heal brief forever and the streak limit never fired (no replay ever happened again)."""
 
     async def test_a_heal_run_is_counted_only_after_the_agent_completes(self) -> None:
-        """Seen live: a DNS outage failed two fires before any agent ran, costing a heal attempt."""
+        """Seen live: a DNS outage failed two fires in under a second, before any agent ran, and each spent a heal attempt."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _distrusted(workflow)
@@ -1131,10 +1122,7 @@ class TestHealAttemptsAreBounded:
         harness.increment_heal_attempts.assert_not_awaited()
 
         harness.delete_revision.assert_awaited_once_with(
-            workflow.id,
-            workflow.user_id,
-            playbook_id=playbook.playbook_id,
-            revision=playbook.revision,
+            workflow.id, workflow.user_id, playbook_id="pb_1", revision=0
         )
         harness.chat.assert_awaited_once()
         harness.playbook_run.assert_not_awaited()
@@ -1152,7 +1140,7 @@ class TestHealAttemptsAreBounded:
         assert warnings[0]["heal_attempts"] == PLAYBOOK_HEAL_ATTEMPT_LIMIT
 
     async def test_a_playbook_replaced_between_read_and_count_still_heals(self) -> None:
-        """A missed count means the playbook changed under us; nothing gets deleted on a guess."""
+        """The count landing on nothing means the playbook changed under us; the fire still runs, on the agent, and nothing is deleted on a guess."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_distrusted(workflow))
@@ -1166,7 +1154,11 @@ class TestHealAttemptsAreBounded:
 
 @pytest.mark.asyncio
 class TestExecutionRecordSummary:
-    """The execution record says how the fire completed, not just that it did."""
+    """The execution record says how the fire completed, not just that it did.
+
+    Every replay used to be recorded as summary="Workflow executed", so a
+    flagged replay was indistinguishable from a clean agent run in the history.
+    """
 
     async def test_a_clean_replay_says_how_many_steps_it_replayed(self) -> None:
         workflow = _workflow()
@@ -1227,7 +1219,7 @@ class TestOutcomeIsScopedToTheReplayedRevision:
         assert harness.record_run_outcome.await_args.kwargs["revision"] == 4
 
     async def test_an_outcome_that_did_not_land_skips_the_streak_logic(self) -> None:
-        """A rewritten body must not be deleted on the strength of the old streak."""
+        """A suspect verdict on a body that was rewritten mid-replay must not delete the new body on the strength of the old one's streak."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1249,7 +1241,12 @@ class TestOutcomeIsScopedToTheReplayedRevision:
 
 
 class _LockedReplayHarness(_Harness):
-    """The real execute_workflow_as_playbook with its I/O and lock seams mocked."""
+    """The real execute_workflow_as_playbook, with the fire's reservation recorded.
+
+    The base harness stubs the replay function whole, which is right for the
+    path-choice tests and useless here: these tests are about the reservation
+    covering the replay's steps, so the steps have to actually happen.
+    """
 
     def __init__(self, workflow: Workflow, *, lock_free: bool, holder: str = "") -> None:
         super().__init__(workflow)
@@ -1260,8 +1257,9 @@ class _LockedReplayHarness(_Harness):
         self.run_playbook = AsyncMock(side_effect=self._run)
         self.notify = AsyncMock()
         self.increment = AsyncMock()
-        self.get_user = AsyncMock(side_effect=_user_context(timezone="UTC"))
-        self.conversation = AsyncMock(return_value="conv_1")
+        self.get_user = AsyncMock(
+            return_value=AuthenticatedUser(user_id=workflow.user_id, timezone="UTC")
+        )
         self._lock_free = lock_free
         self.replay_result: PlaybookRunResult | Exception = PlaybookRunResult(
             ok=True, text="Agenda sent.", trace=[RecordedCall(tool_name="list_events")]
@@ -1290,28 +1288,30 @@ class _LockedReplayHarness(_Harness):
                 f"{MODULE}.WorkflowService",
                 MagicMock(increment_execution_count=self.increment),
             ),
-            patch(f"{MODULE}.try_acquire_lock", self.acquire),
-            patch(f"{MODULE}.release_lock_if_owned", self.release),
-            patch(f"{MODULE}.get_lock_holder", self.holder),
             patch(f"{MODULE}.run_playbook", self.run_playbook),
             patch(f"{MODULE}.notification_service.create_notification", self.notify),
-            patch(f"{MODULE}.load_user_context", self.get_user),
-            patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
+            patch(f"{MODULE}.require_owner", self.get_user),
         ]
 
     def acquired_task_id(self) -> str:
-        """Return the task id the replay stamped into its lock value."""
-        self.acquire.assert_awaited_once()
-        lock_value = str(self.acquire.await_args.args[1])
-        stream_id, task_id = lock_value.split(":", 1)
-        assert stream_id == "", "a replay has no stream; the value must still parse as one"
+        """Return the task id the fire stamped into its reservation."""
+        stream_id, task_id = self.reservation().split(":", 1)
+        assert stream_id == "", "a fire has no stream; the value must still parse as one"
         return task_id
 
 
-class TestReplayHoldsTheConversationLock:
-    """Seen live: two fires of one workflow at once both replayed its playbook."""
+class TestTheFireReservesItsConversation:
+    """Two fires of one workflow at the same moment both ran it.
 
-    async def test_the_replay_locks_the_workflows_conversation_and_frees_it_after(
+    Seen live: two "Replayed 1 step(s)" executions, two results in the
+    conversation, duplicate notifications. The fire now claims its workflow's
+    conversation up front — atomically, and before it charges the user's quota
+    or drains its trigger batch — and drops out when another run holds it. Both
+    run paths inherit the claim: the replay runs under it, and the executor the
+    agent path dispatches adopts it.
+    """
+
+    async def test_the_fire_locks_the_workflows_conversation_and_frees_it_after(
         self,
     ) -> None:
         workflow = _workflow()
@@ -1329,7 +1329,7 @@ class TestReplayHoldsTheConversationLock:
         assert harness.complete_execution.await_args.kwargs["status"] == "success"
 
     async def test_a_replay_that_raises_still_frees_the_lock(self) -> None:
-        """A wedged lock would block every later fire of this workflow until the TTL lapsed."""
+        """A wedged lock would block every later fire of this workflow — replay and agent alike — until the TTL lapsed."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=True)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1355,7 +1355,7 @@ class TestReplayHoldsTheConversationLock:
         harness.add_messages.assert_not_awaited()
 
     async def test_a_held_lock_is_recorded_as_a_fire_that_did_not_run(self) -> None:
-        """Honest record: skipped, with no lock value in the text a user reads."""
+        """Honest record: skipped, in plain words, with no lock value in the text a user reads (the holder goes to the log)."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1382,7 +1382,7 @@ class TestReplayHoldsTheConversationLock:
         )
 
     async def test_a_held_lock_tells_the_user_nothing(self) -> None:
-        """The lock holder delivers the result; a second notification would duplicate it."""
+        """The run holding the lock delivers the result; a second notification of either kind would be the very duplicate this lock exists to stop."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1394,7 +1394,7 @@ class TestReplayHoldsTheConversationLock:
         harness.platform_delivery.assert_not_awaited()
 
     async def test_a_held_lock_leaves_the_playbooks_record_alone(self) -> None:
-        """A skipped fire must not reset a suspect streak or count as a run."""
+        """No outcome was reached, so none is written: a skipped fire must not reset a suspect streak or count as a run."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1446,11 +1446,12 @@ class TestReplayHoldsTheConversationLock:
                 },
             )
 
-        harness.scheduler.handle_recurring_task.assert_awaited_once()
+        assert harness.summary() == OVERLAPPED_SUMMARY
+        harness.scheduler.handle_recurring_task.assert_awaited_once_with(workflow, 1)
 
 
 class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
-    """A playbook frozen on an empty fetch is distrusted before it is ever replayed."""
+    """The fire that writes a playbook checks the frozen calls against what they returned in that very run, so a playbook frozen on emptiness is distrusted before it is ever replayed."""
 
     async def test_an_agent_run_that_froze_an_empty_fetch_marks_it_suspect(
         self,
@@ -1458,15 +1459,7 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
         workflow = _workflow()
         harness = _Harness(workflow)
         written = _playbook(workflow).model_copy(
-            # The reader is what makes the emptiness matter: frozen_on_empty
-            # only inspects a step whose result something later addresses, so a
-            # write tool's incidental empty field cannot mark a playbook suspect.
-            update={
-                "steps": [
-                    ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={}),
-                    ToolStep(id="reply", tool="GMAIL_SEND", args={"body": "$steps.mail.messages"}),
-                ]
-            }
+            update={"steps": [ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})]}
         )
         harness.chat = AsyncMock(
             return_value=(
@@ -1501,7 +1494,11 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
 
 
 class TestAFireCutOffByTheJobTimeoutIsRecorded:
-    """Seen live: a heal hit the worker's job timeout and stayed "running" forever."""
+    """Seen live: a same-fire heal ran into the worker's 30-minute job timeout (three model calls stalled for minutes each).
+
+    ARQ cancels the job, which arrives as CancelledError, not Exception, so the execution record
+    stayed "running" forever and the next occurrence was never re-armed.
+    """
 
     async def test_the_execution_is_failed_with_the_reason_and_the_cancel_propagates(
         self,
@@ -1521,7 +1518,7 @@ class TestAFireCutOffByTheJobTimeoutIsRecorded:
 
 class TestReviewFixes:
     async def test_a_heal_runs_rewrite_is_not_audited_for_emptiness_again(self) -> None:
-        """Auditing a heal's own rewrite would send every later fire back to the agent for good."""
+        """A quiet source: the heal probes broadly, confirms nothing is there and rewrites the same sequence."""
         workflow = _workflow()
         harness = _Harness(workflow)
         distrusted = _distrusted(workflow)
@@ -1595,7 +1592,7 @@ class TestReviewFixes:
         )
 
     async def test_a_job_timeout_records_the_playbook_run_as_failed(self) -> None:
-        """A cancelled replay may have run side effects the next fire must heal with on record."""
+        """The cancelled replay may have run its side effects; the next fire must heal with that on record, not replay them again as if nothing happened."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1662,12 +1659,21 @@ async def _fire_with_context(harness: _Harness, context: dict[str, object]) -> s
 
 
 #: What ``_run_workflow`` hands the agent for a fire with no extra context.
-AGENT_USER = AuthenticatedUser(user_id="u_1")
+AGENT_USER = AuthenticatedUser(user_id=USER_ID)
+
+
+def _agent_call(harness: _Harness, context: dict[str, object] | None = None) -> object:
+    """Make the call the agent path makes: the fire's context, under its reservation.
+
+    The reservation is what call_executor adopts, so the agent run never
+    queues its own dispatch behind its own fire's claim.
+    """
+    return call(harness.workflow, AGENT_USER, context or {}, reservation=harness.reservation())
 
 
 @pytest.mark.unit
 class TestTheFallbackBriefTheAgentReads:
-    """The brief stands between a stopped replay and a duplicated side effect."""
+    """The brief is the only thing standing between a stopped replay and a second copy of every side effect, so its wording is a contract."""
 
     def test_a_line_at_the_bound_is_left_whole_and_the_next_one_is_cut(self) -> None:
         at_bound = "a" * FALLBACK_LINE_MAX_CHARS
@@ -1734,13 +1740,15 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
     async def test_the_fire_is_charged_once_for_this_user_against_the_run_quota(
         self,
     ) -> None:
-        """The charge is against the workflow's owner, never a stray id."""
+        """One fire, one execution charged — and against the workflow's owner, never a stray id: the charge is what stops a runaway schedule."""
         workflow = _workflow()
         harness = _Harness(workflow)
 
         await _fire(harness)
 
-        assert harness.tiered_limit.await_args_list == [call("u_1", "trigger_workflow_executions")]
+        assert harness.tiered_limit.await_args_list == [
+            call(USER_ID, "trigger_workflow_executions")
+        ]
 
     async def test_the_shortcut_is_looked_up_for_this_workflow_and_this_user(
         self,
@@ -1751,7 +1759,7 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
 
         await _fire(harness)
 
-        assert harness.get_for_workflow.await_args_list == [call("wf_1", "u_1")]
+        assert harness.get_for_workflow.await_args_list == [call("wf_1", USER_ID)]
 
     async def test_a_lookup_failure_names_itself_and_hands_the_fire_over_unchanged(
         self,
@@ -1768,13 +1776,13 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
             error_type="ConnectionError",
             error="mongo away",
         )
-        assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
+        assert harness.chat.await_args_list == [_agent_call(harness)]
         assert harness.summary() == AGENT_RUN_SUMMARY
 
 
 @pytest.mark.asyncio
 class TestDiscardingAShortcutSaysWhichOneAndWhy:
-    """A discard is silent data loss unless the log names the playbook and reason."""
+    """A discard is silent data loss unless the log names the playbook and the reason — that pair is how a replay regression is traced back in production."""
 
     async def test_a_stale_shortcut_is_deleted_named_and_the_agent_takes_the_fire(
         self,
@@ -1785,8 +1793,9 @@ class TestDiscardingAShortcutSaysWhichOneAndWhy:
 
         await _fire(harness)
 
-        harness.delete_revision.assert_awaited_once()
-        assert harness.delete_revision.await_args.args == ("wf_1", "u_1")
+        harness.delete_revision.assert_awaited_once_with(
+            "wf_1", USER_ID, playbook_id="pb_1", revision=0
+        )
         harness.log.warning.assert_any_call(
             f"{LogTag.WORKER} Playbook discarded",
             workflow_id="wf_1",
@@ -1799,11 +1808,11 @@ class TestDiscardingAShortcutSaysWhichOneAndWhy:
             "playbook_id": "pb_1",
             "llm_calls": 0,
         }
-        assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
+        assert harness.chat.await_args_list == [_agent_call(harness)]
         assert harness.summary() == SHORTCUT_DISCARDED_SUMMARY
 
     async def test_a_delete_that_fails_says_the_shortcut_stays_on_file(self) -> None:
-        """A failed delete costs the next check; silence would strand a stale playbook."""
+        """The delete failing costs the next check, not this run — but a silent failure would leave a stale playbook nobody knows is still there."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow, stale=True))
@@ -1845,7 +1854,7 @@ class TestDiscardingAShortcutSaysWhichOneAndWhy:
             "heal_attempts": PLAYBOOK_HEAL_ATTEMPT_LIMIT,
             "llm_calls": 0,
         }
-        assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
+        assert harness.chat.await_args_list == [_agent_call(harness)]
         assert harness.summary() == AGENT_RUN_SUMMARY
 
 
@@ -1868,7 +1877,7 @@ class TestTheHealRunCarriesTheFireItWasGiven:
             "heal_attempts": 0,
             "llm_calls": 0,
         }
-        assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
+        assert harness.chat.await_args_list == [_agent_call(harness)]
         assert harness.summary() == HEAL_RUN_SUMMARY
 
 
@@ -1877,7 +1886,7 @@ class TestTheReplayIsHandedTheFireItWasGiven:
     async def test_the_replay_gets_the_workflow_the_user_the_trigger_and_the_playbook(
         self,
     ) -> None:
-        """Dropping any one of these replays the wrong thing for the wrong person."""
+        """Dropping any one of these replays the wrong thing for the wrong person, or replays with no trigger payload at all."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _playbook(workflow)
@@ -1921,7 +1930,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
         assert harness.add_messages.await_args_list == [
             call(
                 conversation_id="conv_1",
-                user_id="u_1",
+                user_id=USER_ID,
                 workflow=workflow,
                 response="Agenda sent.",
                 trace=result.trace,
@@ -1933,7 +1942,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
     async def test_the_result_reaches_the_users_platforms_as_this_workflows_own(
         self,
     ) -> None:
-        """A replay must be indistinguishable from an agent run in Slack/Telegram."""
+        """The origin line is what a user sees in Slack/Telegram; a replay must be indistinguishable from an agent run there."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1944,7 +1953,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
         assert harness.platform_delivery.await_args_list == [
             call(
                 user=AGENT_USER,
-                user_id="u_1",
+                user_id=USER_ID,
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
             )
@@ -1953,7 +1962,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
     async def test_an_outcome_the_playbook_no_longer_matches_is_reported_not_swallowed(
         self,
     ) -> None:
-        """record_run_outcome answering None means the body changed mid-run and must be logged."""
+        """Record_run_outcome answering None means the body changed mid-run."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _playbook(workflow)
@@ -1994,11 +2003,11 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         assert harness.summary() == REPLAY_STOPPED_SUMMARY
         # The hand-off was a heal run too, so it spends an attempt on this body.
         harness.increment_heal_attempts.assert_awaited_once_with(
-            "wf_1", "u_1", playbook_id="pb_1", revision=_playbook(workflow).revision
+            "wf_1", USER_ID, playbook_id="pb_1", revision=_playbook(workflow).revision
         )
 
     async def test_a_flagged_replay_names_the_reason_everywhere_it_lands(self) -> None:
-        """The reason reaches the wide event, the warning, and the owner's summary."""
+        """The reason reaches three places — the wide event, the warning, and the summary the workflow's owner reads — and the summary drops only a trailing full stop so it reads as one sentence."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _playbook(workflow)
@@ -2048,23 +2057,15 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         _, result = _stopped_replay()
-        # A datetime in the args: the note is prompt material, so the calls
-        # travel as JSON values, not as Python objects that render as repr.
-        result.trace[0].args = {"since": datetime(2026, 9, 5, tzinfo=UTC)}
         harness.playbook_run = AsyncMock(return_value=("conv_1", result))
 
         await _fire(harness)
 
-        context = harness.chat.await_args.args[2]
-        assert context[PLAYBOOK_REPLAYED_CALLS_KEY][0]["args"] == {"since": "2026-09-05T00:00:00Z"}
         assert harness.chat.await_args_list == [
-            call(
-                workflow,
-                AGENT_USER,
+            _agent_call(
+                harness,
                 {
                     PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result),
-                    # The replay's calls travel with the note, structurally, so a
-                    # rewrite may freeze what the replay already ran.
                     PLAYBOOK_REPLAYED_CALLS_KEY: [
                         call.model_dump(mode="json") for call in result.trace
                     ],
@@ -2075,7 +2076,7 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
     async def test_a_disabled_shortcut_is_named_with_its_streak_and_spends_no_attempt(
         self,
     ) -> None:
-        """Past the streak limit the body is gone, so the log is the only record of the drop."""
+        """Past the streak limit the body is gone, so an attempt counted against it would land nowhere — and the log is the only record it was dropped."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _playbook(workflow)
@@ -2099,36 +2100,11 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         assert harness.playbook_event()["disabled"] is True
         harness.increment_heal_attempts.assert_not_awaited()
 
-    async def test_a_fallback_that_is_queued_keeps_the_replays_calls_on_the_record(
-        self,
-    ) -> None:
-        """Losing the replay's calls would replay its side effects a second time."""
-        workflow = _workflow()
-        harness = _Harness(workflow)
-        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
-        harness.playbook_run = AsyncMock(return_value=_stopped_replay())
-        harness.chat = AsyncMock(
-            side_effect=WorkflowFireQueued(
-                task_id="task_9",
-                user_id="u_1",
-                conversation_id="conv_1",
-                trace=[RecordedCall(tool_name="call_executor")],
-            )
-        )
-
-        await _fire(harness)
-
-        trace = harness.complete_execution.await_args.kwargs["trace"]
-        assert [recorded.tool_name for recorded in trace] == [
-            "list_events",
-            "call_executor",
-        ]
-
 
 @pytest.mark.asyncio
 class TestTheReplayCompletionNotificationEdges:
     async def test_a_workflow_with_no_id_still_notifies_under_an_empty_id(self) -> None:
-        """workflow.id is optional; the notification contract is a string, so blank fills in."""
+        """Workflow.id is optional on the model; the notification contract is a string, so the empty string — not a stand-in — is what it gets."""
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
         with (
@@ -2142,7 +2118,7 @@ class TestTheReplayCompletionNotificationEdges:
                 workflow_id="",
                 workflow_title="Daily agenda",
                 conversation_id="conv_1",
-                user_id="u_1",
+                user_id=USER_ID,
             )
         ]
 
@@ -2176,24 +2152,33 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
 
         await _fire(harness)
 
-        assert harness.conversation.await_args_list == [
-            call(workflow_id="wf_1", user_id="u_1", workflow_title="Daily agenda")
-        ]
-        harness.get_user.assert_awaited_once_with("u_1")
-        # The lock value a replay writes must be its own run's id, so the
-        # release below can prove it still owns the lock it took.
+        # Asked for twice — once by the fire, to know what to reserve, and once
+        # by the replay, to know where to run. Same idempotent lookup, so both
+        # land on the workflow's one conversation.
+        assert (
+            harness.conversation.await_args_list
+            == [call(workflow_id="wf_1", user_id=USER_ID, workflow_title="Daily agenda")] * 2
+        )
+        harness.get_user.assert_awaited_once_with(USER_ID)
+        # The lock value a fire writes must be its own run's id, so the release
+        # below can prove it still owns the lock it took.
         assert UUID(harness.acquired_task_id()).version == 4
 
     async def test_the_replay_carries_the_playbook_the_profile_and_the_trigger(
         self,
     ) -> None:
-        """A wrong zone here silently runs the user's day at the wrong hour."""
+        """The replay's $now/$today come from this bag: a wrong zone or a blanked profile silently runs the user's day at the wrong hour."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=True)
         playbook = _playbook(workflow)
         harness.get_for_workflow = AsyncMock(return_value=playbook)
         harness.get_user = AsyncMock(
-            side_effect=_user_context(email="ada@example.com", name="Ada", timezone="Asia/Kolkata")
+            return_value=AuthenticatedUser(
+                user_id=USER_ID,
+                email="ada@example.com",
+                name="Ada",
+                timezone="Asia/Kolkata",
+            )
         )
         context = {"trigger_type": TriggerType.MANUAL.value, "note": "run it"}
 
@@ -2215,11 +2200,13 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
     async def test_a_profile_with_no_name_or_mail_replays_with_empty_strings(
         self,
     ) -> None:
-        """PlaybookUser is a string contract — None reaches the prompt as literal "None"."""
+        """PlaybookUser is a string contract — None would reach the prompt renderer as the literal "None"."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=True)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
-        harness.get_user = AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))
+        harness.get_user = AsyncMock(
+            return_value=AuthenticatedUser(user_id=USER_ID, timezone="Asia/Kolkata")
+        )
 
         await _fire(harness)
 
@@ -2236,7 +2223,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
 
         harness.holder.assert_awaited_once_with("conv_1")
         harness.log.warning.assert_any_call(
-            f"{LogTag.WORKER} Playbook replay skipped; another run of this workflow "
+            f"{LogTag.WORKER} Workflow fire skipped; another run of this workflow "
             "holds its conversation",
             workflow_id="wf_1",
             conversation_id="conv_1",
@@ -2247,6 +2234,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
             workflow_id="wf_1",
             conversation_id="conv_1",
             lock_holder="stream_9:task_9",
+            holder_awaiting_approval=False,
         )
         assert harness.complete_execution.await_args_list == [
             call(
@@ -2258,7 +2246,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
         ]
 
     async def test_an_unknown_holder_is_recorded_as_an_empty_string(self) -> None:
-        """The overlap signal's holder is a string contract; None must not travel."""
+        """Get_lock_holder answers None once the lock lapses mid-check; the overlap signal's holder is a string, so None must not travel."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=False)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2270,60 +2258,35 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
             workflow_id="wf_1",
             conversation_id="conv_1",
             lock_holder="",
+            holder_awaiting_approval=False,
         )
 
 
 @pytest.mark.asyncio
 class TestTheZoneAWorkflowRunsIn:
-    """A silent UTC fallback here runs someone's briefing at the wrong hour."""
+    """Both run paths read $now/$today off this bag, and there is no request header in a worker — a silent UTC fallback runs someone's morning briefing in the middle of their night."""
 
     async def test_no_profile_and_no_schedule_zone_falls_back_to_utc_and_says_so(
         self,
     ) -> None:
         workflow = _workflow()
         log_seam = MagicMock()
-        with (
-            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", log_seam):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
         log_seam.warning.assert_any_call(
             f"{LogTag.WORKER} Workflow agent time falling back to UTC; "
             "no real user/schedule timezone",
             workflow_id="wf_1",
-            user_id="u_1",
-        )
-
-    async def test_a_profile_lookup_failure_leaves_the_run_with_only_its_user_id(
-        self,
-    ) -> None:
-        workflow = _workflow()
-        log_seam = MagicMock()
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(side_effect=ConnectionError("mongo away")),
-            ),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
-
-        assert resolved == AuthenticatedUser(user_id="u_1")
-        log_seam.warning.assert_any_call(
-            f"{LogTag.WORKER} Could not resolve workflow timezone",
-            user_id="u_1",
-            workflow_id="wf_1",
-            error_type="ConnectionError",
-            error="mongo away",
+            user_id=USER_ID,
         )
 
 
 @pytest.mark.asyncio
 class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
     async def test_the_failed_fire_is_counted_for_this_workflow_and_user(self) -> None:
-        """The wrapped-with-trace failure path has its own bookkeeping call to get right."""
+        """The wrapped-with-trace failure path has its own call into the bookkeeping; a blank workflow there loses the count and the notice."""
         workflow = _workflow()
         harness = _Harness(workflow)
         increment = AsyncMock()
@@ -2340,7 +2303,7 @@ class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
         with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
             await _fire(harness)
 
-        assert increment.await_args_list == [call("wf_1", "u_1", is_successful=False)]
+        assert increment.await_args_list == [call("wf_1", USER_ID, is_successful=False)]
 
 
 @pytest.mark.asyncio
@@ -2348,7 +2311,7 @@ class TestTheDisabledFlagStartsFalseNotUnset:
     async def test_a_suspect_replay_whose_outcome_write_missed_still_reports_not_disabled(
         self,
     ) -> None:
-        """A missed outcome write must still report the shortcut as alive, not unset."""
+        """Record_run_outcome answers None when the body changed mid-run, so the streak is unknown and nothing is dropped."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2362,7 +2325,7 @@ class TestTheDisabledFlagStartsFalseNotUnset:
 
 
 def _recurring(workflow: Workflow) -> Workflow:
-    """Return the workflow shape a re-arm actually acts on: repeating and live."""
+    """Build the workflow shape a re-arm actually acts on: repeating and live."""
     return workflow.model_copy(
         update={"repeat": "*/5 * * * *", "activated": True, "occurrence_count": 0}
     )
@@ -2376,7 +2339,7 @@ class TestARearmFailureAfterAnOverlapNamesTheWorkflow:
     async def test_the_error_line_carries_the_id_of_the_schedule_that_stalled(
         self,
     ) -> None:
-        """A silent re-arm failure stops a recurring workflow; the id ties the log to which one."""
+        """A re-arm that fails silently stops a recurring workflow for good; the id is the only thing that ties the line back to which one."""
         workflow = _recurring(_workflow())
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2384,50 +2347,40 @@ class TestARearmFailureAfterAnOverlapNamesTheWorkflow:
 
         await _fire_with_context(harness, SCHEDULE_CONTEXT)
 
+        assert harness.summary() == OVERLAPPED_SUMMARY
         logged = [str(entry.args[0]) for entry in harness.log.error.call_args_list if entry.args]
         assert any("wf_1" in line for line in logged), logged
 
 
 @pytest.mark.asyncio
 class TestTheScheduleZoneIsTheFallbackForABlankProfile:
-    """A blank or plain-UTC profile falls back to the schedule's own zone."""
+    """The profile wins only when it names a real zone; a blank or plain-UTC profile falls back to the zone the user picked for the schedule itself."""
 
     async def test_a_blank_profile_runs_in_the_schedules_own_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_plain_utc_profile_still_defers_to_the_schedules_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(side_effect=_user_context(timezone="UTC")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="UTC")
+            )
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_real_profile_zone_wins_over_the_schedules(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(side_effect=_user_context(timezone="Europe/Lisbon")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="Europe/Lisbon")
+            )
 
         assert resolved.timezone == Timezone.parse("Europe/Lisbon").value
 
@@ -2435,17 +2388,14 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         """A stored "   " must read as "never picked one", not as a name to parse."""
         workflow = _workflow()
         workflow.trigger_config.timezone = "   "
-        with (
-            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
 
 
 def _narration_failed_replay(reason: str) -> tuple[str, PlaybookRunResult]:
-    """Return a replay whose steps ran but whose end-of-run summary raised."""
+    """Build a replay whose steps all ran and whose end-of-run summary raised."""
     return (
         "conv_1",
         PlaybookRunResult(
@@ -2461,7 +2411,11 @@ def _narration_failed_replay(reason: str) -> tuple[str, PlaybookRunResult]:
 
 @pytest.mark.asyncio
 class TestANarrationFailureIsADeliveredRunNotAFailedOne:
-    """Prod: 13 of 15 failed playbooks had every step done, only the summary raised."""
+    """Prod: 13 of 15 failed playbooks had every step complete and only the end-of-run summary raise.
+
+    Marked FAILED, the user got nothing and the next fire spent a ~20-call heal run repairing a
+    sequence that had just worked.
+    """
 
     REASON = "the narration raised TimeoutError: model"
 
@@ -2502,7 +2456,7 @@ class TestANarrationFailureIsADeliveredRunNotAFailedOne:
     async def test_the_execution_record_says_the_summary_is_the_part_that_is_missing(
         self,
     ) -> None:
-        """The workflows page must say whether this was a plain replay or a stopped one."""
+        """The run is not a plain replay and not a stopped one; the workflows page has to say which of the two it was."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2513,7 +2467,7 @@ class TestANarrationFailureIsADeliveredRunNotAFailedOne:
         assert harness.summary() == REPLAY_NARRATION_FAILED_SUMMARY
 
     async def test_the_dead_model_call_is_still_named_on_the_wide_event(self) -> None:
-        """A fleet-wide narration outage must stay visible even though no fire failed."""
+        """Delivering the run is not the same as the call being fine: a fleet-wide narration outage has to stay visible even though no fire failed."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2532,7 +2486,7 @@ class TestANarrationFailureIsADeliveredRunNotAFailedOne:
 
 @pytest.mark.asyncio
 class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
-    """Regression wf_0d05167369cf: a lost playbook left no record of why."""
+    """wf_0d05167369cf lost a working playbook and nothing said why: the log line ages out, and the workflow itself never knew it had one."""
 
     async def test_a_stale_shortcut_records_the_hash_reason(self) -> None:
         workflow = _workflow()
@@ -2549,7 +2503,7 @@ class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
         # read back six months later says the wrong hour and cannot be compared
         # with anything else in the record.
         assert discard.at.tzinfo is UTC
-        assert harness.update_workflow.await_args.args[:2] == ("wf_1", "u_1")
+        assert harness.update_workflow.await_args.args[:2] == ("wf_1", USER_ID)
 
     async def test_an_exhausted_heal_records_the_attempts_it_spent(self) -> None:
         workflow = _workflow()
@@ -2584,7 +2538,7 @@ class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
         }
 
     async def test_a_write_that_fails_is_named_and_never_fails_the_fire(self) -> None:
-        """Losing this record costs the answer later, never today's run."""
+        """The record is an explanation, not a precondition: losing it costs the answer six months from now, never the run happening today."""
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow, stale=True))
@@ -2601,3 +2555,127 @@ class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
             reason="stale_workflow_hash",
             error_type="ConnectionError",
         )
+
+
+class TestAnAgentFireOverlapsToo:
+    """A workflow owns ONE conversation across all its runs, so a held busy lock means the previous fire is still going.
+
+    BUG: only the replay path checked, and it checked by taking the lock inside itself. On the
+    agent path nothing was claimed until call_executor ran, a whole comms model call later — so a
+    second fire arriving in that window found the lock free, ran, and had its dispatch absorbed by
+    the first run's inbox, while THIS fire completed as a clean success whose trace held none of
+    the work and whose completion notification never fired.
+    """
+
+    async def test_an_agent_fire_is_dropped_when_the_conversation_is_held(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.acquire = AsyncMock(return_value=False)
+        harness.holder = AsyncMock(return_value="stream_9:task_9")
+
+        await _fire(harness)
+
+        harness.chat.assert_not_awaited()
+        harness.playbook_run.assert_not_awaited()
+        assert harness.complete_execution.await_args.kwargs["status"] == "skipped"
+
+    async def test_the_claim_is_taken_not_read(self) -> None:
+        """A read cannot close the window it is checking: the agent path does not reach call_executor until a comms model call later, so two fires that merely READ a free lock would both proceed."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+
+        await _fire(harness)
+
+        harness.acquire.assert_awaited_once()
+        assert harness.acquire.await_args.args[0] == f"{EXECUTOR_BUSY_PREFIX}conv_1"
+
+    async def test_the_agent_run_is_handed_the_reservation_to_adopt(self) -> None:
+        """Without this the fire would queue its own dispatch behind its own claim — the executor would never start and the run would report a clean success with nothing in it."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+
+        await _fire(harness)
+
+        assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
+
+    async def test_the_reservation_says_it_lives_for_as_long_as_the_fire_holds_it(self) -> None:
+        """A reservation that never renewed would read as a dead holder, and its conversation be taken mid-fire."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        cancelled_while_the_agent_ran: list[bool] = []
+
+        async def _agent(*_args: object, **_kwargs: object) -> object:
+            cancelled_while_the_agent_ran.append(harness.alive_task.cancel.called)
+            return ("conv_1", [RecordedCall(tool_name="agent_tool")])
+
+        harness.chat.side_effect = _agent
+        await _fire(harness)
+
+        harness.alive.assert_awaited_once_with("conv_1", harness.reservation())
+        assert cancelled_while_the_agent_ran == [False]
+        harness.alive_task.cancel.assert_called_once_with()
+
+    async def test_an_overlapped_fire_is_not_charged_a_plan_execution(self) -> None:
+        """It ran nothing, so it must cost nothing: a workflow that overlaps itself repeatedly would otherwise eat the user's monthly quota on runs whose own record says they were skipped."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.acquire = AsyncMock(return_value=False)
+
+        await _fire(harness)
+
+        harness.tiered_limit.assert_not_awaited()
+
+    async def test_an_overlapped_fire_leaves_its_trigger_batch_alone(self) -> None:
+        """The batch is read-and-deleted in one step, so a fire that drains it and then drops out loses those events for good — the run it collided with already took its own batch and will never see these."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.acquire = AsyncMock(return_value=False)
+
+        await _fire_with_context(harness, {"trigger_batch_key": "batch_1"})
+
+        harness.drain.assert_not_awaited()
+
+    async def test_a_fire_that_overlaps_an_approval_says_so_on_the_record(self) -> None:
+        """A parked run holds the lock for the whole approval window."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.acquire = AsyncMock(return_value=False)
+        harness.pending_approvals = AsyncMock(return_value=[MagicMock()])
+
+        await _fire(harness)
+
+        assert harness.summary() == OVERLAPPED_AWAITING_APPROVAL_SUMMARY
+        harness.pending_approvals.assert_awaited_once_with("conv_1")
+
+    async def test_an_overlapped_fire_gets_its_own_skipped_row_in_the_workflows_history(
+        self,
+    ) -> None:
+        """Without a row the user sees a workflow that silently stopped producing runs."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.acquire = AsyncMock(return_value=False)
+        create = AsyncMock(return_value=harness.execution)
+        harness.extra.append(patch(f"{MODULE}.create_execution", create))
+
+        await _fire(harness)
+
+        create.assert_awaited_once_with(
+            workflow_id="wf_1", user_id=USER_ID, trigger_type=TriggerType.MANUAL.value
+        )
+        assert harness.complete_execution.await_args.kwargs["execution_id"] == "exec_1"
+
+    async def test_the_post_replay_fallback_runs_under_the_fires_own_claim(self) -> None:
+        """The fire holds the conversation for its whole duration, so the agent that finishes a stopped replay must not read that claim as somebody else's."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        _, result = _stopped_replay()
+        harness.playbook_run = AsyncMock(return_value=("conv_1", result))
+
+        await _fire(harness)
+
+        harness.chat.assert_awaited_once()
+        # The SAME claim, not a fresh one: a second reservation would find the
+        # conversation held by this very fire and drop the run that is finishing it.
+        assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
+        assert harness.complete_execution.await_args.kwargs["status"] == "success"

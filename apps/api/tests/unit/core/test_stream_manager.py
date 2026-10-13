@@ -40,6 +40,7 @@ from tests.helpers import captured_wide_event
 
 EVENTS_KEY = f"{STREAM_EVENTS_PREFIX}s1"
 ACTIVE_KEY = f"{STREAM_ACTIVE_PREFIX}user-1:conv-1"
+PROGRESS_KEY = f"{STREAM_PROGRESS_PREFIX}s1"
 
 XReadBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
 
@@ -62,6 +63,11 @@ def _progress_dict(**overrides: Any) -> dict[str, Any]:
         "error": None,
         **overrides,
     }
+
+
+def _progress_get(progress: dict[str, Any]) -> AsyncMock:
+    """Serve s1's progress record from a fake redis_cache.get, under its real key only."""
+    return AsyncMock(side_effect=lambda key: progress if key == PROGRESS_KEY else None)
 
 
 def _entries_batch(*entries: tuple[str, str]) -> XReadBatch:
@@ -216,7 +222,10 @@ class TestCompleteStream:
 class TestCleanup:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
-        self.mock_get = AsyncMock(return_value=_progress_dict())
+        self.progress: dict[str, Any] | None = _progress_dict()
+        self.mock_get = AsyncMock(
+            side_effect=lambda key: self.progress if key == PROGRESS_KEY else None
+        )
         self.mock_delete = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -242,7 +251,7 @@ class TestCleanup:
         assert EVENTS_KEY not in calls
 
     async def test_skips_active_index_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
+        self.progress = None
         await StreamManager.cleanup("s1")
 
         calls = [c[0][0] for c in self.mock_delete.call_args_list]
@@ -699,7 +708,7 @@ class TestUpdateProgress:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
-        self.mock_get = AsyncMock(return_value=self.progress)
+        self.mock_get = _progress_get(self.progress)
         self.mock_set = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -764,9 +773,30 @@ class TestUpdateProgress:
         saved = self.mock_set.call_args[0][1]
         assert saved["tool_data"]["tool_data"] == [{"id": 1}, {"id": 2}]
 
+    async def test_the_first_tool_data_keeps_its_companion_fields(self) -> None:
+        incoming = {"tool_data": [{"id": 1}], "other_data": {"k": "v"}}
+        await StreamManager.update_progress("s1", tool_data=incoming)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == incoming
+
+    async def test_companion_fields_land_beside_accumulated_tool_data(self) -> None:
+        self.progress["tool_data"] = {"tool_data": [{"id": 1}]}
+        await StreamManager.update_progress("s1", tool_data={"tool_output": {"ok": True}})
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == {"tool_data": [{"id": 1}], "tool_output": {"ok": True}}
+
+    async def test_a_record_without_tool_data_accepts_the_first_tool_data(self) -> None:
+        """StreamProgressRecord promises every read tolerates a missing key, tool_data included."""
+        del self.progress["tool_data"]
+        await StreamManager.update_progress("s1", tool_data={"tool_data": [{"id": 1}]})
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == {"tool_data": [{"id": 1}]}
+
     async def test_noop_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
-        await StreamManager.update_progress("s1", message_chunk="hello")
+        await StreamManager.update_progress("s-without-progress", message_chunk="hello")
         self.mock_set.assert_not_awaited()
 
     async def test_no_update_when_no_chunk_or_tool_data(self) -> None:
@@ -856,7 +886,7 @@ class TestSetError:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
-        self.mock_get = AsyncMock(return_value=self.progress)
+        self.mock_get = _progress_get(self.progress)
         self.mock_set = AsyncMock()
         self.mock_redis_client = _stream_client()
 
@@ -886,8 +916,7 @@ class TestSetError:
         )
 
     async def test_appends_error_even_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
-        await StreamManager.set_error("s1", "kaboom")
+        await StreamManager.set_error("s-without-progress", "kaboom")
 
         self.mock_set.assert_not_awaited()
         # Error signal should still be appended

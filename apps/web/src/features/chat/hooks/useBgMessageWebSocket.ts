@@ -24,6 +24,8 @@ interface BgMessageEvent {
     response: string;
     message_id: string;
     date: string;
+    kind?: string;
+    reacts_to_message_id?: string;
     task_id?: string;
     tool_data?: TypedToolDataEntry[];
     follow_up_actions?: string[];
@@ -73,6 +75,8 @@ export function useBgMessageWebSocket() {
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
       messageId: message.message_id,
+      kind: message.kind ?? null,
+      reacts_to_message_id: message.reacts_to_message_id ?? null,
       tool_data: message.tool_data ?? null,
       follow_up_actions: message.follow_up_actions ?? null,
       replyToMessageData: message.replyToMessage ?? null,

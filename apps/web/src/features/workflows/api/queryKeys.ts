@@ -9,4 +9,7 @@ export const workflowKeys = {
   all: ["workflows"] as const,
   /** The user's workflow list (GET /workflows). */
   list: () => ["workflows", "list"] as const,
+  /** The server's verdict on one cron expression (GET /reminders/cron/validate). */
+  cronValidation: (expression: string) =>
+    ["workflows", "cron-validation", expression] as const,
 };

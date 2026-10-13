@@ -8,8 +8,17 @@ app.models.memory_models.
 """
 
 from datetime import datetime
+from typing import cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import ErrorDetails
 
 from app.constants.memory import (
     MemoryEntityType,
@@ -17,6 +26,7 @@ from app.constants.memory import (
     MemoryShelfLife,
     ReconcileOutcome,
 )
+from shared.py.wide_events import log
 
 
 class ExtractedEntity(BaseModel):
@@ -63,26 +73,30 @@ class ExtractedFact(BaseModel):
             "Never write vague fragments like 'likes it' or 'her birthday is soon'."
         )
     )
-    kind: MemoryKind = Field(
-        description=(
-            "'fact' for stable knowledge about the user and their world "
-            "(preferences, relationships, identity mappings, context); "
-            "'experience' for something that happened (an event, a trip, a decision made)."
-        )
-    )
     shelf_life: MemoryShelfLife = Field(
         description=(
+            "Decide this first: it routes the assertion. One of 'durable', "
+            "'state', 'task' or 'journal', and only here, never in 'kind'. "
             "How long this assertion stays true. 'durable': identity, "
-            "relationships, preferences, style, health, values, long-run goals "
-            "— never expires. 'state': a value that was only true as of a "
+            "relationships, preferences, style, health, values, long-run goals. "
+            "Never expires. 'state': a value that was only true as of a "
             "moment (counts, balances, metrics, connection status, deployment "
             "state, open bugs, in-flight applications, anything you would write "
-            "'as of <date>') — expires. 'task': a commitment, deadline or "
-            "intention — becomes an agenda item, never a plain fact. 'journal': "
+            "'as of <date>'). Expires. 'task': a commitment, deadline or "
+            "intention. Becomes an agenda item, never a plain fact. 'journal': "
             "what happened today, anything GAIA itself recommended, produced, "
-            "drafted or advised, or a world fact merely looked up — becomes a "
+            "drafted or advised, or a world fact merely looked up. Becomes a "
             "journal line, never a fact. When torn between durable and state, "
             "choose state."
+        )
+    )
+    kind: MemoryKind = Field(
+        description=(
+            "Exactly 'fact' or 'experience', nothing else: a task or journal "
+            "item still takes one of these two here, its shelf life goes in "
+            "'shelf_life'. 'fact' for knowledge about the user and their world "
+            "(preferences, relationships, identity mappings, context, commitments); "
+            "'experience' for something that happened (an event, a trip, a decision made)."
         )
     )
     category_path: str = Field(
@@ -132,7 +146,7 @@ class AgendaUpdate(BaseModel):
 
     item: str = Field(
         description=(
-            "The open loop itself, phrased as the commitment — 'Sam owes the "
+            "The open loop itself, phrased as the commitment: 'Sam owes the "
             "landlord a signed lease by March 3', not 'Sam mentioned the lease'. "
             "Self-contained and in third person, like a fact. When closing an "
             "item, phrase it as the ORIGINAL commitment so it can be matched "
@@ -142,7 +156,7 @@ class AgendaUpdate(BaseModel):
     resolved: bool = Field(
         description=(
             "True when this conversation CLOSED the loop (it was delivered, "
-            "cancelled, or otherwise finished) — the matching agenda item is "
+            "cancelled, or otherwise finished), the matching agenda item is "
             "then retired. False when it opens or restates an open loop."
         )
     )
@@ -167,11 +181,38 @@ class ExtractedMemoryBatch(BaseModel):
     agenda_updates: list[AgendaUpdate] = Field(
         default_factory=list,
         description=(
-            "Open loops opened or closed in this conversation — new commitments, "
+            "Open loops opened or closed in this conversation: new commitments, "
             "deadlines, things GAIA owes the user, or previously open items now "
             "resolved. Empty if the conversation changed no open loops."
         ),
     )
+
+    @field_validator("facts", mode="wrap")
+    @classmethod
+    def _drop_invalid_facts(
+        cls, value: object, handler: ValidatorFunctionWrapHandler
+    ) -> list[ExtractedFact]:
+        """Validate each fact alone: a malformed one is dropped and logged, the rest are kept."""
+        if not isinstance(value, list):
+            return cast(list[ExtractedFact], handler(value))
+        kept: list[ExtractedFact] = []
+        reasons: list[str] = []
+        for index, item in enumerate(value):
+            try:
+                kept.extend(handler([item]))
+            except ValidationError as error:
+                details: list[ErrorDetails] = error.errors()
+                for detail in details:
+                    location = ".".join(map(str, ("facts", index, *detail["loc"][1:])))
+                    reasons.append(f"{location}: {detail['msg']}")
+        if reasons:
+            log.warning(
+                "memory_facts_rejected",
+                rejected_count=len(value) - len(kept),
+                kept_count=len(kept),
+                reasons=reasons,
+            )
+        return kept
 
 
 class FactCategorization(BaseModel):
@@ -217,7 +258,7 @@ class ConsolidatedDocument(BaseModel):
         description=(
             "The full rewritten markdown body of the document, following the "
             "section skeleton and rules in the system prompt. No code fences, "
-            "no commentary — the document body only."
+            "no commentary, the document body only."
         )
     )
 

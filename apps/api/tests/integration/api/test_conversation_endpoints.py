@@ -9,6 +9,7 @@ from app.models.conversation_models import (
     ConversationListResponse,
     CreateConversationResponse,
 )
+from tests.conftest import FAKE_USER
 
 
 @pytest.mark.integration
@@ -62,7 +63,7 @@ class TestConversationEndpoints:
         """POST /api/v1/conversations should return 200 on success."""
         mock_create.return_value = CreateConversationResponse(
             conversation_id="conv-123",
-            user_id="integration-test-user-1",
+            user_id=FAKE_USER.user_id,
             createdAt="2024-01-01T00:00:00+00:00",
             detail="Conversation created successfully",
         )
@@ -103,7 +104,7 @@ class TestConversationEndpoints:
         """GET /api/v1/conversations/{id} should return 200."""
         mock_get_convo.return_value = ConversationDocument(
             conversation_id="conv-456",
-            user_id="integration-test-user-1",
+            user_id=FAKE_USER.user_id,
             description="A conversation",
             messages=[],
         )

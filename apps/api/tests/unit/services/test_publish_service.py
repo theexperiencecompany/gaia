@@ -87,10 +87,7 @@ class TestPublishCustomIntegration:
 
         result = await publish_custom_integration(INTEGRATION_ID, USER_ID)
 
-        assert result == {
-            "integration_id": INTEGRATION_ID,
-            "public_url": "/marketplace/my-integration",
-        }
+        assert result == "/marketplace/my-integration"
         assert mock_deps.repo.ensure_unique_slug.await_args.kwargs == {
             "name": "My Integration",
             "category": "productivity",
@@ -98,7 +95,12 @@ class TestPublishCustomIntegration:
         }
         assert mock_deps.repo.publish.await_args.kwargs["created_by"] == USER_ID
         assert mock_deps.repo.publish.await_args.kwargs["slug"] == "my-integration"
-        mock_deps.index.assert_awaited_once()
+        # The validator and the Chroma index take the dumped tools, not the
+        # models: a None here publishes an integration whose tools are
+        # unsearchable and unvalidated, with nothing else going wrong.
+        dumped = [{"name": "lookup", "description": "Look things up"}]
+        assert mock_deps.validate.await_args.kwargs["tools"] == dumped
+        assert mock_deps.index.await_args.kwargs["tools"] == dumped
         mock_deps.clear.assert_awaited_once_with("marketplace:community:*")
         mock_deps.invalidate.assert_awaited_once_with(USER_ID)
 
@@ -179,9 +181,8 @@ class TestUnpublishCustomIntegration:
     async def test_unpublishes_and_cleans_marketplace(self, mock_deps):
         mock_deps.repo.get.return_value = _integration(is_public=True)
 
-        result = await unpublish_custom_integration(INTEGRATION_ID, USER_ID)
+        await unpublish_custom_integration(INTEGRATION_ID, USER_ID)
 
-        assert result == {"integration_id": INTEGRATION_ID}
         mock_deps.repo.unpublish.assert_awaited_once_with(INTEGRATION_ID)
         mock_deps.remove.assert_awaited_once_with(INTEGRATION_ID)
         mock_deps.clear.assert_awaited_once_with("marketplace:community:*")

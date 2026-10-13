@@ -21,7 +21,6 @@ from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -31,6 +30,7 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import AppError, create_error
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 
 
 def _user(**fields) -> UserDocument:
@@ -99,6 +99,30 @@ class TestPlatform:
 
     def test_values_returns_all_platforms(self):
         assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
+
+
+class TestEnsureLinkable:
+    async def test_checks_exactly_this_platform_account_and_this_user(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+
+        await PlatformLinkService.ensure_linkable(sample_user_id, "discord", "discord456")
+
+        mock_repo.get_by_platform_id.assert_awaited_once_with("discord", "discord456")
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
+
+    async def test_the_owner_relinking_the_same_account_is_no_conflict(
+        self, mock_repo, sample_user_id
+    ):
+        owner = _user(id=sample_user_id, platform_links={"discord": {"id": "discord456"}})
+        mock_repo.get_by_platform_id.return_value = owner
+        mock_repo.get.return_value = owner
+        mock_repo.link_platform.return_value = owner
+
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+
+        assert result.is_new_link is False
 
 
 class TestLinkAccount:
@@ -902,7 +926,9 @@ class TestStartPlatformConnect:
 
 
 class TestDisconnectPlatformAccount:
-    async def test_success_clears_bot_cache_and_audits(self, sample_user_id):
+    async def test_success_clears_bot_cache_and_audits(
+        self, sample_user_id: str, posthog_events: list[dict[str, object]]
+    ) -> None:
         link_entry = {"platformUserId": "DISC999"}
         unlink_result = DisconnectPlatformResponse(status="disconnected", platform="discord")
         with (
@@ -917,7 +943,6 @@ class TestDisconnectPlatformAccount:
                 return_value=unlink_result,
             ) as mock_unlink,
             patch("app.services.platform_link_service.redis_cache") as mock_cache,
-            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
             patch("app.services.platform_link_service.log") as mock_log,
         ):
             mock_cache.client = AsyncMock()
@@ -933,9 +958,12 @@ class TestDisconnectPlatformAccount:
             actor=sample_user_id,
             provider="discord",
         )
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
-        )
+        # The agent tool reaches this from an ARQ executor run with no request
+        # context, so the owner must be named explicitly.
+        [event] = posthog_events
+        assert event["event"] == IntegrationDisconnected.event
+        assert event["distinct_id"] == sample_user_id
+        assert event["properties"]["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (

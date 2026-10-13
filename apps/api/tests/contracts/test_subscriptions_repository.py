@@ -46,6 +46,16 @@ class TestSubscriptionsRepository:
         assert active is not None and active.dodo_subscription_id == "a"
         assert await repo.get_active_for_user("someone-else") is None
 
+    async def test_active_user_ids_are_each_paying_user_once(self, repo):
+        await repo.create(_sub(user_id="pays-twice", dodo_subscription_id="p1"))
+        await repo.create(_sub(user_id="pays-twice", dodo_subscription_id="p2"))
+        await repo.create(_sub(user_id="lapsed", dodo_subscription_id="p3", status="cancelled"))
+
+        ids = await repo.active_user_ids()
+
+        assert ids.count("pays-twice") == 1
+        assert "lapsed" not in ids
+
     async def test_get_latest_active_for_user(self, repo):
         await repo.create(
             _sub(

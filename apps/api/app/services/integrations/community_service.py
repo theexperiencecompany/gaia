@@ -1,10 +1,13 @@
 """Community marketplace service functions."""
 
+from typing import cast
+
 from app.constants.cache import COMMUNITY_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
+from app.models.integration_models import PublicIntegrationSearchHit
 from app.schemas.integrations.responses import CommunityListResponse
 from app.services.integrations.integration_service import (
     format_community_integrations,
@@ -58,7 +61,8 @@ async def _search_community_integrations(
         )
         search_results = []
 
-    integration_ids = [str(r["integration_id"]) for r in search_results if r.get("integration_id")]
+    hits = [PublicIntegrationSearchHit.model_validate(result) for result in search_results]
+    integration_ids = [hit.integration_id for hit in hits if hit.integration_id]
 
     if integration_ids:
         integrations = await integration_repository.community_by_ids(integration_ids)
@@ -101,9 +105,10 @@ async def _browse_community_integrations(
 ) -> CommunityListResponse:
     """Browse community integrations with caching."""
     cache_key = f"marketplace:community:{sort}:{category}:{limit}:{offset}"
-    cached = await get_cache(cache_key)
+    # Only the model_dump() written below lives under this key.
+    cached = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached:
-        return CommunityListResponse(**cached)
+        return CommunityListResponse.model_validate(cached)
 
     total = await integration_repository.count_community_browse(category)
     integrations = await integration_repository.community_browse(

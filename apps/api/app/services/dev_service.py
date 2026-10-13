@@ -36,8 +36,14 @@ from app.schemas.dev_schemas import (
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
-from app.services.platform_link_service import Platform, PlatformLinkService
-from app.services.todos.todo_service import create_todo
+from app.services.platform_link_service import (
+    AccountHasDifferentPlatformError,
+    Platform,
+    PlatformAccountTakenError,
+    PlatformLinkService,
+    link_conflict_error,
+)
+from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
 from shared.py.wide_events import log
@@ -62,6 +68,7 @@ async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
         name=name,
         email=email,
         picture_url=None,
+        auth_method=None,
         # Same stored shape as real signup, but a minted dev user must never
         # send a welcome email, join the marketing audience, or hit PostHog.
         external_side_effects=False,
@@ -147,8 +154,40 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
+    # Every link is checked before any is written, so another user's account is a 409
+    # with nothing written; a different account of this user's own is replaced, since
+    # the seed decides who the harness's synthetic id reaches.
+    try:
+        replaced = [
+            platform
+            for platform, platform_user_id in platform_user_ids.items()
+            if await _holds_other_account(user_id, platform, platform_user_id)
+        ]
+        await asyncio.gather(
+            *(PlatformLinkService.unlink_account(user_id, platform) for platform in replaced)
+        )
+        await asyncio.gather(
+            *(
+                PlatformLinkService.link_account(
+                    user_id=user_id,
+                    platform=platform,
+                    platform_user_id=platform_user_id,
+                    profile={
+                        "username": f"dev_{platform}",
+                        "display_name": user.name or email,
+                    },
+                )
+                for platform, platform_user_id in platform_user_ids.items()
+            )
+        )
+    except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
+        raise link_conflict_error(e) from e
+
     await asyncio.gather(
-        *(create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id) for i in range(todos)),
+        *(
+            TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+            for i in range(todos)
+        ),
         *(
             create_conversation_service(
                 ConversationModel(
@@ -159,18 +198,6 @@ async def seed_dev_data(
                 AuthenticatedUser(user_id=user_id),
             )
             for i in range(conversations)
-        ),
-        *(
-            PlatformLinkService.link_account(
-                user_id=user_id,
-                platform=platform,
-                platform_user_id=platform_user_id,
-                profile={
-                    "username": f"dev_{platform}",
-                    "display_name": user.name or email,
-                },
-            )
-            for platform, platform_user_id in platform_user_ids.items()
         ),
     )
 
@@ -190,6 +217,15 @@ async def seed_dev_data(
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
     )
+
+
+async def _holds_other_account(user_id: str, platform: str, platform_user_id: str) -> bool:
+    """Return whether the user has a different account linked on platform; raise if another user holds this one."""
+    try:
+        await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
+    except AccountHasDifferentPlatformError:
+        return True
+    return False
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:

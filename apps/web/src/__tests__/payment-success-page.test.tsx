@@ -66,12 +66,11 @@ vi.mock("@/features/pricing/components/PostPaymentReceipt", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { SUBSCRIPTION_FAILED: "subscription:failed" },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 import PaymentSuccessPage from "@/app/[locale]/(landing)/payment/success/page";
-import { trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 describe("PaymentSuccessPage", () => {
   beforeEach(() => {
@@ -144,7 +143,7 @@ describe("PaymentSuccessPage", () => {
     await screen.findByText("Payment not completed");
 
     const failures = vi
-      .mocked(trackEvent)
+      .mocked(track)
       .mock.calls.filter(([event]) => event === "subscription:failed");
     expect(failures).toHaveLength(1);
     expect(failures[0][1]).toEqual({
@@ -159,7 +158,7 @@ describe("PaymentSuccessPage", () => {
 
     await screen.findByText("Payment not completed");
 
-    expect(trackEvent).toHaveBeenCalledWith("subscription:failed", {
+    expect(track).toHaveBeenCalledWith("subscription:failed", {
       source: "payment_success_page",
       reason: "verification_error",
     });
@@ -170,7 +169,7 @@ describe("PaymentSuccessPage", () => {
 
     await screen.findByText("Receipt printed");
 
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "subscription:failed",
       expect.anything(),
     );

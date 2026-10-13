@@ -152,7 +152,7 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=None,
         ),
         patch("app.services.files.service.write_summary_sidecar", new_callable=AsyncMock),
-        patch("app.utils.file_utils.get_helper_llm", MagicMock()),
+        patch("app.utils.file_utils.resolve_model", MagicMock()),
         patch("app.utils.file_utils.with_llm_retry", MagicMock(return_value=llm)),
     ):
         yield
@@ -265,8 +265,8 @@ class TestDevRouterMounting:
 
         assert exec_response.status_code == 200
         assert sub_response.status_code == 200
-        mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None)
-        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None)
+        mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None, None)
+        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None, None)
 
     async def test_seed_endpoint_forwards_payload(self, monkeypatch):
         from app.config.settings import settings as app_settings
@@ -411,10 +411,15 @@ class TestDevServiceLogic:
                 return_value=user,
             ),
             patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
+            patch.object(
+                dev_service.PlatformLinkService, "ensure_linkable", new_callable=AsyncMock
+            ),
             patch.object(
                 dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
             ) as mock_link,
@@ -424,6 +429,12 @@ class TestDevServiceLogic:
             )
 
         assert mock_todo.await_count == 3
+        assert [c.args[0].title for c in mock_todo.await_args_list] == [
+            "Sample todo 1",
+            "Sample todo 2",
+            "Sample todo 3",
+        ]
+        assert {c.args[1] for c in mock_todo.await_args_list} == {result.user_id}
         assert mock_convo.await_count == 2
         assert mock_link.await_count == 2
         assert result.todos_created == 3
@@ -445,6 +456,95 @@ class TestDevServiceLogic:
             custom_instructions=None,
         )
 
+    async def _seed_telegram(
+        self,
+        user_id: str,
+        linked: dict[tuple[str, str], dict[str, object]],
+        unlinks: list[str] | None = None,
+    ):
+        """Seed telegram against a link store that holds one account per (user, platform), as the real one does."""
+        from app.services import dev_service
+        from app.services.platform_link_service import AccountHasDifferentPlatformError
+
+        async def ensure_linkable(user_id, platform, platform_user_id):
+            held = linked.get((user_id, platform))
+            if held is not None and held["platform_user_id"] != platform_user_id:
+                raise AccountHasDifferentPlatformError("already linked")
+
+        async def link_account(*, user_id, platform, platform_user_id, profile):
+            await ensure_linkable(user_id, platform, platform_user_id)
+            linked[(user_id, platform)] = {"platform_user_id": platform_user_id, "profile": profile}
+
+        async def unlink_account(user_id, platform):
+            if unlinks is not None:
+                unlinks.append(platform)
+            linked.pop((user_id, platform), None)
+
+        user = dev_service.UserDocument.model_validate(
+            {"id": user_id, "email": DEV_EMAIL, "name": "Dev"}
+        )
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(
+                dev_service.user_repository, "complete_onboarding", new_callable=AsyncMock
+            ),
+            patch.object(
+                dev_service.PlatformLinkService, "ensure_linkable", side_effect=ensure_linkable
+            ),
+            patch.object(dev_service.PlatformLinkService, "link_account", side_effect=link_account),
+            patch.object(
+                dev_service.PlatformLinkService, "unlink_account", side_effect=unlink_account
+            ),
+        ):
+            return await dev_service.seed_dev_data(
+                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+            )
+
+    async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
+        user_id = str(ObjectId())
+        linked: dict[tuple[str, str], dict[str, object]] = {}
+
+        result = await self._seed_telegram(user_id, linked)
+
+        assert linked == {
+            (user_id, "telegram"): {
+                "platform_user_id": result.platform_user_ids["telegram"],
+                "profile": {"username": "dev_telegram", "display_name": "Dev"},
+            }
+        }
+
+    async def test_seed_replaces_a_different_account_already_linked_on_that_platform(self):
+        """A real Telegram account and the harness's synthetic one cannot share the slot; the seed wins."""
+        user_id = str(ObjectId())
+        linked: dict[tuple[str, str], dict[str, object]] = {
+            (user_id, "telegram"): {"platform_user_id": "tg-real", "profile": {"username": "me"}}
+        }
+
+        result = await self._seed_telegram(user_id, linked)
+
+        assert linked == {
+            (user_id, "telegram"): {
+                "platform_user_id": result.platform_user_ids["telegram"],
+                "profile": {"username": "dev_telegram", "display_name": "Dev"},
+            }
+        }
+
+    async def test_reseeding_keeps_the_seeded_link_without_unlinking_it(self):
+        """Only a different account is replaced: the harness's own id, already linked, stays put."""
+        user_id = str(ObjectId())
+        seeded = {"platform_user_id": f"dev-telegram-{user_id}", "profile": {"username": "x"}}
+        linked: dict[tuple[str, str], dict[str, object]] = {(user_id, "telegram"): seeded}
+        unlinks: list[str] = []
+
+        await self._seed_telegram(user_id, linked, unlinks)
+
+        assert unlinks == []
+
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""
         from app.services import dev_service
@@ -458,7 +558,9 @@ class TestDevServiceLogic:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
@@ -467,6 +569,80 @@ class TestDevServiceLogic:
 
         assert exc.value.status_code == 400
         mock_todo.assert_not_awaited()
+
+    async def test_seed_link_conflict_is_a_409_and_writes_nothing_else(self):
+        """A platform account another user holds got an unhandled 500 and half-seeded data."""
+        from app.constants.platform_links import LINK_CONFLICT_PLATFORM_TAKEN
+        from app.services import dev_service
+        from app.services.platform_link_service import PlatformAccountTakenError
+        from app.utils.errors import AppError
+
+        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
+            patch.object(
+                dev_service, "create_conversation_service", new_callable=AsyncMock
+            ) as mock_convo,
+            patch.object(
+                dev_service.PlatformLinkService,
+                "ensure_linkable",
+                AsyncMock(side_effect=PlatformAccountTakenError("held by another user")),
+            ),
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                )
+
+        assert exc.value.status_code == 409
+        assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
+        mock_todo.assert_not_awaited()
+        mock_convo.assert_not_awaited()
+
+    async def test_seed_writes_no_link_when_any_platform_conflicts(self):
+        """Linking in parallel let telegram commit while slack raised: a 409 with a half-linked user."""
+        from app.constants.platform_links import LINK_CONFLICT_PLATFORM_TAKEN
+        from app.services import dev_service, platform_link_service
+        from app.utils.errors import AppError
+
+        oid = str(ObjectId())
+        user = dev_service.UserDocument.model_validate({"id": oid, "email": DEV_EMAIL})
+        other_user = dev_service.UserDocument.model_validate(
+            {"id": str(ObjectId()), "email": "other@gaia.local"}
+        )
+
+        async def holder(platform: str, _platform_user_id: str):
+            return other_user if platform == "slack" else None
+
+        repo = platform_link_service.user_repository
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(repo, "get_by_platform_id", AsyncMock(side_effect=holder)),
+            patch.object(repo, "get", AsyncMock(return_value=user)),
+            patch.object(repo, "link_platform", AsyncMock()) as mock_write,
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                )
+
+        assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
+        mock_write.assert_not_awaited()
 
     async def test_seed_missing_user_404_with_hint(self):
         from app.services import dev_service

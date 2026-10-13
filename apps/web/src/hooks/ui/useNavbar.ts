@@ -1,10 +1,16 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { useEffect, useRef, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
 import { usePathname } from "@/i18n/navigation";
+import { track } from "@/lib/analytics";
+
+/** A navbar dropdown's key; the analytics menu values are the menus the navbar renders. */
+export type NavbarDropdown =
+  EventProperties["navigation:navbar_dropdown_opened"]["menu"];
 
 // Function to control backdrop blur
 function toggleBackdrop(show: boolean) {
@@ -23,7 +29,9 @@ function toggleBackdrop(show: boolean) {
 export function useNavbar() {
   const pathname = usePathname();
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<NavbarDropdown | null>(
+    null,
+  );
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const [menuAnchorX, setMenuAnchorX] = useState(0);
@@ -78,7 +86,7 @@ export function useNavbar() {
   };
 
   const handleMouseEnter = (
-    menu: string,
+    menu: NavbarDropdown,
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
     if (isMobileScreen) return;
@@ -93,6 +101,10 @@ export function useNavbar() {
       setWrapperWidth(wrapperRect.width);
     }
 
+    // Re-entering the trigger of the menu already open is not another open.
+    if (activeDropdown !== menu) {
+      track("navigation:navbar_dropdown_opened", { menu });
+    }
     setActiveDropdown(menu);
     setHoveredItem(menu);
     toggleBackdrop(true);

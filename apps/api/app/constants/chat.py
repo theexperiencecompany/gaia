@@ -7,6 +7,11 @@ import re
 # multi-page summaries truncate, with the full text in the `<file>.summary.md` sidecar.
 
 
+#: tool_data entry a subagent's streamed work is grouped under (mirrored as
+#: SUBAGENT_GROUP_TOOL_NAME in @gaia/shared/chat).
+SUBAGENT_GROUP_TOOL_NAME = "subagent_group"
+
+
 class ConversationSource(str, Enum):
     """Client or channel a conversation originated from."""
 
@@ -32,6 +37,22 @@ class ConversationSource(str, Enum):
             return cls(value)
         except ValueError:
             return None
+
+    @property
+    def display_name(self) -> str:
+        """How this channel is spelled in user-facing copy and in prompts.
+
+        value.capitalize() is wrong for half of these ("Whatsapp", "Imessage"),
+        so the ones with real casing are named explicitly.
+        """
+        return _SOURCE_DISPLAY_NAMES.get(self, self.value.capitalize())
+
+
+#: Only the channels whose brand casing differs from value.capitalize().
+_SOURCE_DISPLAY_NAMES: dict["ConversationSource", str] = {
+    ConversationSource.WHATSAPP: "WhatsApp",
+    ConversationSource.IMESSAGE: "iMessage",
+}
 
 
 class SourceCategory(str, Enum):
@@ -118,3 +139,8 @@ ARTIFACT_REF_RE = re.compile(
 WORKSPACE_ARTIFACT_RE = re.compile(
     r"/workspace/sessions/[A-Za-z0-9._-]+/artifacts/(?P<path>[A-Za-z0-9._\-/]+)"
 )
+
+# Cards whose message is not saved yet wait on the conversation under this field, by message
+# id; a turn saves within itself, so ones a day old are dropped by the next append.
+FOLDED_CARDS_FIELD = "folded_cards"
+FOLDED_CARDS_KEEP_SECONDS = 86_400

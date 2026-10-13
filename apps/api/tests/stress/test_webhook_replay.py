@@ -15,6 +15,7 @@ exactly one side effect.
 
 import asyncio
 import base64
+from collections.abc import Iterator
 import hashlib
 import hmac
 import json
@@ -32,6 +33,7 @@ pytestmark = pytest.mark.stress
 WEBHOOK_URL = "/api/v1/webhook/composio"
 WEBHOOK_SECRET = "stress-test-secret"
 TIMESTAMP = "2025-01-01T00:00:00Z"
+DODO_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 class _FakeRedisClient:
@@ -107,6 +109,15 @@ async def _settle_webhook_handler(handler: MagicMock) -> None:
 
 
 class TestComposioWebhookReplay:
+    @pytest.fixture(autouse=True)
+    def _single_account(self) -> Iterator[None]:
+        """No account record, so delivery is not tagged with which account received it."""
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=None),
+        ):
+            yield
+
     async def test_duplicate_delivery_of_the_same_signed_payload_is_processed_once(
         self, client: AsyncClient
     ):
@@ -244,7 +255,7 @@ def _dodo_subscription_active_payload() -> dict[str, Any]:
             "subscription_period_count": 1,
             "subscription_period_interval": "month",
             "created_at": TIMESTAMP,
-            "metadata": {"user_id": "user-1"},
+            "metadata": {"user_id": DODO_USER_ID},
         },
     }
 

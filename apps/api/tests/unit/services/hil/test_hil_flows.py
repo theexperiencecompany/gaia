@@ -22,12 +22,23 @@ import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
 from app.models.hil_models import HILApprovalStatus
+from app.services.hil.approvals_store import approval_id_for
+from app.services.hil.bridge import GatedApproval, build_summary
 from app.services.hil.intent import IntentDecision
-from app.services.hil.utils import approval_window_label
+from app.services.hil.utils import GatedCall, approval_window_label
 
-from .conftest import make_record, make_request, run_through_gate
+from .conftest import (
+    CONVERSATION_ID,
+    STREAM_ID,
+    USER_ID,
+    make_record,
+    make_request,
+    run_through_gate,
+)
 
 MODULE = "app.services.hil.gate"
+
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
 
 
 class Handler:
@@ -55,7 +66,7 @@ def gate():
         patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)) as approval,
         patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
         patch(f"{MODULE}.remember_declined_call", new=AsyncMock()) as remember,
-        patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)),
+        patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)) as integration,
         patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
         patch(f"{MODULE}.publish_decision", new=AsyncMock()) as outcome,
         patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
@@ -69,10 +80,10 @@ def gate():
         patch(f"{MODULE}.publish_auto_approval", new=AsyncMock()) as receipt,
     ):
 
-        async def _record_card(**kwargs: Any) -> None:
+        async def _record_card(*args: Any, **kwargs: Any) -> None:
             log.append("card")
 
-        async def _record_receipt(**kwargs: Any) -> None:
+        async def _record_receipt(*args: Any, **kwargs: Any) -> None:
             log.append("receipt")
 
         request_card.side_effect = _record_card
@@ -82,6 +93,7 @@ def gate():
             "approval": approval,
             "policy": policy,
             "judge": judge,
+            "integration": integration,
             "interrupt": interrupt,
             "card": request_card,
             "receipt": receipt,
@@ -282,7 +294,9 @@ class TestApprovalWindowLabel:
 class TestAutoJourney:
     async def test_an_authorized_call_runs_without_ever_asking(self, gate: dict) -> None:
         gate["policy"].return_value = "auto"
-        gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
+        gate["judge"].return_value = IntentDecision(
+            outcome="accept", reason="you said send the deck to bob"
+        )
         handler = Handler(gate["log"])
 
         result = await run_through_gate(make_request(), handler)
@@ -296,7 +310,9 @@ class TestAutoJourney:
         # If the tool then fails, the user must still see that GAIA decided to act, and
         # why. Publishing after the handler loses exactly the case that needs explaining.
         gate["policy"].return_value = "auto"
-        gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
+        gate["judge"].return_value = IntentDecision(
+            outcome="accept", reason="you said send the deck to bob"
+        )
         handler = Handler(gate["log"], explode=True)
 
         with pytest.raises(RuntimeError):
@@ -308,7 +324,9 @@ class TestAutoJourney:
     async def test_the_judges_reason_travels_onto_the_receipt(self, gate: dict) -> None:
         # A receipt with no "why" is not accountability.
         gate["policy"].return_value = "auto"
-        gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
+        gate["judge"].return_value = IntentDecision(
+            outcome="accept", reason="you said send the deck to bob"
+        )
 
         await run_through_gate(make_request(), Handler(gate["log"]))
 
@@ -316,7 +334,9 @@ class TestAutoJourney:
 
     async def test_an_unauthorized_call_falls_back_to_asking(self, gate: dict) -> None:
         gate["policy"].return_value = "auto"
-        gate["judge"].return_value = IntentDecision(False, "you never asked for this")
+        gate["judge"].return_value = IntentDecision(
+            outcome="ask", reason="you never asked for this"
+        )
         await asks(gate, make_request())
         decides(gate, status="approved")
         handler = Handler(gate["log"])
@@ -379,3 +399,50 @@ class TestUnpausableRun:
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"
+
+
+class TestTheCardCarriesTheCallsIdentity:
+    """The published approval IS how the client finds the call again.
+
+    Every field on it is load-bearing: the id keys the record, the stream/conversation
+    route the card to the right client, and the tool_call is what gets re-run once
+    approved. A card missing any of them is a card the user can see and never settle.
+    """
+
+    async def test_the_request_card_names_the_call_it_is_asking_about(self, gate: dict) -> None:
+        gate["integration"].return_value = "gmail"
+        request = make_request(args={"to": "bob@example.com"})
+
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler(gate["log"]))
+
+        approval = gate["card"].await_args.args[0]
+        assert approval == GatedApproval(
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"}),
+            summary=build_summary("send_email", {"to": "bob@example.com"}, "gmail"),
+            integration_name="gmail",
+        )
+
+    async def test_the_auto_approval_receipt_carries_the_same_identity(self, gate: dict) -> None:
+        # The receipt is the user's only record of an action they were never asked about,
+        # so it has to identify the call as completely as the card would have.
+        gate["integration"].return_value = "gmail"
+        gate["policy"].return_value = "auto"
+        gate["judge"].return_value = IntentDecision(outcome="accept", reason="they asked for it")
+
+        await run_through_gate(make_request(args={"to": "bob@example.com"}), Handler(gate["log"]))
+
+        approval = gate["receipt"].await_args.args[0]
+        assert approval == GatedApproval(
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"}),
+            summary=build_summary("send_email", {"to": "bob@example.com"}, "gmail"),
+            integration_name="gmail",
+        )

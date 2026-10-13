@@ -36,7 +36,7 @@ nx run api:test:coverage
 
 The agent system uses two compiled LangGraph graphs registered via `GraphManager` / `ProviderRegistry`:
 
-- **`comms_agent`** — thin front-door agent. Statically bound to a small fixed tool set (no semantic retrieval): `call_executor` / `cancel_executor`, the memory tools, the two discovery tools (`find_integration`, `search_public_workflows`) that read catalogues, and the open-web tools `web_search_tool` / `fetch_webpages` (comms runs quick outside-world lookups itself; everything touching the user's own data or accounts still delegates via `call_executor`). Connecting an integration is delegated to the executor, which owns the connect card. Handles user-facing chat (streaming or silent).
+- **`comms_agent`** — thin front-door agent. Statically bound to a small fixed tool set (no semantic retrieval): `call_executor` / `cancel_executor`, the three browser-task reply tools (`browser_step_done` / `stop_browser_task` / `tell_browser_task`, which act on a browser task already running), the memory tools, the two discovery tools (`find_integration`, `search_public_workflows`) that read catalogues, and the open-web tools `web_search_tool` / `fetch_webpages` (comms runs quick outside-world lookups itself; everything touching the user's own data or accounts still delegates via `call_executor`). Connecting an integration is delegated to the executor, which owns the connect card. Handles user-facing chat (streaming or silent).
 - **`executor_agent`** — full-tool agent. Receives tasks from `comms_agent` via the `call_executor` tool. Has access to the entire tool registry retrieved from ChromaDB.
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
@@ -215,20 +215,9 @@ and the OpenAPI schema:
 
 ## Analytics (PostHog)
 
-Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The one API-specific decision:
+Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The API emits only through `capture(distinct_id, event, dedupe_key=None)` in `app/services/analytics_service.py`: `distinct_id` is a `UserId`/`PlatformIdentity` and `event` a `ServerEvent` model from `libs/shared/py/analytics/catalog/`. Every call names its user explicitly, whether it runs in a route, a webhook, a bot route or an ARQ task, so no event depends on request context to find its person. Importing the PostHog SDK anywhere else is a ruff `TID251` error.
 
-**`capture_context_event(event, props)` vs `capture_event(user_id, event, props)`** — both live in `app/services/analytics_service.py`.
-
-`capture_context_event` sends **no `distinct_id`**. It relies entirely on the contextvar identity that `PostHogRequestContextMiddleware` (`app/api/v1/middleware/auth.py`) sets, and that middleware only identifies a request that `WorkOSAuthMiddleware` already authenticated. Use it in ordinary authenticated route handlers, where it keeps the user id out of every call site.
-
-Use `capture_event(user_id, ...)` — explicitly — whenever the handler resolves its user from something other than a session:
-
-- OAuth / platform-link callbacks (the third party redirects the browser back with no session cookie)
-- Bot routes (`require_bot_api_key`, user resolved via `PlatformLinkService`)
-- Payment and provider webhooks
-- ARQ worker tasks and any background/fire-and-forget path — there is no request at all
-
-Getting this wrong is silent: the event is still captured, just attributed to a fresh anonymous person, so it never appears in that user's funnel. Nothing fails, no test goes red unless it asserts the id. **Assert the `distinct_id` in the test** — the mutation gate kills call-count-only assertions anyway.
+In tests, assert the whole call: `mock_capture.assert_called_once_with(UserId(USER_ID), EmailSent(...))`. Models compare by value, so the id and every property are checked.
 
 ## Service Layer
 

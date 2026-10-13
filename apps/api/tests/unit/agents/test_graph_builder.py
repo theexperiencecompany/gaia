@@ -13,6 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from app.agents.core.background.executor_channel import drain_inbox_hook
+from app.agents.core.graph_builder.build_graph import build_executor_graph
+from app.agents.middleware.factory import SubagentStackOptions
+from app.agents.middleware.subagent import SubagentMiddleware, spawner_of
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 
 _MOD = "app.agents.core.graph_builder.build_graph"
@@ -210,12 +214,26 @@ class TestCheckpointerManager:
 
     @staticmethod
     def _record_setup_order(
-        mock_pool_cls, mock_saver_cls, mock_store_cls, *, store_error: Exception | None = None
+        mock_pool_cls,
+        mock_saver_cls,
+        mock_store_cls,
+        *,
+        store_error: Exception | None = None,
+        lock_answers: tuple[bool, ...] = (True,),
     ) -> MagicMock:
+        """Record setup's statements in order; pg_try_advisory_lock answers lock_answers in turn, then True."""
         order = MagicMock()
         pool = _mock_pool()
         conn = pool.connection.return_value.__aenter__.return_value
-        conn.execute.side_effect = lambda sql, params: order.execute(sql, params)
+        answers = iter(lock_answers)
+
+        def execute(sql: str, params: tuple[int, ...]) -> MagicMock:
+            order.execute(sql, params)
+            cursor = MagicMock()
+            cursor.fetchone = AsyncMock(return_value=(next(answers, True),))
+            return cursor
+
+        conn.execute.side_effect = execute
         mock_pool_cls.return_value = pool
 
         saver = AsyncMock()
@@ -244,7 +262,7 @@ class TestCheckpointerManager:
         mock_store_cls.from_conn_string.assert_called_once_with(_TEST_DB_URL)
         lock = (LANGGRAPH_SETUP_LOCK_ID,)
         assert order.mock_calls == [
-            call.execute("SELECT pg_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
             call.saver_setup(),
             call.store_setup(),
             call.execute("SELECT pg_advisory_unlock(%s)", lock),
@@ -253,18 +271,44 @@ class TestCheckpointerManager:
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_a_failed_migration_still_releases_the_lock(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
+    async def test_a_starter_waits_for_the_lock_by_asking_again_never_inside_a_statement(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
     ):
+        """A blocking wait sits in a transaction the holder's CREATE INDEX CONCURRENTLY waits on."""
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
         order = self._record_setup_order(
-            mock_pool_cls, mock_saver_cls, mock_store_cls, store_error=RuntimeError("store DDL")
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, True)
         )
 
-        with pytest.raises(RuntimeError, match="store DDL"):
+        await self._make_manager().setup()
+
+        lock = (LANGGRAPH_SETUP_LOCK_ID,)
+        assert order.mock_calls[:4] == [
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.saver_setup(),
+        ]
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_a_lock_never_released_fails_setup_loud_without_migrating(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
+    ):
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
+        order = self._record_setup_order(
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, False)
+        )
+
+        with pytest.raises(RuntimeError, match=f"setup lock {LANGGRAPH_SETUP_LOCK_ID} still held"):
             await self._make_manager().setup()
 
-        assert order.mock_calls[-1] == call.execute(
-            "SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,)
+        assert (
+            order.mock_calls
+            == [call.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))] * 3
         )
 
 
@@ -317,6 +361,7 @@ class TestBuildCommsGraph:
             deps["builder"].compile.assert_called_once()
 
     async def test_yields_compiled_graph_postgres(self):
+        """The default, as build_comms_agent builds it: the shared Postgres checkpointer."""
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()
         fake_manager.get_checkpointer.return_value = fake_cp
@@ -328,9 +373,7 @@ class TestBuildCommsGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=False
-            ) as graph:
+            async with build_comms_graph(chat_llm=deps["llm"]) as graph:
                 assert graph is deps["compiled"]
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
@@ -394,6 +437,9 @@ class TestBuildCommsGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "call_executor",
                 "cancel_executor",
+                "browser_step_done",
+                "stop_browser_task",
+                "tell_browser_task",
                 "find_integration",
                 "search_public_workflows",
                 web_search_tool.name,
@@ -427,6 +473,16 @@ class TestBuildCommsGraph:
             assert "call_executor" in tool_registry
             assert "add_memory" in tool_registry
             assert "search_memory" in tool_registry
+            # Comms stays a thin front door: tracked-todo work is delegated to
+            # the executor, which owns the lifecycle tools and their rules.
+            for name in (
+                "create_tracked_todo",
+                "update_tracked_todo",
+                "complete_tracked_todo",
+                "search_todo_context",
+                "list_tracked_todos",
+            ):
+                assert name not in tool_registry, f"{name} must stay executor-only"
             # Comms runs open-web lookups itself instead of delegating to the executor.
             assert "web_search_tool" in tool_registry
             assert "fetch_webpages" in tool_registry
@@ -442,8 +498,8 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # comms agent: filter_messages_node, executor_status_hook,
-            # manage_system_prompts_node
-            assert len(pre_model_hooks) == 3
+            # browser_task_status_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 4
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -492,6 +548,73 @@ class TestBuildExecutorGraph:
 
         assert kwargs["hooks_config"].require_finish_to_end is True
         assert "save_learned_skill" in kwargs["tools_config"].initial_tool_ids
+
+    async def test_handoff_is_the_delegation_tool_by_default(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert "handoff" in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" in registry
+        # activate_integration is always bound; handoff stays for per-user MCP.
+        assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
+        assert "activate_integration" in registry
+
+    async def test_activate_integration_bound_and_handoff_kept(self):
+        """Activation leads with activate_integration but keeps handoff bound: it is the only path for per-user MCP integrations, which cannot be activated in-context, so both live in the bound set and the registry."""
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
+        assert "activate_integration" in registry
+        assert "handoff" in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" in registry
+
+    async def test_activate_integration_leads_the_initial_tool_set(self):
+        """activate_integration leads; the full initial set (handoff included) follows."""
+        from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+        assert kwargs["tools_config"].initial_tool_ids == expected
+
+    async def test_no_join_tool_bound(self):
+        """Neither wait_for_subagents nor any successor is bound: background results arrive via the executor inbox and steering needs no join."""
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert "wait_for_subagents" not in kwargs["tools_config"].initial_tool_ids
+        assert "collect_subagent_results" not in kwargs["tools_config"].initial_tool_ids
+        assert "wait_for_subagents" not in registry
+        assert "collect_subagent_results" not in registry
 
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
@@ -545,11 +668,14 @@ class TestBuildExecutorGraph:
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
             assert kwargs["agent_config"].agent_name == "executor_agent"
-            # Exact equality, not membership: a renamed id silently drops that
-            # tool from the executor's initial bind set, and membership lets the
-            # typo through as long as one asserted name survives.
+            # Exact equality, not membership: a renamed id silently drops that tool
+            # from the executor's initial bind set, and membership passes as long as
+            # one name survives. activate_integration leads unconditionally.
             assert kwargs["tools_config"].initial_tool_ids == [
+                "activate_integration",
                 "handoff",
+                "execute",
+                "get_tool_schema",
                 "plan_tasks",
                 "update_tasks",
                 "read",
@@ -557,7 +683,9 @@ class TestBuildExecutorGraph:
                 "edit",
                 "bash",
                 "deep_research",
-                "wait_for_subagents",
+                "list_running_subagents",
+                "message_subagent",
+                "cancel_subagent",
                 "read_manual",
                 "create_tracked_todo",
                 "update_tracked_todo",
@@ -568,6 +696,7 @@ class TestBuildExecutorGraph:
                 "subscribe_todo_to_trigger",
                 "unsubscribe_todo_from_trigger",
                 "save_learned_skill",
+                "browser_task",
                 "write_playbook",
                 "decline_playbook",
                 "read_playbook",
@@ -577,6 +706,40 @@ class TestBuildExecutorGraph:
                 "list_devices",
                 "run_on_device",
             ]
+
+    async def test_spawned_subagents_inherit_tools_but_never_the_orchestration_ones(self):
+        """A spawn must see what the executor bound, minus the executor-only tools it could recurse or self-activate through."""
+        runtime_config = MagicMock(name="child_tool_runtime_config")
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {
+                    f"{_MOD}.build_executor_child_tool_runtime_config": MagicMock(
+                        return_value=runtime_config
+                    )
+                },
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            factory = deps["mocks"][f"{_MOD}.create_executor_middleware"]
+
+        assert factory.call_args.kwargs == {
+            "chat_llm": deps["llm"],
+            "subagent": SubagentStackOptions(
+                excluded_tools={
+                    "handoff",
+                    "list_running_subagents",
+                    "message_subagent",
+                    "cancel_subagent",
+                    "activate_integration",
+                },
+                tool_runtime_config=runtime_config,
+                inherit_parent_tools=True,
+            ),
+        }
 
     async def test_executor_tool_registry_includes_handoff(self):
         with ExitStack() as stack:
@@ -589,7 +752,7 @@ class TestBuildExecutorGraph:
             call = deps["mocks"][f"{_MOD}.create_agent"].call_args
             assert "handoff" in call.args[1]
 
-    async def test_executor_pre_model_hooks_includes_todo_hook(self):
+    async def test_executor_pre_model_hooks_includes_todo_hook_and_the_inbox_drain(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -599,9 +762,13 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # executor: filter_messages_node, adapt_media_node,
-            # manage_system_prompts_node, todo_hook
-            assert len(pre_model_hooks) == 4
+            # executor: filter_messages_node, adapt_media_node, todo_hook,
+            # drain_inbox_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 5
+            # Named rather than counted: the drain is what lets work handed over
+            # mid-run reach the executor at all, and a count alone would stay
+            # green if it were swapped for anything else.
+            assert drain_inbox_hook in pre_model_hooks
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
         """A caller that hands in a model gets that model, not a freshly built one — rebuilding could pick a provider with no key."""
@@ -656,6 +823,39 @@ class TestBuildExecutorGraph:
         mock_sub_mw.set_llm.assert_called_once_with(deps["llm"])
         mock_sub_mw.set_tools.assert_called_once()
         mock_sub_mw.set_store.assert_called_once()
+
+    @pytest.mark.parametrize("in_memory", [True, False])
+    async def test_the_compiled_graph_names_the_spawner_it_was_built_with(
+        self, in_memory: bool
+    ) -> None:
+        """A parked spawn is rebuilt through spawner_of(executor graph), on either checkpointer."""
+        sub_mw = MagicMock(spec=SubagentMiddleware)
+        manager = MagicMock()
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {
+                    f"{_MOD}.create_executor_middleware": MagicMock(return_value=[sub_mw]),
+                    f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager),
+                },
+            )
+            async with build_executor_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
+            ) as graph:
+                assert spawner_of(graph) is sub_mw
+
+    @pytest.mark.parametrize("in_memory", [True, False])
+    async def test_a_graph_built_without_a_spawner_names_none(self, in_memory: bool) -> None:
+        manager = MagicMock()
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack, {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager)}
+            )
+            async with build_executor_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
+            ) as graph:
+                with pytest.raises(KeyError):
+                    spawner_of(graph)
 
     async def test_no_subagent_middleware_logs_warning(self):
         """When SubagentMiddleware is not in the stack, a warning is logged."""

@@ -1,16 +1,15 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
-from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 import pytest
 
 from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.cache import CUSTOM_INT_METADATA_TTL, HANDOFF_METADATA_CACHE_PREFIX
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.constants.log_tags import LogTag
@@ -27,6 +26,7 @@ from app.helpers.agent_helpers import (
     _record_interruption_quietly,
     _SilentAccumulators,
     _stamp_langfuse,
+    background_authorization,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -34,12 +34,15 @@ from app.helpers.agent_helpers import (
     get_handoff_metadata,
     recent_user_messages,
 )
+from app.models.agent_models import run_analytics_context
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
 from app.models.subagent_models import Subagent
 from app.utils.agent_utils import IntegrationDisplayMetadata
 from app.utils.stream_publishers import ExtractedToolData
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 
 def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
@@ -63,7 +66,6 @@ def _make_subagent(
         has_subagent=True,
         agent_name=f"{subagent_id}_agent",
         tool_space=f"{subagent_id}_space",
-        handoff_tool_name=f"call_{subagent_id}",
         domain=subagent_id,
         capabilities=f"{subagent_id} stuff",
         use_cases=f"{subagent_id} use",
@@ -199,10 +201,7 @@ class TestGetHandoffMetadata:
 
 
 class TestBuildAgentConfig:
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_basic_config(self, mock_providers):
-        mock_providers.get.return_value = None  # no posthog
-
+    async def test_basic_config(self):
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -219,10 +218,8 @@ class TestBuildAgentConfig:
         assert config["configurable"]["user_timezone"] == "UTC"
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_metadata_stamps_the_agent_label_for_the_ttft_callback(self, mock_providers):
+    async def test_metadata_stamps_the_agent_label_for_the_ttft_callback(self):
         """build_agent_config stamps the agent tier as the default LLM_LABEL_METADATA_KEY, or the graph's own streaming calls land on agent=unknown."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -233,12 +230,7 @@ class TestBuildAgentConfig:
         )
         assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_root_run_stamps_the_users_identity_and_its_own_conversation(
-        self, mock_providers
-    ):
-        mock_providers.get.return_value = None
-
+    async def test_a_root_run_stamps_the_users_identity_and_its_own_conversation(self):
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -254,10 +246,7 @@ class TestBuildAgentConfig:
         assert configurable["execution_mode"] == "interactive"
         assert config["metadata"]["user_id"] == USER_ID
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_root_run_mints_a_request_id_that_a_child_inherits(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_a_root_run_mints_a_request_id_that_a_child_inherits(self):
         root = (
             await build_agent_config(
                 identity=AgentIdentity(
@@ -277,10 +266,43 @@ class TestBuildAgentConfig:
         assert str(UUID(root["root_request_id"])) == root["root_request_id"]
         assert child["root_request_id"] == "root-req-1"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self, mock_providers):
-        mock_providers.get.return_value = None
+    async def test_a_run_tree_acts_as_the_agent_in_the_context_that_started_it(self):
+        """Stamped at the root and inherited whole, so a run resumed by a cron keeps the user's turn."""
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.BOT
+            ),
+            posthog_session_id="sess-1",
+        )
+        with analytics_context(users_turn):
+            root = (
+                await build_agent_config(
+                    identity=AgentIdentity(
+                        conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                    ),
+                )
+            )["configurable"]
+        with analytics_context(worker_context(Trigger.SYSTEM)):
+            resumed = (
+                await build_agent_config(
+                    identity=AgentIdentity(
+                        conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
+                    ),
+                    thread=AgentThread(base_configurable=root),
+                )
+            )["configurable"]
 
+        expected = users_turn.acting_as(Actor.AGENT)
+        assert run_analytics_context(root) == expected
+        assert run_analytics_context(resumed) == expected
+        # Stored as plain JSON: the configurable is checkpointed and queued past this process.
+        assert root["analytics_context"] == {
+            "attribution": {"actor": "agent", "trigger": "interactive", "surface": "bot"},
+            "posthog_session_id": "sess-1",
+        }
+        assert type(root["analytics_context"]["attribution"]["actor"]) is str
+
+    async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self):
         configurable = (
             await build_agent_config(
                 identity=AgentIdentity(
@@ -292,10 +314,8 @@ class TestBuildAgentConfig:
 
         assert configurable["user_timezone"] == "UTC"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_uses_home_profile_timezone(self, mock_providers):
+    async def test_uses_home_profile_timezone(self):
         """The agent operates in the user's stored home zone (IANA, DST-aware)."""
-        mock_providers.get.return_value = None
 
         home_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
         config = await build_agent_config(
@@ -307,10 +327,8 @@ class TestBuildAgentConfig:
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_inherits_home_timezone_from_base_configurable(self, mock_providers):
+    async def test_inherits_home_timezone_from_base_configurable(self):
         """A child agent reconstructs a bare user dict, inheriting the home zone from the parent's configurable."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -324,10 +342,7 @@ class TestBuildAgentConfig:
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_custom_thread_id(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_custom_thread_id(self):
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -340,10 +355,7 @@ class TestBuildAgentConfig:
         )
         assert config["configurable"]["thread_id"] == "custom-thread"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_base_configurable_inheritance(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_base_configurable_inheritance(self):
         parent_lane = ModelLane(
             provider="gemini",
             model="parent-model",
@@ -380,10 +392,60 @@ class TestBuildAgentConfig:
         assert configurable["selected_tool"] == "web_search"
         assert configurable["vfs_session_id"] == "vfs-sess-1"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    async def test_a_comms_run_keeps_the_comms_lane_it_inherits(self, mock_resolve):
+        comms_lane = ModelLane(
+            provider=LLMProviderName.OPENAI,
+            model="comms-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+            thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
+            lane=AgentLane(role=AgentRole.COMMS),
+        )
+
+        assert ModelLane.from_configurable(config["configurable"]["lane"]) == comms_lane
+        mock_resolve.assert_not_awaited()
+
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    async def test_an_executor_dispatched_by_comms_resolves_its_own_lane(self, mock_resolve):
+        """Comms' OpenAI lane is comms-only: inherited whole, the executor would run on the comms model."""
+        executor_lane = ModelLane(
+            provider=LLMProviderName.OPENROUTER,
+            model="work-model",
+            reasoning={"effort": "medium"},
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+        mock_resolve.return_value = (executor_lane, PlanType.PRO)
+        comms_lane = ModelLane(
+            provider=LLMProviderName.OPENAI,
+            model="comms-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
+            lane=AgentLane(role=AgentRole.EXECUTOR),
+        )
+
+        configurable = config["configurable"]
+        assert ModelLane.from_configurable(configurable["lane"]) == executor_lane
+        assert configurable["provider"] == LLMProviderName.OPENROUTER
+        assert configurable["model"] == "work-model"
+        assert mock_resolve.await_args.args[1] is AgentRole.EXECUTOR
+
+    async def test_every_parent_fallback_key_fills_only_its_own_blank(self):
         """Each fallback key inherits from the same key on the parent, and no other — a crossed key would type-check fine since both are str | None."""
-        mock_providers.get.return_value = None
         base = {
             "selected_tool": "parent-tool",
             "tool_category": "parent-category",
@@ -408,10 +470,8 @@ class TestBuildAgentConfig:
         )["configurable"]
         assert {key: inherited[key] for key in base} == base
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_child_value_wins_over_parent_for_fallback_keys(self, mock_providers):
+    async def test_child_value_wins_over_parent_for_fallback_keys(self):
         """The parent only fills a blank — an explicit child value is never clobbered."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -451,12 +511,8 @@ class TestBuildAgentConfig:
         assert configurable["execution_mode"] == "interactive"
         assert configurable["conversation_source"] == "web"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_parent_overrides_child_for_conversation_id_and_user_messages(
-        self, mock_providers
-    ):
+    async def test_parent_overrides_child_for_conversation_id_and_user_messages(self):
         """The true conversation id and the user's verbatim turns, established once by comms, must not be overwritten by a child's wrapped id or paraphrase."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -482,10 +538,8 @@ class TestBuildAgentConfig:
         # thread_id still tracks the wrapped graph thread, unlike conversation_id.
         assert configurable["thread_id"] == "github_executor_conv-1"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_parent_overrides_child_for_the_verbatim_user_request(self, mock_providers):
+    async def test_parent_overrides_child_for_the_verbatim_user_request(self):
         """Same rule as user_messages: comms establishes the verbatim request once, and a child's paraphrase must not overwrite it."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -508,10 +562,8 @@ class TestBuildAgentConfig:
 
         assert configurable["user_request"] == "delete the repo"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
+    async def test_a_root_run_carries_its_own_verbatim_request(self):
         """With no parent to inherit from, the value passed in is the one that lands."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -530,12 +582,8 @@ class TestBuildAgentConfig:
         assert configurable["user_request"] == "pls archive the junk mail"
         assert configurable["user_messages"] == ["pls archive the junk mail"]
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
-        self, mock_providers
-    ) -> None:
+    async def test_a_handoff_subagent_inherits_preferences_established_by_comms(self) -> None:
         """user_preferences and writing_style follow the same rule as user_messages: established once by comms, a child never has its own copy to prefer."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -557,12 +605,8 @@ class TestBuildAgentConfig:
         assert configurable["user_preferences"] == {"profession": "engineer"}
         assert configurable["writing_style"] == {"summary": "terse"}
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_no_parent_and_no_explicit_value_leaves_preferences_absent(
-        self, mock_providers
-    ) -> None:
+    async def test_no_parent_and_no_explicit_value_leaves_preferences_absent(self) -> None:
         """A root call site with no onboarding data leaves the key absent rather than fabricating a default."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -577,10 +621,8 @@ class TestBuildAgentConfig:
         assert configurable["user_preferences"] is None
         assert configurable["writing_style"] is None
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_session_id_is_the_conversation_when_there_is_no_parent(self, mock_providers):
+    async def test_session_id_is_the_conversation_when_there_is_no_parent(self):
         """The sticky-routing key defaults to the conversation id itself."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -594,10 +636,8 @@ class TestBuildAgentConfig:
 
         assert configurable["session_id"] == CONV_ID
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_session_id_is_inherited_verbatim_from_the_parent(self, mock_providers):
+    async def test_session_id_is_inherited_verbatim_from_the_parent(self):
         """Every agent routes on the parent's sticky key, not its own conversation_id, which is a wrapped thread id."""
-        mock_providers.get.return_value = None
 
         configurable = (
             await build_agent_config(
@@ -614,10 +654,8 @@ class TestBuildAgentConfig:
 
         assert configurable["session_id"] == "conv-1"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_session_id_survives_a_parent_that_carries_none(self, mock_providers):
+    async def test_session_id_survives_a_parent_that_carries_none(self):
         """Present-but-None and absent are different: a parent with no sticky key hands down that absence, not an invented one."""
-        mock_providers.get.return_value = None
 
         with_none = (
             await build_agent_config(
@@ -647,10 +685,8 @@ class TestBuildAgentConfig:
         assert with_none["session_id"] is None
         assert without_key["session_id"] == CONV_ID
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_stream_id_always_comes_from_the_parent(self, mock_providers):
+    async def test_stream_id_always_comes_from_the_parent(self):
         """Pass-through, not a fallback: a child never invents its own stream."""
-        mock_providers.get.return_value = None
 
         with_parent = (
             await build_agent_config(
@@ -677,10 +713,8 @@ class TestBuildAgentConfig:
         assert with_parent["stream_id"] == "stream-9"
         assert without_parent["stream_id"] is None
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_workflow_context_survives_into_a_child_agents_config(self, mock_providers):
+    async def test_workflow_context_survives_into_a_child_agents_config(self):
         """The executor and its handoff subagents must see the same workflow the comms configurable stamped, or playbook tools refuse."""
-        mock_providers.get.return_value = None
 
         child = (
             await build_agent_config(
@@ -713,44 +747,7 @@ class TestBuildAgentConfig:
         assert child["workflow_notify_on_completion"] is False
         assert "workflow_id" not in top_level
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_posthog_callback_added(self, mock_providers):
-        mock_providers.get.return_value = MagicMock()  # posthog client present
-
-        config = await build_agent_config(
-            identity=AgentIdentity(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="comms_agent",
-            ),
-        )
-        assert len(config["callbacks"]) >= 1
-
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_the_posthog_callback_uses_the_client_registered_under_the_posthog_key(
-        self, mock_providers
-    ):
-        client = MagicMock()
-        mock_providers.is_available.side_effect = lambda key: key == POSTHOG_PROVIDER_KEY
-        mock_providers.get.side_effect = lambda key: client if key == POSTHOG_PROVIDER_KEY else None
-
-        config = await build_agent_config(
-            identity=AgentIdentity(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="comms_agent",
-            ),
-        )
-
-        posthog_callbacks = [
-            cb for cb in config["callbacks"] if isinstance(cb, PostHogCallbackHandler)
-        ]
-        assert len(posthog_callbacks) == 1
-
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_usage_metadata_callback(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_usage_metadata_callback(self):
         usage_cb = MagicMock()
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -764,10 +761,7 @@ class TestBuildAgentConfig:
         )
         assert usage_cb in config["callbacks"]
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_selected_tool_and_category(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_selected_tool_and_category(self):
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -782,10 +776,7 @@ class TestBuildAgentConfig:
         assert config["configurable"]["selected_tool"] == "search"
         assert config["configurable"]["tool_category"] == "web"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_bot_source_sets_bot_category_and_channel(self, mock_providers) -> None:
-        mock_providers.get.return_value = None
-
+    async def test_bot_source_sets_bot_category_and_channel(self) -> None:
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -803,10 +794,7 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_category"] == "bot"
         assert config["metadata"]["source_channel"] == "whatsapp"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_web_source_sets_ui_category(self, mock_providers) -> None:
-        mock_providers.get.return_value = None
-
+    async def test_web_source_sets_ui_category(self) -> None:
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -821,10 +809,7 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_category"] == "ui"
         assert config["metadata"]["source_channel"] == "web"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_missing_source_defaults_to_background(self, mock_providers) -> None:
-        mock_providers.get.return_value = None
-
+    async def test_missing_source_defaults_to_background(self) -> None:
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -838,10 +823,8 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_category"] == "bg"
         assert config["metadata"]["source_channel"] == "background"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_source_inherited_from_base_configurable(self, mock_providers) -> None:
+    async def test_source_inherited_from_base_configurable(self) -> None:
         """A child agent inherits the channel from its parent and recomputes the category."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -916,6 +899,70 @@ class TestRecentUserMessages:
         ]
 
         assert recent_user_messages(history, "send it") == ["draft an email to Bob", "send it"]
+
+
+class TestBackgroundAuthorization:
+    """Schedule text authorizes background runs the way words authorize live turns."""
+
+    def test_interactive_runs_pass_through_untouched(self) -> None:
+        turns = ["send it"]
+        assert (
+            background_authorization(
+                turns,
+                execution_mode="interactive",
+                workflow_title="Morning briefing",
+                todo_title="Brief me",
+            )
+            is turns
+        )
+
+    def test_workflow_definition_is_appended_as_standing_authorization(self) -> None:
+        out = background_authorization(
+            ["Execute workflow: Morning briefing"],
+            execution_mode="background",
+            workflow_title="Morning briefing",
+            workflow_description="Emails my calendar and top emails",
+        )
+        assert out[0] == "Execute workflow: Morning briefing"
+        assert out[1] == "Scheduled workflow: Morning briefing. Emails my calendar and top emails"
+
+    @pytest.mark.parametrize(
+        ("title", "description", "expected"),
+        [
+            ("Morning briefing", "", "Scheduled workflow: Morning briefing"),
+            ("", "Emails my calendar", "Scheduled workflow. Emails my calendar"),
+        ],
+    )
+    def test_either_display_field_alone_still_authorizes(
+        self, title: str, description: str, expected: str
+    ) -> None:
+        out = background_authorization(
+            ["run it"],
+            execution_mode="background",
+            workflow_title=title,
+            workflow_description=description,
+        )
+        assert out == ["run it", expected]
+
+    def test_generated_content_never_authorizes(self) -> None:
+        # Steps and execution prompts may be LLM-generated (GeneratedStep), so the
+        # function does not even accept them — only human-written display fields
+        # travel. A generated step naming a recipient grounds nothing.
+        params = set(inspect.signature(background_authorization).parameters)
+        assert "workflow_steps" not in params
+        assert "workflow_prompt" not in params
+
+    def test_todo_title_is_added_unless_the_prompt_covers_it(self) -> None:
+        assert background_authorization(
+            ["check calendar and brief me"], execution_mode="background", todo_title="Brief me"
+        ) == ["check calendar and brief me", "Tracked todo: Brief me"]
+        assert background_authorization(
+            ["Brief me on today"], execution_mode="background", todo_title="Brief me"
+        ) == ["Brief me on today"]
+
+    def test_a_run_with_no_schedule_text_is_unchanged(self) -> None:
+        turns = ["health check"]
+        assert background_authorization(turns, execution_mode="background") is turns
 
     def test_with_all_selections(self):
         request = MagicMock()
@@ -1477,13 +1524,10 @@ DEV_OPTION = {
 
 class TestBuildAgentCallbacks:
     @patch("app.helpers.agent_helpers.build_langfuse_callback", return_value=None)
-    @patch("app.helpers.agent_helpers.providers")
-    def test_every_run_carries_the_provider_ttft_callback(self, mock_providers, _mock_langfuse):
+    def test_every_run_carries_the_provider_ttft_callback(self, _mock_langfuse):
         """The callback is the only source of true provider first-token latency, on every tier."""
-        mock_providers.is_available.return_value = False
-        mock_providers.get.return_value = None
 
-        callbacks = _build_agent_callbacks(CONV_ID, FAKE_USER, "comms_agent", None)
+        callbacks = _build_agent_callbacks(None)
 
         assert len(callbacks) == 1
         assert isinstance(callbacks[0], LLMTtftCallback)
@@ -1492,10 +1536,9 @@ class TestBuildAgentCallbacks:
 class TestBuildAgentConfigCallbackWiring:
     @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers._build_agent_callbacks")
-    async def test_the_callbacks_are_built_for_this_conversation_and_this_agent(
+    async def test_the_runs_usage_callback_reaches_the_callbacks(
         self, mock_build_callbacks, mock_resolve
     ):
-        """PostHog attributes the run's LLM spans from the conversation id and agent name alone."""
         mock_resolve.return_value = (DEV_LANE, None)
         mock_build_callbacks.return_value = []
         usage_cb = MagicMock()
@@ -1509,22 +1552,15 @@ class TestBuildAgentConfigCallbackWiring:
             tracing=AgentTracing(usage_metadata_callback=usage_cb),
         )
 
-        assert mock_build_callbacks.call_args.args == (
-            CONV_ID,
-            USER_ID,
-            "comms_agent",
-            usage_cb,
-        )
+        assert mock_build_callbacks.call_args.args == (usage_cb,)
 
 
 class TestBuildAgentConfigLaneResolution:
-    @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
     async def test_a_top_level_run_resolves_its_lane_from_user_role_and_dev_pick(
-        self, mock_resolve, mock_providers
+        self, mock_resolve
     ):
         """resolve_lane is the single place a model is chosen, from the user id, role and dev option together."""
-        mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, PlanType.PRO)
 
         config = await build_agent_config(
@@ -1541,13 +1577,9 @@ class TestBuildAgentConfigLaneResolution:
         # The plan tier the lane was resolved from rides along for the budget wall.
         assert config["configurable"]["plan_type"] == "pro"
 
-    @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
-    async def test_a_child_run_inherits_the_parent_lane_without_resolving(
-        self, mock_resolve, mock_providers
-    ):
+    async def test_a_child_run_inherits_the_parent_lane_without_resolving(self, mock_resolve):
         """Inheritance beats resolving fresh: a child that re-resolves can land on a different model mid-conversation."""
-        mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, None)
         parent_lane = ModelLane(
             provider=LLMProviderName.GEMINI,
@@ -1569,11 +1601,9 @@ class TestBuildAgentConfigLaneResolution:
         mock_resolve.assert_not_awaited()
         assert config["configurable"]["lane"] == parent_lane.to_configurable()
 
-    @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
-    async def test_a_dev_model_pick_beats_an_inherited_lane(self, mock_resolve, mock_providers):
+    async def test_a_dev_model_pick_beats_an_inherited_lane(self, mock_resolve):
         """An explicit dev choice outranks the parent's lane, so the run resolves rather than inherits."""
-        mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, None)
         parent_lane = ModelLane(
             provider=LLMProviderName.GEMINI,
@@ -1598,10 +1628,8 @@ class TestBuildAgentConfigLaneResolution:
 
 
 class TestBuildAgentConfigLaneMetadata:
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_metadata_carries_the_lanes_provider_and_model(self, mock_providers):
+    async def test_metadata_carries_the_lanes_provider_and_model(self):
         """The TTFT callback reads its labels off run metadata, so the resolved lane must land there."""
-        mock_providers.get.return_value = None
         lane = ModelLane(
             provider=LLMProviderName.GEMINI,
             model="gemini-flash",
@@ -1622,10 +1650,8 @@ class TestBuildAgentConfigLaneMetadata:
         assert config["metadata"]["lane_provider"] == "gemini"
         assert config["metadata"]["lane_model"] == "gemini-flash"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_lane_with_no_model_metadata_says_default(self, mock_providers):
+    async def test_a_lane_with_no_model_metadata_says_default(self):
         """The custom dev endpoint pins no model, so metadata reads "default" rather than a null."""
-        mock_providers.get.return_value = None
         lane = ModelLane(
             provider=LLMProviderName.CUSTOM,
             model=None,
@@ -1648,10 +1674,8 @@ class TestBuildAgentConfigLaneMetadata:
 
 
 class TestBuildAgentConfigLangfuseWiring:
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_the_stamp_names_this_conversation_and_this_user(self, mock_providers):
+    async def test_the_stamp_names_this_conversation_and_this_user(self):
         """Everything the trace is bound to comes from this one call: trace, session, user and tags."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -1669,10 +1693,8 @@ class TestBuildAgentConfigLangfuseWiring:
         assert config["metadata"]["langfuse_user_id"] == USER_ID
         assert config["metadata"]["langfuse_tags"] == ["tag-one"]
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_child_lands_on_the_parents_trace_and_tags(self, mock_providers):
+    async def test_a_child_lands_on_the_parents_trace_and_tags(self):
         """A child agent passes no tracing of its own, so its spans join the comms trace rather than starting a second one."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -1692,10 +1714,7 @@ class TestBuildAgentConfigLangfuseWiring:
         assert config["configurable"]["langfuse_tags"] == ["parent-tag"]
         assert config["metadata"]["langfuse_trace_id"] == "parent-trace"
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_explicit_tracing_beats_what_the_parent_carried(self, mock_providers):
-        mock_providers.get.return_value = None
-
+    async def test_explicit_tracing_beats_what_the_parent_carried(self):
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=CONV_ID,
@@ -1714,10 +1733,8 @@ class TestBuildAgentConfigLangfuseWiring:
         assert config["configurable"]["langfuse_trace_id"] == "own-trace"
         assert config["configurable"]["langfuse_tags"] == ["own-tag"]
 
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_an_empty_tag_list_clears_the_parents_tags(self, mock_providers):
+    async def test_an_empty_tag_list_clears_the_parents_tags(self):
         """The precedence test is "is not None", not truthiness, so a caller can pass [] to mean "no tags" instead of "inherit"."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -1739,12 +1756,8 @@ class TestBuildAgentConfigLangfuseWiring:
 
 
 class TestBuildAgentConfigWorkflowInheritance:
-    @patch("app.helpers.agent_helpers.providers")
-    async def test_a_workflow_without_a_title_inherits_the_documented_defaults(
-        self, mock_providers
-    ):
+    async def test_a_workflow_without_a_title_inherits_the_documented_defaults(self):
         """No title and no notify preference still produce a titled-by-empty-string, notify-by-default config."""
-        mock_providers.get.return_value = None
 
         config = await build_agent_config(
             identity=AgentIdentity(

@@ -1,11 +1,11 @@
 """Shared types for the LLM client layer."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import Runnable, RunnableSerializable
-from typing_extensions import TypedDict
 
 from app.constants.llm import LLMProviderName
 
@@ -14,7 +14,10 @@ from app.constants.llm import LLMProviderName
 ProviderLLM = RunnableSerializable[LanguageModelInput, AIMessage]
 
 
-class LLMProvider(TypedDict):
+@dataclass(frozen=True, slots=True)
+class LLMProvider:
+    """One registered provider and the runnable that reaches it."""
+
     name: LLMProviderName
     instance: ProviderLLM
 

@@ -30,12 +30,12 @@ import httpx
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import get_async_collection
 from app.models.workflow_models import TriggerConfig, TriggerType
 
 PROD_EXPLORE_URL = "https://api.heygaia.io/api/v1/workflows/explore"
 PAGE_SIZE = 50
-SYSTEM_USER = "system"
 
 workflows_collection = get_async_collection("workflows")
 
@@ -64,7 +64,7 @@ def build_document(w: dict[str, Any]) -> dict[str, Any]:
     return {
         "_id": workflow_id,
         "id": workflow_id,
-        "user_id": SYSTEM_USER,
+        "user_id": SYSTEM_USER_ID,
         "title": w["title"],
         "description": w.get("description", ""),
         "prompt": w.get("prompt", ""),
@@ -77,7 +77,7 @@ def build_document(w: dict[str, Any]) -> dict[str, Any]:
         "is_public": True,
         "is_explore": True,
         "use_case_categories": w.get("categories", ["featured"]),
-        "created_by": SYSTEM_USER,
+        "created_by": SYSTEM_USER_ID,
         "total_executions": w.get("total_executions", 0),
         "successful_executions": 0,
         "current_step_index": 0,

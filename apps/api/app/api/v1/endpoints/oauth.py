@@ -17,14 +17,18 @@ from app.constants.auth import (
     WOS_SESSION_COOKIE,
 )
 from app.constants.cache import MOBILE_REDIRECT_TTL
+from app.constants.integrations import ACCOUNT_OUTCOME_PARAM
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
-from app.models.oauth_models import MobileLoginUrlResponse, OAuthClientMetadataResponse
+from app.models.oauth_models import (
+    MobileLoginUrlResponse,
+    OAuthClientMetadataResponse,
+    OAuthStateData,
+)
 from app.services.oauth.composio_callback import (
     ConnectionRejected,
     complete_composio_connection,
-    stored_connected_account_id,
 )
 from app.services.oauth.oauth_service import store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -244,7 +248,9 @@ async def workos_mobile_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in DB
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",
@@ -351,7 +357,9 @@ async def workos_desktop_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",
@@ -446,7 +454,9 @@ async def workos_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(
+            name, email, picture_url, auth_method=auth_response.authentication_method
+        )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
             "login succeeded",
@@ -520,7 +530,7 @@ async def composio_callback(
     """
     log.set(operation="composio_callback", oauth={"provider": "composio", "status": status})
     # Validate and consume state token
-    state_data = await validate_and_consume_oauth_state(state)
+    state_data: OAuthStateData | None = await validate_and_consume_oauth_state(state)
     if not state_data:
         log.warning(f"{LogTag.OAUTH} Invalid OAuth state token", state_prefix=state[:8])
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state")
@@ -538,7 +548,8 @@ async def composio_callback(
         )
         return _composio_failure(redirect_path, error_type)
 
-    connected_account_id = connectedAccountId or await stored_connected_account_id(state_data)
+    # The hosted Connect Link redirects back without the id; the state recorded it at initiate.
+    connected_account_id = connectedAccountId or state_data["connected_account_id"]
     if not connected_account_id:
         log.error(
             f"{LogTag.OAUTH} Connected account ID missing for successful connection",
@@ -578,4 +589,5 @@ async def composio_callback(
     return RedirectResponse(
         url=f"{settings.FRONTEND_URL}{redirect_path}{separator}"
         f"oauth_success=true&integration={outcome.integration_id}"
+        f"&{ACCOUNT_OUTCOME_PARAM}={outcome.outcome}"
     )

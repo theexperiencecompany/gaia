@@ -5,7 +5,17 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from bson import ObjectId
+from composio.types import Tool
+import composio_client
+import httpx
+
 from app.models.user_models import AuthenticatedUser
+
+
+def make_user_id() -> str:
+    """Return a fresh GAIA user id: a real ObjectId, as UserId and every capture require."""
+    return str(ObjectId())
 
 
 def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
@@ -14,7 +24,7 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
     Built as a WorkOS session; overrides are AuthenticatedUser fields.
     """
     defaults: dict[str, Any] = {
-        "user_id": str(uuid4()),
+        "user_id": make_user_id(),
         "auth_provider": "workos",
         "email": "test@example.com",
         "name": "Test User",
@@ -27,7 +37,7 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
 
 def make_user(**overrides) -> dict:
     defaults = {
-        "user_id": str(uuid4()),
+        "user_id": make_user_id(),
         "email": "test@example.com",
         "name": "Test User",
         "created_at": datetime.now(UTC).isoformat(),
@@ -42,7 +52,7 @@ def make_user(**overrides) -> dict:
 def make_conversation(user_id: str | None = None, **overrides) -> dict:
     defaults = {
         "conversation_id": str(uuid4()),
-        "user_id": user_id or str(uuid4()),
+        "user_id": user_id or make_user_id(),
         "description": "Test conversation",
         "messages": [],
         "created_at": datetime.now(UTC).isoformat(),
@@ -72,6 +82,39 @@ def make_state(**overrides) -> dict:
     return defaults
 
 
+def make_composio_tool(
+    slug: str = "GMAIL_FETCH_MESSAGES",
+    output_parameters: dict | None = None,
+) -> Tool:
+    """Build the minimum Composio tool descriptor wrap_tool needs."""
+    return Tool(
+        slug=slug,
+        name=slug,
+        description="Fetch messages.",
+        # `title` is load-bearing: the wrapper builds a pydantic model class from
+        # each schema and uses it as the class name.
+        input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
+        output_parameters=output_parameters
+        or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
+        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        tags=[],
+        scopes=[],
+        version="latest",
+        available_versions=["latest"],
+        # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
+        # siblings are not.
+        deprecated={
+            "available_versions": ["latest"],
+            "displayName": "Fetch messages",
+            "is_deprecated": False,
+            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+            "version": "latest",
+        },
+        is_deprecated=False,
+        no_auth=False,
+    )
+
+
 def make_tool_call(name: str, args: dict | None = None, call_id: str | None = None) -> dict:
     return {
         "name": name,
@@ -87,7 +130,7 @@ def make_config(
     **overrides,
 ) -> dict:
     configurable = {
-        "user_id": user_id or str(uuid4()),
+        "user_id": user_id or make_user_id(),
         "thread_id": thread_id or str(uuid4()),
     }
     configurable.update(overrides.pop("configurable", {}))
@@ -114,7 +157,7 @@ def make_integration(provider: str, **overrides) -> dict:
     defaults = {
         "integration_id": str(uuid4()),
         "provider": provider,
-        "user_id": str(uuid4()),
+        "user_id": make_user_id(),
         "status": "active",
         "credentials": {
             "access_token": f"test_token_{uuid4().hex[:8]}",
@@ -141,3 +184,11 @@ def make_integration_config(
     config.associated_triggers = associated_triggers or []
     config.metadata_config = metadata_config
     return config
+
+
+def make_composio_not_found(body: object, message: str) -> composio_client.NotFoundError:
+    """Build the 404 the Composio SDK raises, with its error body and message."""
+    request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
+    return composio_client.NotFoundError(
+        message, response=httpx.Response(404, request=request, json=body), body=body
+    )

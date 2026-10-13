@@ -50,7 +50,7 @@ const DummyIntegrationsCard: React.FC = () => {
             </div>
           }
         >
-          <div onClick={(e) => e.stopPropagation()}>
+          <div>
             <div className="grid grid-cols-2 gap-2">
               {dummyIntegrations.map((integration) => (
                 <div
@@ -225,17 +225,17 @@ const dummyTools = {
       required_integration: null,
     },
     {
-      name: "add_subtask",
+      name: "add_checklist_item",
       category: "productivity",
       required_integration: null,
     },
     {
-      name: "update_subtask",
+      name: "update_checklist_item",
       category: "productivity",
       required_integration: null,
     },
     {
-      name: "delete_subtask",
+      name: "delete_checklist_item",
       category: "productivity",
       required_integration: null,
     },
@@ -508,7 +508,10 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const categories = useMemo(() => {
-    return ["all", ...dummyTools.categories.toSorted()];
+    return [
+      "all",
+      ...dummyTools.categories.toSorted((a, b) => a.localeCompare(b)),
+    ];
   }, []);
 
   const filteredTools = useMemo(() => {
@@ -622,39 +625,41 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               )}
 
               {filteredTools.map((tool) => (
-                <div
-                  key={tool.name}
-                  className="relative mx-2 mb-1 cursor-pointer rounded-xl border border-transparent transition-all duration-150 hover:border-zinc-600 hover:bg-white/5"
-                  onClick={() => handleToolClick(tool.name)}
-                >
-                  <div className="flex items-center gap-3 p-3">
-                    <div className="flex-shrink-0">
-                      {getToolCategoryIcon(tool.category)}
-                    </div>
+                <div key={tool.name} className="mx-2 mb-1">
+                  <button
+                    type="button"
+                    className="relative block w-full cursor-pointer rounded-xl border border-transparent text-left transition-colors duration-150 hover:border-zinc-600 hover:bg-white/5"
+                    onClick={() => handleToolClick(tool.name)}
+                  >
+                    <div className="flex items-center gap-3 p-3">
+                      <div className="flex-shrink-0">
+                        {getToolCategoryIcon(tool.category)}
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm text-foreground-600">
-                          {formatToolName(tool.name)}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {selectedCategory === "all" && (
-                            <span className="rounded-full bg-zinc-600 px-2 py-0.5 text-xs text-zinc-200 capitalize">
-                              {tool.category.replace("_", " ")}
-                            </span>
-                          )}
-                          {tool.required_integration && (
-                            <div className="flex items-center gap-1">
-                              <Tick02Icon className="h-3 w-3 text-emerald-400" />
-                              <span className="text-xs text-emerald-400">
-                                Connected
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm text-foreground-600">
+                            {formatToolName(tool.name)}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {selectedCategory === "all" && (
+                              <span className="rounded-full bg-zinc-600 px-2 py-0.5 text-xs text-zinc-200 capitalize">
+                                {tool.category.replace("_", " ")}
                               </span>
-                            </div>
-                          )}
+                            )}
+                            {tool.required_integration && (
+                              <div className="flex items-center gap-1">
+                                <Tick02Icon className="h-3 w-3 text-emerald-400" />
+                                <span className="text-xs text-emerald-400">
+                                  Connected
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 </div>
               ))}
             </div>

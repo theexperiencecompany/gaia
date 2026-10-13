@@ -88,6 +88,9 @@ export const useLogout = () => {
 
     await clearAllStorage();
 
+    // Logout is tracked server-side (POST /user/logout emits
+    // user:logged_out with the stable distinct_id). Emitting here too would
+    // double-count every logout, so just reset the client identity.
     resetUser();
 
     // Fallback redirect if authApi.logout doesn't (no logout_url) — in

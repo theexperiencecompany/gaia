@@ -2,8 +2,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from posthog import Posthog
 
 from app.config.settings import settings
+from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.provider_registration import (
@@ -17,6 +19,7 @@ from app.services.device.revoke_listener import (
 from app.services.device.up_listener import start_up_listener, stop_up_listener
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
+from app.utils.crawl_obscura import shutdown_crawl_obscura
 from shared.py.wide_events import log, log_context
 
 
@@ -28,7 +31,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     event; the boundary covers startup only, not the yield, or the pod would
     emit a single event at exit.
     """
-    posthog_client = None
+    posthog_client: Posthog | None = None
     try:
         async with log_context("api_startup", component="lifespan"):
             if not settings.POSTHOG_PROJECT_TOKEN or not settings.POSTHOG_HOST:
@@ -46,7 +49,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                 )
             await unified_startup("main_app")
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
-                posthog_client = providers.get("posthog")
+                posthog_client = providers.get(POSTHOG_PROVIDER_KEY)
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
@@ -59,6 +62,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await stop_up_listener()
         await stop_revoke_listener()
         await stop_browser_reaper()
+        await shutdown_crawl_obscura()
         if posthog_client is not None:
             # shutdown(), not flush(): flush() only flushes the queue, leaving the
             # consumer threads and feature-flag poller running; an atexit hook

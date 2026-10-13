@@ -108,7 +108,7 @@ const todos: TodoListResponse = await api.get("/api/v1/todos");
 
 Naming, identity and the no-PII rule are in the root `CLAUDE.md`. Web specifics:
 
-- `trackEvent(ANALYTICS_EVENTS.X, { ... })` from `src/lib/analytics.ts` — never `posthog.capture` directly, and never a bare string event name. Add new names to `ANALYTICS_EVENTS` in that file.
+- `track("domain:action", { ... })` from `src/lib/analytics.ts`, never `posthog.capture` (Biome blocks `posthog-js` imports elsewhere). Only web-owned catalog events with their exact props compile; add a new one as a `WebEvent` in `libs/shared/py/analytics/catalog/` and run `mise analytics:types`.
 - Users are identified by the **backend user id** (`useFetchUser`), not the WorkOS id or email, so web events join the API's.
 - Ingestion is proxied through `/ingest/*` so ad blockers cannot drop it; those rewrites follow `NEXT_PUBLIC_POSTHOG_HOST` (`next.config.mjs`), and `skipTrailingSlashRedirect: true` is required for it.
 - Prefer capturing server-side when the backend already sees the action — a client capture is the one an ad blocker eats. Capture on success, not on click.
@@ -178,6 +178,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
+- Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
 
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 

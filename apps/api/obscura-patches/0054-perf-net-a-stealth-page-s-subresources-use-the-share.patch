@@ -1,0 +1,197 @@
+From 51185c460a4be78e713f4ed3db54987319b1834f Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:30:25 +0530
+Subject: [PATCH] perf(net): a stealth page's subresources use the shared cache
+ and request sharing
+
+The stealth client fetched every script, stylesheet, image and font
+afresh: no reuse of a response the server marked cacheable, and no
+sharing of identical requests in flight, both of which the plain client
+does. A stealth page (the mode the host runs) re-downloaded its shared
+scripts on every navigation and sent one request per copy of a resource
+its frames and documents asked for at once. Its subresource GETs now go
+through the same loader; nine requests for one cacheable script make one
+transaction, and observers still see nine.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-net/src/wreq_client.rs | 124 ++++++++++++++++++++++++++
+ 1 file changed, 124 insertions(+)
+
+diff --git a/crates/obscura-net/src/wreq_client.rs b/crates/obscura-net/src/wreq_client.rs
+index f66dd0d..04a6389 100644
+--- a/crates/obscura-net/src/wreq_client.rs
++++ b/crates/obscura-net/src/wreq_client.rs
+@@ -17,6 +17,8 @@ use url::Url;
+ #[cfg(feature = "stealth")]
+ use crate::cookies::CookieJar;
+ #[cfg(feature = "stealth")]
++use crate::resource_loader::{ResourceCacheKey, ResourceLoader};
++#[cfg(feature = "stealth")]
+ use crate::client::{
+     CallbackRegistry, InFlightGuard, ObscuraNetError, RequestInfo, RequestMode,
+     ResourceRequest, Response, SsrfGuardResolver, cors_required, env_allows_private_network,
+@@ -238,6 +240,7 @@ pub struct StealthHttpClient {
+     pub cookie_jar: Arc<CookieJar>,
+     pub extra_headers: RwLock<HashMap<String, String>>,
+     pub in_flight: Arc<std::sync::atomic::AtomicU32>,
++    resource_loader: ResourceLoader,
+ }
+ 
+ #[cfg(feature = "stealth")]
+@@ -317,6 +320,7 @@ impl StealthHttpClient {
+             cookie_jar,
+             extra_headers: RwLock::new(HashMap::new()),
+             in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
++            resource_loader: ResourceLoader::default(),
+         }
+     }
+ 
+@@ -361,6 +365,9 @@ impl StealthHttpClient {
+             .await
+     }
+ 
++    /// A subresource GET is answered from the shared loader (fresh cached
++    /// response, or a transaction already in flight for it), as the plain
++    /// client's are.
+     async fn fetch_with_profile(
+         &self,
+         url: &Url,
+@@ -368,6 +375,59 @@ impl StealthHttpClient {
+         callbacks: Option<&CallbackRegistry>,
+         initial_method: wreq::Method,
+         initial_body: Option<Vec<u8>>,
++    ) -> Result<Response, ObscuraNetError> {
++        let cache_key = if initial_method == wreq::Method::GET && initial_body.is_none() {
++            ResourceCacheKey::for_request(
++                url,
++                &request,
++                &*self.extra_headers.read().await,
++                &self.cookie_jar,
++                stealth_identity::USER_AGENT.to_string(),
++            )
++        } else {
++            None
++        };
++        let Some(cache_key) = cache_key else {
++            return self
++                .fetch_with_profile_uncached(url, request, callbacks, initial_method, initial_body)
++                .await;
++        };
++        self.resource_loader
++            .load(
++                cache_key,
++                || {
++                    self.fetch_with_profile_uncached(
++                        url,
++                        request.clone(),
++                        callbacks,
++                        wreq::Method::GET,
++                        None,
++                    )
++                },
++                |response| async {
++                    if let Some(callbacks) = callbacks {
++                        let request_info = RequestInfo {
++                            url: url.clone(),
++                            method: wreq::Method::GET.to_string(),
++                            headers: self.extra_headers.read().await.clone(),
++                            resource_type: request.resource_type,
++                        };
++                        callbacks.fire_request(&request_info).await;
++                        callbacks.fire_response(&request_info, &response).await;
++                    }
++                    response
++                },
++            )
++            .await
++    }
++
++    async fn fetch_with_profile_uncached(
++        &self,
++        url: &Url,
++        request: ResourceRequest,
++        callbacks: Option<&CallbackRegistry>,
++        initial_method: wreq::Method,
++        initial_body: Option<Vec<u8>>,
+     ) -> Result<Response, ObscuraNetError> {
+         validate_url(url, self.allow_private_network)?;
+         validate_request_mode(&request, url)?;
+@@ -864,6 +924,69 @@ mod tests {
+         assert_eq!(server.join().unwrap(), 2);
+     }
+ 
++    /// A stealth page's scripts and styles share one transaction while in
++    /// flight and reuse a fresh cached response, as the plain client's do.
++    #[tokio::test]
++    async fn stealth_cacheable_subresources_share_one_request_and_the_cache() {
++        use std::sync::atomic::{AtomicUsize, Ordering};
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let network = Arc::new(AtomicUsize::new(0));
++        let served = network.clone();
++        tokio::spawn(async move {
++            while let Ok((mut stream, _)) = listener.accept().await {
++                let served = served.clone();
++                tokio::spawn(async move {
++                    let mut request = [0u8; 4096];
++                    let _ = stream.read(&mut request).await;
++                    served.fetch_add(1, Ordering::SeqCst);
++                    tokio::time::sleep(Duration::from_millis(80)).await;
++                    let body = "window.x = 1;";
++                    let response = format!(
++                        "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\nCache-Control: max-age=3600\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++                        body.len()
++                    );
++                    let _ = stream.write_all(response.as_bytes()).await;
++                    let _ = stream.shutdown().await;
++                });
++            }
++        });
++        let url = Url::parse(&format!("http://{address}/shared.js")).unwrap();
++        let initiator = url.join("/page.html").unwrap();
++        let client = Arc::new(StealthHttpClient::with_proxy(Arc::new(CookieJar::new()), None, true));
++        let callbacks = Arc::new(crate::client::CallbackRegistry::new());
++        let responses_seen = Arc::new(AtomicUsize::new(0));
++        let observed = responses_seen.clone();
++        callbacks.add_response(Arc::new(move |_, _| {
++            observed.fetch_add(1, Ordering::SeqCst);
++        }));
++        let fetch = |client: Arc<StealthHttpClient>, callbacks: Arc<crate::client::CallbackRegistry>| {
++            let url = url.clone();
++            let request = crate::client::ResourceRequest::subresource(
++                crate::client::ResourceType::Script,
++                &initiator,
++            );
++            async move {
++                client
++                    .fetch_resource_with_callbacks(&url, request, Some(&callbacks))
++                    .await
++                    .unwrap()
++            }
++        };
++
++        let mut fetches = tokio::task::JoinSet::new();
++        for _ in 0..8 {
++            fetches.spawn(fetch(client.clone(), callbacks.clone()));
++        }
++        while let Some(response) = fetches.join_next().await {
++            assert_eq!(response.unwrap().status, 200);
++        }
++        assert_eq!(fetch(client.clone(), callbacks.clone()).await.status, 200);
++
++        assert_eq!(network.load(Ordering::SeqCst), 1, "one transaction for nine requests");
++        assert_eq!(responses_seen.load(Ordering::SeqCst), 9, "every request is observed");
++    }
++
+     #[tokio::test]
+     async fn stealth_post_does_not_retry_connection_reset() {
+         let (port, server) = reset_fixture(false);
+@@ -874,6 +997,7 @@ mod tests {
+             cookie_jar: Arc::new(CookieJar::new()),
+             extra_headers: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+             in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
++            resource_loader: crate::resource_loader::ResourceLoader::default(),
+         };
+         let url = Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap();
+         let error = client

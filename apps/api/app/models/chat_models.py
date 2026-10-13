@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, NotRequired
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
 # The channel vocabulary lives in app.constants.chat, a leaf, so
@@ -35,6 +35,17 @@ class ImageData(BaseModel):
     url: str
     prompt: str
     improved_prompt: str | None = None
+
+
+class SavedSubagentGroup(BaseModel):
+    """The parts of a saved subagent_group entry's data a resumed run extends in place."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str = ""
+    tool_calls: list[dict[str, object]] = Field(default_factory=list)
+    completed_at: str | None = None
+    duration_ms: int | None = None
 
 
 class ToolDataEntry(TypedDict):
@@ -112,8 +123,18 @@ tool_fields = [
     "workflow_created",
     "artifact_data",
     "screenshot_data",
+    "browser_task_data",
     "mcp_app",
 ]
+
+
+class MessageKind(StrEnum):
+    """What a bot message IS beyond its text, set when comms' intent is known at
+    creation and would otherwise be unrecoverable from the body alone (a deliberate
+    one-emoji acknowledgement reads identically to a coincidental one-emoji reply)."""
+
+    TEXT = "text"
+    EMOJI_ACK = "emoji_ack"  # comms acknowledged a background update with a single emoji
 
 
 class MessageModel(BaseModel):
@@ -121,6 +142,7 @@ class MessageModel(BaseModel):
 
     type: str
     response: str
+    kind: MessageKind = MessageKind.TEXT
     date: str | None = None
     image_data: ImageData | None = None
     disclaimer: str | None = None
@@ -144,6 +166,17 @@ class MessageModel(BaseModel):
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None
+    # GAIA id of the message an emoji-ack reacts to. Set only when kind is
+    # EMOJI_ACK; the web client renders the emoji as a reaction badge on this
+    # message instead of a new bubble. None everywhere else.
+    reacts_to_message_id: str | None = None
+    # Platform-native id (WhatsApp wamid, Telegram message_id, Discord id, Slack
+    # ts). Set only on user messages that arrived through a bot, so a later
+    # background reaction can anchor to the exact platform message. Else None.
+    platform_message_id: str | None = None
+    # Set on the user's linking message stored at account linking: no chat turn
+    # ran for it, so no chat:message_submitted counts it. None everywhere else.
+    first_contact: bool | None = None
 
 
 class SystemPurpose(str, Enum):

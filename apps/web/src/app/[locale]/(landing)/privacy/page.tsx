@@ -227,9 +227,9 @@ function HowWeUseInformation() {
             We may use content you submit to the Service to improve our services
             and products.
           </strong>{" "}
-          We do not use content from your connected third-party integrations —
-          including emails, calendar events, contacts, and other data retrieved
-          from accounts you connect — to improve our services. Content from
+          We do not use content from your connected third-party integrations
+          (including emails, calendar events, contacts, and other data retrieved
+          from accounts you connect) to improve our services. Content from
           connected accounts is used solely to operate the Service at your
           direction.
         </p>

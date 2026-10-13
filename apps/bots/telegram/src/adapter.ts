@@ -36,10 +36,13 @@ import {
   type IncomingMedia,
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   redeemLinkCode,
   renderForPlatform,
   richMessageToMarkdown,
@@ -48,7 +51,7 @@ import {
   sanitizeErrorForLog,
   withWideEvent,
 } from "@gaia/shared/bots";
-import type { Message } from "@grammyjs/types";
+import type { Message, ReactionType } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
@@ -203,9 +206,18 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
-    // grammY's terminal error handler: anything an uncaught middleware throws ends
-    // here. Treated as its own unit of work so it gets a canonical event (update,
-    // sender, cause) instead of a lone error line with no trace_id.
+    this.registerErrorHandler();
+    // Cache the bot username upfront to avoid calling getMe() on every message
+    const botInfo = await this.bot.api.getMe();
+    this.botUsername = botInfo.username;
+  }
+
+  /**
+   * Installs grammY's terminal error handler: anything an uncaught middleware
+   * throws ends here, recorded as its own failed bot_runtime_error unit of work
+   * with the failure's reason and the hashed sender and chat, like Slack's app.error.
+   */
+  private registerErrorHandler(): void {
     this.bot.catch((err) =>
       withWideEvent(
         "bot_runtime_error",
@@ -217,18 +229,10 @@ export class TelegramAdapter extends BaseBotAdapter {
           update_id: err.ctx?.update?.update_id,
         },
         async () => {
-          // Re-thrown so the boundary marks the event failed and records the
-          // real error in errors[]; a handler-reports-success event here would
-          // hide every middleware crash.
-          throw err.error;
+          recordBotFailure("telegram_runtime_error", err.error);
         },
-        // This IS the last-resort handler — the error is already emitted, and
-        // letting it escape would take the bot process down.
-      ).catch(() => undefined),
+      ),
     );
-    // Cache the bot username upfront to avoid calling getMe() on every message
-    const botInfo = await this.bot.api.getMe();
-    this.botUsername = botInfo.username;
   }
 
   /**
@@ -442,9 +446,10 @@ export class TelegramAdapter extends BaseBotAdapter {
       if (!isTelegramHtmlParseError(error)) throw error;
       // Telegram rejected the HTML (usually an unbalanced entity). Recover by
       // sending plain text, but log it — silent fallback hides markdown bugs.
-      this.adapterLogger.warn("telegram_html_parse_fallback", {
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      this.adapterLogger.warn(
+        "telegram_html_parse_fallback",
+        sanitizeErrorForLog(error),
+      );
       return await send(htmlToPlainText(html));
     }
   }
@@ -463,33 +468,55 @@ export class TelegramAdapter extends BaseBotAdapter {
     );
   }
 
-  /**
-   * Delivers an agent-generated file artifact to a Telegram user. Fetches the
-   * bytes from GAIA (bot-authenticated) and uploads them as a photo (for
-   * images) or a document. The chat id is the stored Telegram user id.
-   */
-  protected override async deliverOutboundFile(
+  protected override async reactToMessage(
     destinationId: string,
-    attachment: OutboundAttachment,
+    platformMessageId: string,
+    emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // Telegram accepts only a fixed emoji set, spelled without the U+FE0F
+    // variation selector ("❤" not "❤️"), and 400s anything else; an off-list
+    // emoji lands in the catch below and the caller sends text.
+    const allowed = emoji.replaceAll("\uFE0F", "") as Extract<
+      ReactionType,
+      { type: "emoji" }
+    >["emoji"];
+    try {
+      await this.bot.api.setMessageReaction(
+        destinationId,
+        Number(platformMessageId),
+        [{ type: "emoji", emoji: allowed }],
+      );
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...sanitizeErrorForLog(err),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
+    }
+  }
+
+  /**
+   * Uploads an agent-generated file artifact to a Telegram chat as a photo
+   * (for images) or a document. The chat id is polymorphic (a user's or a
+   * group's), so `isChannel` does not change the address.
+   */
+  protected override async sendOutboundFile(
+    destinationId: string,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const { data, contentType } = artifact;
-    const mime =
-      attachment.content_type ?? contentType ?? "application/octet-stream";
-    const file = new InputFile(data, attachment.filename);
-    const caption = attachment.caption
-      ? attachment.caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
-      : undefined;
+    const file = new InputFile(data, filename);
+    const opts = {
+      caption: caption
+        ? caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
+        : undefined,
+    };
     // sendPhoto caps around 10 MB; deliver larger images as a document so they
     // still arrive instead of being rejected.
     if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {
-      await this.bot.api.sendPhoto(destinationId, file, { caption });
+      await this.bot.api.sendPhoto(destinationId, file, opts);
     } else {
-      await this.bot.api.sendDocument(destinationId, file, { caption });
+      await this.bot.api.sendDocument(destinationId, file, opts);
     }
   }
 
@@ -515,9 +542,10 @@ export class TelegramAdapter extends BaseBotAdapter {
         onError(e);
         throw e;
       }
-      this.adapterLogger.warn("telegram_html_parse_fallback", {
-        reason: e instanceof Error ? e.message : String(e),
-      });
+      this.adapterLogger.warn(
+        "telegram_html_parse_fallback",
+        sanitizeErrorForLog(e),
+      );
       try {
         await edit(htmlToPlainText(html));
       } catch (err) {
@@ -583,6 +611,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           platformUserId: userId,
           channelId: chatId.toString(),
           isDm: ctx.chat?.type === "private",
+          platformMessageId: ctx.msg?.message_id?.toString(),
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -678,8 +707,8 @@ export class TelegramAdapter extends BaseBotAdapter {
             // DM failed (privacy settings) — update group message with fallback
             try {
               const fallback = this.botUsername
-                ? `I couldn't send you a DM — your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
-                : `I couldn't send you a DM — your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
+                ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
+                : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
               await ctx.api.editMessageText(chatId, currentMessageId, fallback);
             } catch (fallbackErr) {
               this.adapterLogger.error(
@@ -717,6 +746,31 @@ export class TelegramAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.telegram,
         await this.analyticsFor(userId),
+        async (emoji: string) => {
+          const inboundId = ctx.msg?.message_id;
+          if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
+          const outcome = await this.reactToMessage(
+            chatId.toString(),
+            inboundId.toString(),
+            emoji,
+            ctx.chat?.type !== "private",
+          );
+          if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
+          try {
+            await ctx.api.deleteMessage(chatId, loading.message_id);
+          } catch (e) {
+            // The reaction is already the reply; a stale "Thinking..." is all this costs.
+            this.adapterLogger.error(
+              "placeholder_delete_failed",
+              {
+                channel_hash: hashLogIdentifier(chatId),
+                message_id: loading.message_id,
+              },
+              e,
+            );
+          }
+          return outcome;
+        },
       );
     } finally {
       clearTyping();

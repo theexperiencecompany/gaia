@@ -21,9 +21,14 @@ from app.config.rate_limits import get_limits_for_plan
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import RateLimitHit
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
-def _noop_create_task(coro: object, **kwargs: object) -> MagicMock:
+def _noop_spawn(operation: str, coro: object, **context: object) -> MagicMock:
+    """Stand in for the usage-sync spawn; patching asyncio.create_task would leak a mock task globally."""
     if asyncio.iscoroutine(coro):
         coro.close()
     return MagicMock()
@@ -90,12 +95,10 @@ class TestTieredLimiterRealDecision:
         self.limiter.redis = AsyncMock()
 
     @patch(
-        "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
-        side_effect=_noop_create_task,
+        "app.api.v1.middleware.tiered_rate_limiter.spawn_logged_task",
+        side_effect=_noop_spawn,
     )
-    async def test_pro_under_limit_reports_real_pro_limits(
-        self, mock_create_task: MagicMock
-    ) -> None:
+    async def test_pro_under_limit_reports_real_pro_limits(self, mock_spawn: MagicMock) -> None:
         """A PRO user at zero usage gets the real PRO numbers in usage_info."""
         self.limiter.redis.get = AsyncMock(return_value=None)
         self.limiter.redis.redis = _pipeline_mock()
@@ -138,10 +141,10 @@ class TestTieredLimiterRealDecision:
         self.limiter.redis.get.assert_not_called()
 
     @patch(
-        "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
-        side_effect=_noop_create_task,
+        "app.api.v1.middleware.tiered_rate_limiter.spawn_logged_task",
+        side_effect=_noop_spawn,
     )
-    async def test_pro_user_passes_pro_only_feature(self, mock_create_task: MagicMock) -> None:
+    async def test_pro_user_passes_pro_only_feature(self, mock_spawn: MagicMock) -> None:
         """The same voice_mode feature is enforceable for a PRO subscriber."""
         self.limiter.redis.get = AsyncMock(return_value=None)
         self.limiter.redis.redis = _pipeline_mock()
@@ -171,13 +174,12 @@ class TestRateLimitHitAnalytics:
             set_user_context,
             with_rate_limiting,
         )
-        from app.services.analytics_service import AnalyticsEvents
 
         async def fake_tool(config: dict) -> dict:
             return {"ok": True}
 
         wrapped = with_rate_limiting("fake_feature")(fake_tool)
-        set_user_context("user-1")
+        set_user_context(USER_ID)
         try:
             with (
                 patch(
@@ -190,7 +192,7 @@ class TestRateLimitHitAnalytics:
                     new_callable=AsyncMock,
                     side_effect=self._exceeded(),
                 ),
-                patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+                patch("app.decorators.rate_limiting.capture") as mock_capture,
             ):
                 with pytest.raises(LangChainRateLimitError):
                     await wrapped(config={})
@@ -198,9 +200,10 @@ class TestRateLimitHitAnalytics:
             clear_user_context()
 
         mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[0] == "user-1"
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.RATE_LIMIT_HIT
-        assert mock_capture.call_args.args[2] == {"feature": "fake_feature", "plan": "pro"}
+        assert mock_capture.call_args.args == (
+            UserId(USER_ID),
+            RateLimitHit(feature="fake_feature", plan="pro"),
+        )
 
     @pytest.mark.asyncio
     async def test_with_rate_limiting_skips_free_hit(self) -> None:
@@ -216,7 +219,7 @@ class TestRateLimitHitAnalytics:
             return {"ok": True}
 
         wrapped = with_rate_limiting("fake_feature")(fake_tool)
-        set_user_context("user-1")
+        set_user_context(USER_ID)
         try:
             with (
                 patch(
@@ -229,7 +232,7 @@ class TestRateLimitHitAnalytics:
                     new_callable=AsyncMock,
                     side_effect=self._exceeded(),
                 ),
-                patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+                patch("app.decorators.rate_limiting.capture") as mock_capture,
             ):
                 with pytest.raises(LangChainRateLimitError):
                     await wrapped(config={})
@@ -241,7 +244,6 @@ class TestRateLimitHitAnalytics:
     @pytest.mark.asyncio
     async def test_tiered_rate_limit_captures_pro_hit(self) -> None:
         from app.decorators.rate_limiting import tiered_rate_limit
-        from app.services.analytics_service import AnalyticsEvents
 
         async def fake_endpoint() -> dict:
             return {"ok": True}
@@ -251,7 +253,7 @@ class TestRateLimitHitAnalytics:
         with (
             patch(
                 "app.core.request_context.get_authenticated_user",
-                return_value=AuthenticatedUser(user_id="user-1"),
+                return_value=AuthenticatedUser(user_id=USER_ID),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -263,15 +265,16 @@ class TestRateLimitHitAnalytics:
                 new_callable=AsyncMock,
                 side_effect=self._exceeded(),
             ),
-            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+            patch("app.decorators.rate_limiting.capture") as mock_capture,
         ):
             with pytest.raises(RateLimitExceededException):
                 await wrapped()
 
         mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[0] == "user-1"
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.RATE_LIMIT_HIT
-        assert mock_capture.call_args.args[2] == {"feature": "fake_feature", "plan": "pro"}
+        assert mock_capture.call_args.args == (
+            UserId(USER_ID),
+            RateLimitHit(feature="fake_feature", plan="pro"),
+        )
 
     @pytest.mark.asyncio
     async def test_tiered_rate_limit_skips_free_hit(self) -> None:
@@ -285,7 +288,7 @@ class TestRateLimitHitAnalytics:
         with (
             patch(
                 "app.core.request_context.get_authenticated_user",
-                return_value=AuthenticatedUser(user_id="user-1"),
+                return_value=AuthenticatedUser(user_id=USER_ID),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -297,7 +300,7 @@ class TestRateLimitHitAnalytics:
                 new_callable=AsyncMock,
                 side_effect=self._exceeded(),
             ),
-            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+            patch("app.decorators.rate_limiting.capture") as mock_capture,
         ):
             with pytest.raises(RateLimitExceededException):
                 await wrapped()
@@ -329,11 +332,11 @@ class TestEnforceTieredLimit:
                 new_callable=AsyncMock,
             ) as mock_check,
         ):
-            await enforce_tiered_limit("user-1", "fake_feature")
+            await enforce_tiered_limit(USER_ID, "fake_feature")
 
-        mock_status.assert_awaited_once_with("user-1")
+        mock_status.assert_awaited_once_with(USER_ID)
         mock_check.assert_awaited_once_with(
-            user_id="user-1",
+            user_id=USER_ID,
             feature_key="fake_feature",
             user_plan=PlanType.PRO,
             origin=LimitHitOrigin.INTERACTIVE,
@@ -356,14 +359,13 @@ class TestEnforceTieredLimit:
                 new_callable=AsyncMock,
             ) as mock_check,
         ):
-            await enforce_tiered_limit("user-1", "fake_feature")
+            await enforce_tiered_limit(USER_ID, "fake_feature")
 
         assert mock_check.await_args.kwargs["user_plan"] == PlanType.FREE
 
     @pytest.mark.asyncio
     async def test_captures_the_paid_plan_hit_and_re_raises(self) -> None:
         from app.decorators.rate_limiting import enforce_tiered_limit
-        from app.services.analytics_service import AnalyticsEvents
 
         subscription = MagicMock(plan_type=PlanType.PRO)
         with (
@@ -377,15 +379,13 @@ class TestEnforceTieredLimit:
                 new_callable=AsyncMock,
                 side_effect=RateLimitExceededException("fake_feature"),
             ),
-            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+            patch("app.decorators.rate_limiting.capture") as mock_capture,
         ):
             with pytest.raises(RateLimitExceededException):
-                await enforce_tiered_limit("user-1", "fake_feature")
+                await enforce_tiered_limit(USER_ID, "fake_feature")
 
         mock_capture.assert_called_once_with(
-            "user-1",
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": "fake_feature", "plan": "pro"},
+            UserId(USER_ID), RateLimitHit(feature="fake_feature", plan="pro")
         )
 
     @pytest.mark.asyncio
@@ -405,9 +405,9 @@ class TestEnforceTieredLimit:
                 new_callable=AsyncMock,
                 side_effect=RateLimitExceededException("fake_feature"),
             ),
-            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+            patch("app.decorators.rate_limiting.capture") as mock_capture,
         ):
             with pytest.raises(RateLimitExceededException):
-                await enforce_tiered_limit("user-1", "fake_feature")
+                await enforce_tiered_limit(USER_ID, "fake_feature")
 
         mock_capture.assert_not_called()

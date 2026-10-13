@@ -6,6 +6,11 @@ import {
   toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
+import {
+  apiRowHasLiveApproval,
+  isApprovalFlagStale,
+} from "@/features/chat/utils/approvalFlag";
+import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -111,6 +116,8 @@ const mapApiMessagesToStored = (
       selectedWorkflow: message.selectedWorkflow,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
+      kind: message.kind ?? null,
+      reacts_to_message_id: message.reacts_to_message_id ?? null,
     } satisfies IMessage;
   });
 
@@ -143,6 +150,9 @@ const identifyStaleConversations = (
       conv.updatedAt || conv.createdAt,
     ]),
   );
+  const localFlagMap = new Map(
+    localConversations.map((conv) => [conv.id, conv.hasLiveApproval]),
+  );
 
   const staleItems: ConversationSyncItem[] = [];
 
@@ -155,6 +165,15 @@ const identifyStaleConversations = (
       staleItems.push({
         conversation_id: conversationId,
         last_updated: undefined,
+      });
+      continue;
+    }
+
+    if (isApprovalFlagStale(localFlagMap.get(conversationId), remote)) {
+      // Flag flipped without touching updatedAt — refetch for the dot.
+      staleItems.push({
+        conversation_id: conversationId,
+        last_updated: localUpdatedAt.toISOString(),
       });
       continue;
     }
@@ -259,7 +278,9 @@ const warnOnMessageContentLoss = (
   }
 };
 
-export const batchSyncConversations = async (): Promise<void> => {
+export const batchSyncConversations = async (
+  origin: RequestOrigin = {},
+): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
   // conservative whole-batch gate.
@@ -272,7 +293,7 @@ export const batchSyncConversations = async (): Promise<void> => {
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
-        .fetchConversations(1, MAX_SYNC_CONVERSATIONS)
+        .fetchConversations(1, MAX_SYNC_CONVERSATIONS, origin)
         .then((res) => res.conversations),
       db.getAllConversations(),
     ]);
@@ -302,7 +323,7 @@ export const batchSyncConversations = async (): Promise<void> => {
     }
 
     const { conversations: freshConversations } =
-      await chatApi.batchSyncConversations(staleItems);
+      await chatApi.batchSyncConversations(staleItems, origin);
 
     if (freshConversations.length === 0) {
       return;
@@ -328,6 +349,7 @@ export const batchSyncConversations = async (): Promise<void> => {
           isSystemGenerated: conversation.is_system_generated ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
+          hasLiveApproval: apiRowHasLiveApproval(conversation),
           artifacts,
           createdAt: new Date(conversation.createdAt ?? 0),
           updatedAt: conversation.updatedAt
@@ -387,6 +409,7 @@ export const applySyncedConversation = async (
     isSystemGenerated: conversation.is_system_generated ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
+    hasLiveApproval: apiRowHasLiveApproval(conversation),
     artifacts,
     createdAt: new Date(conversation.createdAt ?? 0),
     updatedAt: conversation.updatedAt

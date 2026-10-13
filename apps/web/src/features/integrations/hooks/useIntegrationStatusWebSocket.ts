@@ -22,10 +22,9 @@ export type IntegrationStatusHandler = (message: unknown) => void;
 /**
  * Refresh the integration caches when the backend says a connection changed.
  *
- * Invalidating rather than patching keeps `/integrations/me` the single source
- * of truth for the whole catalog entry, not just its status. A broadcast with
- * no integration id is ignored: invalidating on one would blow away the entire
- * catalog and the tool list for nothing.
+ * Invalidating rather than patching keeps the catalog snapshot and status map
+ * in sync. A broadcast with no integration id is ignored: invalidating on one
+ * would blow away the entire catalog and the tool list for nothing.
  */
 export function createIntegrationStatusHandler(
   queryClient: QueryClient,

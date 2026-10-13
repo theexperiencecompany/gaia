@@ -1,7 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { FIRST_STEP_DEFINITIONS } from "@/features/first-steps/constants";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
   FirstStepStatus,
@@ -22,7 +22,7 @@ export function useFirstStepAction(
     (step: FirstStepStatus) => {
       const { action } = FIRST_STEP_DEFINITIONS[step.key];
       // The row click is the only part of this the server cannot see.
-      trackEvent(ANALYTICS_EVENTS.FIRST_STEPS_STEP_CLICKED, {
+      track("first_steps:step_clicked", {
         step: step.key,
         done: step.done,
         surface,

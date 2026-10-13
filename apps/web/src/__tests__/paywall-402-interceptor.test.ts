@@ -209,6 +209,7 @@ describe("chatApi chat-stream 402 handling (onopen)", () => {
         selectedCalendarEvent: null,
         replyToMessage: null,
         isOnboardingDemo: false,
+        isRetry: false,
       }),
     ).rejects.toBeInstanceOf(SubscriptionRequiredError);
 

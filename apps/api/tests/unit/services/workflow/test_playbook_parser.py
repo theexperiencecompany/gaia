@@ -82,7 +82,7 @@ def _registry() -> _FakeRegistry:
 class _SchemaTool(BaseTool):
     """A tool whose args are a raw JSON schema, the shape MCP tools arrive in.
 
-    Unions and empty arg sets cannot be expressed with ``@tool`` decorators, and
+    Unions and empty arg sets cannot be expressed with @tool decorators, and
     they are exactly the schemas a real integration hands the validator.
     """
 
@@ -154,7 +154,6 @@ def _retrieval_disabled_handoff_space():
         config=SubAgentConfig(
             agent_name="calendar_agent",
             tool_space="calendar",
-            handoff_tool_name="handoff_to_calendar",
             domain="calendar",
             capabilities="c",
             use_cases="u",

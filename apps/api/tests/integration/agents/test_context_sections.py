@@ -9,7 +9,7 @@ import pytest
 from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import SECTIONS, Section
 from app.agents.context.slots import PromptSlot
-from app.agents.context.text import EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
+from app.agents.context.text import EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER
 from app.agents.context.tiers import AgentTier
 from app.models.todo_models import TodoDocument
 
@@ -57,11 +57,11 @@ class TestConnectedIntegrationsManifest:
         assert "slack" not in block
         assert "notion" not in block
 
-    async def test_the_executor_gets_the_handoff_framed_header(self, user: str) -> None:
+    async def test_the_executor_gets_the_activation_framed_header(self, user: str) -> None:
         with self._records({"integration_id": "gmail", "status": "connected"}):
             block = await _section("integrations_manifest").fetch(_ctx(user))
 
-        assert block.startswith(EXECUTOR_CONNECTED_INTEGRATIONS_HEADER)
+        assert block.startswith(EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER)
 
     async def test_comms_gets_the_capability_framed_header_instead(self, user: str) -> None:
         with self._records({"integration_id": "gmail", "status": "connected"}):
@@ -69,7 +69,7 @@ class TestConnectedIntegrationsManifest:
                 SectionContext(tier=AgentTier.COMMS, user_id=user)
             )
 
-        assert not block.startswith(EXECUTOR_CONNECTED_INTEGRATIONS_HEADER)
+        assert not block.startswith(EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER)
         assert "gmail" in block
 
     async def test_no_connected_integrations_yields_nothing_at_all(self, user: str) -> None:
@@ -87,9 +87,10 @@ class TestTrackedTodosSummary:
 
     @staticmethod
     def _todos(*docs: TodoDocument):
-        return patch(
-            "app.db.repositories.todos.todo_repository.list_active_tracked",
-            AsyncMock(return_value=list(docs)),
+        return patch.multiple(
+            "app.db.repositories.todos.todo_repository",
+            list_active_tracked=AsyncMock(return_value=list(docs)),
+            count_open_sub_todos=AsyncMock(return_value={}),
         )
 
     @staticmethod

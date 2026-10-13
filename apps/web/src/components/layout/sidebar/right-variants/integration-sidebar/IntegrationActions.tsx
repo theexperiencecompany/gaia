@@ -186,7 +186,8 @@ export function IntegrationActions({
   const [isPublishing, setIsPublishing] = useState(false);
 
   const bearer = useBearerTokenModal({
-    connect: (id, token) => integrationsApi.connectIntegration(id, token),
+    connect: (id, token) =>
+      integrationsApi.connectIntegration(id, { bearerToken: token }),
     onConnected: () => {
       toast.success(`Connected to ${integration.name}`);
       // Refresh data in the background so the sidebar reflects the new tools.

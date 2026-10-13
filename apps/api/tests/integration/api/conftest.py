@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from app.models.user_models import AuthenticatedUser
+from tests.conftest import FAKE_USER
 from tests.factories import make_authenticated_user
 from tests.helpers import MockAuthMiddleware, NoAuthMiddleware
 
@@ -48,7 +49,7 @@ def _create_test_app() -> FastAPI:
 
 @pytest.fixture
 def test_user() -> AuthenticatedUser:
-    return make_authenticated_user(user_id="integration-test-user-1", email="test@test.com")
+    return make_authenticated_user(user_id=FAKE_USER.user_id, email="test@test.com")
 
 
 @pytest.fixture

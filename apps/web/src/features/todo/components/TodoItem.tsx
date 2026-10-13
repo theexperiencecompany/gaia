@@ -1,7 +1,8 @@
 "use client";
 
 import { Checkbox } from "@heroui/checkbox";
-import { memo } from "react";
+import { isTrackedTodo } from "@shared/todos";
+import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
@@ -20,6 +21,7 @@ interface TodoItemProps {
   // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
   onPrefetchWorkflow?: (todoId: string) => void;
+  timezone?: string;
   className?: string;
 }
 
@@ -68,6 +70,7 @@ export default memo(function TodoItem({
   // onEdit,
   onClick,
   onPrefetchWorkflow,
+  timezone,
   className,
 }: TodoItemProps) {
   const {
@@ -78,7 +81,29 @@ export default memo(function TodoItem({
     isToday,
     checkboxColor,
     titleClassName,
-  } = useTodoItem({ todo, projects, onUpdate });
+  } = useTodoItem({ todo, projects, onUpdate, timezone });
+  const tracked = isTrackedTodo(todo);
+
+  // Hover intent: a fast mouse pass over the list used to fire one
+  // workflow-status request per row. Wait for a deliberate hover instead.
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+  const handleMouseEnter = () => {
+    if (tracked || !onPrefetchWorkflow) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => onPrefetchWorkflow(todo.id), 150);
+  };
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
 
   return (
     <div
@@ -88,7 +113,8 @@ export default memo(function TodoItem({
         todo.completed && "opacity-30",
         className,
       )}
-      onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
+      onMouseEnter={tracked ? undefined : handleMouseEnter}
+      onMouseLeave={tracked ? undefined : handleMouseLeave}
     >
       <button
         type="button"
@@ -139,15 +165,14 @@ export default memo(function TodoItem({
           />
         </div>
 
-        {/* Workflow Category Icons */}
-        {todo.workflow_categories && todo.workflow_categories.length > 0 && (
-          <WorkflowCategoryIcons categories={todo.workflow_categories} />
-        )}
+        {/* Workflow Category Icons — tracked todos never have a workflow */}
+        {!tracked &&
+          todo.workflow_categories &&
+          todo.workflow_categories.length > 0 && (
+            <WorkflowCategoryIcons categories={todo.workflow_categories} />
+          )}
 
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition"
-        >
+        <div className="flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition">
           <ChevronRight width={20} height={20} className="text-zinc-400" />
         </div>
       </div>

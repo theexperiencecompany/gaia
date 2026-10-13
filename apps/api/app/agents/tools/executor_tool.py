@@ -7,7 +7,6 @@ run_executor_background.
 """
 
 import asyncio
-import json
 import time
 from typing import Annotated
 from uuid import uuid4
@@ -15,29 +14,26 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
+    adopt_lock,
     build_lock_value,
-    build_run_item,
     decode_raw_item,
-    enqueue_task,
     parse_lock_value,
     release_lock_if_owned,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.running_registry import RunningSubagents, stop_stream
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
-    mark_executor_queued,
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.constants.cache import (
-    EXECUTOR_BUSY_PREFIX,
-    EXECUTOR_QUEUE_PREFIX,
-    EXECUTOR_QUEUE_TTL,
-)
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
@@ -45,6 +41,9 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.browser.chat_task import stop_report
+from app.services.browser.job_stop import requester_chat, stop_chat_jobs
+from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.playbook.check import playbook_check_brief
@@ -125,7 +124,7 @@ async def call_executor(
     The executor runs in the background and posts its result to the
     conversation as a new bot message when it completes.
     """
-    base_configurable = agent_configurable(config)
+    base_configurable: AgentConfigurable = agent_configurable(config)
     # Shallow-copy so the executor's overrides (todo binding) never mutate the
     # comms agent's live RunnableConfig. The model is inherited from the comms
     # configurable (set by per-plan routing).
@@ -137,6 +136,19 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
+    if base_configurable.get("is_result_narration"):
+        # A result-narration turn must not start work: the run it narrates still
+        # holds the busy lock, so a dispatch here queues a duplicate of the task
+        # that just finished (one user message, two browser runs).
+        log.info(
+            f"{LogTag.TOOL} call_executor refused during result narration",
+            conversation_id=conversation_id,
+        )
+        return (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
 
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
@@ -209,9 +221,17 @@ async def _dispatch_executor(
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
 
-    if not await try_acquire_lock(lock_key, lock_value):
-        # SAME stream_id means call_executor was called twice in one turn
-        # (queuing would rerun the task) so reject; DIFFERENT means queue it.
+    # A workflow fire reserves its conversation up front, so a held lock here
+    # is its own claim. Adopting it turns the reservation into a hand-off
+    # rather than a self-inflicted queue.
+    acquired = await try_acquire_lock(lock_key, lock_value)
+    if not acquired and (reserved := configurable.get("executor_lock_reservation")):
+        acquired = await adopt_lock(conversation_id, reserved, lock_value)
+
+    if not acquired:
+        # The lock is held: same stream_id means a duplicate call_executor in one
+        # turn (reject it — the first dispatch covers the turn); a different one
+        # means a new request while busy, handed to the live run's inbox.
         held_value = await redis_cache.client.get(lock_key)
         held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
         if stream_id and held_stream_id == stream_id:
@@ -248,37 +268,18 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
             )
         else:
-            # Executor is busy with a different turn — queue for later execution
-            queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-            await enqueue_task(
-                queue_key,
-                build_run_item(
-                    task=task,
-                    configurable=configurable,
-                    identity=RunIdentity(
-                        conversation_id=conversation_id,
-                        task_id=task_id,
-                        user_message_id=user_message_id,
-                        t_dispatch_perf=t_dispatch,
-                        # A busy-lock dequeue, not a HIL resume: label it queued.
-                        queued=True,
-                    ),
-                ),
-            )
-            # The only record that this dispatch deferred rather than ran; the
-            # returned prose is for the comms model, so a caller needing to know
-            # start status reads this instead (see queued_without_run).
-            if stream_id:
-                mark_executor_queued(stream_id, task_id)
+            # The executor is mid-run on a different turn: hand this to that run,
+            # whose drain hook reads the inbox before every model call.
+            await ExecutorInbox(conversation_id).append(task_id, task)
             log.info(
-                f"{LogTag.TOOL} Executor busy — task queued",
+                f"{LogTag.TOOL} Executor busy — task handed to the live run",
                 task_id=task_id,
                 conversation_id=conversation_id,
             )
             return (
-                "I'm already working on a task for this conversation. "
-                f"Your request has been queued (task_id: {task_id}) "
-                "and I'll handle it right after."
+                "It's been added to the work already in progress and will be "
+                "covered in the same answer. Confirm briefly in plain words — "
+                "never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -321,8 +322,8 @@ async def _dispatch_executor(
         "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
         "finished. Risky actions pause for the user's approval first and they see an "
         "approval card; if that happens the work waits on them, not on you. Acknowledge "
-        "that you are on it, and say the action is waiting for their approval if one is "
-        "pending. This guidance applies ONLY to this acknowledgment. The real result "
+        "it, a reaction is enough, and say in words that the action is waiting for their "
+        "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
         "arrives later as its own message and supersedes it completely: by then the gate "
         "is settled, so report what happened and never ask again for an approval the "
         "user has already given."
@@ -334,19 +335,28 @@ async def cancel_executor(
     config: RunnableConfig,
     task_ids: Annotated[
         list[str],
-        "List of task_ids to cancel. Empty list = cancel ALL (running + queued).",
+        "List of task_ids to cancel. Empty list = cancel ALL (running + pending).",
     ] = [],  # noqa: B006 -- empty default is the cancel-all sentinel; list is never mutated
+    message: Annotated[
+        str | None,
+        "What the user wants INSTEAD, when they are redirecting rather than just "
+        "stopping ('stop that, do X'). Delivered to the executor together with the "
+        "stop, so prefer this over a separate call_executor for a redirect.",
+    ] = None,
 ) -> str:
     """Cancel background executor tasks by their task_ids.
 
     task_ids behavior:
     - Empty list [] = cancel EVERYTHING (running task + all queued).
       Use for: "stop everything", "cancel all", or generic "stop that".
-    - Specific task_ids = cancel only those (running or queued), keep rest.
+    - Specific task_ids = cancel only those (running or pending), keep rest.
       Use for: "cancel the search task" / "stop the second one".
       Match user intent to task_ids from call_executor responses in
-      conversation history (e.g. "Task accepted (task_id: abc-123)"
-      or "queued (task_id: xyz-456)").
+      conversation history (e.g. "Task accepted (task_id: abc-123)").
+
+    For a redirect ("stop that, do X instead") pass ``message="X"``. The stop
+    and the new instruction reach the executor together, so it cannot resume the
+    abandoned task before hearing what to do instead.
 
     CRITICAL: NEVER use this tool unless the user EXPLICITLY asks to stop,
     cancel, or abort. Valid triggers: "stop that", "cancel it", "abort",
@@ -356,24 +366,56 @@ async def cancel_executor(
     question, or saying "nevermind" about a NEW request. Only the USER
     decides to cancel.
     """
-    configurable = agent_configurable(config)
+    configurable: AgentConfigurable = agent_configurable(config)
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
         return "No conversation context available."
 
+    # A browser run outlives the turn that started it, so a stop-everything stops
+    # the job itself. A targeted cancel names one executor task and leaves it running.
+    # After the pending work is cleared: the stop's notice in the inbox must survive it.
+    executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
+    browser = await _stop_the_browser(configurable, conversation_id) if not task_ids else None
+    if browser is None:
+        return executor
+    if executor in (_NOTHING_TO_CANCEL, _NOTHING_MATCHED):
+        return browser
+    return f"{executor} {browser}"
+
+
+_NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
+_NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
+
+
+async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: str) -> str | None:
+    """Stop the browser jobs this chat controls and say what that came to; None when none runs."""
+    requester = requester_chat(
+        configurable.get("user_id"),
+        ConversationSource.coerce(configurable.get("conversation_source")),
+    )
+    outcomes = await stop_chat_jobs(conversation_id, requester)
+    return stop_report(outcomes.values()) if outcomes else None
+
+
+async def _cancel_executor_work(
+    configurable: AgentConfigurable, conversation_id: str, task_ids: list[str], message: str | None
+) -> str:
+    """Cancel the running executor task, its pending work and its subagents, as task_ids names them."""
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
+    inbox = ExecutorInbox(conversation_id)
+    subagents = RunningSubagents(conversation_id)
     cancel_all = len(task_ids) == 0
 
     # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
     # not JSON. redis_cache.get() would fail to deserialize it.
     raw_lock = await redis_cache.client.get(lock_key)
     lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
-    has_queue = await redis_cache.client.llen(queue_key) > 0
+    has_pending = await inbox.count() > 0
+    has_subagents = bool(await subagents.live())
 
-    if not lock_value and not has_queue:
-        return "No executor tasks are running or queued for this conversation."
+    if not lock_value and not has_pending and not has_subagents:
+        return _NOTHING_TO_CANCEL
 
     try:
         cancelled = await _cancel_running_task(
@@ -384,20 +426,35 @@ async def cancel_executor(
             conversation_id,
         )
         # Running task was present but not targeted for cancellation
-        skipped_running = bool(lock_value) and not cancelled
+        # Whether the RUNNING task actually died — captured before `cancelled`
+        # grows to include pending entries, which say nothing about the run.
+        running_cancelled = bool(cancelled)
+        # A background subagent outlives the run that dispatched it, so "stop
+        # everything" reaches it even after that run has finished.
+        stopped_subagents = await subagents.stop_all() if cancel_all else []
+        skipped_running = bool(lock_value) and not running_cancelled
         if cancelled:
             # Only once the RUNNING task is actually gone: a cancel that spared it
             # (queued-only) must leave its approvals alone — it is still waiting on them.
             await cancel_conversation_approvals(conversation_id, configurable.get("user_id", ""))
-        cancelled += await _cancel_queued_tasks(
-            queue_key,
+            await cancel_ledger_approvals(conversation_id, configurable.get("user_id", ""))
+        cancelled += await _cancel_pending_tasks(
+            inbox,
             task_ids,
             cancel_all,
             conversation_id,
         )
+        if stopped_subagents:
+            cancelled.append(f"{len(stopped_subagents)} running subagent(s)")
 
         if not cancelled:
-            return "None of the specified task_ids matched any running or queued tasks."
+            return _NOTHING_MATCHED
+
+        # Record the stop into the per-conversation thread, or the next run
+        # resumes exactly what the user stopped — but only when the RUNNING
+        # task or its subagents actually died; a spared live executor would drain the notice.
+        if running_cancelled or stopped_subagents:
+            await inbox.announce_interruption(message)
 
         # Tell the client an agent-initiated cancel happened so it can clear the
         # stuck executor-pending loading state and finalize in-flight tool cards
@@ -420,6 +477,7 @@ async def cancel_executor(
         return f"Cancellation attempted but hit an error: {e}"
 
 
+#: What the agent is told a browser stop came to, as the job's ending of record says.
 async def _broadcast_executor_cancelled(
     *,
     user_id: str,
@@ -460,7 +518,7 @@ async def _cancel_running_task(
         return []
 
     if active_stream_id and active_stream_id not in ("", "1"):
-        await StreamManager.cancel_stream(active_stream_id)
+        await stop_stream(conversation_id, active_stream_id)
 
     await redis_cache.delete(lock_key)
 
@@ -473,72 +531,30 @@ async def _cancel_running_task(
     return [active_task_id or "running"]
 
 
-async def _cancel_queued_tasks(
-    queue_key: str,
+async def _cancel_pending_tasks(
+    inbox: ExecutorInbox,
     task_ids: list[str],
     cancel_all: bool,
     conversation_id: str,
 ) -> list[str]:
-    """Cancel queued tasks — all or selectively by task_id."""
-    queue_len = await redis_cache.client.llen(queue_key)
-    if queue_len == 0:
-        return []
-
+    """Cancel work that is waiting for the executor — all of it, or by task_id."""
     if cancel_all:
-        await redis_cache.client.delete(queue_key)
-        log.info(
-            f"{LogTag.TOOL} cancel_executor: cleared entire queue",
-            queue_len=queue_len,
-            conversation_id=conversation_id,
-        )
-        return [f"{queue_len} queued task(s)"]
-
-    return await _remove_queued_by_ids(
-        queue_key,
-        task_ids,
-        conversation_id,
-    )
-
-
-async def _remove_queued_by_ids(
-    queue_key: str,
-    task_ids: list[str],
-    conversation_id: str,
-) -> list[str]:
-    """Selectively remove specific task_ids from the queue."""
-    all_items = await redis_cache.client.lrange(queue_key, 0, -1)
-    keep: list[str] = []
-    cancelled: list[str] = []
-    target_ids = set(task_ids)
-
-    for raw_item in all_items:
-        try:
-            item = json.loads(raw_item)
-        except ValueError:
-            item = None
-        # Anything that isn't a JSON object is unreadable to us — keep it rather
-        # than letting it abort the whole cancellation. A bare `item.get(...)`
-        # raised AttributeError on a JSON scalar, which escaped this handler.
-        if isinstance(item, dict) and item.get("task_id") in target_ids:
-            cancelled.append(item["task_id"])
-        else:
-            keep.append(decode_raw_item(raw_item))
-
-    if cancelled:
-        await redis_cache.client.delete(queue_key)
-        if keep:
-            await redis_cache.client.rpush(queue_key, *keep)
-            await redis_cache.client.expire(
-                queue_key,
-                EXECUTOR_QUEUE_TTL,
+        cleared = await inbox.clear()
+        if cleared:
+            log.info(
+                f"{LogTag.TOOL} cancel_executor: cleared pending work",
+                pending=cleared,
+                conversation_id=conversation_id,
             )
+        return [f"{cleared} pending task(s)"] if cleared else []
+
+    cancelled = await inbox.discard(set(task_ids))
+    if cancelled:
         log.info(
-            f"{LogTag.TOOL} cancel_executor: removed queued tasks",
+            f"{LogTag.TOOL} cancel_executor: removed pending tasks",
             removed=len(cancelled),
-            remaining=len(keep),
             conversation_id=conversation_id,
         )
-
     return cancelled
 
 

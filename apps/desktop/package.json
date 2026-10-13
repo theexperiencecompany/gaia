@@ -19,7 +19,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "electron-liquid-glass": "^1.1.1",
     "electron-updater": "^6.8.9",
     "v8-compile-cache": "^2.4.0",

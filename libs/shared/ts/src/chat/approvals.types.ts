@@ -39,7 +39,11 @@ export type ApprovalStatus =
   | "denied"
   | "timeout"
   | "abandoned"
-  | "auto_approved";
+  | "auto_approved"
+  | "revoked"
+  | "executed"
+  | "failed"
+  | "unknown";
 
 export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
@@ -49,18 +53,14 @@ export interface ApprovalDecisionPayload {
   decision: ApprovalDecision;
   feedback?: string;
   scope?: ApprovalScope;
+  /** Row version the client rendered; stale v refreshes instead of overwriting. */
+  v?: number;
 }
-
-/** One approval's decision within POST /approvals/batch-decision. */
 
 /** Body of POST /approvals/batch-decision — decide several approvals at once. */
 export interface BatchApprovalDecisionPayload {
   decisions: BatchDecisionItem[];
 }
-
-/** Per-approval outcome of a batch decision. */
-
-/** Response of POST /approvals/batch-decision. */
 
 /** One approval card, as streamed to the client. */
 export interface ApprovalRequestData {
@@ -75,4 +75,10 @@ export interface ApprovalRequestData {
   /** Why auto mode ran this without asking. Only set on `auto_approved`. */
   auto_reason?: string | null;
   timeout_seconds: number;
+  /** Ledger-backed approvals: the agent's one-line why. Absent on old-path cards. */
+  rationale?: string | null;
+  /** Seconds since registration; clients render "asked 2d ago". */
+  age_seconds?: number | null;
+  /** Row version the client saw; echoed back on decide for stale-v refresh. */
+  ledger_version?: number | null;
 }

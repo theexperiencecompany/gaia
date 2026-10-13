@@ -145,7 +145,9 @@ export default function IntegrationsSidebar() {
         <div className="space-y-1">
           <ScrollShadow className="max-h-[calc(100vh-27rem)]" hideScrollBar>
             <div className="space-y-0.5">
-              {integrations.map(renderIntegrationItem)}
+              {integrations.map((integration) =>
+                renderIntegrationItem(integration),
+              )}
             </div>
           </ScrollShadow>
         </div>

@@ -1,7 +1,13 @@
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES, add_messages
+import pytest
 
-from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
+from app.override.langgraph_bigtool.utils import (
+    INJECTED_MESSAGES_KEY,
+    State,
+    messages_delta_reducer,
+    pop_injected_messages,
+)
 
 
 class TestState:
@@ -120,3 +126,23 @@ class TestMessagesDeltaReducer:
         result = messages_delta_reducer(state, [[RemoveMessage(id="a1")]])
 
         assert [m.id for m in result] == ["h1"]
+
+
+class TestPopInjectedMessages:
+    """The hook-to-model-node relay: popped exactly once, and loud when malformed."""
+
+    def test_staged_messages_are_returned_and_the_relay_key_is_consumed(self):
+        staged = [HumanMessage(content="also check spam")]
+        state = State(messages=[], **{INJECTED_MESSAGES_KEY: staged})
+
+        assert pop_injected_messages(state) == staged
+        assert INJECTED_MESSAGES_KEY not in state
+
+    def test_an_absent_relay_key_means_nothing_to_commit(self):
+        assert pop_injected_messages(State(messages=[])) == []
+
+    def test_a_malformed_relay_value_fails_loud_naming_its_type(self):
+        state = State(messages=[], **{INJECTED_MESSAGES_KEY: "not a list"})
+
+        with pytest.raises(TypeError, match="^_injected_messages must be a list, got str$"):
+            pop_injected_messages(state)

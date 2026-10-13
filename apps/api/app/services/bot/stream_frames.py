@@ -9,7 +9,6 @@ against the literal it replaced.
 
 from collections.abc import Mapping
 import json
-from typing import Any
 
 # The single generic keepalive the transport (not the agent) emits: an SSE
 # comment line, which every client ignores while still resetting proxy and
@@ -17,7 +16,7 @@ from typing import Any
 _COMMENT_KEEPALIVE = ": keepalive\n\n"
 
 
-def sse_frame(data: Mapping[str, Any]) -> str:
+def sse_frame(data: Mapping[str, object]) -> str:
     """Serialize one payload as an SSE data: frame.
 
     Note: the bot protocol never names an event: — every frame is a bare
@@ -52,7 +51,7 @@ def notice_frame(notice_text: str) -> str:
     return sse_frame({"notice": {"text": notice_text}})
 
 
-def approval_frame(approval_payload: Mapping[str, Any]) -> str:
+def approval_frame(approval_payload: Mapping[str, object]) -> str:
     """Return a HIL approval card, rendered by the bot client as an out-of-band prompt."""
     return sse_frame({"approval": approval_payload})
 
@@ -60,6 +59,11 @@ def approval_frame(approval_payload: Mapping[str, Any]) -> str:
 def message_boundary_frame(boundary: object) -> str:
     """Signal that an assistant message ended — the client closes (or retracts) its bubble."""
     return sse_frame({"message_boundary": boundary})
+
+
+def emoji_ack_frame(emoji: str, reacts_to_message_id: str) -> str:
+    """Forward a comms emoji ack, the whole outcome of a turn that streamed no text."""
+    return sse_frame({"emoji_ack": {"emoji": emoji, "reacts_to_message_id": reacts_to_message_id}})
 
 
 def error_frame(error_code: str) -> str:

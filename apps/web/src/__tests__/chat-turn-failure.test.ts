@@ -36,6 +36,7 @@ const meta = (): TurnMessageMeta => ({
     optimisticUserId: "user-1",
     conversationId: "conv-1",
     isOnboardingDemo: false,
+    isRetry: false,
   },
 });
 

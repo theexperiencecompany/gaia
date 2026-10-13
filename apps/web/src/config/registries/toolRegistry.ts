@@ -18,6 +18,7 @@ import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
 } from "@/features/integrations/types";
+import type { BrowserTaskSnapshot } from "@/types/features/browserTaskTypes";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -169,6 +170,7 @@ const TOOL_REGISTRY = {
   rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
+  browser_task_data: null as unknown as BrowserTaskSnapshot,
   memory_data: null as unknown as MemoryData,
   approval_request: null as unknown as ApprovalRequestData,
 } as const;
@@ -211,4 +213,5 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_sent_data",
   "artifact_data",
   "memory_data",
+  "browser_task_data",
 ]);

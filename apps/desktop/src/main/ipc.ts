@@ -57,7 +57,8 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
     if (typeof url !== "string") return;
     console.log("[Main] Opening external URL:", url);
     if (url.startsWith("https://") || url.startsWith("http://")) {
-      void shell.openExternal(url);
+      // Hands the link to the OS browser, not a server-side fetch; the http(s) gate is the control.
+      void shell.openExternal(url); // NOSONAR tssecurity:S5144
     }
   });
 

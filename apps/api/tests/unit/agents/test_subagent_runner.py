@@ -12,17 +12,18 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langgraph.types import Command
+from langgraph.types import Command, Interrupt
 from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background import redis_writer as rw, session as sess
+from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
+from app.agents.core.background.subagent_channel import SubagentCancel
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -37,10 +38,11 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
-from app.models.mcp_config import SubAgentConfig
+from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
 from tests._harness.context_chain import slots_of
 
@@ -54,7 +56,6 @@ def _make_subagent_config(agent_name: str = "github_agent") -> SubAgentConfig:
         has_subagent=True,
         agent_name=agent_name,
         tool_space="github_space",
-        handoff_tool_name="call_github",
         domain="github",
         capabilities="github stuff",
         use_cases="github use",
@@ -112,6 +113,17 @@ def _make_run(**overrides) -> _StreamRun:
         defaults["ctx"] = _make_ctx(**ctx_overrides)
     defaults.update(overrides)
     return _StreamRun(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict
+
+
+def _mcp_subagent(subagent_id: str, *, requires_auth: bool) -> Subagent:
+    return Subagent(
+        id=subagent_id,
+        name=subagent_id,
+        provider=subagent_id,
+        managed_by="mcp",
+        config=_make_subagent_config(agent_name=f"{subagent_id}_agent"),
+        mcp_config=MCPConfig(server_url="https://mcp.test", requires_auth=requires_auth),
+    )
 
 
 FAKE_SUBAGENTS = (
@@ -261,6 +273,26 @@ class TestBuildInitialMessages:
             )
 
         assert mock_assemble.call_args.args[0].query == "original query"
+
+    @pytest.mark.asyncio
+    async def test_the_comms_request_reaches_the_assembler_beside_the_retrieval_query(self):
+        """Recall reuses what comms fetched for the user's own words; losing them re-recalls on the brief."""
+        with self._assembled() as mock_assemble:
+            await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="agent",
+                task="enhanced task with hints",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR,
+                    configurable={},
+                    retrieval_query="book the usual table",
+                    request_query="can you book our usual table for Friday?",
+                ),
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
 
     @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
@@ -575,6 +607,80 @@ class TestExecuteSubagentStream:
         # verify "First " appears and "Second" does not (cancellation succeeded).
         assert "First " in result.text
         assert "Second" not in result.text
+
+    async def test_executor_cancel_stops_the_stream_with_a_cancelled_result(self):
+        """A targeted executor cancel (its flag raised) stops the subagent at the next superstep and returns a SUBAGENT_CANCELLED result, so the executor learns it stopped rather than reading a silent partial."""
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("updates", {"agent": {"messages": []}})
+            yield ("messages", (AIMessageChunk(content="should not reach"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+
+        fake_cancel = MagicMock()
+        fake_cancel.is_requested = AsyncMock(return_value=True)
+        fake_cancel.clear = AsyncMock()
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.SubagentCancel",
+                return_value=fake_cancel,
+            ),
+        ):
+            result = await execute_subagent_stream(ctx)
+
+        assert "<subagent_cancelled>" in result.text
+        assert "should not reach" not in result.text
+        fake_cancel.clear.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_a_run_whose_stream_the_user_stopped_reports_it_stopped(self):
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (AIMessageChunk(content="partial"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await execute_subagent_stream(
+                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            )
+
+        assert result.stopped is True
+
+    async def test_a_run_that_finishes_is_not_stopped(self):
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (AIMessageChunk(content="all of it"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await execute_subagent_stream(
+                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            )
+
+        assert result.stopped is False
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -896,6 +1002,16 @@ class TestFinalizeRun:
             }
         )
 
+    def test_the_executors_plain_answer_is_its_answer(self):
+        """A collection run's whole job is to report what landed, in words; nothing re-issues the executor."""
+        run = _make_run(ctx_overrides={**self._ctx_overrides(), "integration_id": "executor"})
+        run.complete_message = "The report is drafted and saved."
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            outcome = _finalize_run(run)
+
+        assert outcome.text == "The report is drafted and saved."
+
     def test_an_announced_tool_call_makes_the_same_text_an_ordinary_result(self):
         """A run that announced a call did the work, even if no ToolMessage came back before the stream ended."""
         run = _make_run(ctx_overrides=self._ctx_overrides())
@@ -997,6 +1113,27 @@ class TestPrepareExecutorExecution:
         }
 
     @pytest.mark.asyncio
+    async def test_the_users_own_request_rides_to_the_executors_context_with_the_bare_task(self):
+        """The executor recalls on the message comms already recalled on, and on the unenhanced task."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context as mock_assemble:
+            await prepare_executor_execution(
+                task="book the usual table",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "user_request": "can you book our usual table for Friday?",
+                },
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
+
+    @pytest.mark.asyncio
     async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):
         """DEV-ONLY: without this the executor silently inherits comms's lane and the header's picker does nothing."""
         build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
@@ -1077,6 +1214,8 @@ class TestPrepareExecutorExecution:
         assert ctx.agent_name == "executor_agent"
         assert ctx.integration_id == "executor"
         assert ctx.subagent_graph is mock_graph
+        # A fresh executor run starts with no todos carried over from the last one.
+        assert ctx.initial_state["todos"] == []
 
     @pytest.mark.asyncio
     async def test_executor_graph_unavailable(self):
@@ -1147,6 +1286,8 @@ class TestPrepareExecutorExecution:
             if m.type == "human" and not m.additional_kwargs.get("time_context")
         )
         assert "DIRECT EXECUTION HINT" in task_msg.content
+        assert 'activate_integration(integration_id="github")' in task_msg.content
+        assert "handoff(" not in task_msg.content
 
     @pytest.mark.asyncio
     async def test_no_hint_without_tool_category(self):
@@ -1290,6 +1431,58 @@ class TestPrepareExecutorExecution:
         assert task_msg.content.startswith("run tests\n")
         assert task_msg.content != "run tests"
 
+    async def _task_for_category(self, tool_category: str, *known: Subagent) -> str:
+        """Prepare an executor run for the category; return its task message text."""
+        registry = {subagent.id: subagent for subagent in known}
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        get_graph, build, system, assemble = self._prepare_patches(build_config)
+        with (
+            get_graph,
+            build,
+            system,
+            assemble,
+            patch(
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                side_effect=registry.get,
+            ),
+        ):
+            ctx, _ = await prepare_executor_execution(
+                task="find the roadmap page",
+                configurable={"user_id": "u1", "thread_id": "t1", "tool_category": tool_category},
+            )
+        assert ctx is not None
+        return next(
+            str(m.content)
+            for m in ctx.initial_state["messages"]
+            if m.type == "human" and not m.additional_kwargs.get("time_context")
+        )
+
+    async def test_an_unknown_category_gets_no_hint(self):
+        task = await self._task_for_category("nope", _make_subagent("github"))
+
+        assert task == "find the roadmap page"
+
+    async def test_a_per_user_mcp_category_is_handed_off(self):
+        notion = _mcp_subagent("notion-mcp", requires_auth=True)
+
+        task = await self._task_for_category("notion-mcp", notion)
+
+        assert task == (
+            "find the roadmap page\n\n"
+            "DIRECT EXECUTION HINT: This request should be handled by 'notion-mcp'. "
+            "Skip retrieve_tools discovery and directly "
+            'handoff(subagent_id="notion-mcp", task="...") with the full request, then '
+            "use its result for the user's request."
+        )
+
+    async def test_an_mcp_category_needing_no_sign_in_is_activated_in_context(self):
+        docs = _mcp_subagent("docs-mcp", requires_auth=False)
+
+        task = await self._task_for_category("docs-mcp", docs)
+
+        assert 'activate_integration(integration_id="docs-mcp")' in task
+        assert "handoff(" not in task
+
 
 # ---------------------------------------------------------------------------
 # subagent_helpers.py — build_subagent_system_prompt
@@ -1314,9 +1507,7 @@ class TestBuildSubagentSystemPrompt:
                 return_value=integration,
             ),
             patch(
-                "app.agents.context.sections.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value={"Username": "testuser"},
+                "app.agents.context.fetchers.get_account_record", new_callable=AsyncMock
             ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
@@ -1407,12 +1598,10 @@ def _real_stream_writer(stream_id: str = "s-reasoning"):
     MagicMock writer cannot see it: the SSE frames and the persisted entries have
     to come off the same run.
     """
-    sess._sessions.clear()
     session = create_session(stream_id, RunKind.QUEUED)
     with patch.object(rw, "stream_manager") as stream_manager:
         stream_manager.publish_chunk = AsyncMock()
         yield make_redis_stream_writer(stream_id), stream_manager, session
-    sess._sessions.clear()
 
 
 def _published_reasoning(stream_manager: MagicMock) -> list[str]:
@@ -1834,3 +2023,211 @@ class TestSubagentRunLatency:
             )
 
         assert _subagent_sum("test", "error") == pytest.approx(before + 0.5)
+
+
+# ---------------------------------------------------------------------------
+# reasoning sources: standard content blocks, and the provider fallback
+# ---------------------------------------------------------------------------
+
+
+async def _reasoning_frames(*chunks: AIMessageChunk) -> list[dict[str, Any]]:
+    """Stream the chunks through a run and return the reasoning frames it wrote."""
+
+    async def _fake_astream(*args, **kwargs):
+        for chunk in chunks:
+            yield ("messages", (chunk, {}))
+
+    mock_graph = MagicMock()
+    mock_graph.astream = _fake_astream
+    writer = MagicMock()
+    with patch("app.agents.core.subagents.subagent_runner.log"):
+        await execute_subagent_stream(_make_ctx(subagent_graph=mock_graph), stream_writer=writer)
+    return [c.args[0]["reasoning"] for c in writer.call_args_list if "reasoning" in c.args[0]]
+
+
+class TestReasoningDeltaSources:
+    async def test_a_standard_reasoning_block_streams_beside_the_answer_text(self):
+        chunk = AIMessageChunk(
+            content=[
+                {"type": "text", "text": "Here is the plan."},
+                {"type": "reasoning", "reasoning": "weighing two options"},
+            ]
+        )
+
+        assert await _reasoning_frames(chunk) == [{"content": "weighing two options"}]
+
+    async def test_several_reasoning_blocks_in_one_chunk_stream_as_one_delta(self):
+        chunk = AIMessageChunk(
+            content=[
+                {"type": "reasoning", "reasoning": "first, "},
+                {"type": "reasoning", "reasoning": "then second"},
+            ]
+        )
+
+        assert await _reasoning_frames(chunk) == [{"content": "first, then second"}]
+
+    async def test_a_v1_content_lists_bare_strings_are_not_reasoning(self):
+        chunk = AIMessageChunk(
+            content=["plain text", {"type": "reasoning", "reasoning": "checking the date"}],
+            response_metadata={"output_version": "v1"},
+        )
+
+        assert await _reasoning_frames(chunk) == [{"content": "checking the date"}]
+
+    async def test_a_non_string_provider_reasoning_field_is_streamed_as_text(self):
+        # content_blocks only lifts a str reasoning_content; anything else takes the fallback.
+        chunk = AIMessageChunk(content="", additional_kwargs={"reasoning_content": {"step": 1}})
+
+        assert await _reasoning_frames(chunk) == [{"content": "{'step': 1}"}]
+
+    async def test_a_chunk_with_no_thinking_streams_no_reasoning(self):
+        assert await _reasoning_frames(AIMessageChunk(content="just the answer")) == []
+
+
+# ---------------------------------------------------------------------------
+# the executor's targeted cancel, keyed by the subagent's own thread
+# ---------------------------------------------------------------------------
+
+SUBAGENT_THREAD = "spawn_c1_call-1"
+_SUPERSTEP = ("updates", {"agent": {"messages": []}})
+
+
+def _cancellable_run(*events: tuple[str, Any], stream_id: str | None = "s-1") -> Any:
+    async def _fake_astream(*args, **kwargs):
+        for event in events:
+            yield event
+
+    mock_graph = MagicMock()
+    mock_graph.astream = _fake_astream
+    return _make_ctx(
+        subagent_graph=mock_graph,
+        config={"configurable": {"thread_id": SUBAGENT_THREAD}},
+        configurable={"thread_id": SUBAGENT_THREAD},
+        stream_id=stream_id,
+    )
+
+
+async def _drive(ctx: SubagentExecutionContext) -> SubagentOutcome:
+    with (
+        patch("app.agents.core.subagents.subagent_runner.log"),
+        patch(
+            "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        return await execute_subagent_stream(ctx, stream_writer=MagicMock())
+
+
+class TestTheExecutorsCancel:
+    async def test_a_cancel_for_this_thread_stops_it_and_says_it_was_stopped(self, fake_redis):
+        await SubagentCancel(SUBAGENT_THREAD).request()
+        ctx = _cancellable_run(
+            _SUPERSTEP, ("messages", (AIMessageChunk(content="should not reach"), {}))
+        )
+
+        outcome = await _drive(ctx)
+
+        assert outcome.text == wrap_agent_payload(
+            AgentTag.SUBAGENT_CANCELLED, "Stopped by the executor before finishing."
+        )
+        assert await SubagentCancel(SUBAGENT_THREAD).is_requested() is False
+
+    async def test_what_it_said_before_the_cancel_is_what_the_executor_gets(self, fake_redis):
+        await SubagentCancel(SUBAGENT_THREAD).request()
+        ctx = _cancellable_run(
+            ("messages", (AIMessageChunk(content="found 3 of 5 invoices"), {})), _SUPERSTEP
+        )
+
+        outcome = await _drive(ctx)
+
+        assert outcome.text == wrap_agent_payload(
+            AgentTag.SUBAGENT_CANCELLED, "found 3 of 5 invoices"
+        )
+
+    async def test_a_cancel_for_a_sibling_thread_does_not_stop_it(self, fake_redis):
+        await SubagentCancel("spawn_c1_call-2").request()
+
+        outcome = await _drive(_cancellable_run(_SUPERSTEP))
+
+        assert outcome.text == "Task completed"
+        assert await SubagentCancel("spawn_c1_call-2").is_requested() is True
+
+    async def test_a_run_with_no_stream_is_not_cancellable(self, fake_redis):
+        await SubagentCancel(SUBAGENT_THREAD).request()
+
+        outcome = await _drive(_cancellable_run(_SUPERSTEP, stream_id=None))
+
+        assert outcome.text == "Task completed"
+        assert await SubagentCancel(SUBAGENT_THREAD).is_requested() is True
+
+    async def test_the_stopped_segment_is_timed_as_cancelled_under_its_label(self, fake_redis):
+        await SubagentCancel(SUBAGENT_THREAD).request()
+        count_before = _subagent_count("test", "cancelled")
+        sum_before = _subagent_sum("test", "cancelled")
+
+        with patch("app.agents.core.subagents.subagent_runner.time", new=_FakeClock(10.0, 10.75)):
+            await _drive(_cancellable_run(_SUPERSTEP))
+
+        assert _subagent_count("test", "cancelled") == count_before + 1
+        assert _subagent_sum("test", "cancelled") == pytest.approx(sum_before + 0.75)
+
+
+# ---------------------------------------------------------------------------
+# a decision resumes the interrupt it answers
+# ---------------------------------------------------------------------------
+
+
+class TestAResumeIsAddressedToItsInterrupt:
+    async def test_with_several_pending_the_decision_goes_to_its_own_gate(self):
+        captured: dict[str, Any] = {}
+
+        async def _fake_astream(*args, **kwargs):
+            captured["resume"] = args[0]
+            yield ("updates", {"agent": {"messages": [AIMessage(content="sent")]}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        mock_graph.aget_state = AsyncMock(
+            return_value=MagicMock(
+                next=("tools",),
+                interrupts=(
+                    Interrupt(value="not a gate payload", id="i-0"),
+                    Interrupt(value={"approval_id": "a1"}, id="i-1"),
+                    Interrupt(value={"approval_id": "a2"}, id="i-2"),
+                ),
+            )
+        )
+        decision = {"status": "approved", "approval_id": "a2"}
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await execute_subagent_stream(
+                _make_ctx(subagent_graph=mock_graph), resume=Command(resume=decision)
+            )
+
+        assert captured["resume"].resume == {"i-2": decision}
+
+    async def test_a_resume_keeps_its_update_and_is_re_clocked_in_the_users_zone(self):
+        captured: dict[str, Any] = {}
+
+        async def _fake_astream(*args, **kwargs):
+            captured["resume"] = args[0]
+            yield ("updates", {"agent": {"messages": [AIMessage(content="sent")]}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        mock_graph.aget_state = AsyncMock(return_value=MagicMock(interrupts=("x",), next=None))
+        ctx = _make_ctx(
+            subagent_graph=mock_graph,
+            configurable={"thread_id": "t1", "user_timezone": "Asia/Kolkata"},
+        )
+        note = HumanMessage(content="the user added a cc")
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await execute_subagent_stream(
+                ctx, resume=Command(resume={"status": "approved"}, update={"messages": [note]})
+            )
+
+        carried, clock = captured["resume"].update["messages"]
+        assert carried is note
+        assert "User Local Time (Asia/Kolkata)" in clock.content

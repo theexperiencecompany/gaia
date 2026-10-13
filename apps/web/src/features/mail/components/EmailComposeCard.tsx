@@ -12,7 +12,6 @@ import {
   PencilEdit01Icon,
   PlusSignIcon,
 } from "@icons";
-import DOMPurify from "dompurify";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
@@ -27,6 +26,7 @@ import {
   type RecipientMap,
   useRecipientSelection,
 } from "@/features/mail/hooks/useRecipientSelection";
+import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import { toast } from "@/lib/toast";
 import type { EmailAttachmentMeta } from "@/types/features/mailTypes";
 
@@ -58,7 +58,7 @@ function HtmlEmailBody({ html }: { html: string }) {
     wrapper.style.font = "inherit";
     wrapper.style.color = "inherit";
     wrapper.style.lineHeight = "1.5";
-    wrapper.innerHTML = DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
+    wrapper.innerHTML = sanitizeEmailHtml(html);
     shadowRoot.appendChild(wrapper);
   }, [html]);
 

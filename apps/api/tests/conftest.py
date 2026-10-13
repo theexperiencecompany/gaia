@@ -9,18 +9,22 @@ Provides:
 """
 
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator
 import contextlib
 from contextlib import asynccontextmanager
 import importlib
 import os
 import re
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
+from posthog import Posthog
 import pytest
+from starlette.types import Receive, Scope, Send
 
 # Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
 # short; master/local keep "default" (200). suppress differing_executors
@@ -51,13 +55,18 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 # pulling in app.config.settings which instantiates settings at import
 # time; without ENV set first that resolves to ProductionSettings and fails.
 from app.config.posthog import init_posthog
+from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
+from app.db.redis import redis_cache
 from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
 from app.models.user_models import AuthenticatedUser
+from app.utils.concurrency import reset_captured_loop
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -331,6 +340,25 @@ _HERMETIC_FAKE_KEYS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _no_captured_loop_carryover() -> Iterator[None]:
+    """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
+    yield
+    reset_captured_loop()
+
+
+@pytest.fixture
+async def fake_redis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
+    """Back the redis_cache singleton with a per-test fakeredis, for real key/TTL semantics."""
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(redis_cache, "redis", client)
+    yield client
+    await client.flushall()
+    await client.connection_pool.disconnect()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _rate_limiting_fence() -> Iterator[None]:
     """Mock the tiered limiter and the subscription lookup for the whole session."""
@@ -341,6 +369,12 @@ def _rate_limiting_fence() -> Iterator[None]:
     finally:
         for p in reversed(_rate_limiting_patches):
             p.stop()
+
+
+def _apply_tz() -> None:
+    """Make the process clock follow os.environ["TZ"] now (tzset is Unix-only)."""
+    if hasattr(time, "tzset"):
+        time.tzset()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -363,6 +397,9 @@ def _hermetic_environment() -> Iterator[None]:
         for key, fake in _HERMETIC_FAKE_KEYS.items():
             os.environ[key] = fake
         os.environ["TZ"] = "UTC"
+        # glibc reads TZ once and caches it; without tzset the box's own zone
+        # (IST) stays in force and every naive datetime.now() is hours off UTC.
+        _apply_tz()
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
@@ -374,6 +411,7 @@ def _hermetic_environment() -> Iterator[None]:
     finally:
         os.environ.clear()
         os.environ.update(snapshot)
+        _apply_tz()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -595,7 +633,14 @@ async def gated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
             request.state.user = FAKE_USER
             return await call_next(request)
 
-    gated = _AuthedState(app=EntitlementMiddleware(app=test_app))
+    stack = _AuthedState(app=EntitlementMiddleware(app=test_app))
+
+    async def gated(scope: Scope, receive: Receive, send: Send) -> None:
+        # Starlette.__call__ stamps the app on the scope before its middleware
+        # stack runs; the gate reads the route table through request.app.
+        scope["app"] = test_app
+        await stack(scope, receive, send)
+
     transport = ASGITransport(app=gated, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport,
@@ -678,6 +723,21 @@ def free_plan() -> Iterator[MagicMock]:
         return_value=PlanType.FREE,
     ) as mocked:
         yield mocked
+
+
+@pytest.fixture
+def core_tool_registry() -> Iterator[None]:
+    """Serve MCP connects GAIA's real core tool registry, whose names they rename around."""
+    from app.agents.tools.core.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    registry.setup()
+    with patch(
+        "app.services.mcp.mcp_client.get_tool_registry",
+        new_callable=AsyncMock,
+        return_value=registry,
+    ):
+        yield
 
 
 @pytest.fixture
@@ -771,21 +831,59 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
     init_posthog()
 
 
-@pytest.fixture(autouse=True)
-def _reset_limit_origin() -> Iterator[None]:
-    """Keep a run's limit origin from leaking between tests.
+@pytest.fixture
+def posthog_events(posthog_provider: Callable[..., None]) -> list[dict[str, object]]:
+    """Install a real PostHog client and return the events it would have sent.
 
-    arq gives each job its own task, so a job cannot leak into the next one.
-    Tests share one, so a case that marks a background run would otherwise make
-    later cases mail the wrong email.
+    The SDK builds each message in full (context distinct_id, $session_id)
+    before before_send sees it; returning None there keeps it off the network.
     """
-    yield
-    # Imported here, not at module level: the import chain eagerly pulls in
-    # transformers (~0.85s), a cost collection and no-test workers should
-    # not pay.
-    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
+    events: list[dict[str, object]] = []
 
-    mark_run_origin(LimitHitOrigin.INTERACTIVE)
+    def record(message: dict[str, object]) -> None:
+        events.append(message)
+
+    posthog_provider(
+        available=True,
+        client=Posthog("phc_test", host="http://127.0.0.1:9", before_send=record, sync_mode=True),
+    )
+    return events
+
+
+@pytest.fixture
+def no_observed_tool_shapes() -> Iterator[AsyncMock]:
+    """Empty the shape store, so a rendered tool doc carries only the provider's return shape."""
+    with patch(
+        "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
+        new=AsyncMock(return_value=None),
+    ) as get_shape:
+        yield get_shape
+
+
+@pytest.fixture
+def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
+    monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
+
+
+#: What inner code runs under in production: the agent acting in a user's web turn.
+#: Agent, not user, so no unit test emits user:active by accident.
+_UNIT_TEST_ANALYTICS = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+    )
+)
+
+
+@pytest.fixture(autouse=True)
+def _analytics_context() -> Iterator[None]:
+    """Bind the analytics context an entry point would, so a test of inner code can capture.
+
+    Entry-point tests (the middleware, the ARQ envelope, the workers) bind or
+    derive their own inside it, exactly as production does.
+    """
+    with analytics_context(_UNIT_TEST_ANALYTICS):
+        yield
 
 
 @pytest.fixture(autouse=True)

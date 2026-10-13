@@ -36,6 +36,7 @@ from app.db.mongodb.collections import get_async_collection
 from app.db.redis import delete_cache_by_pattern
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.integration_inference_service import infer_integration_content
+from scripts._prompt import ainput
 
 integrations_collection = get_async_collection("integrations")
 
@@ -139,7 +140,7 @@ async def backfill(
 
     if not dry_run and not force:
         prompt = f"\n❓ Generate + write content for {len(docs)} integration(s)? (y/N): "
-        response = await asyncio.to_thread(input, prompt)
+        response = await ainput(prompt)
         if response.lower() != "y":
             print("❌ Operation cancelled.")
             return

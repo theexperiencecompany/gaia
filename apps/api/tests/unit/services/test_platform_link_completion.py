@@ -10,7 +10,6 @@ import pytest
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkResult
-from app.services.analytics_service import AnalyticsEvents
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_completion import (
     PostLinkSideEffectError,
@@ -18,8 +17,11 @@ from app.services.platform_link_completion import (
 )
 from app.services.platform_link_service import AccountHasDifferentPlatformError
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 
 MODULE = "app.services.platform_link_completion"
+USER_ID = "507f1f77bcf86cd799439011"
 BUBBLES = ["Hey Aryan, I'm with you on WhatsApp now.", "Tell me one thing off your plate."]
 
 
@@ -43,7 +45,7 @@ def side_effects():
         patch(f"{MODULE}.notify_account_linked", notify),
         patch(f"{MODULE}.publish_outbound_message", publish),
         patch(f"{MODULE}.schedule_account_sync", MagicMock()),
-        patch(f"{MODULE}.capture_event", MagicMock()),
+        patch(f"{MODULE}.capture", MagicMock()),
     ):
         yield notify, publish, link
 
@@ -53,14 +55,14 @@ class TestPostLinkMessage:
         self, side_effects
     ) -> None:
         notify, publish, _ = side_effects
-        await complete_platform_link("u1", "whatsapp", "wa-1")
-        notify.assert_awaited_once_with("whatsapp", "u1")
+        await complete_platform_link(USER_ID, "whatsapp", "wa-1")
+        notify.assert_awaited_once_with("whatsapp", USER_ID)
         publish.assert_not_awaited()
 
     async def test_a_repeat_link_without_a_first_contact_says_nothing(self, side_effects) -> None:
         notify, publish, link = side_effects
         link.return_value = _linked(is_new_link=False)
-        await complete_platform_link("u1", "whatsapp", "wa-1")
+        await complete_platform_link(USER_ID, "whatsapp", "wa-1")
         notify.assert_not_awaited()
         publish.assert_not_awaited()
 
@@ -68,9 +70,9 @@ class TestPostLinkMessage:
         self, side_effects
     ) -> None:
         notify, publish, _ = side_effects
-        result = await complete_platform_link("u1", "whatsapp", "wa-1", first_contact=BUBBLES)
+        result = await complete_platform_link(USER_ID, "whatsapp", "wa-1", first_contact=BUBBLES)
         publish.assert_awaited_once_with(
-            ConversationSource.WHATSAPP, "u1", BUBBLES, ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
+            ConversationSource.WHATSAPP, USER_ID, BUBBLES, ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
         )
         notify.assert_not_awaited()
         # Reported back as delivered: the caller has the bot resend otherwise.
@@ -80,7 +82,7 @@ class TestPostLinkMessage:
         self, side_effects
     ) -> None:
         """No first contact means nothing failed to arrive; a False here would make the caller resend it."""
-        result = await complete_platform_link("u1", "whatsapp", "wa-1")
+        result = await complete_platform_link(USER_ID, "whatsapp", "wa-1")
         assert result.first_contact_delivered is True
 
     async def test_a_first_contact_is_delivered_even_when_the_link_already_existed(
@@ -89,7 +91,7 @@ class TestPostLinkMessage:
         """Tapping the link twice still answers the tap."""
         _, publish, link = side_effects
         link.return_value = _linked(is_new_link=False)
-        await complete_platform_link("u1", "whatsapp", "wa-1", first_contact=BUBBLES)
+        await complete_platform_link(USER_ID, "whatsapp", "wa-1", first_contact=BUBBLES)
         publish.assert_awaited_once()
 
     async def test_an_undelivered_first_contact_is_logged_loudly_but_keeps_the_link(
@@ -98,13 +100,15 @@ class TestPostLinkMessage:
         _, publish, _ = side_effects
         publish.return_value = OutboundResult.FAILED
         with patch(f"{MODULE}.log") as mock_log:
-            result = await complete_platform_link("u1", "whatsapp", "wa-1", first_contact=BUBBLES)
+            result = await complete_platform_link(
+                USER_ID, "whatsapp", "wa-1", first_contact=BUBBLES
+            )
         assert result.link.is_new_link is True
         assert result.first_contact_delivered is False
         mock_log.warning.assert_called_once_with(
             "first contact was not delivered after a one-tap link",
             platform="whatsapp",
-            user_id="u1",
+            user_id=USER_ID,
             outcome="failed",
         )
 
@@ -131,7 +135,7 @@ class TestPostCommitFailures:
             match="the whatsapp link was written but its follow-through failed: "
             "could not resolve the outbound destination",
         ) as excinfo:
-            await complete_platform_link("u1", "whatsapp", "wa-1", first_contact=BUBBLES)
+            await complete_platform_link(USER_ID, "whatsapp", "wa-1", first_contact=BUBBLES)
 
         assert excinfo.value.__cause__ is broker_down
 
@@ -143,7 +147,7 @@ class TestPostCommitFailures:
         link.side_effect = AccountHasDifferentPlatformError("already has a different account")
 
         with pytest.raises(AppError) as excinfo:
-            await complete_platform_link("u1", "whatsapp", "wa-2")
+            await complete_platform_link(USER_ID, "whatsapp", "wa-2")
 
         assert not isinstance(excinfo.value, PostLinkSideEffectError)
 
@@ -152,20 +156,18 @@ class TestLinkAnalytics:
     """integration_connected counts connections, not taps."""
 
     async def test_a_new_link_is_captured_once(self, side_effects) -> None:
-        with patch(f"{MODULE}.capture_event") as capture:
-            await complete_platform_link("u1", "whatsapp", "wa-1")
+        with patch(f"{MODULE}.capture") as capture:
+            await complete_platform_link(USER_ID, "whatsapp", "wa-1")
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "whatsapp", "is_new_link": True},
+            UserId(USER_ID), IntegrationConnected(integration_id="whatsapp", is_new_link=True)
         )
 
     async def test_a_repeat_link_is_not_captured_again(self, side_effects) -> None:
         """A re-link used to count as a fresh integration_connected, inflating the connection count with every tap."""
         _, _, link = side_effects
         link.return_value = _linked(is_new_link=False)
-        with patch(f"{MODULE}.capture_event") as capture:
-            await complete_platform_link("u1", "whatsapp", "wa-1")
+        with patch(f"{MODULE}.capture") as capture:
+            await complete_platform_link(USER_ID, "whatsapp", "wa-1")
         capture.assert_not_called()
 
 
@@ -190,7 +192,7 @@ class TestLinkConflicts:
         link.side_effect = conflict
 
         with patch(f"{MODULE}.log") as mock_log, pytest.raises(AppError) as excinfo:
-            await complete_platform_link("u1", "whatsapp", "wa-2")
+            await complete_platform_link(USER_ID, "whatsapp", "wa-2")
 
         error = excinfo.value
         assert error.status_code == 409
@@ -208,7 +210,7 @@ class TestLinkConflicts:
         # call site, and a bare ValueError name cannot tell them apart.
         mock_log.audit.assert_called_once_with(
             "platform account link rejected",
-            actor="u1",
+            actor=USER_ID,
             resource="wa-2",
             provider="whatsapp",
             error_type="AccountHasDifferentPlatformError",

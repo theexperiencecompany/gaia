@@ -24,6 +24,20 @@ export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
 
 export const DEFAULT_HIL_MODE: HilMode = "always_allow";
 
+/** Approve taps on cards older than this re-confirm in place first. */
+export const RECONFIRM_AGE_SECONDS = 86400;
+
+/** Compact card age: "asked just now" / "asked 1h ago" / "asked 2d ago". */
+export function formatApprovalAge(
+  ageSeconds: number | null | undefined,
+): string {
+  if (ageSeconds == null || ageSeconds < 60) return "asked just now";
+  const hours = Math.floor(ageSeconds / 3600);
+  if (hours < 1) return `asked ${Math.floor(ageSeconds / 60)}m ago`;
+  if (hours < 24) return `asked ${hours}h ago`;
+  return `asked ${Math.floor(hours / 24)}d ago`;
+}
+
 /** A decided approval — no longer actionable, kept as a receipt. */
 export function isSettled(status: ApprovalStatus): boolean {
   return status !== "pending";
@@ -62,6 +76,8 @@ export function approvalOutcomeLabel(data: ApprovalRequestData): string {
       return "Expired without a response";
     case "abandoned":
       return "Dropped when you moved on";
+    case "revoked":
+      return "Agent withdrew this";
     default:
       return "";
   }

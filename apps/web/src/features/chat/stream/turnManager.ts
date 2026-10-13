@@ -66,6 +66,7 @@ const buildResumeArgs = (
     replyToMessage: null,
     conversationId,
     isOnboardingDemo: false,
+    isRetry: false,
     resumeStreamId,
   },
 });
@@ -95,11 +96,26 @@ class TurnManager {
     return this.sessions.has(this.resolveKey(conversationId));
   }
 
-  /** Start a turn, or queue the send if this conversation is mid-turn. */
+  /** Start a turn, or steer the live one when this conversation is mid-turn.
+   *
+   *  A mid-turn send starts immediately as a steering session (same POST, same
+   *  bubbles, no shared-slot ownership — see TurnSession's `steering` flag);
+   *  the backend folds it into the live run's next reasoning step. Only a
+   *  not-yet-created conversation still queues — no id, nothing to fold into.
+   */
   send(args: SendArgs): void {
     const key = this.resolveKey(args.options.conversationId);
 
     if (this.sessions.has(key)) {
+      if (!key.startsWith(PENDING_KEY_PREFIX)) {
+        const steerKey = `${key}:steer:${args.options.optimisticUserId ?? uuidv4()}`;
+        streamLog("lifecycle", "send:steer", {
+          turnKey: steerKey,
+          conversationId: args.options.conversationId,
+        });
+        this.startSession(steerKey, args, true);
+        return;
+      }
       const queue = this.queues.get(key) ?? [];
       queue.push(args);
       this.queues.set(key, queue);
@@ -111,7 +127,7 @@ class TurnManager {
       return;
     }
 
-    this.startSession(key, args);
+    this.startSession(key, args, false);
   }
 
   /**
@@ -152,6 +168,7 @@ class TurnManager {
       this.startSession(
         conversationId,
         buildResumeArgs(conversationId, activeStreamId),
+        false,
       );
       await this.restoreQueuedSends(conversationId);
     } catch (error) {
@@ -165,11 +182,15 @@ class TurnManager {
     }
   }
 
-  /** Abort the active turn for a conversation. Returns true if one existed. */
+  /** Abort every live turn for a conversation — the main turn and any steers.
+   *  Stopping halts the exchange, so queued sends are discarded as before. */
   async stop(conversationId: string | null): Promise<boolean> {
     const key = this.resolveKey(conversationId);
-    const session = this.sessions.get(key);
-    if (!session) return false;
+    const targets = [...this.sessions.entries()].filter(
+      ([sessionKey, session]) =>
+        sessionKey === key || session.boundConversationId === key,
+    );
+    if (targets.length === 0) return false;
     // Stopping also discards this conversation's queued sends — the user is
     // halting the exchange, not asking for the next queued turn to fire.
     const queued = this.queues.get(key) ?? [];
@@ -183,7 +204,7 @@ class TurnManager {
         );
       }
     }
-    await session.abort();
+    await Promise.all(targets.map(([, session]) => session.abort()));
     return true;
   }
 
@@ -223,11 +244,16 @@ class TurnManager {
     });
   }
 
-  private startSession(key: string, args: SendArgs): void {
-    const session = new TurnSession(key, args, {
-      onEnd: (ended) => this.handleSessionEnd(ended),
-      onRekey: (oldKey, newKey) => this.rekey(oldKey, newKey),
-    });
+  private startSession(key: string, args: SendArgs, steering: boolean): void {
+    const session = new TurnSession(
+      key,
+      args,
+      {
+        onEnd: (ended) => this.handleSessionEnd(ended),
+        onRekey: (oldKey, newKey) => this.rekey(oldKey, newKey),
+      },
+      { steering },
+    );
     this.sessions.set(key, session);
     if (key.startsWith(PENDING_KEY_PREFIX)) this.pendingKey = key;
     void session.start();
@@ -248,11 +274,17 @@ class TurnManager {
   }
 
   private handleSessionEnd(session: TurnSession): void {
-    const key = session.boundConversationId ?? session.key;
-    this.sessions.delete(key);
-    this.sessions.delete(session.key);
+    // By identity, never by key: a steer is filed under its own key but reports
+    // the conversation it writes into, so deleting `boundConversationId` evicted
+    // the still-streaming main turn — after which Stop found nothing to abort.
+    for (const [key, active] of [...this.sessions.entries()]) {
+      if (active === session) this.sessions.delete(key);
+    }
     if (this.pendingKey === session.key) this.pendingKey = null;
-    this.dispatchQueued(key);
+    // A steer owns neither the conversation's session slot nor its queue; the
+    // main turn it folded into still holds both and will dispatch when it ends.
+    if (session.isSteering) return;
+    this.dispatchQueued(session.boundConversationId ?? session.key);
   }
 
   private dispatchQueued(key: string): void {

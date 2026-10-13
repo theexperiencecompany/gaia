@@ -11,11 +11,13 @@ from app.agents.prompts.memory_prompts import (
     AGENTMAIL_MEMORY_PROMPT,
     AIRTABLE_MEMORY_PROMPT,
     ASANA_MEMORY_PROMPT,
-    BROWSERBASE_MEMORY_PROMPT,
+    CALCOM_MEMORY_PROMPT,
     CALENDAR_MEMORY_PROMPT,
+    CALENDLY_MEMORY_PROMPT,
     CLICKUP_MEMORY_PROMPT,
     CONTEXT7_MEMORY_PROMPT,
     DEEPWIKI_MEMORY_PROMPT,
+    DROPBOX_MEMORY_PROMPT,
     GITHUB_MEMORY_PROMPT,
     GMAIL_MEMORY_PROMPT,
     GOOGLE_DOCS_MEMORY_PROMPT,
@@ -28,10 +30,12 @@ from app.agents.prompts.memory_prompts import (
     HUBSPOT_MEMORY_PROMPT,
     INSTACART_MEMORY_PROMPT,
     INSTAGRAM_MEMORY_PROMPT,
+    JIRA_MEMORY_PROMPT,
     LINEAR_MEMORY_PROMPT,
     LINKEDIN_MEMORY_PROMPT,
     MICROSOFT_TEAMS_MEMORY_PROMPT,
     NOTION_MEMORY_PROMPT,
+    OUTLOOK_MEMORY_PROMPT,
     PERPLEXITY_MEMORY_PROMPT,
     POSTHOG_MEMORY_PROMPT,
     REDDIT_MEMORY_PROMPT,
@@ -48,11 +52,13 @@ from app.agents.prompts.subagent_prompts import (
     AGENTMAIL_AGENT_SYSTEM_PROMPT,
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
-    BROWSERBASE_AGENT_SYSTEM_PROMPT,
+    CALCOM_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
+    CALENDLY_AGENT_SYSTEM_PROMPT,
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
     DEEPWIKI_AGENT_SYSTEM_PROMPT,
+    DROPBOX_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
     GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
@@ -65,10 +71,12 @@ from app.agents.prompts.subagent_prompts import (
     HUBSPOT_AGENT_SYSTEM_PROMPT,
     INSTACART_AGENT_SYSTEM_PROMPT,
     INSTAGRAM_AGENT_SYSTEM_PROMPT,
+    JIRA_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
+    OUTLOOK_AGENT_SYSTEM_PROMPT,
     PERPLEXITY_AGENT_SYSTEM_PROMPT,
     POSTHOG_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
@@ -81,14 +89,17 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
+from app.config.composio_auth_configs import with_auth_config_overrides
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
     ASANA_CONTENT,
-    BROWSERBASE_CONTENT,
+    CALCOM_CONTENT,
+    CALENDLY_CONTENT,
     CLICKUP_CONTENT,
     CONTEXT7_CONTENT,
     DEEPWIKI_CONTENT,
+    DROPBOX_CONTENT,
     GITHUB_CONTENT,
     GMAIL_CONTENT,
     GOOGLE_MAPS_CONTENT,
@@ -102,10 +113,12 @@ from app.config.oauth_content import (
     HUBSPOT_CONTENT,
     INSTACART_CONTENT,
     INSTAGRAM_CONTENT,
+    JIRA_CONTENT,
     LINEAR_CONTENT,
     LINKEDIN_CONTENT,
     MICROSOFT_TEAMS_CONTENT,
     NOTION_CONTENT,
+    OUTLOOK_CONTENT,
     PERPLEXITY_CONTENT,
     POSTHOG_CONTENT,
     REDDIT_CONTENT,
@@ -116,10 +129,14 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.config.settings import settings
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
+    CALCOM_DESTRUCTIVE_TOOLS,
+    CALENDLY_DESTRUCTIVE_TOOLS,
     CLICKUP_DESTRUCTIVE_TOOLS,
+    DROPBOX_DESTRUCTIVE_TOOLS,
     GITHUB_DESTRUCTIVE_TOOLS,
     GMAIL_DESTRUCTIVE_TOOLS,
     GOOGLE_MAPS_DESTRUCTIVE_TOOLS,
@@ -131,10 +148,12 @@ from app.constants.hil_destructive_tools import (
     GOOGLETASKS_DESTRUCTIVE_TOOLS,
     HUBSPOT_DESTRUCTIVE_TOOLS,
     INSTAGRAM_DESTRUCTIVE_TOOLS,
+    JIRA_DESTRUCTIVE_TOOLS,
     LINEAR_DESTRUCTIVE_TOOLS,
     LINKEDIN_DESTRUCTIVE_TOOLS,
     MICROSOFT_TEAMS_DESTRUCTIVE_TOOLS,
     NOTION_DESTRUCTIVE_TOOLS,
+    OUTLOOK_DESTRUCTIVE_TOOLS,
     REDDIT_DESTRUCTIVE_TOOLS,
     SLACK_DESTRUCTIVE_TOOLS,
     TODOIST_DESTRUCTIVE_TOOLS,
@@ -143,8 +162,11 @@ from app.constants.hil_destructive_tools import (
     ZOOM_DESTRUCTIVE_TOOLS,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
-from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
-from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
+from app.constants.triggers import (
+    GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+    GMAIL_EMAIL_SENT_TRIGGER_NAME,
+    GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+)
 from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
@@ -162,7 +184,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
+_DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -189,6 +211,17 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit_version="20260107_00",
         ),
         destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    # The primary calendar's id is the account's email; GET_CURRENT_USER
+                    # does not exist at the pinned toolkit version.
+                    tool="GOOGLECALENDAR_GET_CALENDAR",
+                    variables=[VariableExtraction(name="email", field_path="calendar_data.id")],
+                ),
+            ],
+            label_template="{email}",
+        ),
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
@@ -247,7 +280,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="googlecalendar_agent",
             tool_space="googlecalendar",
-            handoff_tool_name="call_calendar_agent",
             domain="calendar and event management",
             capabilities="creating events, scheduling meetings, managing availability, setting event notifications, updating calendar entries, and organizing schedules",
             use_cases="scheduling meetings, managing calendar events, checking availability, or any calendar-related task",
@@ -327,7 +359,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="googledocs_agent",
             tool_space="googledocs",
-            handoff_tool_name="call_googledocs_agent",
             domain="document creation, editing, and collaboration",
             capabilities="creating documents, editing content, formatting text, sharing with collaborators, managing document structure, inserting tables and images, and using templates",
             use_cases="creating documents, editing docs, sharing with team members, formatting content, or any Google Docs operation",
@@ -366,7 +397,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="googledrive_agent",
             tool_space="googledrive",
-            handoff_tool_name="call_googledrive_agent",
             domain="file storage, organization, search, sharing, and retrieval",
             capabilities="searching files and folders, creating folders, uploading and downloading files, moving and copying files, sharing with collaborators, exporting Google Workspace documents, and pulling files into other tasks such as email attachments",
             use_cases="finding a file, organizing folders, sharing a file or folder, downloading or exporting a file, attaching a Drive file to an email, or any Google Drive operation",
@@ -404,7 +434,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="todo_agent",
             tool_space="todos",
-            handoff_tool_name="call_todo_agent",
             domain="task and productivity management",
             capabilities="creating todos, managing tasks, organizing projects, tracking priorities, setting due dates, using labels, bulk operations, searching tasks, and providing productivity insights",
             use_cases="managing personal todos, organizing tasks by project, tracking deadlines, bulk task operations, or any productivity-related task",
@@ -416,7 +445,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "delete_todo",
                 "search_todos",
                 "get_today_todos",
-                "add_subtask",
+                "add_checklist_item",
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),
@@ -450,7 +479,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="skills_agent",
             tool_space="skills",
-            handoff_tool_name="call_skills_agent",
             domain="agent skill management and configuration",
             capabilities="installing skills from GitHub, creating custom skills inline, listing installed skills, enabling/disabling skills, uninstalling skills, managing skill scopes and targets",
             use_cases="installing agent skills, creating custom procedures, managing installed skills, or any skill-related task",
@@ -489,10 +517,26 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
                 auto_activate=True,
                 workflow_trigger_schema=WorkflowTriggerSchema(
-                    slug="gmail_new_message",
+                    slug=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="New Gmail Message",
                     description="Trigger when a new email arrives",
+                    config_schema={},
+                ),
+            ),
+            # The inbox trigger never sees the user's own mail (labelled SENT, not
+            # INBOX), so without this a watched thread cannot learn the user replied.
+            TriggerConfig(
+                slug=GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+                name="Gmail Email Sent",
+                description="Triggered when you send an email from Gmail",
+                config={"interval": 1},
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug=GMAIL_EMAIL_SENT_TRIGGER_NAME,
+                    composio_slug=GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+                    name="Email Sent",
+                    description="Trigger when you send an email",
                     config_schema={},
                 ),
             ),
@@ -506,7 +550,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     slug="gmail_poll_inbox",
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="Poll Inbox",
-                    description="Polls your inbox every N minutes — ideal for periodic email triage",
+                    description="Polls your inbox every N minutes, ideal for periodic email triage",
                     config_schema={
                         "interval": TriggerConfigFieldSchema(
                             type="integer",
@@ -523,7 +567,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="gmail_agent",
             tool_space="gmail",
-            handoff_tool_name="call_gmail_agent",
             domain="email",
             capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, server-side paginating inbox scans with timeframe shortcuts (today/7d/this_week), and automating email workflows",
             use_cases="any email-related task including sending, reading, organizing, or automating email operations",
@@ -536,13 +579,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
-            # A large inbox scan offloads to a JSONL file; bind the sandbox-free
-            # miners into the agent AND its spawned chunk-readers so triage mines
-            # the offload with query_json/grep instead of read-whole-file + bash.
             extra_initial_tools=["query_json", "grep"],
-            # GMAIL_FETCH_MESSAGES (paginated) replaces GMAIL_FETCH_EMAILS's capped
-            # page size; GMAIL_FETCH_THREAD (normalized) replaces the raw thread view.
-            # Excluded here so the agent can't retrieve them; REST mail still calls them by name.
             exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
@@ -555,6 +592,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=GMAIL_CONTENT,
     ),
@@ -638,7 +676,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="notion_agent",
             tool_space="notion",
-            handoff_tool_name="call_notion_agent",
             domain="workspace and knowledge management",
             capabilities="creating pages, building databases, updating content, organizing workspaces, managing properties, searching content, and structuring knowledge bases",
             use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
@@ -666,6 +703,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{workspace_name}",
         ),
         content=NOTION_CONTENT,
     ),
@@ -689,7 +727,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="twitter_agent",
             tool_space="twitter",
-            handoff_tool_name="call_twitter_agent",
             domain="social media",
             capabilities="posting tweets, creating threads, replying to posts, liking content, retweeting, following users, analyzing engagement metrics, and managing Twitter presence",
             use_cases="posting tweets, engaging with content, managing followers, or analyzing Twitter activity",
@@ -716,6 +753,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="@{username}",
         ),
         content=TWITTER_CONTENT,
     ),
@@ -784,7 +822,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="google_sheets_agent",
             tool_space="googlesheets",
-            handoff_tool_name="call_google_sheets_agent",
             domain="spreadsheet management and data analysis",
             capabilities="creating spreadsheets, updating data, managing formulas, organizing sheets, analyzing data, and building collaborative workbooks",
             use_cases="spreadsheet management, data analysis, formula creation, or any Google Sheets operation",
@@ -823,7 +860,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="linkedin_agent",
             tool_space="linkedin",
-            handoff_tool_name="call_linkedin_agent",
             domain="professional networking",
             capabilities="creating professional posts with images/documents/articles, managing connections, engaging with content through comments and reactions, networking outreach, and building professional presence",
             use_cases="posting professional content with rich media, commenting on posts, reacting to content, sharing articles, or any LinkedIn career-related activity",
@@ -961,12 +997,10 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="github_agent",
             tool_space="github",
-            handoff_tool_name="call_github_agent",
             domain="code repository and development workflow",
             capabilities="managing repositories, creating issues, handling pull requests, managing branches, reviewing code, managing collaborators, and automating development workflows",
             use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
-            specific_tools=GITHUB_TOOLS,
             auto_bind_tools=[
                 "GITHUB_CUSTOM_GATHER_CONTEXT",
                 "GITHUB_CREATE_AN_ISSUE",
@@ -988,6 +1022,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username}",
         ),
         content=GITHUB_CONTENT,
     ),
@@ -1011,7 +1046,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="reddit_agent",
             tool_space="reddit",
-            handoff_tool_name="call_reddit_agent",
             domain="community engagement and content sharing",
             capabilities="posting content, commenting on posts, managing subreddits, searching communities, voting on content, and engaging with Reddit communities",
             use_cases="posting to Reddit, engaging with communities, managing subreddit content, or analyzing Reddit activity",
@@ -1050,7 +1084,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="airtable_agent",
             tool_space="airtable",
-            handoff_tool_name="call_airtable_agent",
             domain="database and workflow management",
             capabilities="creating bases, managing tables, updating records, organizing data, building automations, and structuring collaborative databases",
             use_cases="managing Airtable bases, organizing data, creating records, or building database workflows",
@@ -1148,7 +1181,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="linear_agent",
             tool_space="linear",
-            handoff_tool_name="call_linear_agent",
             domain="issue tracking and project management",
             capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
             use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
@@ -1176,6 +1208,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=LINEAR_CONTENT,
     ),
@@ -1259,12 +1292,10 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="slack_agent",
             tool_space="slack",
-            handoff_tool_name="call_slack_agent",
             domain="team communication and collaboration",
             capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
-            specific_tools=SLACK_TOOLS,
             auto_bind_tools=[
                 "SLACK_CUSTOM_GATHER_CONTEXT",
                 "SLACK_SEND_MESSAGE",
@@ -1289,6 +1320,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username} @ {team_name}",
         ),
         content=SLACK_CONTENT,
     ),
@@ -1312,7 +1344,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="hubspot_agent",
             tool_space="hubspot",
-            handoff_tool_name="call_hubspot_agent",
             domain="CRM and sales automation",
             capabilities="managing contacts, tracking deals, organizing pipelines, automating marketing, managing customer relationships, and analyzing sales data",
             use_cases="CRM management, sales tracking, contact organization, or marketing automation tasks",
@@ -1351,7 +1382,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="google_tasks_agent",
             tool_space="googletasks",
-            handoff_tool_name="call_google_tasks_agent",
             domain="task and to-do list management",
             capabilities="creating tasks, organizing to-do lists, managing task lists, setting due dates, marking tasks complete, and organizing personal productivity",
             use_cases="managing tasks, organizing to-do lists, tracking personal productivity, or any Google Tasks operation",
@@ -1405,7 +1435,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="todoist_agent",
             tool_space="todoist",
-            handoff_tool_name="call_todoist_agent",
             domain="task and project management",
             capabilities="creating tasks, organizing projects, setting priorities, managing labels, tracking productivity, and building task workflows",
             use_cases="task management, project organization, productivity tracking, or any Todoist operation",
@@ -1444,7 +1473,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="microsoft_teams_agent",
             tool_space="microsoft_teams",
-            handoff_tool_name="call_microsoft_teams_agent",
             domain="team collaboration and communication",
             capabilities="sending messages, managing channels, scheduling meetings, managing teams, file sharing, chat operations, call management, and automating team workflows",
             use_cases="team messaging, channel management, meeting coordination, file sharing, or any Microsoft Teams collaboration task",
@@ -1483,7 +1511,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="zoom_agent",
             tool_space="zoom",
-            handoff_tool_name="call_zoom_agent",
             domain="video conferencing and webinar management",
             capabilities="creating meetings, scheduling webinars, managing participants, cloud recording, meeting invitations, attendance tracking, and automating video conferencing workflows",
             use_cases="scheduling meetings, managing webinars, recording conferences, tracking attendance, or any Zoom video conferencing task",
@@ -1512,7 +1539,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="google_meet_agent",
             tool_space="googlemeet",
-            handoff_tool_name="call_google_meet_agent",
             domain="video conferencing and meeting management",
             capabilities="scheduling meetings, managing video conferences, creating meeting links, and organizing virtual collaboration",
             use_cases="scheduling video meetings, managing Google Meet conferences, or virtual collaboration tasks",
@@ -1546,7 +1572,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="google_maps_agent",
             tool_space="google_maps",
-            handoff_tool_name="call_google_maps_agent",
             domain="location and navigation services",
             capabilities="searching locations, getting directions, finding places, analyzing geographic data, and managing location information",
             use_cases="location search, getting directions, finding nearby places, or any Google Maps operation",
@@ -1606,7 +1631,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="asana_agent",
             tool_space="asana",
-            handoff_tool_name="call_asana_agent",
             domain="project and task management",
             capabilities="creating tasks, managing projects, organizing workflows, assigning work, tracking progress, and building team collaboration systems",
             use_cases="project management, task organization, team collaboration, or any Asana workflow operation",
@@ -1645,7 +1669,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="trello_agent",
             tool_space="trello",
-            handoff_tool_name="call_trello_agent",
             domain="visual project management",
             capabilities="creating boards, managing cards, organizing lists, tracking workflows, assigning tasks, and building visual project systems",
             use_cases="board management, card organization, visual task tracking, or any Trello operation",
@@ -1684,7 +1707,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="instagram_agent",
             tool_space="instagram",
-            handoff_tool_name="call_instagram_agent",
             domain="social media content and engagement",
             capabilities="posting content, managing stories, engaging with followers, analyzing insights, and building social media presence",
             use_cases="posting to Instagram, managing content, engaging with audience, or social media management tasks",
@@ -1723,7 +1745,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="clickup_agent",
             tool_space="clickup",
-            handoff_tool_name="call_clickup_agent",
             domain="comprehensive project management",
             capabilities="managing tasks, organizing projects, tracking time, building workflows, assigning work, and comprehensive productivity management",
             use_cases="task management, project organization, time tracking, or any ClickUp operation",
@@ -1741,6 +1762,228 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             memory_prompt=CLICKUP_MEMORY_PROMPT,
         ),
         content=CLICKUP_CONTENT,
+    ),
+    OAuthIntegration(
+        id="calcom",
+        name="Cal.com",
+        description="Manage bookings, availability, and booking links on Cal.com",
+        category="productivity",
+        provider="calcom",
+        scopes=[],
+        available=True,
+        short_name="calcom",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_XMP6oWtpVJ5v",
+            toolkit="CAL",
+            toolkit_version="20260721_00",
+        ),
+        destructive_tools=CALCOM_DESTRUCTIVE_TOOLS,
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="calcom_agent",
+            tool_space="calcom",
+            domain="booking pages and meeting scheduling",
+            capabilities="listing and inspecting bookings, checking available slots, booking meetings on event types, rescheduling, cancelling and declining bookings, and sharing booking links",
+            use_cases="checking Cal.com bookings, booking or rescheduling a meeting, sharing a Cal.com link, or any Cal.com scheduling task",
+            system_prompt=CALCOM_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "CAL_RETRIEVE_MY_INFORMATION",
+                "CAL_FETCH_ALL_BOOKINGS",
+                "CAL_RETRIEVE_BOOKING_DETAILS_BY_UID",
+                "CAL_LIST_EVENT_TYPES",
+                "CAL_GET_AVAILABLE_SLOTS_INFO",
+                "CAL_POST_NEW_BOOKING_REQUEST",
+                "CAL_RESCHEDULE_BOOKING_BY_UID",
+                "CAL_CANCEL_BOOKING_VIA_UID",
+            ],
+            memory_prompt=CALCOM_MEMORY_PROMPT,
+        ),
+        content=CALCOM_CONTENT,
+    ),
+    OAuthIntegration(
+        id="calendly",
+        name="Calendly",
+        description="View scheduled meetings, share scheduling links, and manage Calendly events",
+        category="productivity",
+        provider="calendly",
+        scopes=[],
+        available=True,
+        short_name="calendly",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_jrB3rnSaE990",
+            toolkit="CALENDLY",
+            toolkit_version="20260929_00",
+        ),
+        destructive_tools=CALENDLY_DESTRUCTIVE_TOOLS,
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="calendly_agent",
+            tool_space="calendly",
+            domain="appointment scheduling and booking links",
+            capabilities="listing scheduled events and invitees, checking event type availability, creating single-use scheduling links, and cancelling scheduled events",
+            use_cases="checking Calendly meetings, sharing a Calendly link, seeing who booked, or any Calendly scheduling task",
+            system_prompt=CALENDLY_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "CALENDLY_WHO_AM_I",
+                "CALENDLY_LIST_EVENT_TYPES",
+                "CALENDLY_LIST_SCHEDULED_EVENTS",
+                "CALENDLY_GET_EVENT",
+                "CALENDLY_LIST_EVENT_INVITEES",
+                "CALENDLY_LIST_EVENT_TYPE_AVAILABLE_TIMES",
+                "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK",
+                "CALENDLY_CANCEL_SCHEDULED_EVENT",
+            ],
+            # Deprecated upstream; each has a current replacement in the toolkit.
+            exclude_tools=[
+                "CALENDLY_CREATE_EVENT_INVITEE",
+                "CALENDLY_GET_CURRENT_USER",
+                "CALENDLY_LIST_EVENTS",
+                "CALENDLY_LIST_USER_S_EVENT_TYPES",
+            ],
+            memory_prompt=CALENDLY_MEMORY_PROMPT,
+        ),
+        content=CALENDLY_CONTENT,
+    ),
+    OAuthIntegration(
+        id="outlook",
+        name="Outlook",
+        description="Read and draft email, manage your calendar, and schedule meetings in Microsoft Outlook",
+        category="communication",
+        provider="outlook",
+        scopes=[],
+        available=True,
+        short_name="outlook",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_weUGd8ibo9rW",
+            toolkit="OUTLOOK",
+            toolkit_version="20261002_00",
+        ),
+        destructive_tools=OUTLOOK_DESTRUCTIVE_TOOLS,
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="outlook_agent",
+            tool_space="outlook",
+            domain="Microsoft email and calendar",
+            capabilities="reading and searching mail, drafting and sending emails, replying and forwarding, organizing folders, managing calendar events, finding meeting times, and managing contacts",
+            use_cases="any Outlook email or calendar task, including reading the inbox, drafting replies, and scheduling meetings",
+            system_prompt=OUTLOOK_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "OUTLOOK_LIST_MESSAGES",
+                "OUTLOOK_SEARCH_MESSAGES",
+                "OUTLOOK_GET_MESSAGE",
+                "OUTLOOK_CREATE_DRAFT",
+                "OUTLOOK_CREATE_ME_REPLY_DRAFT",
+                "OUTLOOK_LIST_EVENTS",
+                "OUTLOOK_CALENDAR_CREATE_EVENT",
+                "OUTLOOK_FIND_MEETING_TIMES",
+            ],
+            # Deprecated upstream; each has a current replacement in the toolkit.
+            exclude_tools=[
+                "OUTLOOK_CREATE_CALENDAR_EVENT",
+                "OUTLOOK_CREATE_MASTER_CATEGORY",
+                "OUTLOOK_DELETE_EVENT",
+                "OUTLOOK_DELETE_ME_MAIL_FOLDERS_MESSAGES_ATTACHMENTS",
+                "OUTLOOK_DELETE_MESSAGE_PERMANENTLY_FROM_FOLDER",
+                "OUTLOOK_GET_ME_MAIL_FOLDER_MESSAGE_ATTACHMENT",
+                "OUTLOOK_LIST_CALENDAR_CALENDAR_VIEW",
+                "OUTLOOK_LIST_CONTACTS",
+                "OUTLOOK_LIST_ME_EVENT_INSTANCES",
+            ],
+            memory_prompt=OUTLOOK_MEMORY_PROMPT,
+        ),
+        content=OUTLOOK_CONTENT,
+    ),
+    OAuthIntegration(
+        id="jira",
+        name="Jira",
+        description="Track issues, manage sprints, and move work through your Jira workflow",
+        category="developer",
+        provider="jira",
+        scopes=[],
+        available=True,
+        short_name="jira",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_rY4bylV9zTTN",
+            toolkit="JIRA",
+            toolkit_version="20261001_00",
+        ),
+        destructive_tools=JIRA_DESTRUCTIVE_TOOLS,
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="jira_agent",
+            tool_space="jira",
+            domain="issue tracking and agile project management",
+            capabilities="searching issues with JQL, creating and editing issues, transitioning issue status, commenting, assigning, managing sprints, and logging work",
+            use_cases="finding or creating Jira issues, moving issues through the workflow, sprint planning, or any Jira task",
+            system_prompt=JIRA_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "JIRA_SEARCH_FOR_ISSUES_USING_JQL_POST",
+                "JIRA_GET_ISSUE",
+                "JIRA_GET_ALL_PROJECTS",
+                "JIRA_CREATE_ISSUE",
+                "JIRA_EDIT_ISSUE",
+                "JIRA_GET_TRANSITIONS",
+                "JIRA_TRANSITION_ISSUE",
+                "JIRA_ADD_COMMENT",
+            ],
+            # Deprecated upstream; each has a current replacement in the toolkit.
+            exclude_tools=[
+                "JIRA_FIND_USERS",
+                "JIRA_GET_ISSUE_CREATE_METADATA",
+                "JIRA_GET_ISSUE_WORKLOGS",
+                "JIRA_LIST_ALL_PROJECTS",
+            ],
+            memory_prompt=JIRA_MEMORY_PROMPT,
+        ),
+        content=JIRA_CONTENT,
+    ),
+    OAuthIntegration(
+        id="dropbox",
+        name="Dropbox",
+        description="Search, read, organize, and share files in your Dropbox",
+        category="productivity",
+        provider="dropbox",
+        scopes=[],
+        available=True,
+        short_name="dropbox",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_Jh5p6r9ee6ns",
+            toolkit="DROPBOX",
+            toolkit_version="20261001_00",
+        ),
+        destructive_tools=DROPBOX_DESTRUCTIVE_TOOLS,
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="dropbox_agent",
+            tool_space="dropbox",
+            domain="cloud file storage and sharing",
+            capabilities="searching files and folders, listing folders, reading files, uploading files, creating and moving folders, restoring revisions, and creating share links",
+            use_cases="finding a file, reading or summarising a document, organizing folders, sharing a file, or any Dropbox operation",
+            system_prompt=DROPBOX_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "DROPBOX_SEARCH_FILE_OR_FOLDER",
+                "DROPBOX_LIST_FILES_IN_FOLDER",
+                "DROPBOX_GET_METADATA",
+                "DROPBOX_READ_FILE",
+                "DROPBOX_UPLOAD_FILE",
+                "DROPBOX_CREATE_FOLDER",
+                "DROPBOX_MOVE_FILE_OR_FOLDER",
+                "DROPBOX_CREATE_SHARED_LINK",
+            ],
+            # Deprecated upstream; each has a current replacement in the toolkit.
+            exclude_tools=[
+                "DROPBOX_CREATE_SHARED_LINK_SIMPLE",
+                "DROPBOX_DELETE_FILE_OR_FOLDER",
+                "DROPBOX_LIST_FOLDERS",
+            ],
+            memory_prompt=DROPBOX_MEMORY_PROMPT,
+        ),
+        content=DROPBOX_CONTENT,
     ),
     # MCP Integrations (no authentication required)
     OAuthIntegration(
@@ -1760,7 +2003,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="deepwiki_agent",
             tool_space="deepwiki",
-            handoff_tool_name="call_deepwiki_agent",
             domain="GitHub repository documentation and code understanding",
             capabilities="reading wiki structure, viewing documentation contents, asking questions about any GitHub repository",
             use_cases="exploring codebases, understanding repositories, asking questions about GitHub projects",
@@ -1789,7 +2031,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="hackernews_agent",
             tool_space="hackernews",
-            handoff_tool_name="call_hackernews_agent",
             domain="tech news and discussions",
             capabilities="browsing Hacker News, searching stories, reading comments and discussions",
             use_cases="checking top stories, searching for tech news, reading discussions",
@@ -1818,7 +2059,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="instacart_agent",
             tool_space="instacart",
-            handoff_tool_name="call_instacart_agent",
             domain="grocery shopping and recipes",
             capabilities="searching grocery products, finding recipes, browsing shopping options",
             use_cases="finding groceries, searching recipes, planning meals",
@@ -1847,7 +2087,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="yelp_agent",
             tool_space="yelp",
-            handoff_tool_name="call_yelp_agent",
             domain="local business search and reviews",
             capabilities="searching local businesses, finding restaurants, reading reviews, getting business information",
             use_cases="finding restaurants, searching local services, reading reviews",
@@ -1878,7 +2117,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="context7_agent",
             tool_space="context7",
-            handoff_tool_name="call_context7_agent",
             domain="library documentation and code examples",
             capabilities="resolving library identifiers, fetching up-to-date documentation, providing version-specific code examples, eliminating hallucinated APIs",
             use_cases="getting accurate documentation, finding code examples, checking API references, learning about libraries",
@@ -1909,7 +2147,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="perplexity_agent",
             tool_space="perplexity",
-            handoff_tool_name="call_perplexity_agent",
             domain="AI-powered web search",
             capabilities="performing comprehensive web searches, providing contextually relevant results with citations, filtering by recency",
             use_cases="web searches, research, finding current information, fact-checking, getting cited answers",
@@ -1940,7 +2177,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="agentmail_agent",
             tool_space="agentmail",
-            handoff_tool_name="call_agentmail_agent",
             domain="email management and automation",
             capabilities="sending emails, receiving emails, managing inboxes, email automation, programmatic email handling",
             use_cases="sending automated emails, managing email workflows, email integration, inbox management",
@@ -1950,40 +2186,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             memory_prompt=AGENTMAIL_MEMORY_PROMPT,
         ),
         content=AGENTMAIL_CONTENT,
-    ),
-    # Browserbase MCP (OAuth via MCP spec discovery)
-    OAuthIntegration(
-        id="browserbase",
-        name="Browserbase",
-        description="Cloud-based headless browser automation for web scraping, testing, and interaction - navigate pages, fill forms, click elements, and extract data at scale.",
-        category="developer",
-        provider="browserbase",
-        scopes=[],
-        available=True,
-        is_featured=True,
-        short_name="browserbase",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            # No OAuth (no PRM/AS-metadata/DCR — /register 404s); auth_type="bearer"
-            # prompts for the user's API key via the bearer-token modal instead.
-            server_url="https://mcp.browserbase.com/mcp",
-            requires_auth=True,
-            auth_type="bearer",
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="browserbase_agent",
-            tool_space="browserbase",
-            handoff_tool_name="call_browserbase_agent",
-            domain="browser automation and web scraping",
-            capabilities="navigating web pages, filling forms, clicking elements, extracting data, taking screenshots, running browser automation at scale",
-            use_cases="web scraping, browser testing, form automation, data extraction, web interaction",
-            system_prompt=BROWSERBASE_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            memory_prompt=BROWSERBASE_MEMORY_PROMPT,
-        ),
-        content=BROWSERBASE_CONTENT,
     ),
     # PostHog MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -2005,7 +2207,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             has_subagent=True,
             agent_name="posthog_agent",
             tool_space="posthog",
-            handoff_tool_name="call_posthog_agent",
             domain="product analytics and experimentation",
             capabilities="tracking events, analyzing funnels, running A/B tests, managing feature flags, querying session recordings, creating dashboards",
             use_cases="product analytics, user behavior analysis, A/B testing, feature flag management, session replay analysis",
@@ -2020,9 +2221,14 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     ),
 ]
 
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = with_auth_config_overrides(
+    _DECLARED_INTEGRATIONS, settings.COMPOSIO_AUTH_CONFIG_OVERRIDES
+)
+
 
 @cache
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
+    """Return the matching integration, or None if no integration has this id."""
     return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
 
 
@@ -2076,6 +2282,23 @@ def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
         ),
         None,
     )
+
+
+def get_integration_by_tool_slug(tool_name: str) -> OAuthIntegration | None:
+    """Get the Composio integration a tool slug belongs to ("GMAIL_SEND_EMAIL" -> gmail).
+
+    Composio slugs are TOOLKIT_ACTION; the longest matching toolkit wins so a
+    toolkit that prefixes another's name cannot claim its tools. Not cached: the
+    name is model-supplied, and the scan is over a small fixed list.
+    """
+    matches = [
+        (i.composio_config.toolkit, i)
+        for i in OAUTH_INTEGRATIONS
+        if i.composio_config and tool_name.startswith(f"{i.composio_config.toolkit.upper()}_")
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda match: len(match[0]))[1]
 
 
 def get_memory_extraction_prompt(integration_id: str) -> str | None:

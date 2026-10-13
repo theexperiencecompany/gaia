@@ -8,7 +8,7 @@ import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { authApi } from "@/features/auth/api/authApi";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 /**
  * Desktop Login Page
@@ -77,7 +77,7 @@ export default function DesktopLoginPage() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1/";
     const loginUrl = `${apiBaseUrl}oauth/login/workos/desktop`;
 
-    trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+    track("navigation:cta_clicked", {
       location: "desktop_login_page",
       destination: "workos_oauth",
     });

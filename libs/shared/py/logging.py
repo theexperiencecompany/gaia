@@ -63,8 +63,11 @@ raw loguru logger outside the wide-event lifecycle.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 import functools
+import hashlib
+import hmac
 import json as _json
 import logging
 from math import isfinite
@@ -74,6 +77,8 @@ import sys
 from typing import TYPE_CHECKING, TextIO, TypedDict
 
 from loguru import logger
+
+from shared.py.wide_events import TextShape
 
 if TYPE_CHECKING:
     from loguru import Logger, Message, Record
@@ -148,8 +153,48 @@ STRUCTURED_LOG_RETENTION_DAYS = 30
 _TRUNCATED_MESSAGE_MAX_CHARS = 10_000
 
 
+_LOG_IDENTIFIER_PREFIX = "h_"
+_LOG_IDENTIFIER_HEX_CHARS = 16
+
+
+def hash_log_identifier(value: str | int, secret: str | None) -> str:
+    """Hash a person-identifying id (platform user/chat id, phone) for a log field.
+
+    Same digest as hashLogIdentifier in libs/shared/ts/src/bots/utils/logger.ts, so
+    an API line and a bot line for one person share one user_hash. Unkeyed when no
+    secret is configured, exactly as the bots fall back.
+    """
+    data = str(value).encode()
+    digest = (
+        hmac.new(secret.encode(), data, hashlib.sha256).hexdigest()
+        if secret
+        else hashlib.sha256(data).hexdigest()
+    )
+    return f"{_LOG_IDENTIFIER_PREFIX}{digest[:_LOG_IDENTIFIER_HEX_CHARS]}"
+
+
+def text_shape(text: str, secret: str | None) -> TextShape:
+    """Describe user-written text for a log field by its length and keyed hash, never its words.
+
+    Without a secret only the length is kept: an unkeyed digest of a short phrase is
+    reversed by hashing guesses.
+    """
+    if not secret:
+        return {"length": len(text)}
+    return {"length": len(text), "hash": hash_log_identifier(text, secret)}
+
+
+@dataclass(frozen=True)
+class EnvContext:
+    """Infra identity stamped on every emitted JSON line."""
+
+    env: str
+    service: str
+    commit: str
+
+
 @functools.lru_cache(maxsize=1)
-def env_context() -> dict[str, str]:
+def env_context() -> EnvContext:
     """Infra identity stamped on every emitted JSON line.
 
     The Python half of the envelope's env/service/commit — mirrored by
@@ -160,12 +205,12 @@ def env_context() -> dict[str, str]:
     and falls back to "local" during development. service reads
     GAIA_SERVICE_NAME, which each service sets to its own Promtail label.
     """
-    return {
+    return EnvContext(
         # `or`-chained so a set-but-empty var still falls through to the default.
-        "env": os.getenv("ENV") or os.getenv("NODE_ENV") or _DEFAULT_ENV,
-        "service": os.getenv("GAIA_SERVICE_NAME") or _DEFAULT_SERVICE_NAME,
-        "commit": (os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
-    }
+        env=os.getenv("ENV") or os.getenv("NODE_ENV") or _DEFAULT_ENV,
+        service=os.getenv("GAIA_SERVICE_NAME") or _DEFAULT_SERVICE_NAME,
+        commit=(os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
+    )
 
 
 LOG_CONFIG: _LogConfig = {
@@ -179,7 +224,7 @@ LOG_CONFIG: _LogConfig = {
     # only ones Promtail could parse — a ninth would have degraded silently to
     # colourised text with ANSI escapes, and nothing would have failed.
     "format_mode": os.getenv("LOG_FORMAT")
-    or ("json" if env_context()["env"] == "production" else "console"),
+    or ("json" if env_context().env == "production" else "console"),
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
     "backtrace": os.getenv("LOG_BACKTRACE", "true").lower() == "true",
     "colorize": os.getenv("LOG_COLORIZE", "true").lower() == "true",
@@ -217,9 +262,14 @@ THIRD_PARTY_LOG_LEVEL = os.getenv("LOG_LEVEL_THIRD_PARTY", "WARNING")
 # records are about our process, not about a library's internals.
 _OWNED_LOG_NAMESPACES = ("app", "gaia_shared", "uvicorn", "fastapi", "gunicorn", "livekit")
 
+_OTLP_TRACE_EXPORTER_LOGGER = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
+
+ARQ_LOGGER_DISPLAY_NAME = "ARQ"
+
 # Short display names for the busiest loggers. Anything unmapped falls back to
 # its top-level package (`aiormq.connection` → `AIORMQ`).
 _LOGGER_DISPLAY_NAMES = {
+    "arq.worker": ARQ_LOGGER_DISPLAY_NAME,
     "uvicorn": "UVICORN",
     "uvicorn.error": "UVICORN",
     "uvicorn.access": "UVICORN",
@@ -441,9 +491,9 @@ def _build_json_entry(record: Record) -> str:
     entry: dict[str, object] = {
         "time": _iso_utc_millis(record["time"]),
         "level": record["level"].name,
-        "env": identity["env"],
-        "service": identity["service"],
-        "commit": identity["commit"],
+        "env": identity.env,
+        "service": identity.service,
+        "commit": identity.commit,
         "logger": extra.get("logger_name", "app"),
         "message": record["message"],
         "module": record["module"],
@@ -473,6 +523,18 @@ def _build_json_entry(record: Record) -> str:
         line = _dumps(_truncated_entry(entry, original_size_bytes))
 
     return line + "\n"
+
+
+def _stderr_sink(message: Message) -> None:
+    """Callable sink that writes to whatever sys.stderr is when the line is written.
+
+    A stream sink binds the object sys.stderr was at configure time. Under a test
+    runner that is the first session's capture file, closed when that session
+    ends, so every later session in the process (mutmut runs one per mutant) had
+    each line fail with "I/O operation on closed file" and a dump of the record.
+    """
+    sys.stderr.write(message)
+    sys.stderr.flush()
 
 
 def _json_stdout_sink(message: Message) -> None:
@@ -659,7 +721,7 @@ def configure_loguru() -> Logger:
     else:
         # Development: colourised human-readable format → stderr
         logger.add(
-            sys.stderr,
+            _stderr_sink,
             format=LOG_CONFIG["format"]["console"],
             level=LOG_CONFIG["level"],
             colorize=LOG_CONFIG["colorize"],
@@ -693,6 +755,9 @@ def configure_loguru() -> Logger:
 
     for logger_name in _OWNED_LOG_NAMESPACES:
         _route_through_root(logger_name, LOG_CONFIG["level"])
+
+    # Langfuse's OTLP endpoint is a home server that is down on purpose; its export failures are noise.
+    logging.getLogger(_OTLP_TRACE_EXPORTER_LOGGER).setLevel(logging.CRITICAL + 1)
 
     # uvicorn decides whether an access log exists at all, and re-checks that
     # decision per connection with `uvicorn.access`.hasHandlers(): --no-access-log

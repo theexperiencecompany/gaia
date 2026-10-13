@@ -15,7 +15,7 @@ class AgentTier(StrEnum):
     COMMS = "comms"
     #: Worker tier with the full registry, driven by ``call_executor``.
     EXECUTOR = "executor"
-    #: Per-integration subagent reached through ``handoff``.
+    #: Per-user MCP worker reached through ``handoff``.
     PROVIDER_SUBAGENT = "provider_subagent"
     #: One-shot scratch worker from ``spawn_subagent``. Owns no todo list.
     SPAWN = "spawn"

@@ -14,7 +14,7 @@ import contextlib
 from dataclasses import dataclass
 from http import HTTPStatus
 import json
-from typing import Any
+from typing import Any, TypedDict, cast
 from uuid import uuid4
 
 from redis.asyncio.client import PubSub
@@ -34,7 +34,7 @@ DESKTOP_TOOL_TIMEOUT_SECONDS = 30.0
 _PUBSUB_POLL_SECONDS = 1.0
 
 ERROR_TIMEOUT = (
-    "The desktop app did not respond in time — it may be closed. "
+    "The desktop app did not respond in time. It may be closed. "
     "Ask the user to make sure the GAIA desktop app is open."
 )
 ERROR_REDIS_UNAVAILABLE = "Desktop bridge unavailable (no Redis connection)."
@@ -60,6 +60,29 @@ class DesktopRequestForbiddenError(AppError):
         )
 
 
+class _PendingDesktopRequest(TypedDict, total=False):
+    """The request record request_desktop_action stores until the result arrives."""
+
+    user_id: str
+    stream_id: str
+    tool: str
+
+
+class _PubSubMessage(TypedDict):
+    """A redis-py pub/sub message; data is the published payload when type is "message"."""
+
+    type: str
+    data: str | bytes
+
+
+class _DesktopResultMessage(TypedDict, total=False):
+    """The payload publish_desktop_result publishes."""
+
+    ok: bool
+    data: dict[str, object] | None
+    error: str | None
+
+
 @dataclass
 class DesktopToolOutcome:
     """Result of a desktop-executed action, as reported by the Electron app."""
@@ -74,7 +97,7 @@ async def request_desktop_action(
     stream_id: str,
     user_id: str,
     tool: str,
-    params: dict[str, Any] | None = None,
+    params: dict[str, object] | None = None,
 ) -> DesktopToolOutcome:
     """Execute one action on the user's desktop and await its result.
 
@@ -97,9 +120,10 @@ async def request_desktop_action(
         }
     )
 
+    pending: _PendingDesktopRequest = {"user_id": user_id, "stream_id": stream_id, "tool": tool}
     await redis_cache.set(
         request_key,
-        {"user_id": user_id, "stream_id": stream_id, "tool": tool},
+        pending,
         # Derive the TTL from the tool timeout so the key always outlives the
         # wait (see DESKTOP_REQUEST_TTL_GRACE_SECONDS).
         ttl=int(DESKTOP_TOOL_TIMEOUT_SECONDS) + DESKTOP_REQUEST_TTL_GRACE_SECONDS,
@@ -148,9 +172,12 @@ async def request_desktop_action(
 async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:
     """Block on the result channel until a parseable outcome arrives."""
     while True:
-        message = await pubsub.get_message(
-            ignore_subscribe_messages=True,
-            timeout=_PUBSUB_POLL_SECONDS,
+        message: _PubSubMessage | None = cast(
+            "_PubSubMessage | None",
+            await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=_PUBSUB_POLL_SECONDS,
+            ),
         )
         if message is None or message["type"] != "message":
             continue
@@ -159,7 +186,7 @@ async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
         try:
-            payload = json.loads(raw)
+            payload: _DesktopResultMessage = cast(_DesktopResultMessage, json.loads(raw))
         except json.JSONDecodeError:
             log.warning(f"{LogTag.DESKTOP} Desktop bridge: discarding malformed result payload")
             continue
@@ -175,7 +202,7 @@ async def publish_desktop_result(
     request_id: str,
     *,
     ok: bool,
-    data: dict[str, Any] | None,
+    data: dict[str, object] | None,
     error: str | None,
 ) -> None:
     """Relay a result POSTed by the desktop app to the awaiting tool."""
@@ -193,7 +220,7 @@ async def relay_desktop_result(
     request_id: str,
     user_id: str,
     ok: bool,
-    data: dict[str, Any] | None,
+    data: dict[str, object] | None,
     error: str | None,
 ) -> None:
     """Validate ownership of a pending desktop request and relay its result.
@@ -204,7 +231,9 @@ async def relay_desktop_result(
     POSTing user does not own it.
     """
     request_key = f"{DESKTOP_REQUEST_PREFIX}{request_id}"
-    pending = await redis_cache.get(request_key)
+    pending: _PendingDesktopRequest | None = cast(
+        "_PendingDesktopRequest | None", await redis_cache.get(request_key)
+    )
     if not pending:
         raise DesktopRequestNotFoundError()
     if pending.get("user_id") != user_id:

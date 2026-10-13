@@ -13,6 +13,7 @@ import { useChatStore } from "@/stores/chat-store";
 import type { Message } from "../api/chat-api";
 import { chatKeys } from "../api/queries";
 import type { Conversation } from "../types";
+import { useApprovalDecisionWebSocket } from "./use-approval-decision-websocket";
 
 interface ChatContextValue {
   activeChatId: string | null;
@@ -30,6 +31,10 @@ interface ChatProviderProps {
 export function ChatProvider({ children }: ChatProviderProps) {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const queryClient = useQueryClient();
+
+  // Settle open approval cards decided elsewhere (another device,
+  // notification action, agent-side revoke) with no reload.
+  useApprovalDecisionWebSocket();
 
   useEffect(() => {
     // Seed the conversations React Query cache from AsyncStorage so the

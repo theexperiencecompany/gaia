@@ -233,6 +233,26 @@ class TestBotStreamPayloadFrame:
         assert payload == {"text": "hello there"}
         assert stop is False
 
+    async def test_emoji_ack_is_forwarded_so_bots_take_back_the_directive(self):
+        # Regression: the parse-at-boundary refactor moved translation onto
+        # BotWebStreamPayload, which had no emoji_ack field, so the ack was dropped
+        # (extra="ignore") and bots showed the raw REACT: <emoji> text.
+        data = {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), "user-1"
+        )
+        payload = json.loads(frame[len("data: ") : -2])
+        assert payload == {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+        assert stop is False
+
+    async def test_an_explicit_null_emoji_ack_still_delivers_the_response_text(self):
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"emoji_ack": None, "response": "hi"}), "user-1"
+        )
+        payload = json.loads(frame[len("data: ") : -2])
+        assert payload == {"text": "hi"}
+        assert stop is False
+
     async def test_error_field_is_translated_and_stops_the_stream(self):
         frame, stop = await _bot_stream_payload_frame(
             BotWebStreamPayload.model_validate({"error": "boom"}), "user-1"
@@ -268,6 +288,23 @@ class TestBuildBotMessageRequest:
         assert [m["content"] for m in result.messages] == ["old turn", "new turn"]
         assert result.fileIds == []
         assert result.fileData == []
+
+    async def test_the_platform_message_id_reaches_the_persisted_request(self):
+        """Dropped here, the saved user message has no platform id and every background reaction falls back to emoji text."""
+        body = BotChatRequest(
+            message="hi",
+            platform="whatsapp",
+            platform_user_id="u1",
+            platform_message_id="wamid.ABC123",
+        )
+        with patch(
+            "app.services.bot_service.BotService.load_conversation_history",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await build_bot_message_request(body, "conv-1", "user-1")
+
+        assert result.platform_message_id == "wamid.ABC123"
 
     async def test_defaults_file_ids_and_file_data_to_empty_lists_when_none(self):
         body = BotChatRequest(

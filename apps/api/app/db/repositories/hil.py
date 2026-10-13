@@ -82,12 +82,12 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def list_parked_subagents_for_conversation(
         self, conversation_id: str
     ) -> list[HILApprovalRecord]:
-        """Return parked detached-subagent records not yet collected by wait_for_subagents, oldest first."""
+        """List a background subagent's approvals no decision has resumed yet, oldest first."""
         return await self._find(
             {
                 "conversation_id": conversation_id,
-                "subagent_thread_id": {"$ne": None},
-                "subagent_collected_at": None,
+                "subagent_resume": {"$ne": None},
+                "resumed_at": None,
             },
             sort=[("created_at", 1)],
         )
@@ -107,7 +107,8 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
             {
                 "status": {"$in": statuses},
                 "resumed_at": None,
-                "resume_item": {"$ne": None},
+                # An executor pause or a parked background subagent: each resumes.
+                "$or": [{"resume_item": {"$ne": None}}, {"subagent_resume": {"$ne": None}}],
                 "decided_at": {"$lt": cutoff},
             }
         )

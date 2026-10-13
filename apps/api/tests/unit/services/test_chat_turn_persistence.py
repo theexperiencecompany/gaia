@@ -22,12 +22,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants import chat as chat_constants
-from app.models.chat_models import MessageModel
+from app.models.chat_models import MessageKind, MessageModel
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
+from tests.conftest import FAKE_USER
 
 # Read lazily so this module still collects on a base revision that predates the
 # fix (regression-proof runs it there and expects a failing assertion, not an error).
@@ -57,8 +59,6 @@ async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[li
         chunk,
         ChunkAccumulators(
             tool_entries=state.tool_entries,
-            subagent_starts=state.subagent_starts,
-            subagent_ends=state.subagent_ends,
             tool_outputs=state.tool_outputs,
             todo_progress=state.todo_progress_accumulated,
             follow_up_actions=state.follow_up_actions,
@@ -78,7 +78,9 @@ def _body(message: str = "what's on my calendar?") -> MessageRequestWithHistory:
     )
 
 
-async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
+async def persist(
+    state: _StreamState, user: AuthenticatedUser | dict[str, str] = USER
+) -> tuple[MessageModel, list[str]]:
     """Run the real persist path; return the saved bot message and what it published."""
     published: list[str] = []
     sm = AsyncMock()
@@ -93,7 +95,7 @@ async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
         patch.object(chat_stream, "stream_manager", sm),
         patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
     ):
-        await _persist_turn("s1", _body(), USER, CONV, state)
+        await _persist_turn("s1", _body(), user, CONV, state)
 
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
@@ -142,6 +144,41 @@ class TestFollowUpActions:
         bot, _ = await persist(state)
 
         assert bot.follow_up_actions is None
+
+
+class TestPlatformMessageId:
+    """A bot turn's platform-native message id must survive the save, or a later background reaction has nothing to anchor to."""
+
+    async def _persist_user(self, body: MessageRequestWithHistory) -> MessageModel:
+        state = _StreamState()
+        state.complete_message = "On it."
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch(
+                "app.services.chat.persistence.update_messages", new_callable=AsyncMock
+            ) as update,
+        ):
+            await _persist_turn("s1", body, USER, CONV, state)
+        request = update.await_args.args[0]
+        return next(m for m in request.messages if m.type == "user")
+
+    async def test_bot_turn_stamps_the_platform_message_id(self) -> None:
+        body = MessageRequestWithHistory(
+            message="hi",
+            conversation_id=CONV,
+            messages=[{"role": "user", "content": "hi"}],
+            platform_message_id="wamid.123",
+        )
+        user = await self._persist_user(body)
+        assert user.platform_message_id == "wamid.123"
+
+    async def test_turn_without_one_saves_none(self) -> None:
+        user = await self._persist_user(_body())
+        assert user.platform_message_id is None
 
 
 class TestPersistedTurnMatchesTheLiveStream:
@@ -355,3 +392,29 @@ class TestTheSubstitutionIsRecordedExactly:
             "empty_completion_reason": "model_produced_no_output",
             "output_tokens": 0,
         }
+
+
+class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
+    """A one-emoji react is captured after the save, so its payload must be a real emoji before the turn resolves to one."""
+
+    async def test_a_word_in_the_emoji_tag_saves_a_text_turn(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>ok</EMOJI>"
+
+        bot, _ = await persist(state, FAKE_USER)
+
+        assert (bot.kind, bot.response, bot.reacts_to_message_id) == (
+            MessageKind.TEXT,
+            "<EMOJI>ok</EMOJI>",
+            None,
+        )
+        assert state.saved
+
+    async def test_a_real_emoji_still_saves_an_emoji_ack(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>👍</EMOJI>"
+
+        bot, _ = await persist(state, FAKE_USER)
+
+        assert (bot.kind, bot.response) == (MessageKind.EMOJI_ACK, "👍")
+        assert state.saved

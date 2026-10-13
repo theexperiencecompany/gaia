@@ -24,10 +24,6 @@ FINISH_TASK_NAME = "finish_task"
 # generated in the executor path rather than the current turn.
 CALL_EXECUTOR_NAME = "call_executor"
 
-# Executor-only join tool: collects background subagents and doubles as the HIL
-# approval barrier. The graph builder, the join middleware and the HIL exempt
-# set all key off it — keep them in sync via this single constant.
-WAIT_FOR_SUBAGENTS_NAME = "wait_for_subagents"
 
 # Agent name of a spawned subagent's graph. Lives here because the graph builder
 # and the middleware that drives it must not import each other (the builder pulls
@@ -43,6 +39,9 @@ SPAWN_THREAD_PREFIX = "spawn_"
 # Shared because prepare_executor_execution mints these and the workflow thread
 # reset selects on them — a drift would replay a workflow's whole history.
 EXECUTOR_THREAD_PREFIX = "executor_"
+# SubagentExecutionContext.integration_id of an executor run — the one run the
+# executor tier drives with the worker driver without being a delegated worker.
+EXECUTOR_INTEGRATION_ID = "executor"
 
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9

@@ -20,7 +20,6 @@ from app.services.onboarding.first_message import (
     _ARTICLES,
     PROFESSION_PHRASES,
 )
-from app.services.outbound_delivery import PLATFORM_DISPLAY_NAMES
 
 INTEGRATIONS_PATH = "/integrations"
 GMAIL_INTEGRATION_ID = "gmail"
@@ -104,7 +103,7 @@ def platform_label(connected_platform: str) -> str:
     source = ConversationSource.coerce(connected_platform)
     if source is None:
         return connected_platform.capitalize()
-    return PLATFORM_DISPLAY_NAMES.get(source) or source.value.capitalize()
+    return source.display_name
 
 
 def _handover_line(connected_platform: str | None) -> str:

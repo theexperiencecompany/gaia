@@ -23,11 +23,13 @@ from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
+from app.services import cost_budget
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
     DAILY_BUDGET_STOP_PRO,
     REQUEST_CEILING_STOP_FREE,
     REQUEST_CEILING_STOP_PRO,
+    BudgetCheck,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
@@ -77,6 +79,16 @@ class TestDailyWall:
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
+
+    async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        await _spend(get_daily_cost_budget_usd(PlanType.FREE))
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check == BudgetCheck(None, None, None)
 
     async def test_lets_a_run_through_one_cent_short_of_the_budget(self) -> None:
         await _spend(get_daily_cost_budget_usd(PlanType.FREE) - 0.01)

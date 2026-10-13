@@ -7,6 +7,7 @@ is mocked; the fusion, filtering, scoring and assembly logic under test is real.
 import asyncio
 from datetime import UTC, date as date_type, datetime, timedelta
 from fnmatch import fnmatch
+import json
 import math
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -57,7 +58,9 @@ from app.memory.retrieval import (
     recall_transcripts,
 )
 from app.models.memory_db_models import MemoryRecord
-from tests.helpers import captured_wide_event
+from app.utils.log_identifiers import user_text_shape
+from shared.py.wide_events import wide_task
+from tests.helpers import WideEventRecorder, captured_wide_event
 
 USER = "507f1f77bcf86cd799439011"
 
@@ -1070,13 +1073,83 @@ class _RecallHarness:
         )
 
 
-async def _run_recall(harness: _RecallHarness, patches, **kwargs):
+async def _run_recall(harness: _RecallHarness, patches, *, query: str = "the query", **kwargs):
     from contextlib import ExitStack
 
     with ExitStack() as stack:
         for patcher in patches:
             stack.enter_context(patcher)
-        return await recall.__wrapped__(USER, "the query", **kwargs)
+        return await recall.__wrapped__(USER, query, **kwargs)
+
+
+class TestRecallCaching:
+    """recall is cached per query, but only when the full pipeline produced the result."""
+
+    @staticmethod
+    async def _recall_twice(harness: _RecallHarness, patches) -> list:
+        from contextlib import ExitStack
+
+        results = []
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
+            for _ in range(2):
+                results.append(await recall(USER, "the query", include_graph_expansion=False))
+        return results
+
+    async def test_full_result_is_cached_and_served_to_the_next_call(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert len(harness.rerank_inputs) == 1  # second call was a cache hit
+
+    @pytest.mark.regression
+    async def test_timed_out_embed_is_not_cached_and_the_next_call_recomputes(
+        self, fake_redis
+    ) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        embed = AsyncMock(side_effect=[httpx.ReadTimeout("slow"), [0.1] * 8])
+        patches = (patch.object(retrieval, "embed_query", new=embed), *patches[1:])
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert first.memories == []
+        assert second.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert embed.await_count == 2
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["embed_query_skipped"],
+            "result_count": 0,
+        } in event["warnings"]
+
+    async def test_skipped_rerank_is_not_cached(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        rerank = AsyncMock(side_effect=TimeoutError)
+        patches = (*patches[:-1], patch.object(retrieval, "rerank", new=rerank))
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert second.degraded is True
+        assert rerank.await_count == 2
+        assert await fake_redis.keys("user:*:memories:*") == []
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["rerank_skipped"],
+            "result_count": 1,
+        } in event["warnings"]
 
 
 class TestRecall:
@@ -1095,6 +1168,21 @@ class TestRecall:
         )
         assert [memory.content for memory in result.memories] == ["the answer"]
         assert result.total_count == 1
+
+    @pytest.mark.parametrize(("logit", "confident"), [(5.0, True), (-9.0, False)])
+    async def test_it_reports_whether_anything_matched_confidently(
+        self, logit: float, confident: bool
+    ) -> None:
+        row = make_row("a fact")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"a fact": logit}
+        result = await _run_recall(
+            harness,
+            harness.patches(ann=[(str(row.id), 0.1)], fts=[], rows=[row]),
+            include_graph_expansion=False,
+        )
+        assert result.memories
+        assert result.has_confident_match is confident
 
     async def test_empty_index_returns_an_empty_result(self) -> None:
         harness = _RecallHarness()
@@ -1258,6 +1346,26 @@ class TestRecall:
         )
         result = await _run_recall(harness, patches, include_graph_expansion=False)
         assert [memory.content for memory in result.memories] == [row.content]
+
+
+class TestRecallLogsNoUserText:
+    async def test_the_chat_turn_event_records_the_query_shape_and_never_its_words(self) -> None:
+        """Recall runs inside the chat turn's boundary, so its query is the user's own message."""
+        query = "my therapist said the divorce papers arrive friday"
+        row = make_row("a fact")
+        harness = _RecallHarness()
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            async with wide_task("chat_stream"):
+                await _run_recall(
+                    harness,
+                    harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row]),
+                    query=query,
+                    include_graph_expansion=False,
+                )
+
+        assert "divorce" not in json.dumps(recorder.events, default=str)
+        assert recorder.event("chat_stream")["memory"]["query"] == user_text_shape(query)
 
 
 class TestRecallQualityRegressions:
@@ -1668,7 +1776,7 @@ class TestInteractiveRecallEmbeds:
     @pytest.mark.regression
     async def test_ann_search_falls_back_to_no_hits_when_the_embed_sidecar_fails(self) -> None:
         # A slow/overloaded embedding sidecar must degrade recall to the FTS leg,
-        # not fail the user's turn: _ann_search returns no hits and never touches
+        # not fail the user's turn: _ann_search reports the skip (None) and never touches
         # Chroma. Before the fix the raw HTTP error propagated out of recall.
         query_similar = AsyncMock()
         with (
@@ -1678,7 +1786,7 @@ class TestInteractiveRecallEmbeds:
             patch.object(retrieval.chroma_store, "query_similar", new=query_similar),
         ):
             hits = await retrieval._ann_search(USER, "the query", {})
-        assert hits == []
+        assert hits is None
         query_similar.assert_not_awaited()
 
     async def test_recall_transcripts_returns_empty_when_the_embed_sidecar_fails(self) -> None:

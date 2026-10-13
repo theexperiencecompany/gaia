@@ -15,10 +15,12 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
     reporters: ["verbose"],
-    // Component modules transitively import the api client, which validates
-    // this at module load. The contract tests make no real requests.
+    // NEXT_PUBLIC_API_BASE_URL: the api client validates it at module load.
+    // NODE_ENV is pinned because nx's run-commands executor injects production,
+    // which flips app code that skips animation/pacing under test.
     env: {
       NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000",
+      NODE_ENV: "test",
     },
     server: {
       deps: {
@@ -38,6 +40,7 @@ export default defineConfig({
         __dirname,
         "node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
       ),
+      "@shared-assets": path.resolve(__dirname, "../../libs/shared/assets"),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
     },
     // Support extensionless imports inside ESM packages

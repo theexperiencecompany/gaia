@@ -1,21 +1,31 @@
+import type { EventProperties } from "@gaia/shared/analytics/events";
+import { ApiError } from "@shared/api";
+import { reconcileIntegrationStatus } from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationQueries } from "../api/queries";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationConnectOptions,
   IntegrationStatus,
 } from "../types";
-import {
-  byConnectionStateThenName,
-  findIntegrationStatus,
-  toIntegration,
-} from "../utils/catalog";
+import { byConnectionStateThenName, toIntegration } from "../utils/catalog";
+
+/** The failure's status and machine code for integration:error; never its message, which can echo user input. */
+function integrationFailure(
+  integration: string,
+  error: unknown,
+): EventProperties["integration:error"] {
+  if (!(error instanceof ApiError)) return { integration };
+  return { integration, status: error.status, error_code: error.code };
+}
 
 export interface UseIntegrationsReturn {
   // Data
@@ -33,7 +43,7 @@ export interface UseIntegrationsReturn {
   // Actions
   connectIntegration: (
     integrationId: string,
-    bearerToken?: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
@@ -49,12 +59,12 @@ export interface UseIntegrationsReturn {
 
 /**
  * Single hook for managing all integrations (platform + custom).
- * Backed by GET /integrations/me — the full catalog personalized for the user,
- * each entry carrying its connection status.
+ * Loads the catalog immediately and overlays connection statuses from a
+ * separate refresh request so provider checks never block the initial list.
  */
 export const useIntegrations = (): UseIntegrationsReturn => {
   const queryClient = useQueryClient();
-  // /integrations/me is personalized and requires auth, so gate it on
+  // Both endpoints are personalized and require auth, so gate them on
   // isAuthenticated — public pages (marketplace, use-cases) must not fire 401s
   // for anonymous visitors.
   const { isAuthenticated } = useAuth();
@@ -65,9 +75,13 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isPending,
     error,
   } = useQuery({
-    queryKey: integrationKeys.me,
-    queryFn: integrationsApi.getMyIntegrations,
+    ...integrationQueries.snapshot(),
     staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
+    enabled: isAuthenticated,
+  });
+  const { data: integrationStatuses } = useQuery({
+    ...integrationQueries.statuses(),
+    staleTime: 30_000,
     enabled: isAuthenticated,
   });
 
@@ -75,8 +89,21 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // sorted by state (expired → created → connected → not_connected) then name.
   const integrations = useMemo((): Integration[] => {
     const items = myIntegrationsData?.integrations ?? [];
-    return items.map(toIntegration).toSorted(byConnectionStateThenName);
-  }, [myIntegrationsData]);
+    const statuses = integrationStatuses?.statuses;
+    return items
+      .map((item) =>
+        toIntegration({
+          ...item,
+          status: reconcileIntegrationStatus(
+            item.status,
+            statuses?.[item.id],
+            item.managedBy,
+            item.requiresAuth,
+          ),
+        }),
+      )
+      .toSorted(byConnectionStateThenName);
+  }, [myIntegrationsData, integrationStatuses]);
 
   // Read the latest integrations inside callbacks without making the callbacks
   // depend on the array — otherwise every refetch changes their identity and
@@ -86,21 +113,29 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     integrationsRef.current = integrations;
   });
 
-  // Get status for a specific integration, derived from the /me catalog.
+  // Get the merged snapshot + live status for a specific integration.
   const getIntegrationStatus = useCallback(
-    (integrationId: string): IntegrationStatus | undefined =>
-      findIntegrationStatus(
-        myIntegrationsData?.integrations ?? [],
-        integrationId,
-      ),
-    [myIntegrationsData],
+    (integrationId: string): IntegrationStatus | undefined => {
+      const integration = integrationsRef.current.find(
+        (item) => item.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      if (!integration) return undefined;
+      const status =
+        integration.status === "error" ? "created" : integration.status;
+      return {
+        integrationId: integration.id,
+        connected: status === "connected",
+        status,
+      };
+    },
+    [],
   );
 
   // Connect integration
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-      bearerToken?: string,
+      options?: IntegrationConnectOptions,
     ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
@@ -112,7 +147,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         const result = await integrationsApi.connectIntegration(
           integrationId,
-          bearerToken,
+          options,
         );
 
         if (result.status === "connected") {
@@ -135,10 +170,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
           { id: toastId },
         );
-        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
-          integration: integrationId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },
@@ -159,10 +191,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
-        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
-          integration: integrationId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },

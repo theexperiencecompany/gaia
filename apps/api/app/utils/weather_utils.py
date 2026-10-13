@@ -116,8 +116,10 @@ async def get_location_data(
         # Create a cache key for the IP address
         cache_key = f"weather:ip:{ip_address}"
 
-        # Use IP-based geolocation
-        geo_response = await http_async_client.get(f"http://ip-api.com/json/{ip_address}")
+        # ip-api.com's free tier serves no HTTPS endpoint (TLS is a paid-plan feature)
+        geo_response = await http_async_client.get(
+            f"http://ip-api.com/json/{ip_address}"  # NOSONAR python:S5332
+        )
         geo_response.raise_for_status()
         geolocation = IpApiGeolocation.model_validate(geo_response.json())
 

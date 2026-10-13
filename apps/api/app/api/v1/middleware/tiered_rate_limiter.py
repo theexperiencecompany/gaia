@@ -173,7 +173,7 @@ class TieredRateLimiter:
                 continue
 
             redis_key = self._get_redis_key(user_id, feature_key, period)
-            current_usage = await self.redis.get(redis_key)
+            current_usage = await self.redis.get(redis_key, int)
             used = int(current_usage) if current_usage else 0
             reset_time = get_reset_time(period)
 
@@ -236,7 +236,7 @@ class TieredRateLimiter:
                         await pipe.watch(redis_key)
 
                         # Get current value
-                        current_val = await self.redis.get(redis_key)
+                        current_val = await self.redis.get(redis_key, int)
                         current_val = int(current_val) if current_val else 0
 
                         # Double-check limit hasn't been exceeded by concurrent requests

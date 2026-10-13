@@ -1,11 +1,14 @@
 """Database indexes for all MongoDB collections, following ESR compound-index ordering."""
 
 import asyncio
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, NotRequired, TypedDict, TypeVar, Unpack, cast
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
@@ -16,6 +19,44 @@ from shared.py.wide_events import log
 # every `create_index` call in this module actually passes: a single field
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
+
+# The index helpers never read a document, so they take a collection of any document type.
+DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
+
+
+class IndexOptions(TypedDict, total=False):
+    """The create_index options this module passes."""
+
+    name: str
+    unique: bool
+    sparse: bool
+    partialFilterExpression: Mapping[str, object]
+
+
+class _DuplicateShapeGroup(TypedDict):
+    """One $group row of _dedupe_tool_output_shapes: the _ids sharing a (scope, tool_name)."""
+
+    ids: list[ObjectId]
+
+
+class _McpConfigProjection(TypedDict, total=False):
+    server_url: str | None
+
+
+class _ServerUrlBackfillDoc(TypedDict):
+    """The projection _backfill_custom_server_url_keys reads."""
+
+    integration_id: str
+    created_by: NotRequired[str | None]
+    mcp_config: NotRequired[_McpConfigProjection | None]
+
+
+class _SlugBackfillDoc(TypedDict):
+    """The projection _backfill_integration_slugs reads."""
+
+    integration_id: str
+    name: NotRequired[str]
+    category: NotRequired[str]
 
 
 async def create_all_indexes() -> None:
@@ -50,9 +91,13 @@ async def create_all_indexes() -> None:
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
+            create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
+            create_browser_profiles_indexes(),
+            create_browser_tasks_indexes(),
             create_llm_call_indexes(),
             create_playbook_indexes(),
+            create_tool_output_shapes_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -83,9 +128,13 @@ async def create_all_indexes() -> None:
             "bot_sessions",
             "e2b_sandboxes",
             "hil_approvals",
+            "approval_ledger",
             "pending_platform_registrations",
+            "browser_profiles",
+            "browser_tasks",
             "llm_calls",
             "playbooks",
+            "tool_output_shapes",
         ]
 
         index_results = {}
@@ -191,6 +240,21 @@ async def create_conversation_indexes() -> None:
         raise
 
 
+# One open todo per user per outside object (a Gmail thread): the atomic backstop that
+# makes a racing second create fail. Completing a todo drops it out of the filter, so the
+# object can be tracked again. Shared with the contract suite, which builds this exact spec.
+TODO_OPEN_EXTERNAL_REF_KEYS: IndexKeys = [
+    ("user_id", 1),
+    ("external_ref.source", 1),
+    ("external_ref.id", 1),
+]
+TODO_OPEN_EXTERNAL_REF_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "user_open_external_ref_unique",
+    "partialFilterExpression": {"external_ref.id": {"$type": "string"}, "completed": False},
+}
+
+
 async def create_todo_indexes() -> None:
     """Create indexes for todos collection."""
     todos_collection = get_async_collection("todos")
@@ -259,6 +323,15 @@ async def create_todo_indexes() -> None:
                 [("user_id", 1), ("trigger_subscriptions.trigger_name", 1)],
                 name="user_subscription_trigger_name",
                 sparse=True,
+            ),
+            todos_collection.create_index(
+                TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+            ),
+            # A parent's sub-todos: listing, open counts, and completion/deletion cascades.
+            todos_collection.create_index(
+                [("user_id", 1), ("parent_todo_id", 1), ("completed", 1)],
+                name="user_parent_todo",
+                partialFilterExpression={"parent_todo_id": {"$type": "string"}},
             ),
         )
 
@@ -690,6 +763,87 @@ async def create_playbook_indexes() -> None:
         raise
 
 
+async def _dedupe_tool_output_shapes(
+    collection: AsyncIOMotorCollection[DocumentT],
+) -> None:
+    """Collapse pre-existing (scope, tool_name) duplicates before the unique index build.
+
+    A DB that raced under the pre-index code can hold duplicates, which would
+    make the unique index build fail (swallowed) and leave record()'s retry
+    without its guarantee. Observed shapes are regenerable, so keep the
+    most-observed record per key ($push preserves the $sort) and drop the rest.
+    """
+    pipeline: list[dict[str, Any]] = [
+        {"$sort": {"call_count": -1}},
+        {
+            "$group": {
+                "_id": {"scope": "$scope", "tool_name": "$tool_name"},
+                "ids": {"$push": "$_id"},
+            }
+        },
+        {"$match": {"ids.1": {"$exists": True}}},
+    ]
+    async for row in collection.aggregate(pipeline):
+        group: _DuplicateShapeGroup = cast(_DuplicateShapeGroup, row)
+        losers = group["ids"][1:]
+        await collection.delete_many({"_id": {"$in": losers}})
+
+
+async def create_tool_output_shapes_indexes() -> None:
+    """Create indexes for the tool_output_shapes collection.
+
+    Unique on (scope, tool_name): the observed-shape upsert is keyed on this
+    pair, so the index makes "one record per scoped tool" a property of the
+    data, not of timing — it rejects a concurrent insert's loser with
+    DuplicateKeyError, which record() retries into the winner.
+    """
+    tool_output_shapes_collection = get_async_collection("tool_output_shapes")
+    try:
+        await _dedupe_tool_output_shapes(tool_output_shapes_collection)
+        await tool_output_shapes_collection.create_index(
+            [("scope", 1), ("tool_name", 1)], unique=True
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating tool_output_shapes indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_approval_ledger_indexes() -> None:
+    """Create indexes for the approval_ledger collection.
+
+    Unique on approval_id (the CAS filter keys on it). Partial unique on
+    (conversation_id, fingerprint) over live states IS the dedup atomicity —
+    the loser of a concurrent propose reads the winner's id. (conversation_id,
+    state) serves OPEN PENDINGS; (state, executing_started_at) the reconciler.
+    """
+    approval_ledger_collection = get_async_collection("approval_ledger")
+    try:
+        await asyncio.gather(
+            approval_ledger_collection.create_index("approval_id", unique=True),
+            approval_ledger_collection.create_index(
+                [("conversation_id", 1), ("fingerprint", 1)],
+                unique=True,
+                partialFilterExpression={
+                    "state": {"$in": ["pending", "approved"]},
+                },
+                name="conv_fingerprint_live_unique",
+            ),
+            approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
+            approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating approval_ledger indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
 async def create_usage_indexes() -> None:
     """Create usage_snapshots/usage_daily indexes, including a TTL index for 90-day cleanup."""
     usage_daily_collection = get_async_collection("usage_daily")
@@ -740,7 +894,7 @@ CUSTOM_SERVER_URL_DEDUP_KEYS: IndexKeys = [
     ("created_by", 1),
     ("mcp_config.server_url_normalized", 1),
 ]
-CUSTOM_SERVER_URL_DEDUP_OPTIONS: dict[str, object] = {
+CUSTOM_SERVER_URL_DEDUP_OPTIONS: IndexOptions = {
     "unique": True,
     "name": "custom_url_dedup_unique",
     # $type: string (not $exists) so explicit nulls stay out of the index too —
@@ -753,9 +907,9 @@ CUSTOM_SERVER_URL_DEDUP_OPTIONS: dict[str, object] = {
 
 
 async def _create_index_safe(
-    collection: AsyncIOMotorCollection[dict[str, Any]],
+    collection: AsyncIOMotorCollection[DocumentT],
     keys: IndexKeys,
-    **kwargs: Any,  # noqa: ANN401 -- contract
+    **kwargs: Unpack[IndexOptions],
 ) -> None:
     """
     Create an index safely, handling IndexOptionsConflict gracefully.
@@ -881,12 +1035,15 @@ async def _backfill_custom_server_url_keys() -> None:
                 .sort("created_at", 1)
                 .limit(500)
             )
-            docs = await cursor.to_list(length=500)
+            docs: list[_ServerUrlBackfillDoc] = cast(
+                list[_ServerUrlBackfillDoc], await cursor.to_list(length=500)
+            )
             if not docs:
                 break
 
             for doc in docs:
-                raw = (doc.get("mcp_config") or {}).get("server_url") or ""
+                mcp_config: _McpConfigProjection = doc.get("mcp_config") or {}
+                raw = mcp_config.get("server_url") or ""
                 key = dedup_server_url_key(raw)
                 if not key:
                     continue
@@ -929,7 +1086,9 @@ async def _backfill_integration_slugs() -> None:
                 {"is_public": True, "slug": {"$exists": False}},
                 {"integration_id": 1, "name": 1, "category": 1},
             )
-            docs = await cursor.to_list(length=500)
+            docs: list[_SlugBackfillDoc] = cast(
+                list[_SlugBackfillDoc], await cursor.to_list(length=500)
+            )
             if not docs:
                 break
 
@@ -1187,6 +1346,48 @@ async def create_e2b_sandbox_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_profiles_indexes() -> None:
+    """Create indexes for the browser_profiles collection.
+
+    One saved login per (user_id, domain): the unique index makes the upsert in
+    BrowserProfilesRepository.upsert_storage_state_blob a get-or-create, and
+    serves the per-task lookup before a session is created.
+    """
+    browser_profiles_collection = get_async_collection("browser_profiles")
+    try:
+        await browser_profiles_collection.create_index([("user_id", 1), ("domain", 1)], unique=True)
+        # Auto-expire session data not used for BROWSER_PROFILE_TTL_DAYS. The clock
+        # is `updated_at`, refreshed on every use, so active sites never expire.
+        await browser_profiles_collection.create_index(
+            [("updated_at", 1)], expireAfterSeconds=BROWSER_PROFILE_TTL_SECONDS
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_profiles indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_tasks_indexes() -> None:
+    """Create indexes for the browser_tasks collection.
+
+    The settings history lists a user's tasks newest-first, so index on
+    (user_id, created_at desc) to serve that query without a scan.
+    """
+    browser_tasks_collection = get_async_collection("browser_tasks")
+    try:
+        await browser_tasks_collection.create_index([("user_id", 1), ("created_at", -1)])
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_tasks indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

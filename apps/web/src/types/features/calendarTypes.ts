@@ -141,6 +141,8 @@ export type CalendarEvent = TimedEvent | SingleTimeEvent;
 export type EventCreatePayload = EventCreateRequest;
 
 // Calendar types for conversation messages
+// Read-only: the create-event flow now runs through HIL approvals, but ~8 months
+// of stored conversations still restore this key, so old cards must still render.
 export type CalendarOptions = {
   summary: string;
   description?: string;

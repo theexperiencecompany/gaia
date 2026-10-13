@@ -15,12 +15,20 @@ class ApprovalDecisionRequest(BaseModel):
     feedback: str | None = Field(None, max_length=2000)
     # once: this call only. always_tool: also set a "never ask" override for the tool.
     scope: Literal["once", "always_tool"] = "once"
+    # Row version the client rendered. Ledger path only: a stale v refreshes
+    # instead of overwriting. Omitted (None) skips the check.
+    v: int | None = None
 
 
 class ApprovalDecisionResponse(BaseModel):
     """Result of relaying an approval decision to the awaiting gate."""
 
     success: bool
+    # Ledger path only: why success is False ("stale" — refresh the row from
+    # status instead of retrying) and the row's current state. Old path leaves
+    # both unset; a committed ledger tap sets status to the decided state.
+    reason: str | None = None
+    status: str | None = None
 
 
 class BatchDecisionItem(BaseModel):
@@ -29,6 +37,8 @@ class BatchDecisionItem(BaseModel):
     approval_id: str
     decision: Literal["approve", "deny"]
     feedback: str | None = Field(None, max_length=2000)
+    # Row version the client rendered; see ApprovalDecisionRequest.v.
+    v: int | None = None
 
 
 class BatchApprovalDecisionRequest(BaseModel):
@@ -45,6 +55,9 @@ class BatchDecisionOutcome(BaseModel):
     # Set when resolved is False: "not_found" (already decided/expired),
     # "forbidden", or "not_resumable".
     reason: str | None = None
+    # Current ledger state when a ledger item did not commit (stale client
+    # refreshes the row instead of retrying blind). Old path leaves it unset.
+    status: str | None = None
 
 
 class BatchApprovalDecisionResponse(BaseModel):
@@ -62,6 +75,7 @@ class UpdateHILPreferencesRequest(BaseModel):
 
     mode: HILMode | None = None
     tool_overrides: dict[str, bool] | None = None
+    never_auto_tools: list[str] | None = None
 
 
 class SetToolOverrideRequest(BaseModel):

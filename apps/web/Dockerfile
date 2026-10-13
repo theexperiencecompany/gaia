@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+# Browser-facing API URL baked into the bundle. build.yml overrides it for the
+# self-host package; the runner stage records the value so docker-entrypoint.sh
+# can swap it for NEXT_PUBLIC_APP_URL whichever value was baked.
+ARG NEXT_PUBLIC_API_BASE_URL=https://preview.placeholder.buildtime/api/v1/
+
 FROM node:24-alpine AS base
 # Pinned via corepack, same as apps/bots/Dockerfile. Unpinned `npm install -g
 # pnpm` pulled pnpm 11 against this repo's pnpm@10 lockfile and the install
@@ -48,10 +53,7 @@ RUN --mount=type=cache,id=gaia-pnpm-store,target=/pnpm/store \
 # Copy source (.dockerignore excludes **/node_modules, **/.next, etc.)
 COPY . .
 
-# Build-time API URL baked into the JS bundle. At container startup,
-# docker-entrypoint.sh replaces this placeholder with the real URL
-# derived from NEXT_PUBLIC_APP_URL, so one image works on any port.
-ARG NEXT_PUBLIC_API_BASE_URL=http://preview.placeholder.buildtime/api/v1/
+ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 WORKDIR /app/apps/web
@@ -68,6 +70,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV BAKED_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
@@ -76,8 +80,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static     ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public            ./apps/web/public
 
-COPY --chown=nextjs:nodejs apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+# Root-owned and read-only to nextjs: the process it launches must not be able to rewrite it.
+COPY --chmod=0755 apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
 
 USER nextjs
 

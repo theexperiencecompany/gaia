@@ -42,8 +42,10 @@ class TestPatchTarget:
 
     def test_dispatch_funnels_through_patched_method(self) -> None:
         # invoke_trusted is the real dispatch path; __call__ defers to it.
+        # Unwrap: input-coercion wrappers stack here, and the assertion is
+        # about the dispatch body, not whichever wrapper is outermost.
         assert _PRIVATE_AUTH_METHOD.rsplit("__", maxsplit=1)[-1] in inspect.getsource(
-            CustomTool.invoke_trusted
+            inspect.unwrap(CustomTool.invoke_trusted)
         )
 
 

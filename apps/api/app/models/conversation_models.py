@@ -29,7 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import UserScopedDocument
 from app.models.artifact_models import ArtifactRegistryEntry
-from app.models.chat_models import ConversationSource, MessageModel, SystemPurpose
+from app.models.chat_models import (
+    ConversationSource,
+    MessageModel,
+    SystemPurpose,
+    ToolDataEntry,
+)
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
@@ -46,6 +51,15 @@ def _coerce_source(value: object) -> object:
     if isinstance(value, (ConversationSource, str)):
         return ConversationSource.coerce(value)
     return value
+
+
+class FoldedCards(BaseModel):
+    """Cards a detached run closed before the message they fold into was saved; its save takes them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    since: datetime
+    cards: list[ToolDataEntry] = Field(default_factory=list)
 
 
 class ConversationDocument(UserScopedDocument):
@@ -66,10 +80,15 @@ class ConversationDocument(UserScopedDocument):
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
     starred: bool | None = None
+    # Set while a background run has a live approval parked here; the sidebar
+    # hides background conversations unless this is set (see _active_filter).
+    has_live_approval: bool = False
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
+    # Write-side state only (see FOLDED_CARDS_FIELD): never serialized to a reader.
+    folded_cards: dict[str, FoldedCards] = Field(default_factory=dict, exclude=True)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -102,6 +121,7 @@ class ConversationSummary(ResponseModel):
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     source: ConversationSource | None = None
+    has_live_approval: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -230,6 +250,9 @@ class ConversationSyncRow(ResponseModel):
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     active_stream_id: str | None = None
+    # Whether a background run holds a live approval here — drives the
+    # sidebar dot. Missing on older rows reads as unset (no dot).
+    has_live_approval: bool | None = None
 
 
 class BatchSyncResponse(ResponseModel):

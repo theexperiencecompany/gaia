@@ -965,7 +965,7 @@ class TestToolDiscovery:
         mock_store.assert_not_awaited()
 
     async def test_get_tools_returns_stored_tools(self):
-        """get_integration_tools returns the repository's stored tools as dicts."""
+        """get_integration_tools returns the repository's stored tools."""
         with patch(
             "app.services.mcp.mcp_tools_service.integration_repository.get_tools",
             AsyncMock(return_value=[StoredIntegrationTool(name="tool_a", description="Tool A")]),
@@ -973,7 +973,7 @@ class TestToolDiscovery:
             result = await get_integration_tools("my-int")
 
         assert len(result) == 1
-        assert result[0]["name"] == "tool_a"
+        assert result[0].name == "tool_a"
 
     async def test_get_tools_returns_empty_when_not_found(self):
         """get_integration_tools returns an empty list when nothing is stored."""
@@ -1065,6 +1065,7 @@ class TestErrorHandling:
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
         client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)

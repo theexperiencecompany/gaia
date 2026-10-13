@@ -6,8 +6,6 @@ subagent counter/result contract. These are the rules every terminal handler
 relies on — if any of them drifts, cards get duplicated or lost.
 """
 
-from uuid import uuid4
-
 import pytest
 
 from app.agents.core.background import session as sess
@@ -15,40 +13,31 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
-    claim_bg_integration,
     claim_tool_output,
     create_session,
-    decrement_pending_subagents,
-    executor_abandoned,
-    executor_failed,
-    executor_failure,
     get_or_create_session,
-    get_pending_subagents,
     get_session,
-    has_bg_integration,
-    increment_pending_subagents,
-    mark_executor_failed,
-    mark_executor_queued,
     mark_executor_spawned,
     note_tool_output_owner,
-    queued_without_run,
-    release_bg_integration,
+    run_user_from_configurable,
     signal_executor_done,
     teardown_session,
 )
 from app.models.user_models import AuthenticatedUser
 
 
-def _spawned(stream_id: str) -> bool:
-    session = get_session(stream_id)
-    return session is not None and session.executor_spawned
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    """Sessions are module-global; isolate every test."""
+    sess._sessions.clear()
+    yield
+    sess._sessions.clear()
 
 
 class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)
         assert get_session("s1") is created
-        assert created.kind is RunKind.LIVE
         assert created.executor_spawned is False
 
     def test_create_overwrites_existing_session(self) -> None:
@@ -63,15 +52,10 @@ class TestSessionRegistry:
     def test_teardown_leaves_no_residue(self) -> None:
         create_session("s1", RunKind.QUEUED)
         mark_executor_spawned("s1")
-        increment_pending_subagents("s1")
-        claim_bg_integration("s1", "gmail")
 
         teardown_session("s1")
 
         assert get_session("s1") is None
-        assert _spawned("s1") is False
-        assert get_pending_subagents("s1") == 0
-        assert has_bg_integration("s1", "gmail") is False
 
     def test_teardown_is_idempotent(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -84,24 +68,14 @@ class TestSessionRegistry:
         # unregistered stream must work (and not crash callers like handoff).
         session = get_or_create_session("ghost")
         assert get_session("ghost") is session
-        assert session.kind is RunKind.LIVE
 
 
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert _spawned("s1") is False
+        session = create_session("s1", RunKind.LIVE)
+        assert session.executor_spawned is False
         mark_executor_spawned("s1")
-        assert _spawned("s1") is True
-
-    def test_spawning_resets_the_first_frame_stamp(self) -> None:
-        # A redirect reuses the stream id, so the spawn must clear the previous
-        # incarnation's first-frame stamp or the new run inherits its TTFT start.
-        # Asserted against None by identity: a falsy placeholder would still corrupt it.
-        session = create_session("s1", RunKind.QUEUED)
-        session.executor_first_frame_perf = 123.5
-        mark_executor_spawned("s1")
-        assert session.executor_first_frame_perf is None
+        assert session.executor_spawned is True
 
     def test_signal_executor_done_sets_event(self) -> None:
         session = create_session("s1", RunKind.LIVE)
@@ -111,32 +85,6 @@ class TestExecutorLifecycleFlags:
 
     def test_signal_without_session_is_safe(self) -> None:
         signal_executor_done("missing")  # must not raise
-
-
-class TestQueuedWithoutRun:
-    """queued_without_run is the "nothing happened yet" signal the turn's final message is built from."""
-
-    def test_a_stream_with_no_session_reports_nothing(self) -> None:
-        # A stream nobody registered has no queued dispatch to report, and the
-        # missing session must be answered rather than dereferenced.
-        assert queued_without_run("never-seen") is None
-
-    def test_a_queue_with_no_spawn_reports_the_task(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        assert queued_without_run("s1") == "task-1"
-
-    def test_a_spawned_executor_hides_the_queued_task(self) -> None:
-        # The turn did real work, so the queued dispatch is extra work alongside
-        # it, not the substitute the caller would otherwise narrate.
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        mark_executor_spawned("s1")
-        assert queued_without_run("s1") is None
-
-    def test_a_session_that_never_queued_reports_nothing(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert queued_without_run("s1") is None
 
 
 class TestOwnershipRule:
@@ -160,7 +108,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="s1",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="u1"),
+            user={"user_id": "u1"},
             kind=kind,
             task_id="t1",
             user_message_id=None,
@@ -173,7 +121,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="queued_looking_but_live",
             conversation_id="c",
-            user=AuthenticatedUser(user_id=""),
+            user={},
             kind=RunKind.LIVE,
             task_id=None,
             user_message_id=None,
@@ -198,9 +146,7 @@ class TestOwnershipRule:
                 user_message_id="m1",
             ),
         )
-        assert run.user == AuthenticatedUser(
-            user_id="u1", email="u1@x.com", name="Uno", timezone=None
-        )
+        assert run.user == AuthenticatedUser(user_id="u1", email="u1@x.com", name="Uno")
         assert run.workflow_id == "wf-9"
         assert run.workflow_title == "Daily digest"
         assert run.workflow_notify_on_completion is False
@@ -219,39 +165,6 @@ class TestOwnershipRule:
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True
         assert run.executor_owns_tool_data is False
-
-
-class TestSubagentCoordination:
-    def test_counter_increments_and_decrements(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert increment_pending_subagents("s1") == 1
-        assert increment_pending_subagents("s1") == 2
-        assert decrement_pending_subagents("s1") == 1
-        assert get_pending_subagents("s1") == 1
-
-    def test_counter_floors_at_zero(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert decrement_pending_subagents("s1") == 0
-        assert get_pending_subagents("s1") == 0
-
-    def test_counter_for_missing_session_is_zero(self) -> None:
-        assert get_pending_subagents("missing") == 0
-        assert decrement_pending_subagents("missing") == 0
-
-    def test_integration_slot_claim_is_exclusive_until_released(self) -> None:
-        # The slot is what stops two concurrent background handoffs to the same
-        # integration from sharing (and corrupting) one checkpoint thread.
-        create_session("s1", RunKind.LIVE)
-        assert claim_bg_integration("s1", "gmail") is True
-        assert claim_bg_integration("s1", "gmail") is False  # second claim loses
-        assert claim_bg_integration("s1", "slack") is True  # other integrations unaffected
-
-        release_bg_integration("s1", "gmail")
-        assert claim_bg_integration("s1", "gmail") is True  # reusable after release
-
-    def test_integration_slot_for_missing_session_is_safe(self) -> None:
-        release_bg_integration("missing", "gmail")  # must not raise
-        assert has_bg_integration("missing", "gmail") is False
 
 
 class TestToolOutputOwnership:
@@ -300,7 +213,7 @@ class TestToolOutputOwnership:
 
 @pytest.mark.regression
 class TestExecutorRunCarriesWorkflowExecution:
-    """The execution id lives only on the workflow task's wide event, never in configurable."""
+    """The execution id lives only on the workflow task's wide event, never in configurable; the run built inside that boundary has to pick it up or every executor call it makes is unattributable to the run in the ledger."""
 
     async def test_from_configurable_reads_the_execution_id_off_the_boundary(self) -> None:
         from shared.py.wide_events import WorkflowContext, log, wide_task
@@ -335,63 +248,29 @@ class TestExecutorRunCarriesWorkflowExecution:
         assert run.workflow_execution_id is None
 
 
-@pytest.mark.unit
-def test_the_done_signal_carries_whether_the_executor_failed() -> None:
-    stream_id = f"s_{uuid4().hex}"
-    session = get_or_create_session(stream_id)
-    session.executor_spawned = True
+class TestRunUserFromConfigurable:
+    """A detached run acts for the user its configurable names, rebuilt field by field."""
 
-    signal_executor_done(stream_id, failed=True, reason="the model call failed")
+    def test_every_carried_field_is_the_users_own(self) -> None:
+        user = run_user_from_configurable(
+            {
+                "user_id": "u1",
+                "email": "u1@x.com",
+                "user_name": "Uno",
+                "user_timezone": "Asia/Kolkata",
+            }
+        )
 
-    assert session.done_event.is_set()
-    assert executor_failed(stream_id) is True
-    assert executor_failure(stream_id) == "the model call failed"
+        assert user == AuthenticatedUser(
+            user_id="u1", email="u1@x.com", name="Uno", timezone="Asia/Kolkata"
+        )
 
+    def test_absent_identity_keys_rebuild_as_empty(self) -> None:
+        user = run_user_from_configurable({"conversation_id": "c1"})
 
-@pytest.mark.unit
-def test_a_plain_done_signal_is_not_a_failure() -> None:
-    stream_id = f"s_{uuid4().hex}"
-    session = get_or_create_session(stream_id)
-    session.executor_spawned = True
+        assert (user.user_id, user.email, user.name, user.timezone) == ("", "", "", None)
 
-    signal_executor_done(stream_id)
+    def test_an_identity_carried_as_none_stays_none(self) -> None:
+        user = run_user_from_configurable({"user_id": None, "email": None, "user_name": None})
 
-    assert executor_failed(stream_id) is False
-    assert executor_failure(stream_id) is None
-
-
-@pytest.mark.unit
-def test_a_waiter_that_gave_up_leaves_the_stream_marked_abandoned_past_teardown() -> None:
-    stream_id = f"s_{uuid4().hex}"
-    get_or_create_session(stream_id)
-    assert executor_abandoned(stream_id) is False
-
-    mark_executor_failed(stream_id, "the executor did not finish within 1500s")
-    teardown_session(stream_id)
-
-    assert executor_abandoned(stream_id) is True
-    assert executor_abandoned(f"s_{uuid4().hex}") is False
-
-
-@pytest.mark.unit
-def test_the_abandoned_record_forgets_the_oldest_stream_past_its_bound() -> None:
-    ids = [f"s_{uuid4().hex}" for _ in range(sess._ABANDONED_REMEMBERED + 1)]
-    for stream_id in ids:
-        mark_executor_failed(stream_id, "gave up")
-
-    assert executor_abandoned(ids[0]) is False
-    assert all(executor_abandoned(stream_id) for stream_id in ids[1:])
-
-
-@pytest.mark.unit
-def test_a_new_session_for_the_same_stream_is_not_abandoned() -> None:
-    stream_id = f"s_{uuid4().hex}"
-    mark_executor_failed(stream_id, "gave up")
-    create_session(stream_id, RunKind.LIVE)
-    assert executor_abandoned(stream_id) is False
-
-
-@pytest.mark.unit
-def test_a_stream_with_no_session_has_no_executor_failure() -> None:
-    assert executor_failed("never-registered") is False
-    assert executor_failure("never-registered") is None
+        assert (user.user_id, user.email, user.name) == ("", None, None)

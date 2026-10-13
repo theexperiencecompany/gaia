@@ -103,7 +103,7 @@ def start_browser_reaper() -> None:
         return
     _reaper_task = asyncio.get_running_loop().create_task(_reaper_loop())
     log.info(
-        f"{LogTag.TOOL} Browser reaper started (interval=s, max_age=s)",
+        f"{LogTag.TOOL} Browser reaper started",
         browser_reaper_interval_seconds=BROWSER_REAPER_INTERVAL_SECONDS,
         browser_reaper_max_age_seconds=BROWSER_REAPER_MAX_AGE_SECONDS,
     )

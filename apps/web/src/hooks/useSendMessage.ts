@@ -26,6 +26,8 @@ type SendMessageOverrides = {
   /** Explicit conversation ID to use. Pass null to force a new conversation.
    *  When omitted, falls back to the active conversation ID from the store. */
   conversationId?: string | null;
+  /** The user resent an earlier message from its retry action. */
+  isRetry?: boolean;
 };
 
 interface ResolvedSendContext {
@@ -191,10 +193,14 @@ export const useSendMessage = () => {
         replyToMessage: ctx.replyToMessage ?? undefined,
       };
 
-      // A send landing while this conversation's turn is open gets queued by
-      // the turn manager — its optimistic bubble renders greyed-out until
-      // dispatch flips it to "sending".
-      const willQueue = turnManager.isTurnActive(ctx.conversationId);
+      // A mid-turn send steers the live run (its bubble sends immediately);
+      // only a not-yet-created conversation still queues.
+      const canSteer =
+        ctx.conversationId != null &&
+        ctx.conversationId !== "new" &&
+        turnManager.isTurnActive(ctx.conversationId);
+      const willQueue =
+        !canSteer && turnManager.isTurnActive(ctx.conversationId);
       await placeOptimisticMessage(ctx, optimisticId, createdAt, willQueue);
 
       const options: TurnOptions = {
@@ -207,6 +213,7 @@ export const useSendMessage = () => {
         replyToMessage: ctx.replyToMessage,
         conversationId: ctx.conversationId,
         isOnboardingDemo: false,
+        isRetry: overrides?.isRetry ?? false,
       };
 
       turnManager.send({ inputText: ctx.content, userMessage, options });

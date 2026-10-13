@@ -7,7 +7,7 @@ Timezone handling is delegated entirely to app.utils.timezone.Timezone
 
 from datetime import UTC, datetime
 
-from croniter import croniter
+from croniter import CroniterError, croniter
 
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -17,13 +17,12 @@ class CronError(Exception):
     """Exception raised for cron-related errors."""
 
 
-def validate_cron_expression(cron_expr: str) -> bool:
-    """Return True if cron_expr is a valid cron expression."""
+def _require_parseable(cron_expr: str) -> None:
+    """Raise CronError unless croniter can read cron_expr; the product rule lives in app.utils.schedule."""
     try:
         croniter(cron_expr)
-        return True
-    except (ValueError, TypeError):
-        return False
+    except CroniterError as e:
+        raise CronError(f"Invalid cron expression: {cron_expr}") from e
 
 
 def get_next_run_time(
@@ -38,8 +37,7 @@ def get_next_run_time(
     read in base_time's OWN zone rather than silently reinterpreted in UTC; only a naive or
     absent base falls back to UTC. base_time defaults to now. Raises CronError on a bad expr.
     """
-    if not validate_cron_expression(cron_expr):
-        raise CronError(f"Invalid cron expression: {cron_expr}")
+    _require_parseable(cron_expr)
 
     if base_time is None:
         base_time = datetime.now(UTC)
@@ -71,8 +69,7 @@ def calculate_next_occurrences(
 
     Raises CronError if cron_expr is invalid.
     """
-    if not validate_cron_expression(cron_expr):
-        raise CronError(f"Invalid cron expression: {cron_expr}")
+    _require_parseable(cron_expr)
 
     if count <= 0:
         return []

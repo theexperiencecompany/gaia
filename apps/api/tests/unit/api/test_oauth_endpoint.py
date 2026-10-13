@@ -11,12 +11,17 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents
+from app.models.integration_models import IntegrationAccount
+from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _oauth_ns(log_mock: MagicMock) -> dict:
@@ -26,6 +31,11 @@ def _oauth_ns(log_mock: MagicMock) -> dict:
         if c.args and c.args[0] == "oauth":
             fields.update(c.kwargs)
     return fields
+
+
+PICTURE_URL = "https://cdn.example/avatar.png"
+#: What every callback stores for _mock_auth_response(picture_url=PICTURE_URL): name, email, picture.
+STORED_PROFILE = ("Test User", "test@example.com", PICTURE_URL)
 
 
 def _mock_auth_response(
@@ -46,6 +56,7 @@ def _mock_auth_response(
     resp.user = user
     resp.sealed_session = sealed_session
     resp.access_token = access_token
+    resp.authentication_method = "GoogleOAuth"
     return resp
 
 
@@ -54,13 +65,23 @@ def _mock_auth_response(
 # ---------------------------------------------------------------------------
 
 
+# What recording a first-time account returns: a new connect, not a reconnect.
+NEW_ACCOUNT = AccountConnected(
+    account=IntegrationAccount(id="acc1", connected_account_id="acc1", label="me@gmail.com"),
+    primary_changed=True,
+    outcome=AccountConnectOutcome.ADDED,
+)
+
+
 @pytest.fixture
 def stubbed_oauth_side_effects():
     """Patch the callback's fire-and-forget side effects no test asserts."""
     with (
-        patch("app.services.oauth.composio_callback.capture_event"),
+        patch("app.services.oauth.composio_callback.capture"),
         patch(
-            "app.services.oauth.composio_callback.handle_oauth_connection", new_callable=AsyncMock
+            "app.services.oauth.composio_callback.handle_oauth_connection",
+            new_callable=AsyncMock,
+            return_value=NEW_ACCOUNT,
         ),
     ):
         yield
@@ -175,7 +196,9 @@ class TestWorkOSMobileCallback:
         client: AsyncClient,
     ):
         mock_redirect.return_value = "gaiamobile://auth/callback"
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/mobile/callback?code=abc&state=xyz",
@@ -183,6 +206,7 @@ class TestWorkOSMobileCallback:
         )
         assert response.status_code == 307
         assert "token=" in response.headers["location"]
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
@@ -261,7 +285,9 @@ class TestWorkOSDesktopCallback:
         mock_store: AsyncMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/desktop/callback?code=abc",
@@ -269,6 +295,7 @@ class TestWorkOSDesktopCallback:
         )
         assert response.status_code == 307
         assert "gaia://auth/callback?token=" in response.headers["location"]
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
     async def test_desktop_callback_no_code(self, client: AsyncClient):
         response = await client.get(
@@ -314,7 +341,9 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
@@ -322,6 +351,26 @@ class TestWorkOSCallback:
         )
         assert response.status_code == 307
         assert "wos_session" in response.headers.get("set-cookie", "")
+        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+
+    @pytest.mark.regression
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_web_callback_hands_on_the_method_workos_reports(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_store.return_value = (MagicMock(), False)
+
+        await client.get(f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz", follow_redirects=False)
+
+        assert mock_store.await_args.kwargs["auth_method"] == "GoogleOAuth"
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_no_code(self, mock_redis: MagicMock, client: AsyncClient):
@@ -387,7 +436,12 @@ class TestComposioCallback:
         with patch(
             "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
             new_callable=AsyncMock,
-            return_value={"redirect_path": "/integrations", "user_id": "uid1"},
+            return_value={
+                "redirect_path": "/integrations",
+                "user_id": USER_ID,
+                "integration_id": "gmail",
+                "connected_account_id": "",
+            },
         ) as mock_state:
             yield mock_state
 
@@ -404,8 +458,12 @@ class TestComposioCallback:
         with patch("app.api.v1.endpoints.oauth.log") as mock_log:
             yield mock_log
 
-    @patch("app.services.oauth.composio_callback.capture_event")
-    @patch("app.services.oauth.composio_callback.handle_oauth_connection", new_callable=AsyncMock)
+    @patch("app.services.oauth.composio_callback.capture")
+    @patch(
+        "app.services.oauth.composio_callback.handle_oauth_connection",
+        new_callable=AsyncMock,
+        return_value=NEW_ACCOUNT,
+    )
     @patch("app.services.oauth.composio_callback.get_integration_by_config")
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(
@@ -423,14 +481,15 @@ class TestComposioCallback:
     ):
         mock_state.return_value = {
             "redirect_path": "/integrations",
-            "user_id": "uid1",
+            "user_id": USER_ID,
         }
         account = MagicMock()
         account.auth_config.id = "config1"
-        account.user_id = "uid1"
+        account.user_id = USER_ID
         mock_composio.return_value.get_connected_account_by_id.return_value = account
         integration = MagicMock()
         integration.id = "gmail"
+        integration.provider = "google"
         mock_config.return_value = integration
         response = await client.get(
             f"{OAUTH_BASE}/composio/callback?status=success&state=tok&connectedAccountId=acc1",
@@ -438,20 +497,18 @@ class TestComposioCallback:
         )
         assert response.status_code == 307
         assert "oauth_success=true" in response.headers["location"]
+        mock_state.assert_awaited_once_with("tok")
         # Explicit user id, not the request context: Composio redirects the
         # browser here with no WorkOS session, so a context capture would land
         # the connection on an anonymous profile.
         mock_capture.assert_called_once_with(
-            "uid1",
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "gmail", "provider": integration.provider},
+            UserId(USER_ID),
+            IntegrationConnected(integration_id="gmail", provider="google", is_reconnect=False),
         )
 
     @pytest.mark.usefixtures("stubbed_oauth_side_effects")
     @patch("app.services.oauth.composio_callback.get_integration_by_config")
     @patch("app.services.oauth.composio_callback.get_composio_service")
-    @patch("app.services.oauth.composio_callback.user_integration_repository")
-    @patch("app.services.oauth.composio_callback.log")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
         new_callable=AsyncMock,
@@ -459,28 +516,24 @@ class TestComposioCallback:
     async def test_a_callback_without_the_account_id_uses_the_one_minted_at_initiate(
         self,
         mock_state: AsyncMock,
-        mock_log: MagicMock,
-        mock_repo: MagicMock,
         mock_composio: MagicMock,
         mock_config: MagicMock,
         client: AsyncClient,
     ):
-        """Composio's hosted Connect Link redirects back without connectedAccountId; failing on its absence rejected connections that had succeeded."""
+        """Composio's hosted Connect Link redirects back without connectedAccountId; the OAuth state recorded it at initiate."""
         mock_state.return_value = {
             "redirect_path": "/integrations",
-            "user_id": "uid1",
+            "user_id": USER_ID,
             "integration_id": "gmail",
+            "connected_account_id": "acc_from_initiate",
         }
-        record = MagicMock()
-        record.connected_account_id = "acc_from_initiate"
-        mock_repo.get_for_user = AsyncMock(return_value=record)
-
         account = MagicMock()
         account.auth_config.id = "config1"
-        account.user_id = "uid1"
+        account.user_id = USER_ID
         mock_composio.return_value.get_connected_account_by_id.return_value = account
         integration = MagicMock()
         integration.id = "gmail"
+        integration.provider = "google"
         mock_config.return_value = integration
 
         response = await client.get(
@@ -490,44 +543,38 @@ class TestComposioCallback:
 
         assert response.status_code == 307
         assert "oauth_success=true" in response.headers["location"]
-        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
-        # The stored id is what the rest of the flow resolves the account by.
         mock_composio.return_value.get_connected_account_by_id.assert_called_once_with(
             "acc_from_initiate"
         )
-        # Composio documents none of this, so the wide event is how we learn which
-        # source actually carried the id on a real delivery.
-        assert _oauth_ns(mock_log)["connected_account_id_source"] == "stored_record"
 
-    @patch("app.services.oauth.composio_callback.user_integration_repository")
-    @patch("app.services.oauth.composio_callback.log")
-    @patch(
-        "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
-        new_callable=AsyncMock,
-    )
+    @pytest.mark.usefixtures("composio_state")
     async def test_no_account_id_anywhere_still_fails_the_connection(
-        self,
-        mock_state: AsyncMock,
-        mock_log: MagicMock,
-        mock_repo: MagicMock,
-        client: AsyncClient,
+        self, completed_connection: AsyncMock, client: AsyncClient
     ):
-        """With nothing minted and nothing in the callback there is no account to resolve; that must still fail rather than proceed on a None."""
-        mock_state.return_value = {
-            "redirect_path": "/integrations",
-            "user_id": "uid1",
-            "integration_id": "gmail",
-        }
-        mock_repo.get_for_user = AsyncMock(return_value=None)
-
+        """With nothing on the state and nothing in the callback there is no account to resolve; that must fail rather than proceed on an empty id."""
         response = await client.get(
             f"{OAUTH_BASE}/composio/callback?status=success&state=tok",
             follow_redirects=False,
         )
 
         assert response.status_code == 307
-        assert "oauth_error=failed" in response.headers["location"]
-        assert _oauth_ns(mock_log)["connected_account_id_source"] == "missing"
+        assert response.headers["location"] == f"{FRONTEND}/integrations?oauth_error=failed"
+        completed_connection.assert_not_awaited()
+
+    @pytest.mark.usefixtures("composio_state")
+    async def test_a_connect_over_the_account_limit_says_so(
+        self, completed_connection: AsyncMock, client: AsyncClient
+    ):
+        completed_connection.return_value = ConnectionRejected(reason="account_limit")
+
+        response = await client.get(
+            f"{OAUTH_BASE}/composio/callback?status=success&state=tok&connectedAccountId=acc1",
+            follow_redirects=False,
+        )
+
+        assert response.headers["location"] == (
+            f"{FRONTEND}/integrations?oauth_error=account_limit"
+        )
 
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
@@ -565,7 +612,6 @@ class TestComposioCallback:
         assert response.status_code == 307
         assert response.headers["location"] == f"{FRONTEND}/integrations?oauth_error=cancelled"
 
-    @patch("app.services.oauth.composio_callback.user_integration_repository")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
         new_callable=AsyncMock,
@@ -573,16 +619,15 @@ class TestComposioCallback:
     async def test_a_missing_account_id_lands_on_the_state_redirect_path(
         self,
         mock_state: AsyncMock,
-        mock_repo: MagicMock,
         completed_connection: AsyncMock,
         client: AsyncClient,
     ):
         mock_state.return_value = {
             "redirect_path": "/settings",
-            "user_id": "uid1",
+            "user_id": USER_ID,
             "integration_id": "gmail",
+            "connected_account_id": "",
         }
-        mock_repo.get_for_user = AsyncMock(return_value=None)
 
         response = await client.get(
             f"{OAUTH_BASE}/composio/callback?status=success&state=tok",
@@ -593,12 +638,32 @@ class TestComposioCallback:
         assert response.headers["location"] == f"{FRONTEND}/settings?oauth_error=failed"
         completed_connection.assert_not_awaited()
 
+    async def test_the_callback_consumes_the_state_token_it_was_given(
+        self, composio_state: AsyncMock, completed_connection: AsyncMock, client: AsyncClient
+    ):
+        completed_connection.return_value = ConnectionCompleted(
+            user_id="uid1",
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
+        )
+
+        await client.get(
+            f"{OAUTH_BASE}/composio/callback?status=success&state=tok_abc&connectedAccountId=acc1",
+            follow_redirects=False,
+        )
+
+        composio_state.assert_awaited_once_with("tok_abc")
+
     @pytest.mark.usefixtures("composio_state")
     async def test_the_callback_id_is_handed_to_the_service_with_the_state_user(
         self, completed_connection: AsyncMock, route_log: MagicMock, client: AsyncClient
     ):
         completed_connection.return_value = ConnectionCompleted(
-            user_id="uid1", integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
 
         response = await client.get(
@@ -609,10 +674,10 @@ class TestComposioCallback:
         assert response.status_code == 307
         assert (
             response.headers["location"]
-            == f"{FRONTEND}/integrations?oauth_success=true&integration=gmail"
+            == f"{FRONTEND}/integrations?oauth_success=true&integration=gmail&account_outcome=added"
         )
         assert completed_connection.await_args.args == ("acc1",)
-        assert completed_connection.await_args.kwargs["expected_user_id"] == "uid1"
+        assert completed_connection.await_args.kwargs["expected_user_id"] == USER_ID
         assert isinstance(
             completed_connection.await_args.kwargs["background_tasks"], BackgroundTasks
         )
@@ -620,19 +685,22 @@ class TestComposioCallback:
             operation="composio_callback", oauth={"provider": "composio", "status": "success"}
         )
         route_log.audit.assert_called_once_with(
-            "integration connected", actor="uid1", resource="gmail", provider="google"
+            "integration connected", actor=USER_ID, resource="gmail", provider="google"
         )
 
     async def test_a_redirect_path_with_a_query_appends_the_success_flag(
         self, completed_connection: AsyncMock, route_log: MagicMock, client: AsyncClient
     ):
         completed_connection.return_value = ConnectionCompleted(
-            user_id="uid1", integration_id="gmail", provider="google"
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
         )
         with patch(
             "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
             new_callable=AsyncMock,
-            return_value={"redirect_path": "/integrations?tab=all", "user_id": "uid1"},
+            return_value={"redirect_path": "/integrations?tab=all", "user_id": USER_ID},
         ):
             response = await client.get(
                 f"{OAUTH_BASE}/composio/callback?status=success&state=tok&connectedAccountId=acc1",
@@ -643,6 +711,7 @@ class TestComposioCallback:
         assert (
             response.headers["location"]
             == f"{FRONTEND}/integrations?tab=all&oauth_success=true&integration=gmail"
+            "&account_outcome=added"
         )
 
     @pytest.mark.parametrize(

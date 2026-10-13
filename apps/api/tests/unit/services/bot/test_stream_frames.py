@@ -12,6 +12,7 @@ from app.services.bot.stream_frames import (
     approval_frame,
     comment_keepalive_frame,
     done_frame,
+    emoji_ack_frame,
     error_frame,
     keepalive_frame,
     message_boundary_frame,
@@ -63,6 +64,13 @@ class TestByteIdentityWithTheOldLiterals:
         data = {"message_boundary": {"discarded": True}}
         payload = json.dumps({"message_boundary": data["message_boundary"]})
         assert message_boundary_frame(data["message_boundary"]) == f"data: {payload}\n\n"
+
+    def test_emoji_ack_frame(self):
+        ack = {"emoji": "😎", "reacts_to_message_id": "umsg-1"}
+        assert (
+            emoji_ack_frame(emoji=ack["emoji"], reacts_to_message_id=ack["reacts_to_message_id"])
+            == f"data: {json.dumps({'emoji_ack': ack})}\n\n"
+        )
 
     def test_error_frame_for_a_refusal_code(self):
         error_code = "not_authenticated"

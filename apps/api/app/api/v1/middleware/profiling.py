@@ -87,9 +87,9 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
             "yes",
         )
 
-        # Apply sampling rate for automatic profiling
+        # Apply sampling rate for automatic profiling; a sampling coin-flip, not a secret
         should_profile = profiling_requested or (
-            settings.PROFILING_SAMPLE_RATE > 0 and random.random() < settings.PROFILING_SAMPLE_RATE  # nosec: B311
+            settings.PROFILING_SAMPLE_RATE > 0 and random.random() < settings.PROFILING_SAMPLE_RATE  # nosec: B311  # NOSONAR python:S2245
         )
 
         if not should_profile:

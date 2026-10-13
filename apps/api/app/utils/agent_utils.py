@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
+from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
@@ -23,6 +25,7 @@ from app.models.stream_events import (
     ToolCallsDataEntry,
     ToolCallsDataEntryData,
 )
+from app.services.browser.captions import describe_action
 from app.services.chat.chunks import extract_tool_data
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.wide_events import log
@@ -212,6 +215,20 @@ async def format_tool_call_entry(
     if not tool_name_raw:
         return None
 
+    # An execute-proxied call renders as its REAL tool (name/category/icon/inputs
+    # from the unwrapped identity), else every card collapses to a generic
+    # "Execute" row. The proxy's task_description becomes the card's label.
+    call_args: dict[str, object] = tool_call.get("args", {}) or {}
+    task_description: str | None = None  # pragma: no mutate — only read as truthy; "" equals None
+    unwrapped_name, unwrapped_args = unwrap_execute_call(tool_name_raw, call_args)
+    if unwrapped_name != tool_name_raw:
+        # A renamed call is by construction an execute call, so these are its args.
+        execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, call_args)
+        raw_description = execute_args.get("task_description")
+        task_description = raw_description if isinstance(raw_description, str) else None
+        tool_name_raw = unwrapped_name
+        call_args = unwrapped_args
+
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     if tool_name_raw in _SPECIAL_TOOLS:
@@ -234,6 +251,12 @@ async def format_tool_call_entry(
         if integration_id and is_core_tool:
             icon_url = None
             integration_name = None
+
+    if task_description:
+        # A curated, user-facing primary label — the thread shows the raw tool
+        # name as the secondary line (same contract as TOOL_DISPLAY_NAMES).
+        tool_display_name = task_description
+        show_category = False
 
     timestamp = datetime.now(UTC).isoformat()
 
@@ -262,7 +285,7 @@ async def format_tool_call_entry(
                 message=tool_display_name,
                 show_category=show_category,
                 tool_call_id=call.id,
-                inputs=call.args,
+                inputs=call_args,
                 icon_url=icon_url,
                 integration_name=integration_name,
             ),
@@ -273,15 +296,58 @@ async def format_tool_call_entry(
     )
 
 
+def format_browser_action_entry(
+    *,
+    name: str,
+    inputs: dict[str, object],
+    target: str | None,
+    subagent_id: str,
+    tool_call_id: str,
+) -> ToolDataEntry:
+    """Format one browser-agent action as a tool_calls_data entry.
+
+    The browser agent runs its own loop inside the browser_task tool, so its
+    actions never pass through the graph's tool node and cannot be formatted by
+    format_tool_call_entry. Tagging them with subagent_id is what nests them
+    under the run's "Browser" group in the chat thread.
+    """
+    return cast(
+        ToolDataEntry,
+        {
+            **ToolCallsDataEntry(
+                tool_name="tool_calls_data",
+                tool_category=BROWSER_TOOL_CATEGORY,
+                data=ToolCallsDataEntryData(
+                    tool_name=name,
+                    tool_category=BROWSER_TOOL_CATEGORY,
+                    message=describe_action(name, inputs, target),
+                    show_category=False,
+                    tool_call_id=tool_call_id,
+                    inputs=inputs,
+                    icon_url=None,
+                    integration_name=None,
+                ),
+                timestamp=datetime.now(UTC).isoformat(),
+                mcp_ui=None,
+                mcp_server_url=None,
+            ).model_dump(),
+            "subagent_id": subagent_id,
+        },
+    )
+
+
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
     "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
     "call_executor": ("executor", "Delegating to executor", False),
     "cancel_executor": ("cancel_executor", "Cancelling the task", False),
+    "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
+    "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
+    "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "handoff": ("handoff", None, False),  # message will be set from args
     "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
-    "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
+    "activate_integration": ("integrations", "Activating integration", False),
     "plan_tasks": ("plan_tasks", "Plan tasks", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.

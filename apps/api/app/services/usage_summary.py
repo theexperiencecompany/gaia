@@ -43,7 +43,8 @@ async def get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fea
             tiered_limiter.redis.get(
                 tiered_limiter._get_redis_key(
                     user_id, feature_key, getattr(RateLimitPeriod, period.upper())
-                )
+                ),
+                int,
             )
             for feature_key, period in keys
         )

@@ -9,7 +9,10 @@ at three separate graph builders and enforced by nothing.
 
 import pytest
 
+from app.agents.core.background.executor_channel import drain_inbox_hook
+from app.agents.core.background.subagent_channel import drain_subagent_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.browser_task_status import browser_task_status_hook
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -29,6 +32,7 @@ class TestTheChainsAreExactlyThese:
         assert comms_pre_model_hooks() == [
             filter_messages_node,
             executor_status_hook,
+            browser_task_status_hook,
             manage_system_prompts_node,
         ]
 
@@ -44,6 +48,23 @@ class TestTheChainsAreExactlyThese:
             filter_messages_node,
             adapt_media_node,
             _todo_hook,
+            manage_system_prompts_node,
+        ]
+
+    def test_the_executor_drains_its_inbox_after_the_todo_hook(self) -> None:
+        assert worker_pre_model_hooks(_todo_hook, drains_inbox=True) == [
+            filter_messages_node,
+            adapt_media_node,
+            _todo_hook,
+            drain_inbox_hook,
+            manage_system_prompts_node,
+        ]
+
+    def test_a_subagent_drains_its_own_mailbox(self) -> None:
+        assert worker_pre_model_hooks(drains_subagent_inbox=True) == [
+            filter_messages_node,
+            adapt_media_node,
+            drain_subagent_inbox_hook,
             manage_system_prompts_node,
         ]
 

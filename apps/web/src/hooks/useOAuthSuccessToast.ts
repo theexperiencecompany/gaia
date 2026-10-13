@@ -7,6 +7,10 @@ import {
   integrationKeys,
   toolKeys,
 } from "@/features/integrations/api/queryKeys";
+import {
+  ACCOUNT_OUTCOME_PARAM,
+  AccountOutcome,
+} from "@/features/integrations/constants/connect";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { usePathname } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
@@ -38,6 +42,7 @@ export function useOAuthSuccessToast() {
     const oauthSuccess = searchParams.get("oauth_success");
     const oauthError = searchParams.get("oauth_error");
     const integrationName = searchParams.get("integration");
+    const accountOutcome = searchParams.get(ACCOUNT_OUTCOME_PARAM);
 
     // Skip if no OAuth params
     if (!oauthSuccess && !oauthError) return;
@@ -49,6 +54,7 @@ export function useOAuthSuccessToast() {
     url.searchParams.delete("oauth_success");
     url.searchParams.delete("oauth_error");
     url.searchParams.delete("integration");
+    url.searchParams.delete(ACCOUNT_OUTCOME_PARAM);
     router.replace(url.pathname + url.search, { scroll: false });
 
     // For success, use a simpler key without timestamp to dedupe properly
@@ -74,7 +80,15 @@ export function useOAuthSuccessToast() {
           integrationName.slice(1).replace(/_/g, " ")
         : "Integration";
 
-      toast.success(`Connected to ${displayName}`);
+      if (accountOutcome === AccountOutcome.ALREADY_CONNECTED) {
+        toast.info(
+          `That ${displayName} account was already connected, so nothing new was added.`,
+        );
+      } else if (accountOutcome === AccountOutcome.RECONNECTED) {
+        toast.success(`Reconnected ${displayName}`);
+      } else {
+        toast.success(`Connected to ${displayName}`);
+      }
 
       // Invalidate integration-related queries so they refresh
       queryClient.invalidateQueries({ queryKey: integrationKeys.all });
@@ -83,7 +97,8 @@ export function useOAuthSuccessToast() {
       // Automatically send a message to continue the chat (only on chat routes)
       // Only send the message if we're on a chat page to avoid creating unwanted conversations
       const isChatRoute = pathname === "/c" || pathname.startsWith("/c/");
-      if (isChatRoute) {
+      // Nothing changed when the account was already there, so there is nothing to resume.
+      if (isChatRoute && accountOutcome !== AccountOutcome.ALREADY_CONNECTED) {
         // OAuth is a full-page redirect, so the store isn't populated from the
         // route yet when this fires — the route is the reliable source, or the
         // send falls back to a null active id and lands in a brand new conversation.
@@ -106,6 +121,8 @@ export function useOAuthSuccessToast() {
         user_mismatch:
           "Authentication security error. Please log out and try again.",
         failed: "Authentication failed. Please try again.",
+        account_limit:
+          "You've connected the maximum number of accounts for this integration. Disconnect one to add another.",
       };
 
       toast.error(

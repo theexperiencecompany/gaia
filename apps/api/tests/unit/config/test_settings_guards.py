@@ -7,14 +7,35 @@ must forward the base-URL override only in development.
 
 from types import SimpleNamespace
 
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 import pytest
+
+from app.agents.llm import client, dev_lane
+from app.agents.llm.client import PROVIDER_MODELS
+from app.config.browser_host_settings import BrowserHostSettings
+from app.config.settings import (
+    CommonSettings,
+    DevelopmentSettings,
+    ProductionSettings,
+    get_settings,
+)
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+from app.constants.llm import (
+    DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
+    DEV_LLM_MAX_OUTPUT_TOKENS,
+    OPENROUTER_APP_CATEGORIES,
+    OPENROUTER_DEV_APP_TITLE,
+    OPENROUTER_DEV_APP_URL,
+    OPENROUTER_MAX_OUTPUT_TOKENS,
+    OPENROUTER_REASONING,
+    DevLLMApi,
+    LLMProviderName,
+)
 
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cache():
-    from app.config.settings import get_settings
-
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -28,6 +49,10 @@ DEV_OVERRIDE_VARS = (
     "DEV_UNLIMITED_RATE_LIMITS",
     "OPENROUTER_BASE_URL",
     "GAIA_SIM_MODE",
+    "COMPOSIO_AUTH_CONFIG_OVERRIDES",
+    "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+    "OBSCURA_ALLOW_PRIVATE_NETWORK",
+    "BROWSER_HOST_TEST_CA_FILE",
 )
 
 
@@ -56,11 +81,10 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
+        ("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}'),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
-    from app.config.settings import get_settings
-
     monkeypatch.setenv("ENV", "production")
     # Isolate from the developer's ambient .env: only the override under test
     # may be present, or an earlier guard fires first and the match fails.
@@ -72,9 +96,85 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         get_settings()
 
 
-def test_openrouter_base_url_allowed_in_development(monkeypatch):
-    from app.config.settings import get_settings
+def test_composio_overrides_refuse_production_and_say_why(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}')
 
+    with pytest.raises(RuntimeError) as exc:
+        get_settings()
+
+    assert str(exc.value) == (
+        "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+        "it points integrations at a non-production Composio project."
+    )
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value"),
+    [
+        ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
+        ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
+        ("BROWSER_HOST_TEST_CA_FILE", "/stack/ca.pem"),
+    ],
+)
+def test_private_browsing_blocks_production_boot_of_the_host_and_the_api(
+    monkeypatch, env_var, value
+):
+    """One validator on the host's settings, which the API's production settings inherit, refuses both."""
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(env_var, value)
+    refusal = f"Value error, {env_var} is set but ENV=production"
+
+    with pytest.raises(ValidationError) as host_refused:
+        BrowserHostSettings()
+    with pytest.raises(ValidationError) as api_refused:
+        _prod_settings()
+    assert host_refused.value.errors()[0]["msg"] == refusal
+    assert [e["msg"] for e in api_refused.value.errors()] == [refusal]
+
+
+def test_a_host_with_no_private_reach_boots_in_production_and_one_with_it_in_development(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    assert not BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
+
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("OBSCURA_ALLOW_PRIVATE_NETWORK", "1")
+    assert BrowserHostSettings().ENV == "development"
+
+
+def test_private_origins_are_read_as_exact_origins_in_development(monkeypatch):
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv(
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123, http://127.0.0.1:8124,"
+    )
+
+    assert {
+        "http://localhost:8123",
+        "http://127.0.0.1:8124",
+    } == BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://localhost", "http://localhost:8123/form", "localhost:8123"]
+)
+def test_a_private_origin_that_is_not_exact_refuses_to_load(monkeypatch, origin):
+    """A path or a missing port would widen or miss the origin the list means."""
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", origin)
+
+    with pytest.raises(ValidationError, match="is not an exact origin|unsupported URL scheme"):
+        BrowserHostSettings()
+
+
+def test_openrouter_base_url_allowed_in_development(monkeypatch):
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "http://localhost:9797")
 
@@ -85,8 +185,6 @@ def test_openrouter_base_url_allowed_in_development(monkeypatch):
 
 
 def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
-    from app.agents.llm import client
-
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
@@ -104,8 +202,6 @@ def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
 
 
 def test_init_openrouter_omits_base_url_in_production(monkeypatch):
-    from app.agents.llm import client
-
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
@@ -126,8 +222,6 @@ def test_init_openrouter_omits_base_url_in_production(monkeypatch):
 
 def test_dev_override_fields_exist_on_all_settings_classes():
     """These fields must exist on every settings class, or production boot crashes with AttributeError (they were once declared only on DevelopmentSettings)."""
-    from app.config.settings import CommonSettings, DevelopmentSettings, ProductionSettings
-
     for cls in (CommonSettings, DevelopmentSettings, ProductionSettings):
         assert "GAIA_SIM_MODE" in cls.model_fields, cls.__name__
         assert "OPENROUTER_BASE_URL" in cls.model_fields, cls.__name__
@@ -139,8 +233,6 @@ def _prod_settings(**overrides):
     Direct construction (not get_settings()) so the test exercises only the
     field validators — no ambient .env, no boot guards, no missing-key noise.
     """
-    from app.config.settings import ProductionSettings
-
     dummies: dict[str, object] = {}
     for name, field in ProductionSettings.model_fields.items():
         if not field.is_required():
@@ -177,8 +269,6 @@ def test_production_allows_unset_dodo_base_url():
 
 def test_development_allows_http_dodo_base_url(monkeypatch):
     """The stub/sandbox override is a dev concern — local mirrors are http."""
-    from app.config.settings import get_settings
-
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("DODO_PAYMENTS_BASE_URL", "http://localhost:8899")
 
@@ -187,20 +277,33 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
 
 
-def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
-    """Every chat LLM must carry its context-window profile: fractional-token middleware reads it at graph build and raises otherwise."""
-    from app.agents.llm import client
-    from app.agents.llm.client import PROVIDER_MODELS
-    from app.constants.llm import (
-        DEFAULT_LLM_TEMPERATURE,
-        DEFAULT_MAX_TOKENS,
-        OPENROUTER_APP_CATEGORIES,
-        OPENROUTER_DEV_APP_TITLE,
-        OPENROUTER_DEV_APP_URL,
-        OPENROUTER_MAX_OUTPUT_TOKENS,
-        OPENROUTER_REASONING,
+def test_short_sandbox_execute_secret_refuses_to_boot():
+    """A sandbox execute token names whose tools the host runs, and nothing else binds that claim — a guessable signing secret means running any user's tools."""
+    with pytest.raises(
+        ValidationError, match="SANDBOX_EXECUTE_TOKEN_SECRET must be at least 32 characters"
+    ):
+        _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET="dev")
+
+
+def test_a_long_enough_sandbox_execute_secret_is_accepted():
+    secret = "x" * SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+    assert (
+        secret == _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET=secret).SANDBOX_EXECUTE_TOKEN_SECRET
     )
 
+
+def test_unset_sandbox_execute_secret_stays_valid():
+    """Both code-mode vars unset means code mode ships dark — not a misconfig."""
+    assert _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET=None).SANDBOX_EXECUTE_TOKEN_SECRET is None
+
+
+def test_a_blank_sandbox_execute_secret_reads_as_unset():
+    """KEY= with nothing after it is how a templated compose/Infisical/k8s env renders an unfilled optional secret — the same shape .env.example uses for every other one."""
+    assert _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET="").SANDBOX_EXECUTE_TOKEN_SECRET is None
+
+
+def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
+    """Every chat LLM must carry its context-window profile: fractional-token middleware reads it at graph build and raises otherwise."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "development")
@@ -224,10 +327,6 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
 
 
 def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
-    from app.agents.llm import client
-    from app.agents.llm.client import PROVIDER_MODELS
-    from app.constants.llm import DEFAULT_MAX_TOKENS
-
     captured: dict[str, object] = {}
 
     class _FakeChatGoogle:
@@ -253,16 +352,10 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
 
 def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     """The DEV_LLM_* endpoint must receive every construction kwarg intact, including its context-window profile and configurable model field."""
-    from app.agents.llm import client
-    from app.constants.llm import (
-        DEFAULT_LLM_TEMPERATURE,
-        DEFAULT_MAX_TOKENS,
-        DEV_LLM_MAX_OUTPUT_TOKENS,
-        LLMProviderName,
-    )
-
     captured: dict[str, object] = {}
-    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
+    # The custom lane deliberately constructs ChatOpenAI, not ChatOpenRouter.
+    monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
+    dev_lane.build_custom_chat_model.cache_clear()
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # PROVIDER_MODELS freezes at import from the ambient env; CI has no
@@ -277,9 +370,33 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     assert captured["model"] == "deepseek-v4-flash"
     assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
     assert str(captured["base_url"]) == "http://localhost:9999/v1"
-    assert str(captured["api_key"]) == "sk-dev"
-    assert captured["max_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
+    api_key = captured["api_key"]
+    assert isinstance(api_key, SecretStr) and api_key.get_secret_value() == "sk-dev"
+    # ChatOpenAI aliases max_tokens to max_completion_tokens at construction
+    # (still sent as max_tokens on the wire) — assert what is passed.
+    assert captured["max_completion_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
     assert captured["streaming"] is True
     assert captured["stream_usage"] is True
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
     assert captured["cf_model_name"] is client._MODEL_FIELD
+
+
+def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
+    """Nous-style endpoints predate the setting and speak chat completions only."""
+    monkeypatch.delenv("DEV_LLM_API", raising=False)
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
+
+
+def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
+    monkeypatch.setenv("DEV_LLM_API", "responses")
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.RESPONSES
+
+
+def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
+    """A typo must not quietly fall back to chat completions, where gpt-6-luna rejects tools."""
+    monkeypatch.setenv("DEV_LLM_API", "response")
+
+    with pytest.raises(ValidationError, match="DEV_LLM_API"):
+        DevelopmentSettings(_env_file=None)

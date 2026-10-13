@@ -15,6 +15,7 @@ import io
 from typing import Any
 
 from mcp.types import (
+    BlobResourceContents,
     CallToolResult,
     EmbeddedResource,
     ImageContent,
@@ -23,7 +24,7 @@ from mcp.types import (
 )
 from PIL import Image
 
-from app.constants.mcp import EMPTY_TOOL_RESULT
+from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_UNSUPPORTED_CONTENT_NOTICE
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 from app.helpers.agent_helpers import _json_safe_tool_result
 from app.services.mcp.langchain_adapter import _tool_result_to_content
@@ -65,6 +66,16 @@ class TestToolResultToContent:
         assert out == "rows: 2\nSELECT 1;"
         assert "TextResourceContents" not in out
         assert "resource=" not in out
+
+    async def test_an_embedded_binary_resource_is_named_not_dumped(self) -> None:
+        embedded = EmbeddedResource(
+            type="resource",
+            resource=BlobResourceContents(uri="file:///a.bin", blob="AAAA"),
+        )
+
+        out = await _tool_result_to_content(_result(embedded))
+
+        assert out == MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind="EmbeddedResource")
 
     async def test_an_empty_result_says_so_rather_than_returning_nothing(self) -> None:
         """A void action's empty content must still say so — an empty ToolMessage tells the model nothing."""

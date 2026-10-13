@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import socket
+from typing import cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -157,9 +158,10 @@ async def fetch_url_metadata(url: str) -> URLResponse:
     await _validate_url_for_fetch(url)
 
     cache_key = f"url_metadata:{url}"
-    cached = await get_cache(cache_key)
+    # Only the metadata.model_dump() written below lives under this key.
+    cached = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached:
-        return URLResponse(**cached)
+        return URLResponse.model_validate(cached)
 
     stored = await search_url_repository.get_by_url(url)
     if stored is not None:

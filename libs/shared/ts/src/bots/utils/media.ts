@@ -95,7 +95,7 @@ export function unsupportedMediaMessage(kind: string): string {
     richlink: "link previews",
   };
   const label = labels[kind] ?? `${kind} messages`;
-  return `I can't process ${label} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
+  return `I can't process ${label} yet. Please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
 }
 
 /**
@@ -110,7 +110,7 @@ export function unfetchableMediaMessage(
   isVoiceNote: boolean,
 ): string {
   if (isVoiceNote) {
-    return "Voice notes aren't supported here yet — please type your message instead.";
+    return "Voice notes aren't supported here yet. Please type your message instead.";
   }
   return `That ${kind} arrived without its file, so there's nothing for me to open. Please try sending it again.`;
 }
@@ -142,7 +142,7 @@ export function friendlyMediaError(
     return `That ${kind} took too long to download. Please try sending it again.`;
   }
 
-  const code = (err as { status?: number })?.status ?? getHttpStatus(err);
+  const code = getHttpStatus(err);
 
   if (code === 401 || code === 403) {
     return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";

@@ -111,12 +111,8 @@ const config: KnipConfig = {
     // imported as modules — so knip reads them as unused files.
     "apps/api/app/agents/skills/builtin/**",
 
-    // Human-edited `entries/*.ts` are read by the static-data codegen (scripts/extract-static-data*,
-    // itself knip-ignored) and emitted to public/data/{feature}/*.json; the runtime fetches that
-    // JSON via the Cloudflare ASSETS binding, so the .ts sources are never bundled.
-    "apps/web/src/features/alternatives/data/entries/**",
-    "apps/web/src/features/comparisons/data/entries/**",
-    "apps/web/src/features/integrations/data/combosData-*.ts",
+    // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
+    "apps/api/app/services/browser/jev/*.js",
 
     // Parked: /calendar renders notFound() with its CalendarPage import commented out
     // (app/[locale]/(main)/calendar/page.tsx). Components stay intact for re-enablement.

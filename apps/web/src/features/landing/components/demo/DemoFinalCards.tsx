@@ -86,7 +86,9 @@ function SocialContentCard() {
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
-      <p className="px-1 text-xs text-zinc-500">2 drafts scheduled · Mon–Wed</p>
+      <p className="px-1 text-xs text-zinc-500">
+        2 drafts scheduled · Mon to Wed
+      </p>
       {posts.map((p) => (
         <div
           key={p.platform}
@@ -215,7 +217,7 @@ function StudyTasksCard() {
 }
 
 // ─── Morning briefing card (executive use case) ───────────────────────────────
-// Calendar events styled like CalendarEventSection + email list
+// Calendar events styled like the chat calendar cards + email list
 function MorningBriefingCard() {
   const calendarEvents = [
     {
@@ -252,7 +254,7 @@ function MorningBriefingCard() {
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
-      {/* Calendar section — matches CalendarEventSection styling */}
+      {/* Calendar section — matches chat calendar card styling */}
       <div className="w-full rounded-3xl bg-zinc-800 p-4 text-white">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-medium text-zinc-400">

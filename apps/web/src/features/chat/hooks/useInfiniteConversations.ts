@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { type Conversation, chatApi } from "@/features/chat/api/chatApi";
 import { CONVERSATIONS_PAGE_SIZE } from "@/features/chat/constants";
+import { apiRowHasLiveApproval } from "@/features/chat/utils/approvalFlag";
 import { db } from "@/lib/db/chatDb";
 
 interface InfiniteConversationsState {
@@ -49,6 +50,7 @@ export const useInfiniteConversations = () => {
             isSystemGenerated: conv.is_system_generated ?? false,
             systemPurpose: conv.system_purpose ?? null,
             isUnread: conv.is_unread ?? false,
+            hasLiveApproval: apiRowHasLiveApproval(conv),
             createdAt: new Date(conv.createdAt ?? 0),
             updatedAt: conv.updatedAt
               ? new Date(conv.updatedAt)

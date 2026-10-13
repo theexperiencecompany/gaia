@@ -14,14 +14,14 @@ message renders correctly even when the user's browser is holding a stale
 frontend chunk.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import json
 import re
-from typing import Any
 
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
-from app.models.chat_models import MessageModel, UpdateMessagesRequest
-from app.models.message_models import MessageRequestWithHistory
+from app.models.chat_models import MessageKind, MessageModel, UpdateMessagesRequest
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
@@ -36,7 +36,7 @@ def user_message_content_from(body: MessageRequestWithHistory) -> str:
     last history entry is the current turn only when its role is user —
     otherwise it is the previous assistant reply and must not be used.
     """
-    last = body.messages[-1] if body.messages else None
+    last: MessageDict | None = body.messages[-1] if body.messages else None
     if last and last.get("role") == "user":
         return last.get("content") or body.message
     return body.message
@@ -104,20 +104,22 @@ async def save_conversation_async(
     user: AuthenticatedUser,
     conversation_id: str,
     complete_message: str,
-    tool_data: dict[str, Any],
-    metadata: dict[str, Any],
+    tool_data: Mapping[str, object],
+    metadata: dict[str, object],
     user_message_id: str,
     bot_message_id: str,
     bot_timestamp: datetime | None = None,
     error: str | None = None,
     follow_up_actions: list[str] | None = None,
+    kind: MessageKind = MessageKind.TEXT,
+    reacts_to_message_id: str | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
-    Bakes absolute artifact URLs into the saved bot message. bot_timestamp
-    lets the caller stamp the turn at comms-completion time rather than
-    now() — needed in voice mode so the user/comms messages still sort ahead
-    of the executor's deferred answer.
+    Artifact URLs are baked absolute so a stale frontend chunk still renders.
+    bot_timestamp stamps the turn at comms-completion time, keeping user and
+    comms messages sorted ahead of a delegated executor answer in voice mode.
+    kind and reacts_to_message_id stamp a REACT turn as a one-emoji acknowledgment.
     """
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
@@ -134,6 +136,7 @@ async def save_conversation_async(
         toolCategory=body.toolCategory,
         selectedWorkflow=body.selectedWorkflow,
         replyToMessage=body.replyToMessage,
+        platform_message_id=body.platform_message_id,
     )
     user_message.message_id = user_message_id
 
@@ -150,6 +153,8 @@ async def save_conversation_async(
         # of the turn the user saw, so a reload, a sync, or a second device must
         # rebuild them from the saved message alone.
         follow_up_actions=follow_up_actions,
+        kind=kind,
+        reacts_to_message_id=reacts_to_message_id,
     )
     bot_message.message_id = bot_message_id
 

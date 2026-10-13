@@ -14,7 +14,7 @@ const MODES: { key: HilMode; label: string; description: string }[] = [
   {
     key: "always_allow",
     label: "Allow always",
-    description: "Never ask — run every action.",
+    description: "Never ask. Run every action.",
   },
   {
     key: "always_ask",

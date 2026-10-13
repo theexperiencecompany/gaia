@@ -19,11 +19,14 @@ from app.agents.skills.utils import (
     GITHUB_API_BASE,
     GITHUB_RAW_BASE,
     MAX_SKILLS_PER_REPO,
+    GitHubTree,
+    GitHubTreeEntry,
     check_tree_truncated,
     find_skill_files,
     get_folder_path,
     get_folder_priority,
     get_github_headers,
+    github_url,
     parse_github_url,
 )
 from app.constants.log_tags import LogTag
@@ -45,13 +48,13 @@ async def _fetch_git_tree(
     owner: str,
     repo: str,
     branch: str = "main",
-) -> tuple[list[dict], str]:
+) -> tuple[list[GitHubTreeEntry], str]:
     """Fetch entire repository tree using Git Tree API.
 
     Uses recursive=1 to get all files in a single API call. Returns
     (tree_entries, resolved_branch).
     """
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{branch}"
+    url = github_url(GITHUB_API_BASE, "repos", owner, repo, "git", "trees", branch)
     params = {"recursive": "1"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -66,12 +69,12 @@ async def _fetch_git_tree(
             return [], branch
 
         resp.raise_for_status()
-        data = resp.json()
+        data: GitHubTree = resp.json()
 
         # Handle truncated trees (very large repos)
         check_tree_truncated(data, owner, repo)
 
-        return data.get("tree", []), branch
+        return data["tree"], branch
 
 
 async def _fetch_single_file_content(
@@ -81,7 +84,7 @@ async def _fetch_single_file_content(
     branch: str,
 ) -> tuple[str, str] | None:
     """Fetch raw file content from GitHub. Returns (file_path, content), or None if failed."""
-    url = f"{GITHUB_RAW_BASE}/{owner}/{repo}/{branch}/{path}"
+    url = github_url(GITHUB_RAW_BASE, owner, repo, branch, path)
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

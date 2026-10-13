@@ -27,6 +27,11 @@ dagger call test
 dagger call dead-code
 dagger call validate-release
 
+# The test-python slices, exactly as main.yml runs them: the same
+# scripts/ci/lib/test-slices.json and the same scripts/ci/pytest.sh slice
+dagger call test-python                          # all four, one after another
+dagger call test-python --slice-name unit-a      # one slice
+
 # Integration tests (spins up Postgres, Redis, MongoDB automatically)
 dagger call integration-test
 

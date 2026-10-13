@@ -1,6 +1,6 @@
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
-
+import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
@@ -23,6 +23,9 @@ export interface IConversation {
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
+  // Set while a background run holds a live approval here: the sidebar shows
+  // the conversation for its card, and the row lights the approval dot.
+  hasLiveApproval?: boolean;
   // Conversation-level artifact registry: the single source of truth for this
   // conversation's agent-written files. Messages store path references that
   // resolve against this (see FileArtifactSection / chatStore).
@@ -74,6 +77,13 @@ export interface IMessage {
     content: string;
     role: "user" | "assistant";
   } | null;
+
+  // Backend message kind ("text" | "emoji_ack").
+  kind?: string | null;
+  // GAIA id of the message an emoji_ack reacts to.
+  reacts_to_message_id?: string | null;
+  // Reactions folded onto this message for render (see foldReactionAcks).
+  reactions?: MessageReaction[] | null;
 }
 
 class MessageQueue {

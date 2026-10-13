@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 import pytest
 
@@ -19,6 +20,7 @@ from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     SCRIPTED_CRITERIA,
+    VERBATIM_REQUEST_HEADER,
     DirectiveError,
     SayDirective,
     SayResponse,
@@ -30,15 +32,18 @@ from directives import (
 )
 from wire import build_chat_completion, stream_chunks
 
+#: One chat-completions message, as the stub reads it off the wire.
+Message = dict[str, Any]
+
 EXECUTOR_TOOLS = frozenset({"create_reminder", "web_search"})
 COMMS_TOOLS = frozenset({CALL_EXECUTOR_TOOL, "add_memory", "search_memory"})
 
 
-def _user(text: str) -> dict:
+def _user(text: str) -> Message:
     return {"role": "user", "content": text}
 
 
-def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
+def _assistant_tool_call(name: str, args: dict[str, Any] | None = None) -> Message:
     return {
         "role": "assistant",
         "content": None,
@@ -52,7 +57,7 @@ def _assistant_tool_call(name: str, args: dict | None = None) -> dict:
     }
 
 
-def _tool_result(name: str) -> dict:
+def _tool_result(name: str) -> Message:
     return {"role": "tool", "tool_call_id": f"call_{name}", "content": "ok"}
 
 
@@ -127,7 +132,7 @@ def test_parse_tool_missing_name_raises():
 # --------------------------------------------------------------------------- #
 
 
-def _tool_directive(name: str, args: dict) -> str:
+def _tool_directive(name: str, args: dict[str, Any]) -> str:
     """Render a directive the way a test author would: JSON-encoded args."""
     return f"[[tool:{name} {json.dumps(args)}]]"
 
@@ -396,7 +401,7 @@ def test_message_text_flattens_content_blocks():
 
 def test_build_chat_completion_tool_call_shape():
     payload = build_chat_completion(
-        "m", ToolCallResponse(name="create_reminder", args={"title": "x"})
+        "m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50
     )
     assert payload["object"] == "chat.completion"
     assert "system_fingerprint" in payload
@@ -409,36 +414,221 @@ def test_build_chat_completion_tool_call_shape():
 
 
 def test_build_chat_completion_say_shape():
-    payload = build_chat_completion("m", SayResponse(text="hi"))
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
     choice = payload["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["message"]["content"] == "hi"
 
 
 def test_stream_chunks_tool_call_assembly():
-    chunks = list(stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"})))
+    chunks = list(
+        stream_chunks("m", ToolCallResponse(name="create_reminder", args={"title": "x"}), 50)
+    )
     assert all(c["object"] == "chat.completion.chunk" for c in chunks)
     assert chunks[0]["choices"][0]["delta"] == {"role": "assistant"}
     # Reassemble tool call from the streamed deltas.
     name = None
     args = ""
-    for c in chunks:
+    choice_chunks = [c for c in chunks if c["choices"]]
+    for c in choice_chunks:
         for call in c["choices"][0]["delta"].get("tool_calls", []):
             fn = call.get("function", {})
             name = fn.get("name") or name
             args += fn.get("arguments", "")
     assert name == "create_reminder"
     assert json.loads(args) == {"title": "x"}
-    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_stream_chunks_content_assembly():
-    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!")))
-    text = "".join(c["choices"][0]["delta"].get("content", "") for c in chunks)
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    choice_chunks = [c for c in chunks if c["choices"]]
+    text = "".join(c["choices"][0]["delta"].get("content", "") for c in choice_chunks)
     assert text == "Reminder set successfully!"
-    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+    assert choice_chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
-    assert all("finish_reason" in c["choices"][0] for c in chunks)
+    assert all("finish_reason" in c["choices"][0] for c in choice_chunks)
+
+
+def test_a_streamed_reply_ends_with_the_usage_a_real_provider_reports():
+    """GAIA refuses a success with no usage, so a zero-usage stub would make every sim call a metering error."""
+    chunks = list(stream_chunks("m", SayResponse(text="Reminder set successfully!"), 50))
+    assert chunks[-1]["choices"] == []
+    assert chunks[-1]["usage"] == {"prompt_tokens": 50, "completion_tokens": 6, "total_tokens": 56}
+
+
+def test_a_non_streamed_reply_reports_non_zero_usage():
+    payload = build_chat_completion("m", SayResponse(text="hi"), 50)
+    assert payload["usage"] == {"prompt_tokens": 50, "completion_tokens": 1, "total_tokens": 51}
+
+
+# --------------------------------------------------------------------------- #
+# Multiple steers folded into one work run, and echoed-directive filtering.
+# These pin the fix for the burst + cancel gaps: a run keeps its plan while
+# folding every <user_interjection> steer, and never re-executes directives a
+# cancel record (or any other internal-tag payload) quotes verbatim.
+# --------------------------------------------------------------------------- #
+
+WORK_TOOLS = frozenset({"create_todo"})
+
+
+def _interjection(text: str) -> Message:
+    return {"role": "user", "content": f"<user_interjection>\n{text}\n</user_interjection>"}
+
+
+def _cancelled_record(quoted_task: str) -> Message:
+    return {
+        "role": "user",
+        "content": (
+            f"<executor_cancelled>\nThe background task 42 ('{quoted_task}') was "
+            f"cancelled by the user before it completed.\n</executor_cancelled>"
+        ),
+    }
+
+
+def test_steer_does_not_drop_the_original_plan():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " "
+        + _tool_directive("create_todo", {"title": "C"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection("also " + _tool_directive("create_todo", {"title": "STEER"})),
+    ]
+    # After A, with a steer folded in, the next step is the plan's B — not the steer.
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "B"}
+    )
+
+
+def test_plan_and_all_steers_run_in_one_pass_then_say():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _interjection(_tool_directive("create_todo", {"title": "X"})),
+        _interjection(_tool_directive("create_todo", {"title": "Y"})),
+    ]
+    order: list[tuple[str, str]] = []
+    for _ in range(10):
+        got = resolve_response(messages, WORK_TOOLS)
+        if isinstance(got, SayResponse):
+            order.append(("say", got.text))
+            break
+        order.append(("tool", got.args["title"]))
+        messages.append(_assistant_tool_call("create_todo", got.args))
+        messages.append(_tool_result("create_todo"))
+    assert order == [
+        ("tool", "A"),
+        ("tool", "B"),
+        ("tool", "X"),
+        ("tool", "Y"),
+        ("say", "done"),
+    ]
+
+
+def test_interjection_directive_is_executed_after_plan():
+    task = "task " + _tool_directive("create_todo", {"title": "A"}) + " [[say:done]]"
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection(_tool_directive("create_todo", {"title": "REAL"})),
+    ]
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "REAL"}
+    )
+
+
+def test_cancelled_record_not_re_executed_work_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], WORK_TOOLS)
+    assert isinstance(got, SayResponse)  # the quoted GHOST directive is not run
+
+
+def test_cancelled_record_not_forwarded_comms_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], COMMS_TOOLS)
+    assert isinstance(got, SayResponse)  # comms does not forward a quoted cancel record
+
+
+def test_interrupt_note_with_quoted_directive_is_ignored():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    note = {
+        "role": "user",
+        "content": f"<executor_interrupted>\nStopped; it was doing {ghost}\n</executor_interrupted>",
+    }
+    assert isinstance(resolve_response([note], WORK_TOOLS), SayResponse)
+
+
+def test_an_unbound_internal_tool_is_retrieved_even_when_execute_is_exposed():
+    """Internal tools bind through retrieve_tools; an execute call would skip the tool yet advance the script."""
+    script = '[[tool:create_todo {"title": "x"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    assert resolve_response([_user(script)], executor) == ToolCallResponse(
+        name="retrieve_tools", args={"query": "create_todo", "exact_tool_names": ["create_todo"]}
+    )
+
+    after_retrieval = [
+        _user(script),
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["create_todo"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    assert resolve_response(after_retrieval, executor | {"create_todo"}) == ToolCallResponse(
+        name="create_todo", args={"title": "x"}
+    )
+
+
+def test_a_tool_retrieval_left_unbound_runs_through_execute_once():
+    """Retrieval returns an integration tool's schema instead of binding it, so execute runs it."""
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    assert resolve_response([_user(script)], executor) == ToolCallResponse(
+        name="retrieve_tools",
+        args={"query": "GMAIL_SEND_EMAIL", "exact_tool_names": ["GMAIL_SEND_EMAIL"]},
+    )
+
+    after_retrieval = [
+        _user(script),
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["GMAIL_SEND_EMAIL"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    execute_call = resolve_response(after_retrieval, executor)
+    assert execute_call == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run GMAIL_SEND_EMAIL",
+            "tool_name": "GMAIL_SEND_EMAIL",
+            "data": {"recipient_email": "a@b.c"},
+        },
+    )
+
+    after_execute = after_retrieval + [
+        _assistant_tool_call("execute", execute_call.args),
+        _tool_result("execute"),
+    ]
+    assert resolve_response(after_execute, executor) == SayResponse(text="Done")
+
+
+def test_an_unbound_tool_runs_through_execute_when_nothing_can_bind_it():
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    first = resolve_response([_user(script)], frozenset({"execute"}))
+    assert isinstance(first, ToolCallResponse)
+    assert first.name == "execute"
 
 
 def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
@@ -455,3 +645,78 @@ def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
 def test_a_malformed_directive_still_fails_loud():
     with pytest.raises(DirectiveError):
         parse_directives("[[tool:create_todo {bad}]]")
+
+
+# --------------------------------------------------------------------------- #
+# The executor brief quotes the user's request ahead of the task
+# (compose_executor_brief). That quote is an echo of the script the task already
+# carries, so its directives must not run a second time.
+# --------------------------------------------------------------------------- #
+
+
+def _executor_brief(request: str, task: str) -> str:
+    return (
+        f"{VERBATIM_REQUEST_HEADER}\n{request}\n\n{task}\n\n"
+        "Definition of done (every item must be true before you finish):\n"
+        "- scripted directives executed"
+    )
+
+
+def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
+    script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "stretch"}
+    )
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
+    script = '[[tool:web_search {"q": "x"}]]\n\n[[tool:create_reminder {"title": "y"}]] [[say:ok]]'
+    brief = _user(_executor_brief(script, script))
+    emitted = [
+        brief,
+        _assistant_tool_call("web_search"),
+        _tool_result("web_search"),
+        _assistant_tool_call("create_reminder"),
+        _tool_result("create_reminder"),
+    ]
+
+    assert resolve_response(emitted, EXECUTOR_TOOLS) == SayResponse(text="ok")
+
+
+def _after(brief: Message, *names: str) -> list[Message]:
+    turns: list[Message] = [brief]
+    for name in names:
+        turns += [_assistant_tool_call(name), _tool_result(name)]
+    return turns
+
+
+_TWICE = '[[tool:create_reminder {"title": "a"}]]\n\n[[tool:create_reminder {"title": "a"}]]'
+
+
+def test_a_request_repeating_a_paragraph_under_a_different_task_keeps_both() -> None:
+    """A repeated paragraph inside the request is not the task restating it."""
+    task = '[[tool:web_search {"q": "x"}]] [[say:done]]'
+    brief = _user(_executor_brief(_TWICE, task))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == ToolCallResponse(name="web_search", args={"q": "x"})
+
+
+def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
+    script = _TWICE + " [[say:done]]"
+    brief = _user(_executor_brief(script, script))
+
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "a"}
+    )
+    assert resolve_response(
+        _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
+    ) == SayResponse(text="done")

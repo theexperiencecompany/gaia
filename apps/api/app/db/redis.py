@@ -4,10 +4,10 @@ Supports generic JSON caching, TTL, pattern-based invalidation, and graceful fal
 Redis is unavailable.
 """
 
-from collections.abc import Mapping
-from typing import Any, Protocol, TypeVar, cast, overload
+from collections.abc import Mapping, Set as AbstractSet
+from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
-from pydantic import TypeAdapter
+from pydantic import JsonValue, TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 import redis.asyncio as redis
 from redis.asyncio.client import Pipeline, PubSub
@@ -28,14 +28,14 @@ CACHE_TTL = DEFAULT_CACHE_TTL
 # is ``User | None``, not ``Any`` — without it a mismatched model goes unnoticed.
 T = TypeVar("T")
 
-# The four remaining ``Any`` returns are the no-model overload stubs (deserialize_any,
-# RedisCache.get, get_cache, get_and_delete_cache). Measured: narrowing them to ``object``
-# produced 31 new mypy errors across 14 files — do not re-litigate without re-measuring.
+# What EVAL returns under decode_responses=True: Lua numbers/true -> int, strings and
+# status replies -> str, tables -> list, nil/false -> None.
+LuaReply = int | str | list[object] | None
 
 
-def serialize_any(data: object, model: type[Any] | None = None) -> str:
+def serialize_any(data: object, model: type[object] | None = None) -> str:
     """Serialize a Python object to a JSON string, validating against model if provided."""
-    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[object] = TypeAdapter(model or Any)
     return adapter.dump_json(data).decode()
 
 
@@ -44,12 +44,12 @@ def deserialize_any(json_str: str, model: type[T]) -> T: ...
 
 
 @overload
-def deserialize_any(json_str: str, model: type[Any] | None = None) -> Any: ...
+def deserialize_any(json_str: str, model: None = None) -> JsonValue: ...
 
 
-def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
+def deserialize_any(json_str: str, model: type[T] | None = None) -> T | JsonValue:
     """Deserialize a JSON string, validating against model if provided."""
-    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[T | JsonValue] = TypeAdapter(model or Any)
     return adapter.validate_json(json_str)
 
 
@@ -69,10 +69,24 @@ class AsyncRedisCommands(Protocol):
         """GET — None when the key is absent."""
         ...
 
+    @overload
     async def set(
-        self, name: str, value: str, *, ex: int | None = None, nx: bool = False
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int | None = None,
+        nx: bool = False,
+        get: Literal[False] = False,
     ) -> bool | None:
         """SET — with nx returns None when the key already existed."""
+        ...
+
+    @overload
+    async def set(
+        self, name: str, value: str, *, ex: int | None = None, nx: bool = False, get: Literal[True]
+    ) -> str | None:
+        """SET ... GET — returns the value the key held before, None when it was absent."""
         ...
 
     async def setex(self, name: str, time: int, value: str) -> bool:
@@ -89,6 +103,10 @@ class AsyncRedisCommands(Protocol):
 
     async def exists(self, *names: str) -> int:
         """EXISTS — count of the named keys present."""
+        ...
+
+    async def rename(self, src: str, dst: str) -> bool:
+        """RENAME — atomically move a key; raises ResponseError if src is absent."""
         ...
 
     async def expire(self, name: str, time: int) -> bool:
@@ -111,10 +129,6 @@ class AsyncRedisCommands(Protocol):
         """LLEN — 0 for a missing key."""
         ...
 
-    async def lpop(self, name: str) -> str | None:
-        """LPOP — None when the list is empty or absent."""
-        ...
-
     async def lrange(self, name: str, start: int, end: int) -> list[str]:
         """LRANGE — inclusive on both ends; -1 is the last element."""
         ...
@@ -123,8 +137,20 @@ class AsyncRedisCommands(Protocol):
         """LTRIM — keep only [start, end]; negative indexes count from the tail."""
         ...
 
+    async def lrem(self, name: str, count: int, value: str) -> int:
+        """LREM — remove matching elements; count=0 removes every copy."""
+        ...
+
     async def rpush(self, name: str, *values: str) -> int:
         """RPUSH — returns the list length after the push."""
+        ...
+
+    async def lmove(self, first_list: str, second_list: str) -> str | None:
+        """LMOVE LEFT RIGHT — atomically move first_list's oldest element to second_list's end; None when empty."""
+        ...
+
+    async def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """BLPOP — (key, value) from the first non-empty list, None when timeout seconds pass; 0 blocks forever."""
         ...
 
     async def hset(self, name: str, *, mapping: Mapping[str, str]) -> int:
@@ -133,6 +159,30 @@ class AsyncRedisCommands(Protocol):
 
     async def hgetall(self, name: str) -> dict[str, str]:
         """HGETALL — empty dict for a missing key."""
+        ...
+
+    async def hdel(self, name: str, *keys: str) -> int:
+        """HDEL — returns how many named fields were removed."""
+        ...
+
+    async def hsetnx(self, name: str, key: str, value: str) -> int:
+        """HSETNX — 1 when the field was set, 0 when it already held a value."""
+        ...
+
+    async def hget(self, name: str, key: str) -> str | None:
+        """HGET — None for a missing key or field."""
+        ...
+
+    async def sadd(self, name: str, *values: str) -> int:
+        """SADD — returns how many members were newly added."""
+        ...
+
+    async def smembers(self, name: str) -> AbstractSet[str]:
+        """SMEMBERS — empty set for a missing key."""
+        ...
+
+    async def srem(self, name: str, *values: str) -> int:
+        """SREM — returns how many members were removed."""
         ...
 
     async def publish(self, channel: str, message: str) -> int:
@@ -160,9 +210,7 @@ class AsyncRedisCommands(Protocol):
         """XREAD — [(stream, [(entry_id, fields)])] for streams with new entries."""
         ...
 
-    # Lua's return type is whatever the script yields — genuinely dynamic, so the
-    # caller narrows it (the one call site coerces to bool).
-    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> Any:
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:
         """EVAL — runs a Lua script; the caller narrows the dynamic result."""
         ...
 
@@ -261,9 +309,9 @@ class RedisCache:
     async def get(self, key: str, model: type[T]) -> T | None: ...
 
     @overload
-    async def get(self, key: str, model: type[Any] | None = None) -> Any: ...
+    async def get(self, key: str, model: None = None) -> JsonValue: ...
 
-    async def get(self, key: str, model: type[T] | None = None) -> Any:
+    async def get(self, key: str, model: type[T] | None = None) -> T | JsonValue:
         """Retrieve a cached value by key, deserialized against model if provided."""
         if not self.redis:
             log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping get operation.")
@@ -286,7 +334,7 @@ class RedisCache:
             return None
 
     async def set(
-        self, key: str, value: object, ttl: int = 3600, model: type[Any] | None = None
+        self, key: str, value: object, ttl: int = 3600, model: type[object] | None = None
     ) -> bool:
         """Store a value with a TTL, serialized against model if provided.
 
@@ -313,6 +361,79 @@ class RedisCache:
                 error=str(e),
             )
             return False
+
+    @overload
+    async def get_and_delete(self, key: str, model: type[T]) -> T | None: ...
+
+    @overload
+    async def get_and_delete(self, key: str, model: None = None) -> JsonValue: ...
+
+    async def get_and_delete(self, key: str, model: type[T] | None = None) -> T | JsonValue:
+        """Atomically read and remove key (GETDEL), so a one-time credential is redeemed exactly once."""
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete.")
+            return None
+
+        try:
+            value = await self.redis.getdel(key)
+            if value:
+                return deserialize_any(value, model)
+            return None
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="get_and_delete",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return None
+
+    async def set_if_absent(
+        self, key: str, value: object, *, ttl: int, model: type[object] | None = None
+    ) -> bool:
+        """SET NX with a TTL: True when this call created the key, False when it already existed.
+
+        The one atomic "first writer wins" the cache offers, for state that may be
+        settled from several processes at once. False also when Redis is down or
+        the write failed, so a caller never proceeds as the winner on an unstored key.
+        """
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping set_if_absent.")
+            return False
+
+        try:
+            created = await self.redis.set(key, serialize_any(value, model), ex=ttl, nx=True)
+            return created is not None
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="set_if_absent",
+                key=key,
+                ttl=ttl,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return False
+
+    async def ttl_seconds(self, key: str) -> int | None:
+        """Seconds until key expires, or None when it is absent, has no expiry, or Redis is down."""
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping ttl operation.")
+            return None
+
+        try:
+            remaining = await self.redis.ttl(key)
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="ttl",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return None
+        return remaining if remaining >= 0 else None
 
     async def delete(self, key: str) -> None:
         """Delete a cached key."""
@@ -352,16 +473,16 @@ async def get_cache(key: str, model: type[T]) -> T | None: ...
 
 
 @overload
-async def get_cache(key: str, model: type[Any] | None = None) -> Any: ...
+async def get_cache(key: str, model: None = None) -> JsonValue: ...
 
 
-async def get_cache(key: str, model: type[T] | None = None) -> Any:
+async def get_cache(key: str, model: type[T] | None = None) -> T | JsonValue:
     """Retrieve a cached value, or None if not found."""
     return await redis_cache.get(key, model)
 
 
 async def set_cache(
-    key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
+    key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[object] | None = None
 ) -> bool:
     """Store a value with a TTL, returning False if Redis was unavailable/failed."""
     return await redis_cache.set(key, value, ttl, model)
@@ -382,30 +503,12 @@ async def get_and_delete_cache(key: str, model: type[T]) -> T | None: ...
 
 
 @overload
-async def get_and_delete_cache(key: str, model: type[Any] | None = None) -> Any: ...
+async def get_and_delete_cache(key: str, model: None = None) -> JsonValue: ...
 
 
-async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
+async def get_and_delete_cache(key: str, model: type[T] | None = None) -> T | JsonValue:
     """Atomically get and delete a value (GETDEL) so a replayed one-time token can't also read it."""
-    if not redis_cache.redis:
-        log.warning(
-            f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete operation."
-        )
-        return None
-
-    try:
-        value = await redis_cache.redis.getdel(key)
-        if value:
-            return deserialize_any(value, model)
-        return None
-    except Exception as e:
-        log.error(
-            f"{LogTag.STORAGE} Error in get_and_delete for key",
-            key=key,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
+    return await redis_cache.get_and_delete(key, model)
 
 
 async def delete_cache_by_pattern(pattern: str) -> None:

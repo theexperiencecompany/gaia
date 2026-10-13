@@ -6,16 +6,24 @@ Handles token refresh, revocation, and client credential resolution.
 
 import base64
 import os
+from typing import TypedDict, cast
 from urllib.parse import urlparse
 
 import httpx
 
 from app.constants.log_tags import LogTag
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import oauth_token_expiry
 from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
+
+
+class _TokenErrorBody(TypedDict, total=False):
+    """Token-endpoint error fields read for logging (RFC 6749 section 5.2)."""
+
+    error: str
+    error_description: str
 
 
 def _endpoint_host(url: str | None) -> str | None:
@@ -71,7 +79,9 @@ async def try_refresh_token(
 
         client_id, client_secret = resolve_client_credentials(mcp_config)
         if not client_id:
-            dcr_data = await token_store.get_dcr_client(integration_id)
+            dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(
+                integration_id
+            )
             if dcr_data:
                 client_id = dcr_data.get("client_id")
                 client_secret = dcr_data.get("client_secret")
@@ -112,10 +122,11 @@ async def try_refresh_token(
                 try:
                     # Raw token-endpoint error body (RFC 6749 §5.2) — read for
                     # logging only, never propagated past this block.
-                    payload: object = response.json()
+                    payload = response.json()
                     if isinstance(payload, dict):
-                        error_code = payload.get("error")
-                        error_description = payload.get("error_description")
+                        body: _TokenErrorBody = cast(_TokenErrorBody, payload)
+                        error_code = body.get("error")
+                        error_description = body.get("error_description")
                 except ValueError:
                     pass
 
@@ -128,6 +139,11 @@ async def try_refresh_token(
                     oauth_error_description=error_description,
                     endpoint_host=_endpoint_host(token_endpoint),
                 )
+                if error_code == "invalid_grant":
+                    # The grant itself is dead (revoked/rotated server-side):
+                    # no later retry can succeed, so drop the token now rather
+                    # than letting liveness checks keep reporting recoverable.
+                    await token_store.clear_refresh_token(integration_id)
                 return False
 
             token = OAuthToken.model_validate(response.json())
@@ -184,7 +200,7 @@ async def revoke_tokens(
 
     client_id, client_secret = resolve_client_credentials(mcp_config)
     if not client_id:
-        dcr_data = await token_store.get_dcr_client(integration_id)
+        dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
         if dcr_data:
             client_id = dcr_data.get("client_id")
             client_secret = dcr_data.get("client_secret")

@@ -72,7 +72,7 @@ async def set_preferences(
         if not style:
             raise AppError(
                 message="Response style cannot be empty",
-                fix="Use one of brief, detailed, casual, professional — or pass a custom label",
+                fix="Use one of brief, detailed, casual, professional, or pass a custom label",
                 status_code=400,
             )
     if timezone is not None:

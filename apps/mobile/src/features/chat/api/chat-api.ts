@@ -1,8 +1,13 @@
-import type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
+import type {
+  ApprovalDecisionResponse,
+  ImageData,
+  ReplyToMessageData,
+} from "@gaia/shared/api/generated";
 
 export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
 
 import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
+import type { ReactionBadge } from "@gaia/shared/utils";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
@@ -42,6 +47,10 @@ export interface ApiMessage {
   metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
   reply_to_message?: ReplyToMessageData | null;
+  /** Backend message kind ("text" | "emoji_ack") — a comms REACT answer. */
+  kind?: string | null;
+  /** GAIA id of the message an emoji_ack reacts to. */
+  reacts_to_message_id?: string | null;
 }
 
 export interface ApiConversationDetail {
@@ -81,6 +90,12 @@ export interface Message {
    * the partial bubble plus a retry affordance instead of wiping the text.
    */
   error?: string;
+  /** Backend message kind ("text" | "emoji_ack"). */
+  kind?: string | null;
+  /** GAIA id of the message an emoji_ack reacts to. */
+  reacts_to_message_id?: string | null;
+  /** Reactions folded onto this message for render (see foldReactionAcks). */
+  reactions?: ReactionBadge[] | null;
 }
 
 export interface ConversationDetail {
@@ -110,6 +125,8 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     memoryData: memoryData ?? null,
     metadata: apiMsg.metadata,
     replyToMessage,
+    kind: apiMsg.kind ?? null,
+    reacts_to_message_id: apiMsg.reacts_to_message_id ?? null,
   };
 }
 
@@ -258,17 +275,19 @@ export async function cancelStream(streamId: string): Promise<boolean> {
 export async function postApprovalDecision(
   approvalId: string,
   decision: ApprovalDecisionPayload,
-): Promise<boolean> {
+): Promise<ApprovalDecisionResponse> {
   try {
-    await apiService.post(`/approvals/${approvalId}/decision`, decision);
-    return true;
+    return await apiService.post<ApprovalDecisionResponse>(
+      `/approvals/${approvalId}/decision`,
+      decision,
+    );
   } catch (error) {
-    // A 410 means the approval was already resolved elsewhere — the resolved
-    // card arrives over the stream regardless, so treat it as success. Only a
-    // genuine submission failure returns false.
-    if (error instanceof ApiError && error.status === HTTP_GONE) return true;
-    console.warn("Error submitting approval decision:", error);
-    return false;
+    // A 410 means the row already moved elsewhere — report it as not_found so
+    // the card refreshes rather than painting over the real verdict. Any other
+    // failure propagates to the card, which re-enables the buttons.
+    if (error instanceof ApiError && error.status === HTTP_GONE)
+      return { success: false, reason: "not_found" };
+    throw error;
   }
 }
 

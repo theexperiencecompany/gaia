@@ -51,7 +51,10 @@ def _as_items(rows: list[SimpleNamespace]) -> list[CommunityIntegrationItem]:
 
 async def test_semantic_search_results_respect_the_category_filter() -> None:
     """A category filter must constrain semantic-search hits too, not just the fallback: ChromaDB indexes no category."""
-    hits = [{"integration_id": "int-a"}, {"integration_id": "int-b"}]
+    hits = [
+        {"integration_id": "int-a", "relevance_score": 0.9},
+        {"integration_id": "int-b", "relevance_score": 0.9},
+    ]
     hydrated = [_hit("int-a", "productivity"), _hit("int-b", "developer")]
 
     with (
@@ -72,7 +75,10 @@ async def test_semantic_search_results_respect_the_category_filter() -> None:
 
 async def test_semantic_search_category_all_keeps_every_hit() -> None:
     """The "all" category is the no-filter sentinel, matching _community_search_filter."""
-    hits = [{"integration_id": "int-a"}, {"integration_id": "int-b"}]
+    hits = [
+        {"integration_id": "int-a", "relevance_score": 0.9},
+        {"integration_id": "int-b", "relevance_score": 0.9},
+    ]
     hydrated = [_hit("int-a", "productivity"), _hit("int-b", "developer")]
 
     with (
@@ -92,7 +98,7 @@ async def test_semantic_search_category_all_keeps_every_hit() -> None:
 
 async def test_semantic_hits_all_filtered_out_falls_back_to_mongo() -> None:
     """Every hit filtered out falls back to the Mongo path, which can surface rows the vector search ranked below the cut."""
-    hits = [{"integration_id": "int-b"}]
+    hits = [{"integration_id": "int-b", "relevance_score": 0.9}]
     hydrated = [_hit("int-b", "developer")]
     fallback = [_hit("int-c", "productivity")]
 

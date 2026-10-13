@@ -23,6 +23,7 @@ from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.agent_models import get_user_id
 from app.models.playbook_models import (
     BLOCKED_DECLINE_KINDS,
     INTEGRATION_DECLINE_KINDS,
@@ -49,7 +50,6 @@ from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
     get_stream_id,
-    get_user_id,
     get_workflow_id,
     success_response,
 )

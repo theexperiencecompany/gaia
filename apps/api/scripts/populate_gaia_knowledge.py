@@ -186,7 +186,8 @@ async def populate_knowledge(content_path: str | None = None, clear_first: bool 
         print(f"❌ Error: {content_path} not found!")
         return
 
-    content = content_file.read_text(encoding="utf-8")
+    # operator-run seeding script reading the markdown file the operator names; no trust boundary crossed
+    content = content_file.read_text(encoding="utf-8")  # NOSONAR pythonsecurity:S8707
     print(f"✅ Loaded content: {len(content)} characters")
 
     # Clear existing knowledge if requested

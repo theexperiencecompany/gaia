@@ -13,24 +13,16 @@ regression in the connector lifecycle or reconnect wrapper fails this test.
 
 from __future__ import annotations
 
-import asyncio
-import socket
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp.server.fastmcp import FastMCP
 import pytest
-import uvicorn
 
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_client import MCPClient
-
-
-def _pick_free_port() -> int:
-    """Bind to port 0, read the OS-assigned port, then release."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+from tests.helpers import serve_asgi
 
 
 def _build_mcp_app():
@@ -44,47 +36,10 @@ def _build_mcp_app():
     return mcp.streamable_http_app()
 
 
-class _ServerHandle:
-    """Manage a uvicorn server in a background asyncio task for tests."""
-
-    def __init__(self, port: int):
-        self.port = port
-        self.url = f"http://127.0.0.1:{port}/mcp"
-        config = uvicorn.Config(
-            _build_mcp_app(),
-            host="127.0.0.1",
-            port=port,
-            log_level="warning",
-            lifespan="on",
-        )
-        self._server = uvicorn.Server(config)
-        self._server.config.load()
-        self._task: asyncio.Task | None = None
-
-    async def start(self) -> None:
-        self._task = asyncio.create_task(self._server.serve())
-        # Wait until the server is actually accepting connections.
-        for _ in range(50):
-            if self._server.started:
-                return
-            await asyncio.sleep(0.05)
-        raise RuntimeError("FastMCP test server did not start in 2.5s")
-
-    async def stop(self) -> None:
-        self._server.should_exit = True
-        if self._task is not None:
-            await self._task
-
-
 @pytest.fixture
-async def fastmcp_server():
-    port = _pick_free_port()
-    handle = _ServerHandle(port)
-    await handle.start()
-    try:
-        yield handle
-    finally:
-        await handle.stop()
+async def fastmcp_server_url() -> AsyncIterator[str]:
+    async with serve_asgi(_build_mcp_app()) as base_url:
+        yield f"{base_url}/mcp"
 
 
 def _patch_resolver(server_url: str):
@@ -130,12 +85,12 @@ def _make_unauth_token_store():
 class TestReconnectFlowE2E:
     """End-to-end coverage of the bug we set out to fix: 'MCP client is not connected' after a connector is torn down."""
 
-    async def test_cold_connect_calls_tool_successfully(self, fastmcp_server):
+    async def test_cold_connect_calls_tool_successfully(self, fastmcp_server_url):
         """Baseline: a fresh MCPClient connects and calls a tool over real HTTP."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_unauth_token_store()
 
-        with _patch_resolver(fastmcp_server.url):
+        with _patch_resolver(fastmcp_server_url):
             for p in _patch_post_connect_side_effects():
                 p.start()
             try:
@@ -151,7 +106,7 @@ class TestReconnectFlowE2E:
                 for p in _patch_post_connect_side_effects():
                     p.stop()
 
-    async def test_dead_connector_triggers_transparent_reconnect(self, fastmcp_server):
+    async def test_dead_connector_triggers_transparent_reconnect(self, fastmcp_server_url):
         """Regression test for the 2026-05-26 17:50 production failure: a reconnect must not surface 'MCP client is not connected'."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_unauth_token_store()
@@ -162,7 +117,7 @@ class TestReconnectFlowE2E:
                 p.start()
                 active_patches.append(p)
 
-            with _patch_resolver(fastmcp_server.url):
+            with _patch_resolver(fastmcp_server_url):
                 tools = await client.connect("test-integration")
                 echo_tool = next(t for t in tools if t.name == "echo")
 

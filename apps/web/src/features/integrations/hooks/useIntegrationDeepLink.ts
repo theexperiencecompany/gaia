@@ -31,8 +31,38 @@ export interface IntegrationDeepLinkHandlers {
   onOpen: (integrationId: string, opts: { refresh: boolean }) => void;
   /** `?connect=<id>`: start that integration's connect flow on arrival. Used by
    *  the links GAIA puts in chat, so "Connect Gmail" is one tap, not a page
-   *  and a search. */
-  onConnectRequested: (integrationId: string) => void;
+   *  and a search. `&account=<id>` signs that expired account back in instead. */
+  onConnectRequested: (integrationId: string, accountId: string | null) => void;
+  /** `?connect_error=<reason>`: a bot connect link could not be redeemed. */
+  onConnectLinkFailed: (reason: string) => void;
+}
+
+function dispatchMcpCallback(
+  h: IntegrationDeepLinkHandlers,
+  status: string,
+  id: string,
+  name: string | null,
+  error: string | null,
+): void {
+  if (status === "connected") {
+    h.onConnected(id, name);
+  } else if (status === "bearer_required" && name) {
+    h.onBearerRequired(id, name);
+  } else if (status === "failed") {
+    h.onFailed(error);
+  }
+}
+
+/** Drop consumed params from the address bar without a navigation. */
+function stripSearchParams(
+  router: Pick<ReturnType<typeof useRouter>, "replace">,
+  params: readonly string[],
+): void {
+  const url = new URL(window.location.href);
+  const present = params.filter((param) => url.searchParams.has(param));
+  if (present.length === 0) return;
+  for (const param of present) url.searchParams.delete(param);
+  router.replace(url.pathname + url.search, { scroll: false });
 }
 
 /**
@@ -64,32 +94,17 @@ export function useIntegrationDeepLink(
     const oauthSuccess = searchParams.get("oauth_success");
     const refresh = searchParams.get("refresh") === "true";
     const connect = searchParams.get("connect");
+    const account = searchParams.get("account");
+    const connectError = searchParams.get("connect_error");
     const h = handlersRef.current;
 
-    const clearMcpParams = () => {
-      const url = new URL(window.location.href);
-      let changed = false;
-      for (const param of MCP_CALLBACK_PARAMS) {
-        if (url.searchParams.has(param)) {
-          url.searchParams.delete(param);
-          changed = true;
-        }
-      }
-      if (changed) {
-        router.replace(url.pathname + url.search, { scroll: false });
-      }
-    };
+    const stripParams = (params: readonly string[]) =>
+      stripSearchParams(router, params);
 
     // MCP connect callback (always carries both id and status).
     if (status && id) {
-      if (status === "connected") {
-        h.onConnected(id, name);
-      } else if (status === "bearer_required" && name) {
-        h.onBearerRequired(id, name);
-      } else if (status === "failed") {
-        h.onFailed(error);
-      }
-      clearMcpParams();
+      dispatchMcpCallback(h, status, id, name, error);
+      stripParams(MCP_CALLBACK_PARAMS);
       return;
     }
 
@@ -104,7 +119,13 @@ export function useIntegrationDeepLink(
     // Standalone id — slash-command nav, marketplace add, or custom create.
     if (id) {
       h.onOpen(id, { refresh });
-      clearMcpParams();
+      stripParams(MCP_CALLBACK_PARAMS);
+      return;
+    }
+
+    if (connectError) {
+      stripParams(["connect_error"]);
+      h.onConnectLinkFailed(connectError);
       return;
     }
 
@@ -112,10 +133,8 @@ export function useIntegrationDeepLink(
     // before the OAuth redirect so coming back never re-triggers it.
     if (connect && consumedConnectRef.current !== connect) {
       consumedConnectRef.current = connect;
-      const url = new URL(window.location.href);
-      url.searchParams.delete("connect");
-      router.replace(url.pathname + url.search, { scroll: false });
-      h.onConnectRequested(connect);
+      stripParams(["connect", "account"]);
+      h.onConnectRequested(connect, account);
     }
   }, [searchParams, router]);
 }

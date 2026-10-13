@@ -48,13 +48,21 @@ from app.services.conversation_service import (
 )
 from app.services.todos.todo_service import TodoService
 from app.utils.errors import AppError
+from tests.helpers import users_get
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-USER_ID = "user_txn_test_001"
+USER_ID = "64abc123def4567890abcde1"
 FAKE_USER = AuthenticatedUser(user_id=USER_ID)
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        yield
 
 
 def _stored_todo(document: TodoDocument, **overrides: Any) -> TodoDocument:
@@ -265,11 +273,6 @@ class TestTodoCreationWithSubtasks:
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
             ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
-            ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -304,11 +307,6 @@ class TestTodoCreationWithSubtasks:
             patch(
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
             ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
@@ -521,6 +519,10 @@ class TestBulkOperations:
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=5),
             ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
+            ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -546,6 +548,10 @@ class TestBulkOperations:
             patch(
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=3),
+            ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),

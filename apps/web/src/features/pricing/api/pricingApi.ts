@@ -2,6 +2,7 @@ import type {
   CreateCheckoutSessionRequest,
   CreateSubscriptionRequest,
   CreateSubscriptionResponse,
+  DiscountCodesResponse,
   PaymentVerificationResponse,
   PlanResponse,
   SubscriptionDocument,
@@ -14,7 +15,7 @@ export type {
   UserSubscriptionStatus,
 } from "@shared/api/generated";
 
-import { api } from "@/lib/api/typed";
+import { api, type RequestOrigin } from "@/lib/api/typed";
 
 export type Plan = PlanResponse;
 
@@ -35,6 +36,11 @@ class PricingApi {
     return api.get("/api/v1/payments/plans", {
       query: { active_only: activeOnly },
     });
+  }
+
+  // The coupon codes the server is configured to advertise
+  getDiscountCodes(): Promise<DiscountCodesResponse> {
+    return api.get("/api/v1/payments/discount-codes");
   }
 
   // Create subscription and get payment link
@@ -64,8 +70,10 @@ class PricingApi {
   }
 
   // Get user subscription status
-  getSubscriptionStatus(): Promise<UserSubscriptionStatus> {
-    return api.get("/api/v1/payments/subscription-status");
+  getSubscriptionStatus({
+    background,
+  }: RequestOrigin = {}): Promise<UserSubscriptionStatus> {
+    return api.get("/api/v1/payments/subscription-status", { background });
   }
 
   // Cancel the user's subscription (effective at the end of the billing period)

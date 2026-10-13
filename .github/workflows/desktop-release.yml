@@ -43,6 +43,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production
+    # environment, the same place deploy-web.yml reads them from.
+    environment: production
+
     steps:
       # Checkout source for package/build tooling.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,12 +94,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm
 
-      # Build platform-specific desktop distribution artifacts.
+      # Build platform-specific desktop distribution artifacts. NEXT_PUBLIC_*
+      # is inlined at build time, so an empty value ships an installer with
+      # that feature dead (desktop analytics was off this way); fail instead.
       - name: Build Desktop (${{ matrix.target }})
-        run: pnpm nx dist:${{ matrix.target }} desktop
+        shell: bash
+        run: |
+          missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+          if [ -n "$missing" ]; then
+            echo "::error::Empty in the production environment's variables: $(echo $missing). Set them under Settings → Environments → production."
+            exit 1
+          fi
+          pnpm nx dist:${{ matrix.target }} desktop
         env:
           CI: true
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No paid Apple Developer ID / notarization. Disabling auto-discovery
           # makes electron-builder skip real signing and lets the afterSign hook

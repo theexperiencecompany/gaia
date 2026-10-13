@@ -36,7 +36,7 @@ from app.models.workflow_models import (
 )
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
-from app.services.user_service import get_user_by_id
+from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
@@ -107,8 +107,7 @@ async def provision_system_workflows(
             # the user's local time instead of UTC.
             if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
                 if user_timezone is None:
-                    user = await get_user_by_id(user_id)
-                    user_timezone = ((user.timezone if user else None) or "").strip() or "UTC"
+                    user_timezone = (await get_profile_timezone(user_id)).value
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
@@ -142,8 +141,7 @@ async def provision_system_workflows(
 async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) -> None:
     """Switch a freshly provisioned system workflow on for a Pro user.
 
-    GAIA's opening conversation promises the inbox triage runs tonight, so
-    free users keep it dormant instead (the paid-only gate would refuse to
+    Free users keep it dormant instead (the paid-only gate would refuse to
     run it anyway); an activation failure is logged but never blocks the
     rest of provisioning.
     """
@@ -187,7 +185,7 @@ async def _notify_workflows_provisioned(
     else:
         title = f"I set up {len(created)} workflows for your {integration_name}"
 
-    workflow_lines = "\n".join(f"• {r.title} — {r.description}" for r in created)
+    workflow_lines = "\n".join(f"• {r.title}: {r.description}" for r in created)
     body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."
 
     try:
@@ -239,8 +237,7 @@ async def _stamp_reset_trigger_timezone(trigger_config: TriggerConfig, user_id: 
     if trigger_config.type != TriggerType.SCHEDULE:
         return
     if not trigger_config.timezone:
-        user = await get_user_by_id(user_id)
-        trigger_config.timezone = ((user.timezone if user else None) or "").strip() or "UTC"
+        trigger_config.timezone = (await get_profile_timezone(user_id)).value
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 

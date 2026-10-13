@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +12,7 @@ from app.agents.prompts.onboarding_prompts import (
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
+    TRIGGERED_ACCOUNT_SECTION,
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_EXECUTION_PROMPT,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -32,6 +33,7 @@ from app.models.message_models import (
 )
 from app.models.onboarding_models import PersistedTriageSummary
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument
+from app.models.webhook_models import TriggerEventAccount
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -45,9 +47,10 @@ def create_system_message(
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
-    Byte-identical across users on the same channel so the provider's
-    implicit prompt cache matches across users. All user/time/memory context
-    is assembled by app.agents.context and delivered separately, never here.
+    Byte-identical across every user on the same channel so the provider's prompt
+    cache matches across users; comms variants embed the per-channel output-format
+    addendum. All user/time/memory context is assembled by app.agents.context and
+    delivered in its own messages, never in this static prefix.
     """
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
@@ -88,7 +91,7 @@ def format_tool_selection_message(
     """Format tool selection message, handling both standalone and combined requests.
 
     The comms_agent delegates to executor via call_executor. The executor will
-    use semantic search to find the right tool/subagent, then execute.
+    activate the integration and run its tools itself.
     """
     tool_name = selected_tool.replace("_", " ").title()
     search_hint = f"{selected_tool} {tool_category}" if tool_category else selected_tool
@@ -100,9 +103,8 @@ def format_tool_selection_message(
 **TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
 Use call_executor to delegate this task. The executor should:
-1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
-2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to [user's request]")`
-3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+1. Use `activate_integration(integration_id="{tool_category}")` to load the integration (or `retrieve_tools(query="{search_hint}")` to find the tool first)
+2. Run it via `execute(task_description="...", tool_name="{selected_tool}", data={{...}})` built from its schema
 
 Execute immediately without asking for clarification."""
 
@@ -110,9 +112,8 @@ Execute immediately without asking for clarification."""
     return f"""**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
 Use call_executor to delegate this task. The executor should:
-1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
-2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to execute the user's request")`
-3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+1. Use `activate_integration(integration_id="{tool_category}")` to load the integration (or `retrieve_tools(query="{search_hint}")` to find the tool first)
+2. Run it via `execute(task_description="...", tool_name="{selected_tool}", data={{...}})` built from its schema
 
 Execute immediately without asking for clarification."""
 
@@ -125,6 +126,29 @@ class TriggerEmailData(BaseModel):
     sender: str = "Unknown"
     subject: str = "No Subject"
     message_text: str = ""
+
+
+class _BatchedTriggerPayload(TypedDict, total=False):
+    """A batched run's payload: its events, unchecked, as providers send anything."""
+
+    events: object
+
+
+def _event_accounts(payload: Mapping[str, object]) -> list[str]:
+    """Name the accounts a trigger payload (or each event of a batched one) arrived on.
+
+    Provider payloads have no fixed shape, so this reads the one key GAIA adds and
+    ignores anything else rather than validating the payload.
+    """
+    batch: _BatchedTriggerPayload = cast(_BatchedTriggerPayload, payload)
+    events = batch.get("events")
+    sources = [payload, *(events if isinstance(events, list) else [])]
+    names: set[object] = set()
+    for source in sources:
+        if isinstance(source, Mapping):
+            tagged: TriggerEventAccount = cast(TriggerEventAccount, source)
+            names.add(tagged.get("gaia_account"))
+    return sorted(name for name in names if isinstance(name, str) and name)
 
 
 class WorkflowTriggerContext(BaseModel):
@@ -146,6 +170,8 @@ class WorkflowTriggerContext(BaseModel):
     type: str | None = None
     email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
     triggered_at: str = "Unknown"
+    # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
+    trigger_data: dict[str, object] = Field(default_factory=dict)
 
 
 async def format_workflow_execution_message(
@@ -222,6 +248,9 @@ async def format_workflow_execution_message(
     # This run already replayed the playbook and stopped partway; appended
     # rather than folded into the templates since it's per-run evidence.
     fallback_section = trigger.playbook_fallback or ""
+    accounts = _event_accounts(trigger.trigger_data)
+    if accounts:
+        fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
 
     # Email-triggered workflows get enhanced context
     if trigger.type == "gmail":
@@ -365,7 +394,7 @@ def _uploaded_file_lines(
         lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
     else:
         lines.append(
-            f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            f"- {file.filename}  (id: {file.fileId}), not on disk, use `search_uploaded_files`"
         )
     if file.description:
         summary = file.description.strip()
@@ -434,14 +463,14 @@ def format_files_list(
 {file_block}
 
 How to work with these files:
-- What is it? — the `summary` above already says; read the `full summary` file
+- What is it? The `summary` above already says; read the `full summary` file
   for the complete write-up.
-- Need the raw content? — read the file at its path with read/bash. Files shown
+- Need the raw content? Read the file at its path with read/bash. Files shown
   without a path are not on disk; use `search_uploaded_files` for those.
-- Searching across several uploaded files? — use `search_uploaded_files`.
+- Searching across several uploaded files? Use `search_uploaded_files`.
 The files live in `./user-uploaded/` (read-only). To process them: copy into
 `./scratch/`, do your work, and write user-visible output into `./artifacts/`
-— files written there render as cards in the chat immediately.
+Files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

@@ -10,7 +10,7 @@ import {
   LinkSquare02Icon,
 } from "@icons";
 import Link from "next/link";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
 interface RedditPostCardProps {
@@ -51,7 +51,7 @@ function formatNumber(num: number): string {
 export default function RedditPostCard({ post }: RedditPostCardProps) {
   const handleOpenPost = () => {
     if (post.permalink) {
-      trackEvent(ANALYTICS_EVENTS.REDDIT_POST_VIEWED, {
+      track("reddit:post_viewed", {
         subreddit: post.subreddit,
         score: post.score,
         num_comments: post.num_comments,

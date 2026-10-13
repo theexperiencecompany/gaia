@@ -17,19 +17,25 @@ None of the three had a test. All three are user-visible the moment they break.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 import pytest
 
+from app.agents.tools.execute.execute_tool import execute
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     format_tool_error,
     timeout_guarded_tool_call,
 )
+
+NODE = "app.override.langgraph_bigtool.dynamic_tool_node"
+DISPATCH = "app.agents.tools.execute.dispatch"
 
 
 def _request(name: str = "GMAIL_FETCH_MESSAGES", call_id: str = "c1") -> MagicMock:
@@ -75,7 +81,7 @@ class TestTimeoutGuard:
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), never_returns)
 
         assert "may or may not have" in result.content
-        assert "verify" in result.content
+        assert "Verify" in result.content
 
     async def test_a_tool_that_finishes_in_time_is_untouched(self):
         """Control: the guard must be invisible on the happy path."""
@@ -102,6 +108,70 @@ class TestTimeoutGuard:
             return expected
 
         assert await timeout_guarded_tool_call(_request(exempt), slow) is expected
+
+    async def test_bash_is_allowed_to_outlive_the_generic_bound(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Bash carries its own deadline all the way down to e2b's server-side command timeout, and advertises up to 300s to the model."""
+        monkeypatch.setattr(
+            "app.override.langgraph_bigtool.dynamic_tool_node.TOOL_EXECUTION_TIMEOUT_SECONDS",
+            0.01,
+        )
+        expected = ToolMessage(content="exit_code: 0", tool_call_id="c1")
+
+        async def slow(_request: Any) -> ToolMessage:
+            await asyncio.sleep(0.05)
+            return expected
+
+        assert await timeout_guarded_tool_call(_request("bash"), slow) is expected
+
+    async def test_a_proxied_call_comes_back_with_dispatchs_structured_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Dispatch_tool's timeout error names the REAL tool and tells the model a retry can duplicate the action; this node's text is generic."""
+        monkeypatch.setattr(f"{DISPATCH}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
+        monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
+        monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.3)
+        # No accounts on record: the account lookup is Mongo, not this guard.
+        monkeypatch.setattr(
+            "app.agents.tools.execute.account_choice.get_account_record",
+            AsyncMock(return_value=None),
+        )
+
+        hung = MagicMock()
+        hung.name = "GMAIL_SEND_EMAIL"
+        hung.args_schema = None
+
+        async def never_returns(*_args: Any, **_kwargs: Any) -> None:
+            await asyncio.sleep(5)
+
+        hung.ainvoke = never_returns
+
+        request = _request("execute")
+        request.tool_call["args"] = {"tool_name": "GMAIL_SEND_EMAIL", "data": {}}
+
+        async def run_the_proxy(_request: Any) -> ToolMessage:
+            content = await execute.ainvoke(
+                {
+                    "task_description": "Sending the email",
+                    "tool_name": "GMAIL_SEND_EMAIL",
+                    "data": {},
+                },
+                config={"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}},
+            )
+            return ToolMessage(content=content, tool_call_id="c1")
+
+        resolved = ResolvedTool("GMAIL_SEND_EMAIL", hung, is_integration=True)
+        with (
+            patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch(f"{DISPATCH}.capture"),
+        ):
+            result = await timeout_guarded_tool_call(request, run_the_proxy)
+
+        body = json.loads(result.content)
+        assert body["error"] == "timeout"
+        assert "GMAIL_SEND_EMAIL" in body["detail"]
+        assert "verify" in body["next"].lower()
 
     def test_the_configured_timeout_is_long_enough_for_a_real_call(self):
         """A guard set to a few seconds would abort legitimate provider calls; this pins the value as a deliberate choice."""
@@ -137,3 +207,59 @@ class TestErrorText:
 
     def test_an_exception_with_no_message_still_reads_as_an_error(self):
         assert format_tool_error(ValueError()).startswith("Error: ValueError:")
+
+
+async def _never_returns(_request: Any) -> ToolMessage:
+    await asyncio.sleep(5)
+    raise AssertionError("the guard let a hung call run to completion")
+
+
+@pytest.fixture
+def shrunk_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.02)
+
+
+def _proxied(real_name: str) -> MagicMock:
+    request = _request("execute")
+    request.tool_call["args"] = {"tool_name": real_name, "data": {}}
+    return request
+
+
+@pytest.mark.usefixtures("shrunk_bounds")
+class TestTimeoutText:
+    """The exact text the model reads, and which name the error ToolMessage answers to."""
+
+    async def test_a_plain_timeout_names_the_tool_and_the_bound(self) -> None:
+        result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), _never_returns)
+        assert result.name == "GMAIL_SEND_EMAIL"
+        assert result.content == (
+            "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.01s. The operation may "
+            "or may not have completed on the provider side. Verify its effect before retrying."
+        )
+
+    async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:
+        result = await timeout_guarded_tool_call(_proxied("GMAIL_SEND_EMAIL"), _never_returns)
+        assert result.name == "execute"
+        assert result.content.startswith(
+            "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
+        )
+
+    async def test_a_proxied_exempt_tool_is_not_bounded_by_the_node(self) -> None:
+        expected = ToolMessage(content="report ready", tool_call_id="c1")
+
+        async def slow(_request: Any) -> ToolMessage:
+            await asyncio.sleep(0.1)
+            return expected
+
+        assert await timeout_guarded_tool_call(_proxied("deep_research"), slow) is expected
+
+    async def test_an_exempt_tool_that_times_out_itself_claims_no_bound(self) -> None:
+        async def gives_up(_request: Any) -> ToolMessage:
+            raise TimeoutError
+
+        result = await timeout_guarded_tool_call(_request("deep_research"), gives_up)
+        assert result.content == (
+            "Error: TimeoutError: 'deep_research' timed out. The operation may or may not "
+            "have completed on the provider side. Verify its effect before retrying."
+        )

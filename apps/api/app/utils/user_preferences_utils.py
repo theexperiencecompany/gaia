@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -35,6 +36,20 @@ class WritingStylePromptFields(BaseModel):
     summary: str | None = None
     user_edited_summary: str | None = None
     example: WritingStyleExampleBlocks | str | None = None
+
+
+class OnboardingPreferencesRecord(TypedDict, total=False):
+    """The OnboardingPreferences dump onboarding_preferences puts in a run's configurable.
+
+    Only the fields the user set are present. needs and other_need stay object: the
+    checkpointed bag is not re-validated, so their readers narrow them.
+    """
+
+    profession: str
+    needs: object
+    response_style: str
+    other_need: object
+    custom_instructions: str
 
 
 def onboarding_preferences(

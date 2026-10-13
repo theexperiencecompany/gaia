@@ -1,7 +1,6 @@
 """Reminder scheduler for managing reminder tasks."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from arq.connections import RedisSettings
 
@@ -15,13 +14,17 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
+    TaskRearm,
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
+from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -120,6 +123,65 @@ class ReminderScheduler(BaseSchedulerService):
 
         return True
 
+    async def resume(self, reminder: ReminderModel) -> bool:
+        """Return a paused reminder to SCHEDULED at its next fire in its own timezone.
+
+        A series whose stop_after or max_occurrences ran out while paused completes
+        instead. Raises InvalidScheduleError when its stored schedule breaks the
+        rule; only the user can fix that, so it stays paused.
+        """
+        if not reminder.id:
+            raise ValueError("Reminder must have an ID to resume")
+        update = ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
+        if reminder.repeat:
+            validate_recurring_schedule(reminder.repeat)
+            next_run = get_next_run_time(reminder.repeat, tz=Timezone.parse(reminder.timezone))
+            if self._should_continue_recurring(reminder, reminder.occurrence_count, next_run):
+                update.scheduled_at = next_run
+            else:
+                update.status = ReminderStatus.COMPLETED
+        elif reminder.scheduled_at is not None:
+            # Its job may have fired and been refused while paused; re-arm it (a past time fires now).
+            update.scheduled_at = reminder.scheduled_at
+        return await self.update_reminder(reminder.id, update, reminder.user_id)
+
+    async def resume_paused_for(self, user_id: str, reason: DeactivationReason) -> int:
+        """Resume every reminder the system paused for reason; return the count resumed.
+
+        One that cannot resume does not stop the rest; their failures are raised
+        together at the end. A broken schedule is re-marked INVALID_SCHEDULE so no
+        later resume retries it.
+        """
+        resumed = 0
+        failures: list[Exception] = []
+        for reminder in await reminder_repository.find_paused_for_reason(user_id, reason):
+            try:
+                await self.resume(reminder)
+            except InvalidScheduleError as e:
+                await self.pause_for_reason(reminder, DeactivationReason.INVALID_SCHEDULE)
+                log.warning(
+                    "Paused reminder kept paused: its schedule breaks the rule",
+                    reminder_id=reminder.id,
+                    user_id=user_id,
+                    schedule_rejection=e.reason.value,
+                )
+                continue
+            except Exception as e:  # the rest of the user's reminders must still resume
+                log.warning(
+                    "Paused reminder could not resume",
+                    reminder_id=reminder.id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                failures.append(e)
+                continue
+            resumed += 1
+        log.set(reminders_resumed=resumed, reminders_resume_reason=reason.value)
+        if failures:
+            raise ExceptionGroup(f"{len(failures)} paused reminder(s) could not resume", failures)
+        return resumed
+
     async def list_user_reminders(
         self,
         user_id: str,
@@ -155,15 +217,25 @@ class ReminderScheduler(BaseSchedulerService):
 
             # Ensure task is a ReminderModel
             if not isinstance(task, ReminderModel):
-                return TaskExecutionResult(success=False, message="Task is not a ReminderModel")
+                return TaskExecutionResult(
+                    outcome=TaskOutcome.FAILED, message="Task is not a ReminderModel"
+                )
 
-            await execute_reminder_by_agent(task)
+            outcome = await execute_reminder_by_agent(task)
 
             return TaskExecutionResult(
-                success=True, message=f"Successfully executed reminder {task.id}"
+                outcome=outcome, message=f"Reminder {task.id}: {outcome.value}"
             )
         except Exception as e:
-            return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
+            return TaskExecutionResult(
+                outcome=TaskOutcome.FAILED, message=f"Failed to execute reminder: {e!s}"
+            )
+
+    async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:
+        """Pause the reminder with a system reason, so the resume that owns reason can find it."""
+        if not task.id:
+            raise ValueError("Reminder must have an ID to pause")
+        await reminder_repository.set_status(task.id, ReminderStatus.PAUSED, pause_reason=reason)
 
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
         """Reminders wedged in EXECUTING since before cutoff."""
@@ -189,22 +261,18 @@ class ReminderScheduler(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """Update reminder status (plus the scheduler's re-arm fields).
-
-        BaseSchedulerService only ever passes occurrence_count and/or
-        scheduled_at in update_data (updated_at is auto-stamped by the
-        repository), so those are threaded through as typed arguments.
-        """
-        data = update_data or {}
+        """Update reminder status plus its re-arm fields; a reminder has no next_run or repeat to write."""
+        rearm = rearm or TaskRearm()
+        scheduled_at = rearm.scheduled_at if isinstance(rearm.scheduled_at, datetime) else None
         return await reminder_repository.set_status(
             task_id,
             status,
             user_id=user_id,
-            occurrence_count=data.get("occurrence_count"),
-            scheduled_at=data.get("scheduled_at"),
+            occurrence_count=rearm.occurrence_count,
+            scheduled_at=scheduled_at,
         )
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:

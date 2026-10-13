@@ -164,6 +164,9 @@ def _authored_run(case: Case) -> CaseRun | None:
         if isinstance(messages, list)
         else ([{"role": "assistant", "content": text}] if text else []),
         tool_calls=block.get("tool_calls") if isinstance(block.get("tool_calls"), list) else [],
+        final_turn_tool_calls=block.get("final_turn_tool_calls")
+        if isinstance(block.get("final_turn_tool_calls"), list)
+        else [],
         end_state=block.get("end_state") if isinstance(block.get("end_state"), dict) else {},
         text=text,
     )

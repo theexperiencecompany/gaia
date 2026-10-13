@@ -31,6 +31,7 @@ from langgraph.store.memory import InMemoryStore
 from pydantic import PrivateAttr
 
 from app.agents.core.graph_builder import build_graph as _build_graph
+from app.models import integration_models
 from tests.helpers import BindableToolsFakeModel
 
 #: The node that runs the LLM. Only its updates carry the model's own decisions.
@@ -46,6 +47,8 @@ FINISH_NODE = "finish_task"
 #: Where the completion guard sends a run back for one more pass instead of
 #: letting it end on demonstrably unfinished work.
 NUDGE_NODE = "nudge_continue"
+#: The user every harness run acts as.
+HARNESS_USER_ID = "u-1"
 
 #: The memory engine double a comms graph was built with, so a test can assert
 #: passive ingestion actually ran.
@@ -426,9 +429,11 @@ async def comms_graph(
         ),
         patch(
             f"{node_module}.get_user_integration_capabilities",
-            new=AsyncMock(return_value={"tool_names": []}),
+            new=AsyncMock(
+                return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+            ),
         ),
-        patch(f"{node_module}.get_stream_writer", return_value=lambda _: None),
+        patch(f"{node_module}.current_stream_writer", return_value=lambda _: None),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch(
             "app.agents.core.background.executor_runner.prepare_executor_execution",
@@ -461,19 +466,36 @@ def scripted_model_of(graph: Any) -> RecordingFakeModel:
     return _SCRIPTED_MODELS[id(graph)]
 
 
+def _record_update(run: GraphRun, node: str, update: object) -> None:
+    """Record one node update: the visit, then any bindings, todos and messages it carries."""
+    if not run.visited or run.visited[-1] != node:
+        run.visited.append(node)
+    if not isinstance(update, dict):
+        return
+    if "selected_tool_ids" in update:
+        run.selected.append(list(update["selected_tool_ids"]))
+    if update.get("todos"):
+        run.todos = list(update["todos"])
+    for message in update.get("messages", []) or []:
+        run.events.append(NodeMessage(node=node, message=message))
+
+
 async def run_graph(
     graph: Any,
     prompt: str,
     *,
     thread_id: str = "t-1",
-    user_id: str = "u-1",
+    user_id: str = HARNESS_USER_ID,
     recursion_limit: int = 25,
     state: dict[str, Any] | None = None,
+    **configurable: Any,
 ) -> GraphRun:
     """Drive one turn and record every node update.
 
     A GraphRecursionError is captured on the run rather than raised: an
     agent spinning to its limit is a behaviour worth asserting, not a test error.
+    Further keywords are configurable keys, as build_agent_config stamps them
+    (execution_mode, stream_id, conversation_id, provenance).
     """
     from langgraph.errors import GraphRecursionError
 
@@ -482,7 +504,7 @@ async def run_graph(
     # `configurable` but every @tool reads `metadata["user_id"]`, so setting
     # only one makes tools silently return "user_id not found" as if they ran.
     config = {
-        "configurable": {"thread_id": thread_id, "user_id": user_id},
+        "configurable": {"thread_id": thread_id, "user_id": user_id, **configurable},
         "metadata": {"user_id": user_id},
         "recursion_limit": recursion_limit,
     }
@@ -492,16 +514,7 @@ async def run_graph(
     try:
         async for _mode, payload in graph.astream(initial, stream_mode=["updates"], config=config):
             for node, update in payload.items():
-                if not run.visited or run.visited[-1] != node:
-                    run.visited.append(node)
-                if not isinstance(update, dict):
-                    continue
-                if "selected_tool_ids" in update:
-                    run.selected.append(list(update["selected_tool_ids"]))
-                if update.get("todos"):
-                    run.todos = list(update["todos"])
-                for message in update.get("messages", []) or []:
-                    run.events.append(NodeMessage(node=node, message=message))
+                _record_update(run, node, update)
     except GraphRecursionError as exc:
         run.error = exc
 

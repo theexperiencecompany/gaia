@@ -16,6 +16,8 @@ import pytest
 from app.db.repositories.blog import blog_repository
 from app.models.blog_models import AuthorDetails, BlogPost
 from app.services.blog_service import BlogService
+from app.utils.log_identifiers import user_text_shape
+from tests.helpers import captured_wide_event
 from tests.unit.services.regex_helpers import collect_regex_values
 
 
@@ -110,6 +112,17 @@ class TestGetBlogCount:
 
 
 class TestSearchBlogs:
+    async def test_the_event_records_the_query_shape_and_never_its_words(self, mock_blog_repo):
+        mock_blog_repo.search = AsyncMock(return_value=[_blog_post()])
+
+        async with captured_wide_event() as event:
+            await BlogService.search_blogs("my divorce papers")
+
+        assert event["blog"] == {
+            "search_query": user_text_shape("my divorce papers"),
+            "result_count": 1,
+        }
+
     async def test_searches_by_query(self, mock_blog_repo):
         mock_blog_repo.search = AsyncMock(return_value=[_blog_post(category="Tech")])
 

@@ -1,22 +1,27 @@
-import { useParams } from "next/navigation";
 import { useCallback } from "react";
-import { turnManager } from "@/features/chat/stream/turnManager";
+import { useChatStore } from "@/stores/chatStore";
 import { useStreamStore } from "@/stores/streamStore";
 
 /**
- * Swap "Waiting for your approval" for a resuming state the moment the user
- * decides, since the resolved frame can take seconds to arrive on the stream.
+ * Clear a conversation's "waiting on you" gate the moment the user decides,
+ * before the resolved stream frame arrives.
  *
- * Scoped via `turnManager.resolveKey` (not the route id alone) so an
- * unsaved new chat, keyed by a pending id, resolves the same way the stream does.
+ * Prefers the caller's conversation (a sheet or background card outlives the
+ * active one), then `activeConversationId`, then the pending new-chat key —
+ * the route param is stale for a replaceState'd new chat.
  */
-export function useMarkApprovalDecided(): () => void {
-  const { id } = useParams<{ id?: string }>();
+export function useMarkApprovalDecided(): (conversationId?: string) => void {
   const clearAwaitingApproval = useStreamStore(
     (state) => state.clearAwaitingApproval,
   );
   return useCallback(
-    () => clearAwaitingApproval(turnManager.resolveKey(id ?? null)),
-    [clearAwaitingApproval, id],
+    (conversationId?: string) => {
+      const key =
+        conversationId ??
+        useChatStore.getState().activeConversationId ??
+        useStreamStore.getState().pendingNewConversationKey;
+      if (key) clearAwaitingApproval(key);
+    },
+    [clearAwaitingApproval],
   );
 }

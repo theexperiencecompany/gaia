@@ -18,3 +18,8 @@ PROD_PROVIDER_WARMUP_CONCURRENCY = 5
 # Auto-initialized providers are typically a smaller subset (core services).
 # We run these with similar concurrency so they complete quickly.
 AUTO_PROVIDER_CONCURRENCY = 5
+
+
+#: Where the ARQ worker's startup hook records the event-loop time it booted at,
+#: in the ctx ARQ hands both lifecycle hooks; shutdown reads it back for runtime.
+WORKER_STARTUP_TIME_CTX_KEY = "startup_time"

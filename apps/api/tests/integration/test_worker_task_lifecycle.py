@@ -11,6 +11,7 @@ Redis, external services). Verifies that each task function:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +19,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase, UserDocument
 from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
@@ -34,6 +35,7 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
     process_workflow_generation_task,
 )
+from tests.helpers import users_get
 
 # freezegun's module-restore logic collides with the transformers library
 # (references to torch at class-definition scope). Ignoring transformers
@@ -332,6 +334,8 @@ class TestTaskErrorHandling:
 
 
 @pytest.mark.integration
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowTaskExecution:
     """Verify workflow execution tracks success/failure and sends notifications."""
 
@@ -343,6 +347,12 @@ class TestWorkflowTaskExecution:
             new_callable=AsyncMock,
             return_value=True,
         ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _owners_are_users(self):
+        """Answer the owner check the way the real users collection does."""
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
             yield
 
     async def test_execute_workflow_not_found(self):
@@ -395,6 +405,22 @@ class TestWorkflowTaskExecution:
                 return_value=("conv-789", []),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
+            # The fire claims its workflow's conversation before it spends
+            # anything; nobody else holds it here.
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-789",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
 
@@ -456,6 +482,20 @@ class TestWorkflowTaskExecution:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-fail",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
@@ -487,6 +527,12 @@ class TestWorkflowTaskExecution:
 @pytest.mark.integration
 class TestWorkerStartupHooks:
     """Verify the ARQ startup function initializes required services."""
+
+    @pytest.fixture(autouse=True)
+    def _no_browser_worker(self) -> Iterator[None]:
+        # A real one would start consuming the browser queue on whatever Redis is up.
+        with patch("app.workers.lifecycle.startup.start_browser_worker"):
+            yield
 
     async def test_startup_calls_unified_startup(self):
         """The startup hook should invoke unified_startup with 'arq_worker'."""
@@ -663,14 +709,16 @@ class TestWorkflowGenerationTask:
                 "workflow_id": "wf-gen-1",
             }
         )
-        mock_todo_update = AsyncMock(return_value=linked_todo)
+        mock_link_workflow = AsyncMock(return_value=linked_todo)
 
         mock_ws_manager = AsyncMock()
         mock_ws_manager.broadcast_to_user = AsyncMock()
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository.update", mock_todo_update),
+            patch(
+                "app.workers.tasks.workflow_tasks.todo_repository.link_workflow", mock_link_workflow
+            ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws_manager,
@@ -693,14 +741,11 @@ class TestWorkflowGenerationTask:
             # Verify workflow was created
             mock_wf_svc.create_workflow.assert_awaited_once()
 
-            # Verify the todo was linked to the workflow through the repository,
-            # scoped to the owner, with a typed workflow_id update.
-            mock_todo_update.assert_awaited_once()
-            assert mock_todo_update.await_args.args[0] == "aaaaaaaaaaaaaaaaaaaaaaaa"
-            assert mock_todo_update.await_args.kwargs["user_id"] == FAKE_USER_ID
-            applied_update = mock_todo_update.await_args.kwargs["update"]
-            assert isinstance(applied_update, TodoUpdate)
-            assert applied_update.workflow_id == "wf-gen-1"
+            # Verify the todo was linked through the repository's one guarded writer,
+            # scoped to the owner.
+            mock_link_workflow.assert_awaited_once_with(
+                "aaaaaaaaaaaaaaaaaaaaaaaa", user_id=FAKE_USER_ID, workflow_id="wf-gen-1"
+            )
 
             # Verify WebSocket broadcast
             mock_ws_manager.broadcast_to_user.assert_awaited_once()

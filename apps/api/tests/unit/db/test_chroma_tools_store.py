@@ -10,6 +10,7 @@ from langgraph.store.base import PutOp
 import pytest
 
 from app.constants.chroma import (
+    CHROMA_TOOLS_STORE_COLLECTION,
     TOOLS_INDEX_CACHE_TTL_SECONDS,
     TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     TOOLS_SEED_LOCK_KEY_PREFIX,
@@ -19,11 +20,11 @@ from app.constants.chroma import (
 )
 from app.constants.log_tags import LogTag
 from app.db.chroma import chroma_tools_store
+from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
     _compute_tool_hash,
-    _execute_batch_operations,
     _get_current_tools_with_hashes,
     _get_existing_tools_from_chroma,
     _get_subagent_tools,
@@ -100,12 +101,11 @@ class TestComputeToolHash:
 
 @pytest.mark.asyncio
 class TestGetSubagentTools:
-    async def test_returns_subagent_tools(self):
+    async def test_skips_provider_integrations(self):
         cfg = SubAgentConfig(
             has_subagent=True,
             agent_name="gmail_agent",
             tool_space="gmail_space",
-            handoff_tool_name="call_gmail",
             domain="email",
             use_cases="send, read",
             capabilities="full CRUD",
@@ -125,10 +125,63 @@ class TestGetSubagentTools:
         ):
             result = _get_subagent_tools()
 
-        assert "subagents::subagent:gmail" in result
-        entry = result["subagents::subagent:gmail"]
+        # Provider integrations surface as their own tools, never as
+        # subagent pointers — nothing is indexed for them.
+        assert result == {}
+
+    async def test_indexes_mcp_integrations(self):
+        cfg = SubAgentConfig(
+            has_subagent=True,
+            agent_name="notes_agent",
+            tool_space="notes_space",
+            domain="notes",
+            use_cases="read, write",
+            capabilities="full CRUD",
+            system_prompt="You are notes.",
+        )
+        subagent = Subagent(
+            id="notes",
+            name="Notes",
+            provider="notes",
+            managed_by="mcp",
+            config=cfg,
+            short_name="notes",
+        )
+        with patch(
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(subagent,),
+        ):
+            result = _get_subagent_tools()
+
+        assert "subagents::subagent:notes" in result
+        entry = result["subagents::subagent:notes"]
         assert entry["namespace"] == "subagents"
-        assert "Gmail" in entry["description"]
+        assert "Notes" in entry["description"]
+        assert entry["source"] == "mcp"
+        assert entry["name"] == "Notes"
+        assert entry["integration_id"] == "notes"
+
+    async def test_a_provider_integration_does_not_stop_later_mcp_ones_indexing(self):
+        cfg = SubAgentConfig(
+            has_subagent=True,
+            agent_name="agent",
+            tool_space="space",
+            domain="d",
+            use_cases="u",
+            capabilities="c",
+            system_prompt="p",
+        )
+        provider = Subagent(
+            id="gmail", name="Gmail", provider="gmail", managed_by="composio", config=cfg
+        )
+        mcp = Subagent(id="notes", name="Notes", provider="notes", managed_by="mcp", config=cfg)
+        with patch(
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(provider, mcp),
+        ):
+            result = _get_subagent_tools()
+
+        assert list(result) == ["subagents::subagent:notes"]
 
     async def test_skips_when_registry_empty(self):
         # Registry never surfaces entries without a config; an empty registry
@@ -242,6 +295,13 @@ class TestGetExistingToolsFromChroma:
         }
         result = await _get_existing_tools_from_chroma(collection, None)
         assert "ns::tool" in result
+
+    async def test_an_entry_without_a_stored_hash_reads_as_an_empty_hash(self):
+        """An empty hash never matches a current one, so the tool is re-indexed rather than kept."""
+        collection = AsyncMock()
+        collection.get.return_value = {"ids": ["ns::tool"], "metadatas": [{"namespace": "ns"}]}
+        result = await _get_existing_tools_from_chroma(collection)
+        assert result == {"ns::tool": {"hash": "", "namespace": "ns"}}
 
     async def test_skips_ids_without_double_colon(self):
         collection = AsyncMock()
@@ -382,10 +442,14 @@ class TestBuildPutOperations:
         tool = SimpleNamespace(description="desc")
         to_upsert = [("ns::my_tool", {"hash": "h", "namespace": "ns", "tool": tool})]
         ops = _build_put_operations(to_upsert, [])
-        assert len(ops) == 1
-        assert ops[0].namespace == ("ns",)
-        assert ops[0].key == "my_tool"
-        assert ops[0].value["description"] == "desc"
+        assert ops == [
+            PutOp(
+                namespace=("ns",),
+                key="my_tool",
+                value={"description": "desc", "tool_hash": "h"},
+                index=["description"],
+            )
+        ]
 
     def test_upsert_subagent_tool(self):
         to_upsert = [
@@ -395,38 +459,49 @@ class TestBuildPutOperations:
             )
         ]
         ops = _build_put_operations(to_upsert, [])
-        assert ops[0].value["description"] == "sub desc"
+        assert ops[0].value == {"description": "sub desc", "tool_hash": "h"}
+        assert ops[0].index == ["description"]
+
+    def test_upsert_subagent_tool_persists_pointer_fields(self):
+        """Source/name/integration_id must reach the PutOp value: retrieval tells static ("mcp") from custom ("custom") pointers by them."""
+        to_upsert = [
+            (
+                "subagents::subagent:notes",
+                {
+                    "hash": "h",
+                    "namespace": "subagents",
+                    "description": "sub desc",
+                    "source": "mcp",
+                    "name": "Notes",
+                    "integration_id": "notes",
+                },
+            )
+        ]
+        ops = _build_put_operations(to_upsert, [])
+        assert ops[0].value["source"] == "mcp"
+        assert ops[0].value["name"] == "Notes"
+        assert ops[0].value["integration_id"] == "notes"
+
+    def test_upsert_regular_tool_carries_no_pointer_fields(self):
+        tool = SimpleNamespace(description="desc")
+        to_upsert = [("ns::my_tool", {"hash": "h", "namespace": "ns", "tool": tool})]
+        ops = _build_put_operations(to_upsert, [])
+        assert "source" not in ops[0].value
 
     def test_delete_operation_has_none_value(self):
         to_delete = [("ns::old_tool", "ns")]
         ops = _build_put_operations([], to_delete)
-        assert len(ops) == 1
-        assert ops[0].value is None
-        assert ops[0].key == "old_tool"
+        assert ops == [PutOp(namespace=("ns",), key="old_tool", value=None)]
+
+    def test_only_the_first_separator_splits_the_composite_key(self):
+        to_delete = [("ns::tool::v2", "ns")]
+        ops = _build_put_operations([], to_delete)
+        assert ops[0].key == "tool::v2"
 
     def test_composite_key_without_separator(self):
         to_upsert = [("bare_key", {"hash": "h", "namespace": "x", "description": "d"})]
         ops = _build_put_operations(to_upsert, [])
         assert ops[0].key == "bare_key"
-
-
-# ---------------------------------------------------------------------------
-# _execute_batch_operations
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-class TestExecuteBatchOperations:
-    async def test_noop_on_empty_ops(self):
-        store = AsyncMock()
-        await _execute_batch_operations(store, [])
-        store.abatch.assert_not_awaited()
-
-    async def test_calls_abatch_in_batches(self):
-        store = AsyncMock()
-        ops = [MagicMock(spec=PutOp) for _ in range(120)]
-        await _execute_batch_operations(store, ops, batch_size=50)
-        assert store.abatch.await_count == 3  # 50 + 50 + 20
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +539,7 @@ class TestIndexToolsToStore:
             patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock),
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
             patch(
-                "app.db.chroma.chroma_tools_store._execute_batch_operations",
+                "app.db.chroma.index_warmup.execute_batch_operations",
                 new_callable=AsyncMock,
             ) as mock_execute,
         ):
@@ -473,6 +548,89 @@ class TestIndexToolsToStore:
 
         # Reached the write path instead of returning at the guard.
         mock_execute.assert_awaited_once()
+
+    async def test_failed_batch_write_does_not_cache_the_namespace_hash(self):
+        """Regression: a partial write must not cache the namespace hash as a success."""
+        tool = SimpleNamespace(name="t", description="d")
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock
+            ) as mock_set_cache,
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.index_warmup.execute_batch_operations",
+                new_callable=AsyncMock,
+                side_effect=ChromaBatchWriteError("1 of 1 ChromaDB writes failed"),
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        mock_set_cache.assert_not_awaited()
+
+    async def test_successful_batch_write_caches_the_namespace_hash(self):
+        """The other half of the contract: a clean write still caches."""
+        tool = SimpleNamespace(name="t", description="d")
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock
+            ) as mock_set_cache,
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.index_warmup.execute_batch_operations",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        mock_set_cache.assert_awaited_once()
+
+    async def test_warmup_is_labelled_with_the_namespace_being_indexed(self):
+        """A degraded-catalog log has to name which namespace lost its tools."""
+        tool = SimpleNamespace(name="t", description="d")
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock),
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch("app.db.chroma.index_warmup.log") as mock_log,
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        assert mock_log.info.call_args.kwargs["label"] == "index_tools_to_store[ns]"
 
     async def test_skips_when_store_unavailable(self):
         tool = SimpleNamespace(name="t", description="d")
@@ -594,7 +752,7 @@ def _indexing(store: AsyncMock, cached_hash: str | None) -> Iterator[SimpleNames
         patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock) as set_cache,
         patch("app.db.chroma.chroma_tools_store.providers") as providers,
         patch(
-            "app.db.chroma.chroma_tools_store._execute_batch_operations",
+            "app.db.chroma.index_warmup.execute_batch_operations",
             new_callable=AsyncMock,
         ) as execute,
     ):
@@ -731,9 +889,14 @@ class TestDeleteToolsByNamespace:
             ) as mock_del,
         ):
             mock_providers.aget = AsyncMock(return_value=mock_store)
-            count = await delete_tools_by_namespace("ns")
+            async with captured_wide_event() as event:
+                count = await delete_tools_by_namespace("ns")
 
         assert count == 2
+        assert event["vector"]["operation"] == "delete"
+        assert event["vector"]["collection"] == CHROMA_TOOLS_STORE_COLLECTION
+        # Only this namespace's ids are fetched — the filter is what scopes the delete.
+        mock_collection.get.assert_awaited_once_with(where={"namespace": {"$eq": "ns"}}, include=[])
         mock_collection.delete.assert_awaited_once_with(ids=["ns::a", "ns::b"])
         mock_del.assert_awaited_once_with("chroma:indexed:ns")
 
@@ -803,7 +966,7 @@ class TestInitializeChromaToolsStore:
                 new=AsyncMock(return_value=existing),
             ) as existing_mock,
             patch(
-                "app.db.chroma.chroma_tools_store._execute_batch_operations", new=AsyncMock()
+                "app.db.chroma.index_warmup.execute_batch_operations", new=AsyncMock()
             ) as execute,
         ):
             yield SimpleNamespace(
@@ -854,14 +1017,17 @@ class TestInitializeChromaToolsStore:
         p.current_mock.assert_called_once_with(p.registry)
         p.existing_mock.assert_awaited_once_with(p.collection, {"general"})
         p.execute.assert_awaited_once()
-        # Executed against the real store with the built put-ops (one upsert).
+        # Executed against the real store with the built put-ops (one upsert),
+        # labelled so a degraded-catalog log names the boot seed it came from.
+        assert p.execute.await_args.kwargs["label"] == "tools_store_seed"
         store_arg, put_ops = p.execute.await_args.args
         assert store_arg is p.store
         assert len(put_ops) == 1
         assert seed_lock_keys == ["lock:chroma:tools-seed:builtin"]
         assert event["vector"] == {
             "operation": "upsert",
-            "collection": "langgraph_tools_store",
+            # The runner suffixes collections (GAIA_CHROMA_COLLECTION_SUFFIX), so name it by the constant.
+            "collection": CHROMA_TOOLS_STORE_COLLECTION,
             "embedded_count": 1,
         }
 

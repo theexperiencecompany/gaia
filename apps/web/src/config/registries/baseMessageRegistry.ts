@@ -13,6 +13,15 @@ import type { AttachedFileData } from "@/types/shared/fileTypes";
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
 
 /**
+ * One emoji reaction attached to a message for render. Built client-side by
+ * foldReactionAcks from a comms REACT ack; `ackId` dedups re-syncs.
+ */
+export interface MessageReaction {
+  emoji: string;
+  ackId: string;
+}
+
+/**
  * BASE_MESSAGE_SCHEMA
  * Each property uses a typed placeholder to:
  *  - drive TypeScript inference for BaseMessageData
@@ -45,6 +54,14 @@ export const BASE_MESSAGE_SCHEMA = {
     | { id: string; content: string; role: "user" | "assistant" }
     | null
     | undefined,
+  // Backend message kind ("text" | "emoji_ack"). An emoji_ack is a comms
+  // REACT answer rendered as a reaction badge on its target, never a bubble.
+  kind: undefined as string | undefined,
+  // GAIA id of the message an emoji_ack reacts to (server's reacts_to_message_id).
+  reacts_to_message_id: undefined as string | null | undefined,
+  // Reactions folded onto this message for render (built client-side by
+  // foldReactionAcks, never sent by the server).
+  reactions: undefined as MessageReaction[] | undefined,
   // Tool fields (spread from tool registry)
   ...TOOLS_MESSAGE_SCHEMA,
 };

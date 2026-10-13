@@ -11,17 +11,17 @@ from uuid import uuid4
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, BaseMessage, ToolMessage
 from langsmith import traceable
-from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
+from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
+from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
@@ -32,7 +32,6 @@ from app.constants.llm import (
     DevModelOption,
 )
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
@@ -43,7 +42,9 @@ from app.models.agent_models import (
     AgentUserContext,
     ExecutionMode,
     LlmCallMetadata,
+    StreamChunkMetadata,
     read_agent_configurable,
+    run_analytics_context,
 )
 from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
@@ -52,6 +53,7 @@ from app.models.payment_models import PlanType
 from app.models.stream_events import (
     MessageBoundaryPayload,
     ModelFallbackFrame,
+    ReasoningPayload,
     ToolOutputPayload,
 )
 from app.services.latency_metrics import observe_comms_graph, span
@@ -176,17 +178,6 @@ class _McpAppEntry(BaseModel):
     data: _McpAppCallData | None = None
 
 
-class _StreamChunkMetadata(BaseModel):
-    """The run metadata riding a "messages"-mode chunk.
-
-    silent marks an internal model call whose tokens never reach the client.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    silent: bool = False
-
-
 class _FallbackResponseMetadata(BaseModel):
     """What ``ainvoke_llm`` stamps on ``response_metadata`` after a model fallback."""
 
@@ -243,7 +234,7 @@ def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
     return complete_message
 
 
-def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
+def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
     """Forget text whose message was retracted mid-node, before its boundary.
 
     Retractions are normally announced at node end, except the style guard's,
@@ -254,7 +245,8 @@ def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
         return
     boundary = _CustomEvent.model_validate(payload).message_boundary
     if boundary is not None and boundary.discarded:
-        held.pop(boundary.message_id or "", None)
+        for texts in held:
+            texts.pop(boundary.message_id or "", None)
 
 
 def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
@@ -322,31 +314,14 @@ async def get_handoff_metadata(subagent_id: str) -> IntegrationDisplayMetadata:
 
 
 def _build_agent_callbacks(
-    conversation_id: str,
-    user_id: str | None,
-    agent_name: str,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
-    """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
-    callbacks: list[BaseCallbackHandler] = []
+    """Assemble the LangChain callback list for an agent run (tracing, usage, TTFT).
 
-    posthog_client = (
-        providers.get(POSTHOG_PROVIDER_KEY)
-        if providers.is_available(POSTHOG_PROVIDER_KEY)
-        else None
-    )
-    if posthog_client is not None:
-        callbacks.append(
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user_id,
-                properties={
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                privacy_mode=False,
-            ),
-        )
+    No PostHog handler: every model call reaches PostHog once, from its
+    llm_calls ledger row (see llm_usage_analytics).
+    """
+    callbacks: list[BaseCallbackHandler] = []
 
     langfuse_callback = build_langfuse_callback()
     if langfuse_callback is not None:
@@ -449,6 +424,40 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
+def background_authorization(
+    turns: list[str],
+    *,
+    execution_mode: str,
+    workflow_title: str = "",
+    workflow_description: str = "",
+    todo_title: str = "",
+) -> list[str]:
+    """Append a background run's schedule text as standing authorization.
+
+    A scheduled workflow/todo is a standing directive, so its human-written
+    display fields (title, description ONLY) authorize like a live turn's words —
+    the judge grounds calls against them verbatim. Step lists and execution
+    prompts may be LLM-generated and never authorize; interactive runs pass through.
+    """
+    if execution_mode != "background":
+        return turns
+    extra: list[str] = []
+    title = workflow_title.strip()
+    description = workflow_description.strip()
+    if title or description:
+        extra.append(
+            "Scheduled workflow"
+            + (f": {title}" if title else "")
+            + (f". {description}" if description else "")
+        )
+    label = todo_title.strip()
+    if label and not any(label in turn for turn in turns):
+        extra.append(f"Tracked todo: {label}")
+    if not extra:
+        return turns
+    return turns + [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in extra]
+
+
 # Replaces 22 flat keyword-only parameters, bundled into five groups: AgentIdentity
 # (who/where), AgentLane (model lane), AgentThread (parent inheritance), AgentTurn
 # (what this turn is about), AgentTracing (spans/tokens) — each optional but identity.
@@ -525,6 +534,10 @@ class AgentTurn:
 
     source: str | None = None
     """The channel (web/mobile/whatsapp/...); falls back to "background" when unset."""
+
+    workflow_id: str | None = None
+    """The workflow this fire belongs to, on a top-level run only. Child runs
+    inherit it from the parent's configurable."""
 
     user_messages: list[str] | None = None
     """The user's own recent turns, verbatim, oldest first (see
@@ -648,16 +661,18 @@ async def build_agent_config(
         else None
     )
 
-    callbacks = _build_agent_callbacks(
-        conversation_id, acting_user.user_id, agent_name, tracing.usage_metadata_callback
-    )
+    callbacks = _build_agent_callbacks(tracing.usage_metadata_callback)
 
-    # The one seam every execution path crosses: a run with a parent inherits its
-    # lane whole, a top-level run resolves one here, so a new entry point can't be
-    # born on the wrong lane. An explicit dev choice beats inheritance beats fresh.
+    # The one seam every execution path crosses: a child inherits its parent's lane
+    # whole (except comms' own lane), a top-level run resolves one here. An explicit
+    # dev choice beats inheritance beats fresh.
     inherited_lane = ModelLane.from_configurable(parent.lane if parent else None)
     resolved_plan: PlanType | None = None
-    if lane.dev_option is None and inherited_lane is not None:
+    if (
+        lane.dev_option is None
+        and inherited_lane is not None
+        and inherits_lane(inherited_lane, lane.role)
+    ):
         model_lane = inherited_lane
     else:
         model_lane, resolved_plan = await resolve_lane(
@@ -734,6 +749,7 @@ async def build_agent_config(
         "user_name": acting_user.name,
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
+        "analytics_context": run_analytics_context(base_configurable or {}).model_dump(mode="json"),
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.
@@ -960,15 +976,16 @@ def _accumulate_silent_custom_event(payload: object, acc: _SilentAccumulators) -
 
 @traceable(run_type="llm", name="Call Agent Silent")
 def _hold_silent_chunk(
-    payload: tuple[BaseMessage, Mapping[str, object]],
+    payload: tuple[BaseMessage, StreamChunkMetadata],
     is_comms: bool,
     tool_call_message_ids: set[str],
     message_texts: dict[str, str],
 ) -> None:
     """One "messages"-mode event of a silent run: hold the chunk's text by message."""
+    metadata: StreamChunkMetadata
     chunk, metadata = payload
 
-    if _StreamChunkMetadata.model_validate(metadata).silent:
+    if metadata.get("silent"):
         return  # Skip silent chunks (e.g. follow-up actions generation)
 
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
@@ -1090,6 +1107,8 @@ class _StreamAccumulators:
     # perf_counter of the first comms text yield in this run; None until then.
     # Only comms_agent text reaches the yield below, so executor runs never stamp.
     pipeline_ttft_perf: float | None = None
+    # The visible text of each held message already streamed.
+    released_text: dict[str, str] = field(default_factory=dict)
 
 
 async def _emit_mcp_app_event(
@@ -1251,6 +1270,10 @@ async def _stream_updates(
 
             # The node has finished, so the message's fate is decided (kept, or
             # a discarded handoff preamble); announce the boundary either way.
+            closing = last_ai_message(messages)
+            closing_text = ""  # pragma: no mutate — no closing message, no boundary to yield it at
+            if closing is not None:
+                closing_text = _finish_visible_text(state, closing.id or "")
             state.complete_message, boundary_id, discarded = _settle_message_boundary(
                 messages,
                 is_comms,
@@ -1259,6 +1282,8 @@ async def _stream_updates(
                 state.tool_call_message_ids,
             )
             if boundary_id is not None:
+                if closing_text and not discarded:
+                    yield format_sse_response(closing_text)
                 yield format_sse_data(
                     {
                         "message_boundary": MessageBoundaryPayload(
@@ -1308,26 +1333,56 @@ async def _stream_tool_message_frames(
             yield frame
 
 
+def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
+    visible = visible_comms_text_so_far(state.message_texts[message_id])
+    new = visible[len(state.released_text.get(message_id, "")) :]
+    if new:
+        state.released_text[message_id] = visible
+    return new
+
+
+def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the rest of a finished comms message a user may see, and forget it streamed."""
+    sent = state.released_text.pop(message_id, "")
+    return visible_comms_text(state.message_texts.get(message_id, ""))[len(sent) :]
+
+
 async def _stream_messages(
-    payload: tuple[BaseMessage, Mapping[str, object]],
+    payload: tuple[BaseMessage, StreamChunkMetadata],
     state: _StreamAccumulators,
     is_comms: bool,
     stream_id: str | None,
     user_id: str | None,
 ) -> AsyncGenerator[str, None]:
     """Handle one "messages" event: streamed reply text, or a ToolMessage result."""
+    metadata: StreamChunkMetadata
     chunk, metadata = payload
-    if _StreamChunkMetadata.model_validate(metadata).silent:
+    if metadata.get("silent"):
         return
 
     # Stream AI response content (only from comms_agent to avoid duplication)
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+        # Comms thinking, streamed like the executor's, so reasoning before a
+        # reply is visible instead of a frozen UI. No subagent_id: the client
+        # renders the root turn as a top-level thinking block.
+        if is_comms:
+            reasoning_delta = extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                yield format_sse_data(
+                    {
+                        "reasoning": ReasoningPayload(content=reasoning_delta).model_dump(
+                            exclude_none=True
+                        )
+                    }
+                )
         message_id, held_text = _held_chunk_text(chunk, is_comms, state.tool_call_message_ids)
         if held_text:
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
-            yield format_sse_response(held_text)
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
+            if visible := _stream_visible_text(state, message_id):
+                yield format_sse_response(visible)
 
     # Emit tool_output when ToolMessage arrives
     elif chunk and isinstance(chunk, ToolMessage):
@@ -1343,7 +1398,7 @@ async def _stream_custom(
     user_id: str | None,
 ) -> AsyncGenerator[str, None]:
     """Handle one "custom" event: forward it, then honour subagent MCP App metadata."""
-    drop_retracted_text(payload, state.message_texts)
+    drop_retracted_text(payload, state.message_texts, state.released_text)
     yield f"data: {json.dumps(payload)}\n\n"
 
     if not isinstance(payload, dict):
@@ -1416,7 +1471,7 @@ async def _frames_for_stream_event(
         frames = _stream_updates(cast(Mapping[str, object], payload), state, is_comms, user_id)
     elif stream_mode == "messages":
         frames = _stream_messages(
-            cast(tuple[BaseMessage, Mapping[str, object]], payload),
+            cast(tuple[BaseMessage, StreamChunkMetadata], payload),
             state,
             is_comms,
             stream_id,
@@ -1492,6 +1547,9 @@ async def execute_graph_streaming(
 
     # A run that ends without its closing node update (cancellation, a graph that
     # never reaches the agent node again) still owes the user what it streamed.
+    for message_id in list(state.message_texts):
+        if visible := _finish_visible_text(state, message_id):
+            yield format_sse_response(visible)
     state.complete_message = _flush_held_messages(state.complete_message, state.message_texts)
     if state.pipeline_ttft_perf is not None:
         log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))

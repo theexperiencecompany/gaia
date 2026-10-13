@@ -21,7 +21,12 @@ from datetime import datetime
 
 from bson import ObjectId
 
-from app.constants.chat import USER_MESSAGE_TYPE
+from app.constants.chat import (
+    FOLDED_CARDS_FIELD,
+    FOLDED_CARDS_KEEP_SECONDS,
+    SUBAGENT_GROUP_TOOL_NAME,
+    USER_MESSAGE_TYPE,
+)
 from app.db.repositories.base import UserScopedRepository
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
@@ -29,6 +34,7 @@ from app.models.chat_models import (
     ConversationSource,
     ConversationSyncItem,
     MessageModel,
+    SavedSubagentGroup,
     SystemPurpose,
     ToolDataEntry,
 )
@@ -55,6 +61,7 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "system_purpose": 1,
     "is_unread": 1,
     "source": 1,
+    "has_live_approval": 1,
     "createdAt": 1,
     "updatedAt": 1,
 }
@@ -201,6 +208,53 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def mark_background_with_live_approval(
+        self, conversation_id: str, *, user_id: str
+    ) -> bool:
+        """Flag a background run's conversation while it holds a live approval.
+
+        Stamps source BACKGROUND only when unset (never overwrites a real
+        channel), and raises the sidebar flag. No-op when the conversation
+        does not exist yet — the later persist carries no source either way,
+        and the next register/publish for the same owner retries the stamp.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": {"has_live_approval": True}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        if matched:
+            # pragma: no mutate start — scope/doc_id repeat the eviction the write above just
+            # made, so no read can observe them; mutmut cannot pragma a single argument.
+            await self._apply_raw_update_unfetched(
+                {"conversation_id": conversation_id, "source": {"$exists": False}},
+                {"$set": {"source": ConversationSource.BACKGROUND.value}},
+                scope=user_id,
+                doc_id=conversation_id,
+                extra_filter={"user_id": user_id},
+            )
+            # pragma: no mutate end
+        return matched > 0
+
+    async def refresh_live_approval_flag(
+        self, conversation_id: str, *, user_id: str, live: bool
+    ) -> bool:
+        """Rewrite the sidebar flag from a fresh live-rows read (ledger side).
+
+        Plain setter by design: the caller (bridge sync helper) owns the
+        ledger read, this owns the conversation write — one collection each.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": {"has_live_approval": live}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
     # ---- message-array writes ----
 
     async def append_messages(
@@ -213,31 +267,96 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[str] | None:
         """Append messages to a conversation, returning their ids (None if it does not exist).
 
-        max_messages caps stored history via a negative $slice so
-        per-workflow threads stay under the 16MB limit.
+        One atomic update: each message takes the folded cards waiting for its id
+        into its tool_data, and those (and any a day stale) leave the waiting room.
+        max_messages caps stored history so per-workflow threads stay under 16MB.
         """
-        docs: list[dict[str, object]] = []
+        stored: list[dict[str, object]] = []
         message_ids: list[str] = []
         for message in messages:
             data = {k: v for k, v in message.model_dump().items() if v is not None}
-            existing = data.get("message_id")
-            message_id = str(existing) if existing is not None else str(ObjectId())
+            message_id = message.message_id if message.message_id is not None else str(ObjectId())
             data["message_id"] = message_id
             message_ids.append(message_id)
-            docs.append(data)
+            stored.append(_absorbing(message_id, data))
 
-        push_spec: dict[str, object] = {"$each": docs}
+        history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
         if max_messages is not None:
-            push_spec["$slice"] = -max_messages
-
-        matched = await self._apply_raw_update_unfetched(
+            history = {"$slice": [history, -max_messages]}
+        matched = await self._apply_pipeline_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$push": {"messages": push_spec}, "$currentDate": {"updatedAt": True}},
+            [
+                {
+                    "$set": {
+                        "messages": history,
+                        "updatedAt": "$$NOW",
+                        FOLDED_CARDS_FIELD: _still_waiting(message_ids),
+                    }
+                }
+            ],
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return message_ids if matched > 0 else None
+
+    async def park_folded_cards(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        message_id: str,
+        entries: Sequence[Mapping[str, object]],
+    ) -> bool:
+        """Leave cards for message_id until its save absorbs them; False once it is saved.
+
+        Matches only while the message is absent, in one atomic update, so a card
+        parked here is always taken by the append that saves the message.
+        """
+        waiting = _waiting_for(message_id)
+        matched = await self._apply_pipeline_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": {"$ne": message_id}},
+            [
+                {
+                    "$set": {
+                        FOLDED_CARDS_FIELD: {
+                            "$setField": {
+                                "field": {"$literal": message_id},
+                                "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+                                "value": {
+                                    "since": {
+                                        "$ifNull": [
+                                            {"$getField": {"field": "since", "input": waiting}},
+                                            "$$NOW",
+                                        ]
+                                    },
+                                    "cards": {
+                                        "$concatArrays": [
+                                            {
+                                                "$ifNull": [
+                                                    {
+                                                        "$getField": {
+                                                            "field": "cards",
+                                                            "input": waiting,
+                                                        }
+                                                    },
+                                                    [],
+                                                ]
+                                            },
+                                            {"$literal": [dict(entry) for entry in entries]},
+                                        ]
+                                    },
+                                },
+                            }
+                        }
+                    }
+                }
+            ],
+            # The waiting room is write-side only: no cached read shows it.
+            scope=None,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
 
     async def set_message_pinned(
         self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
@@ -319,6 +438,37 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def extend_subagent_group(
+        self, conversation_id: str, *, user_id: str, message_id: str, group: SavedSubagentGroup
+    ) -> bool:
+        """Append calls to one saved subagent group in place and stamp its end; False when absent."""
+        path = "messages.$[msg].tool_data.$[group].data"
+        matched = await self._apply_raw_update_unfetched(
+            {
+                "conversation_id": conversation_id,
+                "messages.message_id": message_id,
+                "messages.tool_data.data.subagent_id": group.subagent_id,
+            },
+            {
+                "$push": {f"{path}.tool_calls": {"$each": group.tool_calls}},
+                "$set": {
+                    f"{path}.completed_at": group.completed_at,
+                    f"{path}.duration_ms": group.duration_ms,
+                },
+            },
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+            array_filters=[
+                {"msg.message_id": message_id},
+                {
+                    "group.tool_name": SUBAGENT_GROUP_TOOL_NAME,
+                    "group.data.subagent_id": group.subagent_id,
+                },
+            ],
+        )
+        return matched > 0
+
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
     ) -> bool:
@@ -348,10 +498,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_approval_status(
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
-        """Settle a persisted approval_request frame's status wherever it lives in the array.
+        """Settle a persisted approval_request frame's status wherever it lives in the messages array.
 
         Returns whether the frame was there to settle. Does not advance updatedAt.
         """
+        update: dict[str, object] = {"messages.$[msg].tool_data.$[entry].data.status": status}
         matched = await self._apply_raw_update_unfetched(
             # The approval must also be in the match: array filters alone pick which
             # element to write but don't narrow `matched`, so matching on the
@@ -360,7 +511,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "conversation_id": conversation_id,
                 "messages.tool_data.data.approval_id": approval_id,
             },
-            {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
+            {"$set": update},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
@@ -580,9 +731,25 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return {"source": {"$nin": _BOT_SOURCE_VALUES}}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
+        # Background runs stay out of the sidebar unless one holds a live approval
+        # (its card is the only way to reach it). Sourceless legacy rows match $ne
+        # and stay visible; {starred: null} matches a null AND a missing starred.
         return {
             "user_id": user_id,
-            "$or": [{"starred": {"$exists": False}}, {"starred": False}],
+            "$and": [
+                {
+                    "$or": [
+                        {"starred": False},
+                        {"starred": None},
+                    ]
+                },
+                {
+                    "$or": [
+                        {"source": {"$ne": ConversationSource.BACKGROUND.value}},
+                        {"has_live_approval": True},
+                    ]
+                },
+            ],
             **self._non_bot(),
         }
 
@@ -600,3 +767,70 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _waiting_for(message_id: str) -> dict[str, object]:
+    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
+    return {
+        "$getField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+        }
+    }
+
+
+def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
+    """Build the message as stored, with the cards waiting for its id after its own tool_data.
+
+    The message itself is a $literal, so text that starts with "$" is never read as a path.
+    """
+    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
+    return {
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
+                ]
+            },
+        }
+    }
+
+
+def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
+    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
+    kept = {
+        "$arrayToObject": {
+            "$filter": {
+                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
+                "as": "waiting",
+                "cond": {
+                    "$and": [
+                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
+                        {
+                            "$gt": [
+                                "$$waiting.v.since",
+                                {
+                                    "$dateSubtract": {
+                                        "startDate": "$$NOW",
+                                        "unit": "second",
+                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
+                                    }
+                                },
+                            ]
+                        },
+                    ]
+                },
+            }
+        }
+    }
+    return {
+        "$let": {
+            "vars": {"kept": kept},
+            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
+        }
+    }

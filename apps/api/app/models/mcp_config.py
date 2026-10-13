@@ -2,7 +2,7 @@
 
 from typing import Any, Literal, TypedDict
 
-from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.shared.auth import OAuthMetadata, OAuthToken, ProtectedResourceMetadata
 from pydantic import BaseModel
 
 # Auth kinds a probe can report. The extra ``unknown`` (vs MCPConfig.auth_type)
@@ -41,6 +41,12 @@ class McpProbeResult(TypedDict, total=False):
     auth_type: ProbedAuthType
     oauth_challenge: McpAuthChallenge
     error: str
+
+
+class OidcTokenResponse(OAuthToken):
+    """A token-endpoint response: OAuth 2.1's fields plus the OIDC id_token some servers add."""
+
+    id_token: str | None = None
 
 
 class OAuthErrorResponse(TypedDict):
@@ -176,7 +182,6 @@ class SubAgentConfig(BaseModel):
     has_subagent: bool = False
     agent_name: str
     tool_space: str
-    handoff_tool_name: str
     domain: str
     capabilities: str
     use_cases: str
@@ -188,6 +193,9 @@ class SubAgentConfig(BaseModel):
     # retrievable/indexed. Use to retire a stock Composio tool that a custom
     # tool supersedes (e.g. GMAIL_FETCH_EMAILS -> GMAIL_FETCH_MESSAGES).
     exclude_tools: list[str] | None = None
+    # Most-used tools available from the first step without a retrieve_tools round
+    # trip. Internal names bind into the initial set; integration (ALLCAPS) names
+    # preload as schema docs and run via execute — never bound.
     auto_bind_tools: list[str] | None = None
     # Local/general tools to bind into this subagent's initial set AND its
     # spawned chunk-reader children (e.g. query_json/grep for an offloading
@@ -230,7 +238,11 @@ class ProviderMetadataConfig(BaseModel):
                     ],
                 ),
             ],
+            label_template="@{username}",
         )
     """
 
     tools: list[ToolMetadataConfig]  # List of tools to call and variables to extract
+    # str.format over the extracted variables: how one connected account is named
+    # to the user and the model ("work@x.com", "@handle", "dhruv @ Acme").
+    label_template: str

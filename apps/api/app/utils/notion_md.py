@@ -36,7 +36,7 @@ def _inline_code(text: str) -> str:
 
 
 def _inline_equation(text: str) -> str:
-    return f"${text}$"
+    return f"$${text}$$"
 
 
 def _bold(text: str) -> str:

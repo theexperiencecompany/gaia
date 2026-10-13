@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import time
+from typing import cast
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
@@ -80,6 +81,8 @@ _DOC_PROMPTS: dict[MemoryDocType, str] = {
 
 # Pending-set payload key (Redis JSON).
 _PENDING_DOC_TYPES = "doc_types"
+# The pending-set record schedule_consolidation writes: {_PENDING_DOC_TYPES: [doc type values]}.
+_PendingRecord = dict[str, list[str]]
 
 _AGENDA_DOC_HEADING = "# Current agenda"
 _AGENDA_EMPTY_BODY = "- (nothing open)"
@@ -117,8 +120,8 @@ async def schedule_consolidation(user_id: str, doc_types: set[MemoryDocType]) ->
     if not doc_types:
         return
     key = CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
-    pending = await get_cache(key) or {}
-    merged: dict[str, list[str]] = {
+    pending = cast("_PendingRecord | None", await get_cache(key)) or {}
+    merged: _PendingRecord = {
         _PENDING_DOC_TYPES: sorted(
             {*pending.get(_PENDING_DOC_TYPES, []), *(doc.value for doc in doc_types)}
         )
@@ -166,8 +169,9 @@ async def _debounce_waiter(user_id: str) -> None:
         with contextlib.suppress(Exception):
             async with wide_task("memory_consolidation", user=UserContext(id=user_id)):
                 await _debounce_wait()
-                pending = await get_and_delete_cache(
-                    CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
+                pending = cast(
+                    "_PendingRecord | None",
+                    await get_and_delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id)),
                 )
                 if not pending:
                     return
@@ -287,7 +291,7 @@ async def _rewrite_within_cap(
             f"{human}\n\n## Your previous attempt was too long\n"
             f"It was {len(content)} characters against a hard cap of "
             f"{DOCUMENT_TARGET_MAX_CHARS}. Rewrite it under the cap by dropping "
-            "the least important bullets — do not truncate mid-sentence, and do "
+            "the least important bullets. Do not truncate mid-sentence, and do "
             "not drop a section heading."
         )
     return None
@@ -439,6 +443,6 @@ def _format_inputs(previous_content: str, sections: list[str]) -> str:
     previous_block = previous_content.strip() or "(no previous version)"
     inputs_block = "\n\n".join(sections) if sections else "(no facts)"
     return (
-        "## Previous version of the document (a draft — the facts below outrank it)\n"
+        "## Previous version of the document (a draft outranked by the facts below)\n"
         f"{previous_block}\n\n{inputs_block}"
     )

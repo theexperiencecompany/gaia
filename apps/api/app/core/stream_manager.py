@@ -7,13 +7,13 @@ conversation is always persisted to MongoDB on completion.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
 import time
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
@@ -59,6 +59,35 @@ class StreamProgress:
     is_cancelled: bool = False
     is_complete: bool = False
     error: str | None = None
+
+
+class ProgressToolData(TypedDict, total=False):
+    """ExtractedToolData.model_dump() as update_progress accumulates it across a turn."""
+
+    tool_data: list[object]
+    other_data: object
+    tool_output: object
+
+
+class StreamProgressRecord(TypedDict, total=False):
+    """StreamProgress as start_stream stores it in Redis; every read tolerates a missing key."""
+
+    conversation_id: str
+    user_id: str
+    complete_message: str
+    pending_message: str
+    # Not ProgressToolData: services/chat/state.py adopts it as its dict tool_data accumulator.
+    tool_data: Mapping[str, object]
+    started_at: str
+    is_cancelled: bool
+    is_complete: bool
+    error: str | None
+
+
+class _StreamEntryFields(TypedDict, total=False):
+    """The fields _publish writes on each event-log entry."""
+
+    data: str
 
 
 class StreamManager:
@@ -123,7 +152,7 @@ class StreamManager:
         """
         # Update progress to complete
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if progress_data:
             progress_data["is_complete"] = True
@@ -144,7 +173,7 @@ class StreamManager:
         log is intentionally KEPT until its TTL — a client that reloads right at
         completion can still re-attach and replay the finished turn.
         """
-        progress_data = await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             await cls._clear_active_index(progress_data)
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
@@ -153,7 +182,7 @@ class StreamManager:
         log.debug(f"{LogTag.STARTUP} Stream cleaned up", stream_id=stream_id)
 
     @classmethod
-    async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _clear_active_index(cls, progress_data: StreamProgressRecord) -> None:
         """Drop the conversation -> stream reverse index for a finished stream."""
         user_id = progress_data.get("user_id")
         conversation_id = progress_data.get("conversation_id")
@@ -161,7 +190,7 @@ class StreamManager:
             await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
 
     @classmethod
-    async def _refresh_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _refresh_active_index(cls, progress_data: StreamProgressRecord) -> None:
         """Extend the reverse index's TTL for a turn that is still streaming.
 
         Without this it expires after STREAM_TTL even though turns often
@@ -193,7 +222,7 @@ class StreamManager:
         stream_id = await cls.get_active_stream_id(user_id, conversation_id)
         if not stream_id:
             return None
-        progress = await cls.get_progress(stream_id)
+        progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
             return None
         return stream_id
@@ -229,7 +258,7 @@ class StreamManager:
         if ttl < 0 or ttl > STREAM_LIVENESS_REFRESH_AFTER:
             return
         await redis_cache.redis.expire(progress_key, STREAM_TTL)
-        progress_data = await redis_cache.get(progress_key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             await cls._refresh_active_index(progress_data)
 
@@ -251,7 +280,7 @@ class StreamManager:
 
         if data == STREAM_ERROR_SIGNAL:
             log.error(f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id)
-            progress = await cls.get_progress(stream_id)
+            progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
             error_msg = (
                 progress.get("error", "An unexpected error occurred")
                 if progress
@@ -302,7 +331,8 @@ class StreamManager:
                 for _key, entries in results:
                     for entry_id, fields in entries:
                         cursor = entry_id
-                        data = fields.get("data", "")
+                        entry: _StreamEntryFields = cast(_StreamEntryFields, fields)
+                        data = entry.get("data", "")
 
                         is_terminal, frame = await cls._control_signal_frame(stream_id, data)
                         if is_terminal:
@@ -379,7 +409,7 @@ class StreamManager:
 
         # Update progress
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
@@ -410,11 +440,11 @@ class StreamManager:
         cls,
         stream_id: str,
         message_chunk: str = "",
-        tool_data: dict[str, Any] | None = None,
+        tool_data: Mapping[str, object] | None = None,
     ) -> None:
         """Update streaming progress in Redis as chunks are processed."""
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if not progress_data:
             return
@@ -425,14 +455,13 @@ class StreamManager:
             )
 
         if tool_data:
-            existing = progress_data.get("tool_data", {})
+            incoming: ProgressToolData = cast(ProgressToolData, tool_data)
+            existing: ProgressToolData = cast(ProgressToolData, progress_data.get("tool_data", {}))
             # Merge tool_data arrays
-            if "tool_data" in tool_data and "tool_data" in existing:
-                existing["tool_data"] = existing.get("tool_data", []) + tool_data.get(
-                    "tool_data", []
-                )
+            if "tool_data" in incoming and "tool_data" in existing:
+                existing["tool_data"] = existing["tool_data"] + incoming["tool_data"]
             else:
-                existing.update(tool_data)
+                existing.update(incoming)
             progress_data["tool_data"] = existing
 
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
@@ -449,7 +478,7 @@ class StreamManager:
         with two kept bubbles running into one sentence.
         """
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if not progress_data:
             return
 
@@ -462,15 +491,12 @@ class StreamManager:
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 
     @classmethod
-    async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:
-        """
-        Get current stream progress.
-
-        Returns:
-            Progress data dict or None if not found
-        """
+    async def get_progress(cls, stream_id: str) -> StreamProgressRecord | None:
+        """Get current stream progress, or None if not found."""
+        # Only start_stream writes this key, from asdict(StreamProgress).
         return cast(
-            "dict[str, Any] | None", await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+            "StreamProgressRecord | None",
+            await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}"),
         )
 
     @classmethod
@@ -483,7 +509,7 @@ class StreamManager:
             error: Error message
         """
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if progress_data:
             progress_data["error"] = error

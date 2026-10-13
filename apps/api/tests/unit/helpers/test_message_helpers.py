@@ -6,6 +6,7 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.agents.prompts.onboarding_prompts import ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT
+from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.repositories.users import UserDocument
@@ -48,9 +49,10 @@ class TestCreateSystemMessage:
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
-        # Output-format addenda should be inline in the static per-channel
-        # prompt — web has OpenUI, text-only has platform restrictions.
-        assert ":::openui" in web_a.content
+        # Output-format addenda are inline in the static per-channel prompt (web
+        # has OpenUI, text-only has platform restrictions). Assert on the addendum
+        # marker, not the fence literal: the base prompt names :::openui either way.
+        assert "## Output Format (this app renders rich components)" in web_a.content
         assert "Platform Context" in whatsapp.content
 
     def test_executor_agent_is_static(self) -> None:
@@ -87,6 +89,9 @@ class TestFormatToolSelectionMessage:
         assert "Find info about AI" in result
         assert "Web Search" in result
         assert "TOOL SELECTION" in result
+        assert "activate_integration" in result
+        assert "handoff" not in result
+        assert "subagent:" not in result
 
     def test_without_content(self) -> None:
         result = format_tool_selection_message(
@@ -422,7 +427,7 @@ class TestFormatFilesList:
     def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" not in result
+        assert "Read the file at its path" not in result
         assert "copy into" not in result
         assert ".summary.md" not in result
         assert "a summary" in result
@@ -438,7 +443,7 @@ class TestFormatFilesList:
             )
         ]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" in result
+        assert "Read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
 
 
@@ -661,7 +666,7 @@ class TestUploadedFileLines:
         entry = _uploaded_file_lines(self._file(sandbox_path=None), "conv1", True)
 
         assert entry == (
-            ["- a.txt  (id: f1) — not on disk, use `search_uploaded_files`"],
+            ["- a.txt  (id: f1), not on disk, use `search_uploaded_files`"],
             False,
         )
 
@@ -876,3 +881,90 @@ class TestGetOnboardingSystemPromptIfApplicable:
                 "conversation_id": "conv1",
             }
         ]
+
+
+class TestTheTriggeringAccountReachesTheWorkflow:
+    """With several mailboxes, the run must act on the one that received the event, not the primary."""
+
+    @staticmethod
+    def _selected() -> SelectedWorkflowData:
+        return SelectedWorkflowData(
+            id="wf_1",
+            title="Triage",
+            description="desc",
+            prompt="triage it",
+            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_single_event_names_its_account(self) -> None:
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"payload": {}, "gaia_account": "me@gmail.com"}},
+            )
+
+        assert result.endswith(TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com"))
+
+    @pytest.mark.asyncio
+    async def test_the_account_follows_the_playbook_fallback_without_replacing_it(self) -> None:
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "playbook_fallback": "\n\nThe playbook stopped at step 2.",
+                    "trigger_data": {"gaia_account": "me@gmail.com"},
+                },
+            )
+
+        assert result.endswith(
+            "\n\nThe playbook stopped at step 2."
+            + TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com")
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_batch_names_every_account_its_events_arrived_on_once(self) -> None:
+        events = [
+            {"gaia_account": "b@x.com"},
+            {"gaia_account": "a@x.com"},
+            {"gaia_account": "b@x.com"},
+        ]
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"events": events, "count": 3}},
+            )
+
+        assert result.endswith(TRIGGERED_ACCOUNT_SECTION.format(accounts="a@x.com, b@x.com"))
+
+    @pytest.mark.asyncio
+    async def test_a_provider_payload_of_any_shape_never_breaks_the_message(self) -> None:
+        """Provider payloads are open-shaped; one that collides with our keys must be ignored, not validated."""
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"events": ["not", "objects"], "gaia_account": 7}},
+            )
+
+        assert "Triage" in result
+        assert "triggered by an event on the user's account" not in result

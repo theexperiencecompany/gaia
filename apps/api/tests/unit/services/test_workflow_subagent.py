@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessageChunk, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.errors import GraphRecursionError
 import pytest
 
@@ -47,23 +53,23 @@ class _Run:
     result: str
     build_config: AsyncMock
     stream_turn: AsyncMock
+    assemble: AsyncMock
 
 
 async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
     """Drive execute() with everything outside it stubbed at its seams."""
     build_config = AsyncMock(return_value={"configurable": {"thread_id": "workflow_t1"}})
     stream_turn = AsyncMock(return_value=(draft, False))
+    assemble = AsyncMock(
+        return_value=AssembledContext(
+            stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+            volatile=None,
+        )
+    )
     with (
         patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock, return_value=MagicMock()),
         patch(f"{_MOD}.build_agent_config", build_config),
-        patch(
-            f"{_MOD}.assemble_context",
-            new_callable=AsyncMock,
-            return_value=AssembledContext(
-                stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
-                volatile=None,
-            ),
-        ),
+        patch(f"{_MOD}.assemble_context", assemble),
         patch(
             f"{_MOD}.build_connected_integrations_hint",
             new_callable=AsyncMock,
@@ -85,7 +91,9 @@ async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
                 user_name="Dev", user_timezone="UTC", base_configurable=base_configurable
             ),
         )
-    return _Run(result=result, build_config=build_config, stream_turn=stream_turn)
+    return _Run(
+        result=result, build_config=build_config, stream_turn=stream_turn, assemble=assemble
+    )
 
 
 @pytest.mark.unit
@@ -122,6 +130,30 @@ class TestTheLaneItInherits:
                 base_configurable=parent,
             ),
         }
+
+    async def test_the_first_turn_carries_the_task_its_context_and_a_clock(self) -> None:
+        """The graph's first state is the whole brief: prompt, assembled context, the request and today's date."""
+        run = await _execute('{"title": "x"}')
+
+        state = run.stream_turn.call_args_list[0].args[1]
+        assert state["intent"] == "every monday, summarize my inbox"
+        assert state["integration_usernames"] == {}
+        system, context, request, clock = state["messages"]
+        assert isinstance(system, SystemMessage)
+        assert context.content == "ctx"
+        assert isinstance(request, HumanMessage)
+        assert (
+            request.content == "connected: none\n\n---\n\nRequest: every monday, summarize my inbox"
+        )
+        assert isinstance(clock, BaseMessage)
+
+    async def test_its_context_is_recalled_for_this_task_and_this_user(self) -> None:
+        """Memory and section recall must search on the request being authored, for the caller, not an empty query."""
+        run = await _execute('{"title": "x"}')
+
+        (section_context,) = run.assemble.await_args.args
+        assert section_context.query == "every monday, summarize my inbox"
+        assert section_context.user_id == "u1"
 
     async def test_authoring_runs_on_a_capped_step_budget(self) -> None:
         """A wandering model must reach the forced-finalize fallback quickly, not burn a full agent's recursion budget."""

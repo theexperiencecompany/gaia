@@ -54,9 +54,9 @@ async def get_available_skills_text(
     """
     log.set(user_id=user_id, agent_name=agent_name, skill=SkillContext(operation="get"))
 
-    # Only the executor needs builtins merged here: integration subagents
+    # Only the executor needs builtins merged here: activated integrations
     # already get theirs via system_docs.integration_skills_block, so merging
-    # there too would list them twice.
+    # there too would list them twice. Fetch first so a Mongo hiccup can't hide them.
     builtins = _builtin_entries(agent_name) if agent_name == EXECUTOR_SUBAGENT_ID else []
     try:
         user_skills = await get_skills_for_agent(user_id, agent_name)

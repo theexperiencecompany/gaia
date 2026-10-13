@@ -7,6 +7,7 @@ bridge send/revoke calls, and the integration repo/user-integration seams are
 the only fakes — every function's real branching and string-building runs.
 """
 
+from collections.abc import Iterator
 import contextlib
 from datetime import UTC, datetime
 import hashlib
@@ -23,10 +24,12 @@ from app.constants.device_bridge import (
     DEVICE_TRANSPORT,
     FRAME_SERVER_REMOVE,
     MAX_ACTIVE_DEVICES_PER_USER,
+    REFRESH_TOKEN_RETRY_GRACE_SECONDS,
 )
 from app.db.postgresql import Base
 from app.models.device import Device, DeviceMCPServer, DeviceServerStatus, DeviceStatus
 from app.services.device import device_service
+from app.services.device.device_auth import hash_refresh_token
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
@@ -254,7 +257,7 @@ class TestCreateServerIntegration:
         # The description names the device and states the tools run locally — the
         # subagent's discovery text inherits it verbatim.
         assert integration.description == (
-            'MCP server hosted on your device "My Laptop" — its tools run '
+            'MCP server hosted on your device "My Laptop". Its tools run '
             "locally on that machine, not the cloud sandbox."
         )
         assert integration.mcp_config.server_url == "device://dev1/fs"
@@ -738,3 +741,79 @@ class TestTeardownRevokedDevice:
             remaining = (await s.execute(select(DeviceMCPServer.device_id))).scalars().all()
         assert remaining == ["dev2"]
         revoke_mock.assert_awaited_once_with("dev1")
+
+
+class _DictCache:
+    """In-memory get_cache/set_cache pair, so a rotation's retry record is read back for real."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, object] = {}
+        self.ttls: dict[str, int] = {}
+
+    async def get(self, key: str) -> object:
+        return self.store.get(key)
+
+    async def set(self, key: str, value: object, ttl: int) -> None:
+        self.store[key] = value
+        self.ttls[key] = ttl
+
+
+class TestRefreshTokenRotation:
+    """A lost rotation response must be answered with the same replacement, never brick the device."""
+
+    async def _seed_device(self, sqlite_session: async_sessionmaker) -> None:
+        async with sqlite_session() as s:
+            s.add(
+                Device(
+                    id="dev1",
+                    user_id="u1",
+                    name="Laptop",
+                    refresh_token_hash=hash_refresh_token("old-token"),
+                    status=DeviceStatus.ACTIVE,
+                )
+            )
+            await s.commit()
+
+    @contextlib.contextmanager
+    def _cache(self) -> Iterator[_DictCache]:
+        cache = _DictCache()
+        with (
+            patch.object(device_service, "get_cache", cache.get),
+            patch.object(device_service, "set_cache", cache.set),
+        ):
+            yield cache
+
+    async def test_a_rotation_records_its_replacement_for_the_grace_window(
+        self, sqlite_session: async_sessionmaker
+    ) -> None:
+        await self._seed_device(sqlite_session)
+        with self._cache() as cache:
+            device_id, user_id, new_token = await device_service.rotate_refresh_token("old-token")
+
+        key = device_service._refresh_retry_key(hash_refresh_token("old-token"))
+        assert (device_id, user_id) == ("dev1", "u1")
+        assert cache.store == {key: {"device_id": "dev1", "user_id": "u1", "new_token": new_token}}
+        assert cache.ttls[key] == REFRESH_TOKEN_RETRY_GRACE_SECONDS
+
+    async def test_a_retry_inside_the_grace_window_gets_the_same_replacement(
+        self, sqlite_session: async_sessionmaker
+    ) -> None:
+        await self._seed_device(sqlite_session)
+        with self._cache():
+            first = await device_service.rotate_refresh_token("old-token")
+            retried = await device_service.rotate_refresh_token("old-token")
+
+        assert retried == first
+
+    async def test_a_retry_for_a_device_revoked_inside_the_window_is_rejected(
+        self, sqlite_session: async_sessionmaker
+    ) -> None:
+        await self._seed_device(sqlite_session)
+        with self._cache():
+            await device_service.rotate_refresh_token("old-token")
+            async with sqlite_session() as s:
+                row = (await s.execute(select(Device).where(Device.id == "dev1"))).scalar_one()
+                row.status = DeviceStatus.REVOKED
+                await s.commit()
+            with pytest.raises(device_service.PairingError, match="revoked"):
+                await device_service.rotate_refresh_token("old-token")

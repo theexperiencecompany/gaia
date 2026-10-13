@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import ClassVar, cast
 import uuid
 
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool
@@ -602,9 +603,9 @@ def _patch_agent_callbacks() -> None:
     original = agent_helpers_mod._build_agent_callbacks
 
     def _with_tracker(
-        conversation_id: str, user: dict, agent_name: str, usage_metadata_callback: object | None
-    ) -> list:
-        callbacks = original(conversation_id, user, agent_name, usage_metadata_callback)
+        usage_metadata_callback: UsageMetadataCallbackHandler | None,
+    ) -> list[BaseCallbackHandler]:
+        callbacks = original(usage_metadata_callback)
         if _ACTIVE_TRACKER is not None:
             callbacks.append(_ACTIVE_TRACKER)
         return callbacks

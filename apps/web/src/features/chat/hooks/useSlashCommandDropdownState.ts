@@ -75,7 +75,7 @@ function getDropdownPosition(
  * Every tool category (integrations plus non-integration ones like Skills,
  * Notifications, etc.) becomes a top-level tab.
  */
-function buildCategories(matches: SlashCommandMatch[]): string[] {
+export function buildCategories(matches: SlashCommandMatch[]): string[] {
   const uniqueCategories = Array.from(
     new Set(matches.map((match) => match.tool.category)),
   );

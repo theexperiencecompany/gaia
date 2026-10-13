@@ -28,7 +28,7 @@ import {
   VoiceSessionProvider,
   type VoiceSessionValue,
 } from "@/features/chat/components/voice-agent/VoiceSessionContext";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
@@ -269,7 +269,7 @@ function VoiceSessionInner({
             updatedAt: new Date(),
           };
           await db.putConversation(created);
-          trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
+          track("feature:discovered", {
             feature: "voice_agent",
           });
         }
@@ -413,7 +413,7 @@ export function VoiceControlBarContainer({
         }),
       ])
         .then(() => {
-          trackEvent(ANALYTICS_EVENTS.VOICE_MODE_STARTED, {
+          track("voice:mode_started", {
             conversation_id: voiceConversationId,
           });
         })
@@ -435,7 +435,7 @@ export function VoiceControlBarContainer({
     return () => {
       aborted = true;
       if (room.state === "connected") {
-        trackEvent(ANALYTICS_EVENTS.VOICE_MODE_STOPPED, {
+        track("voice:mode_stopped", {
           conversation_id: voiceConversationId,
         });
       }

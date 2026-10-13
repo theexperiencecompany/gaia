@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 from shared.py.wide_events import log
@@ -49,7 +50,7 @@ class DuckDuckGoProvider(SearchProvider):
         # DDG Lite serves an anti-bot page (often HTTP 202) that still parses as
         # HTML; treat it as "no results" rather than scraping a challenge page.
         if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
-            log.warning("DuckDuckGo served a bot-challenge page", query=query)
+            log.warning("DuckDuckGo served a bot-challenge page", query=user_text_shape(query))
             return SearchResponse(provider=self.name)
 
         soup = BeautifulSoup(response.text, "lxml")

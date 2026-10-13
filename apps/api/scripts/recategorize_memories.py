@@ -45,7 +45,7 @@ async def recategorize_user(user_id: str, dry_run: bool) -> int:
     moved = 0
     for row in rows:
         categorization = await categorize_fact(
-            row.content, folder_tree=_EMPTY_TREE, current_date=now
+            row.content, user_id=user_id, folder_tree=_EMPTY_TREE, current_date=now
         )
         if categorization is None:
             continue

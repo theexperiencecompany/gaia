@@ -5,13 +5,14 @@ using ChromaDB for vector storage and retrieval.
 """
 
 import asyncio
-from collections.abc import Coroutine, Iterable
+from collections.abc import Coroutine, Iterable, Mapping
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import GetResult, QueryResult
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -36,9 +37,35 @@ from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import VectorContext, log
 
-# A filter value (or the item value it's compared against) is an arbitrary
-# JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
-FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
+# Pickled bytes round-trip losslessly through latin-1, so a value is stored as a str document.
+_DOCUMENT_ENCODING = "latin1"
+
+
+class ChromaBatchWriteError(RuntimeError):
+    """At least one document in a batch failed to write to ChromaDB."""
+
+
+class StoredItemMetadata(TypedDict, total=False):
+    """The Chroma metadata _upsert_item writes beside every document."""
+
+    created_at: str
+    updated_at: str
+    namespace: str
+    tool_hash: str
+    trigger_hash: str
+
+
+class _PutValueHints(TypedDict, total=False):
+    """The keys of a put value this store reads: a precomputed vector and the index hashes."""
+
+    embedding: object
+    tool_hash: str
+    trigger_hash: str
+
+
+def _stored_time(value: object) -> datetime:
+    """Parse a stored ISO timestamp, or now when the metadata has none."""
+    return datetime.fromisoformat(value) if value and isinstance(value, str) else datetime.now(UTC)
 
 
 class ChromaStore(BaseStore):
@@ -76,15 +103,13 @@ class ChromaStore(BaseStore):
         self._collection_cache: AsyncCollection | None = None
 
         self.index_config = index
-        if self.index_config:
-            self.index_config = self.index_config.copy()
-            self.embeddings: Embeddings | None = ensure_embeddings(
-                self.index_config.get("embed"),
-            )
+        if index:
+            self.index_config = index.copy()
+            self.embeddings: Embeddings | None = ensure_embeddings(index.get("embed"))
             # Store tokenized fields separately to avoid TypedDict issues
             self._tokenized_fields = [
                 (p, tokenize_path(p)) if p != "$" else (p, p)
-                for p in (self.index_config.get("fields") or ["$"])
+                for p in (index.get("fields") or ["$"])
             ]
         else:
             self.index_config = None
@@ -185,12 +210,10 @@ class ChromaStore(BaseStore):
         ops_list = list(ops)
         results: list[Result] = [None] * len(ops_list)
         put_ops: dict[tuple[tuple[str, ...], str], PutOp] = {}
-        search_ops: dict[int, tuple[SearchOp, list[str]]] = {}
-        search_error: Exception | None = None
 
         # Collect async operations to parallelize
         get_tasks = []
-        search_tasks = []
+        search_tasks: list[tuple[int, Coroutine[object, object, list[str]]]] = []
         list_ns_tasks = []
 
         for i, op in enumerate(ops_list):
@@ -211,18 +234,7 @@ class ChromaStore(BaseStore):
             for (idx, _), result in zip(get_tasks, get_results):
                 results[idx] = result
 
-        if search_tasks:
-            try:
-                search_results = await asyncio.gather(*[task for _, task in search_tasks])
-            except Exception as e:
-                # Capture the first filter failure; writes in the same batch still
-                # run in abatch() before this is re-raised.
-                search_error = e
-            else:
-                for (idx, _), candidate_ids in zip(search_tasks, search_results):
-                    op = ops_list[idx]
-                    if isinstance(op, SearchOp):
-                        search_ops[idx] = (op, candidate_ids)
+        search_ops, search_error = await self._run_search_tasks(ops_list, search_tasks)
 
         if list_ns_tasks:
             list_ns_results = await asyncio.gather(*[task for _, task in list_ns_tasks])
@@ -231,38 +243,58 @@ class ChromaStore(BaseStore):
 
         return results, put_ops, search_ops, search_error
 
+    async def _run_search_tasks(
+        self,
+        ops_list: list[Op],
+        search_tasks: list[tuple[int, Coroutine[object, object, list[str]]]],
+    ) -> tuple[dict[int, tuple[SearchOp, list[str]]], Exception | None]:
+        """Await the batch's filter tasks, keyed by op index.
+
+        The first filter failure is captured and returned, not raised, so the
+        caller's abatch can still apply sibling writes before surfacing it.
+        """
+        search_ops: dict[int, tuple[SearchOp, list[str]]] = {}
+        if not search_tasks:
+            return search_ops, None
+        try:
+            search_results = await asyncio.gather(*[task for _, task in search_tasks])
+        except Exception as e:
+            return search_ops, e
+        for (idx, _), candidate_ids in zip(search_tasks, search_results):
+            op = ops_list[idx]
+            if isinstance(op, SearchOp):
+                search_ops[idx] = (op, candidate_ids)
+        return search_ops, None
+
     async def _get_item(
         self, namespace: tuple[str, ...], key: str, collection: AsyncCollection
     ) -> Item | None:
         """Get a single item from ChromaDB."""
         doc_id = self._namespace_to_id(namespace, key)
         try:
-            result = await collection.get(ids=[doc_id], include=["metadatas", "documents"])
+            result: GetResult = await collection.get(
+                ids=[doc_id], include=["metadatas", "documents"]
+            )
 
             if not result["ids"]:
                 return None
 
-            metadata = result["metadatas"][0] if result["metadatas"] else {}
+            metadata: StoredItemMetadata = (
+                cast(StoredItemMetadata, result["metadatas"][0]) if result["metadatas"] else {}
+            )
             document = result["documents"][0] if result["documents"] else None
 
             # Deserialize value from document (stored as pickle base64).
             # Trust boundary: this document was written by this store (_put below); ChromaDB
             # data is service-private — never untrusted input — so pickle.loads is safe here.
-            value = pickle.loads(document.encode("latin1")) if document else {}  # nosec B301 - Internal trusted data only
-
-            created_at_str = metadata.get("created_at")
-            updated_at_str = metadata.get("updated_at")
+            value = pickle.loads(document.encode(_DOCUMENT_ENCODING)) if document else {}  # nosec B301 - Internal trusted data only
 
             return Item(
                 value=value,
                 key=key,
                 namespace=namespace,
-                created_at=datetime.fromisoformat(str(created_at_str))
-                if created_at_str and isinstance(created_at_str, str)
-                else datetime.now(UTC),
-                updated_at=datetime.fromisoformat(str(updated_at_str))
-                if updated_at_str and isinstance(updated_at_str, str)
-                else datetime.now(UTC),
+                created_at=_stored_time(metadata.get("created_at")),
+                updated_at=_stored_time(metadata.get("updated_at")),
             )
         except Exception as e:
             log.error(
@@ -276,7 +308,7 @@ class ChromaStore(BaseStore):
     async def _filter_items(self, op: SearchOp, collection: AsyncCollection) -> list[str]:
         """Filter items by namespace prefix and filter conditions."""
         try:
-            result = await collection.get(include=["metadatas", "documents"])
+            result: GetResult = await collection.get(include=["metadatas", "documents"])
 
             if not result["ids"]:
                 return []
@@ -296,35 +328,43 @@ class ChromaStore(BaseStore):
                 return [doc_id for _, doc_id in filtered_by_ns]
 
             # Apply filter conditions (slower, but only on pre-filtered set)
-            filtered_ids = []
-            for idx, doc_id in filtered_by_ns:
-                document = result["documents"][idx] if result["documents"] else None
-                if not document:
-                    continue
-                try:
-                    # Trust boundary: documents come from our own _put writes (service-private
-                    # ChromaDB collection), never untrusted input.
-                    value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
-                except Exception as e:
-                    log.debug(
-                        f"{LogTag.CHROMA} Failed to deserialize document at index",
-                        idx=idx,
-                        error=str(e),
-                        error_type=type(e).__name__,
-                    )
-                    continue
-                if not isinstance(value, dict):
-                    continue
-                if self._check_filter(value, op.filter):
-                    filtered_ids.append(doc_id)
-
-            return filtered_ids
+            return self._apply_filter(result["documents"], filtered_by_ns, op.filter)
         except Exception as e:
             # Re-raise so callers can tell an unreachable ChromaDB apart from an
             # empty namespace (same contract as the write path). Per-document
             # data issues are already handled item-by-item above.
             log.error(f"{LogTag.CHROMA} Error filtering items", error_type=type(e).__name__)
             raise
+
+    def _apply_filter(
+        self,
+        documents: list[str] | None,
+        filtered_by_ns: list[tuple[int, str]],
+        filter_dict: Mapping[str, object],
+    ) -> list[str]:
+        """Keep only pre-filtered ids whose deserialized value matches the filter."""
+        filtered_ids: list[str] = []
+        for idx, doc_id in filtered_by_ns:
+            document = documents[idx] if documents else None
+            if not document:
+                continue
+            try:
+                # Trust boundary: documents come from our own _put writes (service-private
+                # ChromaDB collection), never untrusted input.
+                value = pickle.loads(document.encode(_DOCUMENT_ENCODING))  # nosec B301 - Internal trusted data only
+            except Exception as e:
+                log.debug(
+                    f"{LogTag.CHROMA} Failed to deserialize document at index",
+                    idx=idx,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                continue
+            if not isinstance(value, dict):
+                continue
+            if self._check_filter(value, filter_dict):
+                filtered_ids.append(doc_id)
+        return filtered_ids
 
     def _matches_namespace_prefix(
         self, namespace: tuple[str, ...], prefix: tuple[str, ...]
@@ -333,7 +373,7 @@ class ChromaStore(BaseStore):
             return False
         return namespace[: len(prefix)] == prefix
 
-    def _check_filter(self, value: dict, filter_dict: dict) -> bool:
+    def _check_filter(self, value: Mapping[str, object], filter_dict: Mapping[str, object]) -> bool:
         """Check if value matches filter conditions."""
         for key, filter_value in filter_dict.items():
             if key.startswith("$"):
@@ -350,7 +390,7 @@ class ChromaStore(BaseStore):
                     return False
         return True
 
-    def _apply_operator(self, value: FilterValue, operator: str, op_value: FilterValue) -> bool:
+    def _apply_operator(self, value: object, operator: str, op_value: object) -> bool:
         """Apply comparison operator."""
         if operator == "$eq":
             return bool(value == op_value)
@@ -389,116 +429,110 @@ class ChromaStore(BaseStore):
         for i, (op, candidate_ids) in ops.items():
             if not candidate_ids:
                 results[i] = []
-                continue
-
-            if op.query and self.embeddings:
-                # Vector search with ChromaDB's native where filter for namespace
-                query_embedding = await self.embeddings.aembed_query(op.query)
-
-                try:
-                    # Build where filter for namespace prefix
-                    where_filter: dict[str, Any] | None = None
-                    if op.namespace_prefix:
-                        namespace_str = "::".join(op.namespace_prefix)
-                        where_filter = {"namespace": {"$eq": namespace_str}}
-
-                    # Apply additional filters if provided
-                    if op.filter:
-                        # Combine namespace filter with op.filter if both exist
-                        if where_filter:
-                            where_filter = {"$and": [where_filter, op.filter]}
-                        else:
-                            where_filter = op.filter
-
-                    # Use ChromaDB's native query with where filter
-                    search_result = await collection.query(
-                        query_embeddings=[query_embedding],  # type: ignore[arg-type]  # chromadb stubs demand ndarrays; a single float vector is valid at runtime
-                        n_results=op.limit + op.offset,
-                        include=["metadatas", "distances", "documents"],
-                        where=where_filter,
-                    )
-
-                    items = []
-                    if (
-                        search_result["ids"]
-                        and search_result["ids"][0]
-                        and search_result["metadatas"]
-                        and search_result["metadatas"][0]
-                        and search_result["distances"]
-                        and search_result["distances"][0]
-                    ):
-                        for idx, (doc_id, metadata, distance) in enumerate(
-                            zip(
-                                search_result["ids"][0],
-                                search_result["metadatas"][0],
-                                search_result["distances"][0],
-                            )
-                        ):
-                            ns, key = self._id_to_namespace_key(doc_id)
-
-                            # Get document from search results
-                            documents = search_result.get("documents")
-                            document = documents[0][idx] if documents and documents[0] else None
-                            value = (
-                                # Trust boundary: documents come from our own _put writes
-                                # (service-private ChromaDB collection), never untrusted input.
-                                pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
-                                if document
-                                else {}
-                            )
-
-                            created_at_str = metadata.get("created_at")
-                            updated_at_str = metadata.get("updated_at")
-
-                            # Convert distance to similarity score
-                            score = 1.0 - distance if distance is not None else None
-
-                            items.append(
-                                SearchItem(
-                                    namespace=ns,
-                                    key=key,
-                                    value=value,
-                                    created_at=datetime.fromisoformat(str(created_at_str))
-                                    if created_at_str and isinstance(created_at_str, str)
-                                    else datetime.now(UTC),
-                                    updated_at=datetime.fromisoformat(str(updated_at_str))
-                                    if updated_at_str and isinstance(updated_at_str, str)
-                                    else datetime.now(UTC),
-                                    score=float(score) if score is not None else None,
-                                )
-                            )
-
-                    # Apply pagination
-                    results[i] = items[op.offset : op.offset + op.limit]
-                except Exception as e:
-                    # Re-raise so an unreachable ChromaDB doesn't masquerade as
-                    # zero search hits (same contract as the write path).
-                    log.error(
-                        f"{LogTag.CHROMA} Error in vector search", error_type=type(e).__name__
-                    )
-                    raise
+            elif op.query and self.embeddings:
+                results[i] = await self._vector_search(op, op.query, self.embeddings, collection)
             else:
-                # No query, just return filtered items with pagination
-                # Parallelize item retrieval
-                paginated_ids = candidate_ids[op.offset : op.offset + op.limit]
-                item_tasks = [
-                    self._get_item(*self._id_to_namespace_key(doc_id), collection)
-                    for doc_id in paginated_ids
-                ]
-                retrieved_items = await asyncio.gather(*item_tasks)
+                results[i] = await self._filtered_page(op, candidate_ids, collection)
 
-                items = [
-                    SearchItem(
-                        namespace=item.namespace,
-                        key=item.key,
-                        value=item.value,
-                        created_at=item.created_at,
-                        updated_at=item.updated_at,
+    async def _vector_search(
+        self, op: SearchOp, query: str, embeddings: Embeddings, collection: AsyncCollection
+    ) -> list[SearchItem]:
+        """Run native ChromaDB similarity search over op's namespace, paginated."""
+        query_embedding = await embeddings.aembed_query(query)
+
+        try:
+            # Build where filter for namespace prefix
+            where_filter: dict[str, Any] | None = None
+            if op.namespace_prefix:
+                namespace_str = "::".join(op.namespace_prefix)
+                where_filter = {"namespace": {"$eq": namespace_str}}
+
+            # Combine namespace filter with op.filter if both exist
+            if op.filter:
+                where_filter = {"$and": [where_filter, op.filter]} if where_filter else op.filter
+
+            search_result: QueryResult = await collection.query(
+                query_embeddings=[query_embedding],  # type: ignore[arg-type]  # chromadb stubs demand ndarrays; a single float vector is valid at runtime
+                n_results=op.limit + op.offset,
+                include=["metadatas", "distances", "documents"],
+                where=where_filter,
+            )
+
+            items: list[SearchItem] = []
+            if (
+                search_result["ids"]
+                and search_result["ids"][0]
+                and search_result["metadatas"]
+                and search_result["metadatas"][0]
+                and search_result["distances"]
+                and search_result["distances"][0]
+            ):
+                for idx, (doc_id, metadata, distance) in enumerate(
+                    zip(
+                        search_result["ids"][0],
+                        search_result["metadatas"][0],
+                        search_result["distances"][0],
                     )
-                    for item in retrieved_items
-                    if item is not None
-                ]
-                results[i] = items
+                ):
+                    ns, key = self._id_to_namespace_key(doc_id)
+
+                    # Get document from search results
+                    documents = search_result.get("documents")
+                    document = documents[0][idx] if documents and documents[0] else None
+                    value = (
+                        # Trust boundary: documents come from our own _put writes
+                        # (service-private ChromaDB collection), never untrusted input.
+                        pickle.loads(document.encode(_DOCUMENT_ENCODING))  # nosec B301 - Internal trusted data only
+                        if document
+                        else {}
+                    )
+
+                    stored: StoredItemMetadata = cast(StoredItemMetadata, metadata)
+
+                    # Convert distance to similarity score
+                    score = 1.0 - distance if distance is not None else None
+
+                    items.append(
+                        SearchItem(
+                            namespace=ns,
+                            key=key,
+                            value=value,
+                            created_at=_stored_time(stored.get("created_at")),
+                            updated_at=_stored_time(stored.get("updated_at")),
+                            score=float(score) if score is not None else None,
+                        )
+                    )
+
+            # Apply pagination
+            return items[op.offset : op.offset + op.limit]
+        except Exception as e:
+            # Re-raise so an unreachable ChromaDB doesn't masquerade as
+            # zero search hits (same contract as the write path).
+            log.error(f"{LogTag.CHROMA} Error in vector search", error_type=type(e).__name__)
+            raise
+
+    async def _filtered_page(
+        self, op: SearchOp, candidate_ids: list[str], collection: AsyncCollection
+    ) -> list[SearchItem]:
+        """No query — return the filtered candidates for this page, fetched in parallel."""
+        paginated_ids = candidate_ids[op.offset : op.offset + op.limit]
+        item_tasks = [
+            self._get_item(*self._id_to_namespace_key(doc_id), collection)
+            for doc_id in paginated_ids
+        ]
+        retrieved_items = await asyncio.gather(*item_tasks)
+
+        return [
+            SearchItem(
+                namespace=item.namespace,
+                key=item.key,
+                value=item.value,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in retrieved_items
+            if item is not None
+        ]
 
     async def _apply_put_ops(
         self,
@@ -506,7 +540,7 @@ class ChromaStore(BaseStore):
         collection: AsyncCollection,
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
-        tasks: list[Coroutine[Any, Any, None]] = []
+        tasks: list[Coroutine[object, object, None]] = []
         doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
@@ -525,7 +559,7 @@ class ChromaStore(BaseStore):
         # fd cap holds across callers, not just within a single batch.
         sem = loop_bound_semaphore("chroma_put_batch", MAX_CONCURRENT_CHROMA_WRITES)
 
-        async def _guarded(coro: Coroutine[Any, Any, None]) -> None:
+        async def _guarded(coro: Coroutine[object, object, None]) -> None:
             async with sem:
                 await coro
 
@@ -553,6 +587,12 @@ class ChromaStore(BaseStore):
                     doc_id=d,
                     error_type=type(exc).__name__,
                 )
+            # Raise so a partially-written batch can never be recorded as a
+            # success: logging alone let index_tools_to_store cache the namespace
+            # hash after docs failed to embed, stranding tools undiscoverable forever.
+            raise ChromaBatchWriteError(
+                f"{len(failures)} of {len(results)} ChromaDB writes failed"
+            ) from failures[0][1]
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
         """Delete a single item.
@@ -575,27 +615,29 @@ class ChromaStore(BaseStore):
         now = datetime.now(UTC)
         # Store namespace in metadata for efficient filtering
         namespace_str = "::".join(op.namespace) if op.namespace else "default"
-        metadata = {
+        metadata: dict[str, str] = {
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
             "namespace": namespace_str,
         }
 
-        # Add tool_hash to metadata if provided in value
-        if isinstance(op.value, dict) and "tool_hash" in op.value:
-            metadata["tool_hash"] = op.value["tool_hash"]
+        hints: _PutValueHints = (
+            cast(_PutValueHints, op.value) if isinstance(op.value, dict) else _PutValueHints()
+        )
+        # The tools and triggers stores diff their catalogs against these hashes.
+        if "tool_hash" in hints:
+            metadata["tool_hash"] = hints["tool_hash"]
+        if "trigger_hash" in hints:
+            metadata["trigger_hash"] = hints["trigger_hash"]
 
         # Serialize value to document
-        document = pickle.dumps(op.value).decode("latin1")
+        document = pickle.dumps(op.value).decode(_DOCUMENT_ENCODING)
 
         # Extract embedding from indexed fields
+        supplied = hints.get("embedding")
         embedding = None
-        if (
-            isinstance(op.value, dict)
-            and "embedding" in op.value
-            and isinstance(op.value["embedding"], list)
-        ):
-            embedding = op.value["embedding"]
+        if isinstance(supplied, list):
+            embedding = supplied
         elif self.embeddings and op.index is not False and isinstance(op.value, dict):
             paths = (
                 [(ix, tokenize_path(ix)) for ix in op.index]
@@ -642,7 +684,7 @@ class ChromaStore(BaseStore):
     ) -> list[tuple[str, ...]]:
         """List all namespaces matching conditions."""
         try:
-            result = await collection.get(include=["metadatas"])
+            result: GetResult = await collection.get(include=["metadatas"])
 
             if not result["ids"]:
                 return []

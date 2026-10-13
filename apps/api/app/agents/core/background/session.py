@@ -11,6 +11,7 @@ guard for multi-worker deployments.
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -18,6 +19,8 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
+from shared.py.analytics import Dedupe
 from shared.py.wide_events import current_workflow_execution_id, log
 
 
@@ -27,8 +30,10 @@ class RunKind(StrEnum):
     LIVE   — dispatched by call_executor inside a comms run (chat or
              silent/workflow); tool events reach the user over the comms
              stream and the comms path attaches them to its own message.
-    QUEUED — popped from the per-conversation executor queue; the run has
-             its own queued_* stream and self-publishes its results.
+    QUEUED — a DETACHED run: it owns its own stream and self-publishes its
+             results. Materialized by prepare_run_from_item for a HIL approval
+             resume or a background-subagent collection wake. The name predates
+             the executor queue's removal; nothing is queued.
     """
 
     LIVE = "live"
@@ -42,10 +47,6 @@ class StreamSession:
     stream_id: str
     kind: RunKind
     executor_spawned: bool = False
-    #: task_id of a ``call_executor`` dispatch queued instead of run, because
-    #: another run held the busy lock. Counterpart of ``executor_spawned``:
-    #: exactly one of the two is written per dispatch.
-    executor_queued_task_id: str | None = None
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     #: Set with ``done_event`` when the executor's run ended in an error rather
     #: than a result. The silent path reads it so a fire whose executor died is
@@ -54,10 +55,6 @@ class StreamSession:
     #: Why, when it failed: the executor's own error text, or the wait's.
     executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
-    pending_subagents: int = 0
-    # Integrations with a background handoff in flight: guards against a
-    # second concurrent handoff sharing (and corrupting) the same thread id.
-    bg_integrations: set[str] = field(default_factory=set)
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
@@ -70,6 +67,14 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TodoRun:
+    """The tracked todo a background executor run is executing, and what woke it."""
+
+    todo_id: str
+    trigger_type: TriggerType
 
 
 @dataclass(frozen=True)
@@ -98,6 +103,28 @@ class RunIdentity:
     #: started. Metric-only: a HIL resume is ``RunKind.QUEUED`` (it runs on its
     #: own stream) but never queued on the lock, so it must not label as queued.
     queued: bool = False
+    #: Wall-clock dispatch time, kept across a queue pop and a HIL resume so a
+    #: rerun of the same task re-sends its lifecycle events as the same rows.
+    dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+def run_user_from_configurable(configurable: AgentConfigurable) -> AuthenticatedUser:
+    """Rebuild the user a run acts for from its configurable — the identity a detached run starts from."""
+    return _user_from_view(AgentConfigurableView.model_validate(configurable))
+
+
+def _user_from_view(view: AgentConfigurableView) -> AuthenticatedUser:
+    # A bare identity (no auth path produced it — see AuthenticatedUser.auth_provider).
+    # An absent identity key rebuilds as "", one carried as None stays None.
+    present = view.model_fields_set
+    return AuthenticatedUser(
+        user_id=view.user_id or "",
+        email=view.email if "email" in present else "",
+        name=view.user_name if "user_name" in present else "",
+        # Carry the home timezone forward so the comms re-voicing run reads the
+        # user's zone via build_agent_config instead of silently falling back to UTC.
+        timezone=view.user_timezone,
+    )
 
 
 @dataclass(frozen=True)
@@ -122,6 +149,9 @@ class ExecutorRun:
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
+    #: Set only on a tracked todo's own scheduled/triggered run: its result goes
+    #: through todo delivery, never into a conversation (the run's has none).
+    todo_run: TodoRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
@@ -130,6 +160,8 @@ class ExecutorRun:
     t_dispatch_perf: float | None = None
     #: Busy-lock queue origin, carried from ``RunIdentity`` — see its comment.
     queued: bool = False
+    #: Dispatch time, carried from ``RunIdentity`` — see its comment.
+    dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def from_configurable(
@@ -147,22 +179,10 @@ class ExecutorRun:
         flight off the boundary it is being built in.
         """
         view = AgentConfigurableView.model_validate(configurable)
-        # An absent identity key rebuilds as "", one carried as None stays None.
-        present = view.model_fields_set
         return cls(
             stream_id=identity.stream_id,
             conversation_id=identity.conversation_id,
-            # A bare identity rebuilt from the run's configurable (no auth path
-            # produced it — see AuthenticatedUser.auth_provider).
-            user=AuthenticatedUser(
-                user_id=view.user_id or "",
-                email=view.email if "email" in present else "",
-                name=view.user_name if "user_name" in present else "",
-                # Carry the home timezone forward so the comms re-voicing run
-                # reads the user's zone via build_agent_config instead of
-                # silently falling back to UTC.
-                timezone=view.user_timezone,
-            ),
+            user=_user_from_view(view),
             kind=identity.kind,
             task_id=identity.task_id,
             user_message_id=identity.user_message_id,
@@ -175,6 +195,7 @@ class ExecutorRun:
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
+            dispatched_at=identity.dispatched_at,
         )
 
     @property
@@ -189,11 +210,23 @@ class ExecutorRun:
             bot_message_id=self.bot_message_id,
             t_dispatch_perf=self.t_dispatch_perf,
             queued=self.queued,
+            dispatched_at=self.dispatched_at,
         )
+
+    @property
+    def analytics_dedupe(self) -> Dedupe | None:
+        """The run as one analytics fact, its task dispatched once; None for a run with no id."""
+        key = self.task_id or self.stream_id
+        return Dedupe(key=key, occurred_at=self.dispatched_at) if key else None
 
     @property
     def is_queued(self) -> bool:
         return self.kind is RunKind.QUEUED
+
+    @property
+    def render_message_id(self) -> str | None:
+        """The chat message this run's frames render into: the live turn's, a resumed turn's, or its own placeholder."""
+        return self.bot_message_id or (self.task_id if self.is_queued else None)
 
     @property
     def renders_native_cards(self) -> bool:
@@ -278,23 +311,6 @@ def mark_executor_spawned(stream_id: str) -> None:
     session.executor_first_frame_perf = None  # new incarnation, new first frame
 
 
-def mark_executor_queued(stream_id: str, task_id: str) -> None:
-    """Record that call_executor queued this task instead of running it."""
-    get_or_create_session(stream_id).executor_queued_task_id = task_id
-
-
-def queued_without_run(stream_id: str) -> str | None:
-    """Return the task_id this stream queued when nothing ran for it at all.
-
-    None once an executor actually spawned: this is the truthful "nothing
-    happened yet" signal, unlike reading the queue ack from the tool's prose.
-    """
-    session = _sessions.get(stream_id)
-    if session is None or session.executor_spawned:
-        return None
-    return session.executor_queued_task_id
-
-
 def signal_executor_done(
     stream_id: str, *, failed: bool = False, reason: str | None = None
 ) -> None:
@@ -337,27 +353,6 @@ def executor_failure(stream_id: str) -> str | None:
     return session.executor_failure if session is not None else None
 
 
-# ── Background subagent coordination ─────────────────────────────────
-# Incremented by handoff(background=True), decremented by
-# run_subagent_background; wait_for_subagents drains at zero.
-
-
-def increment_pending_subagents(stream_id: str) -> int:
-    """Increment pending background subagent count. Returns new count."""
-    session = get_or_create_session(stream_id)
-    session.pending_subagents += 1
-    return session.pending_subagents
-
-
-def decrement_pending_subagents(stream_id: str) -> int:
-    """Decrement pending background subagent count. Returns new count (min 0)."""
-    session = _sessions.get(stream_id)
-    if session is None:
-        return 0
-    session.pending_subagents = max(0, session.pending_subagents - 1)
-    return session.pending_subagents
-
-
 def note_tool_output_owner(stream_id: str, tool_call_id: str, subagent_id: str | None) -> None:
     """Record which run announced this call, so only it may stream the result."""
     session = _sessions.get(stream_id)
@@ -383,36 +378,3 @@ def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None
         return False
     session.streamed_tool_outputs.add(tool_call_id)
     return True
-
-
-def get_pending_subagents(stream_id: str) -> int:
-    """Return number of pending background subagents for a stream."""
-    session = _sessions.get(stream_id)
-    return session.pending_subagents if session else 0
-
-
-def claim_bg_integration(stream_id: str, integration_id: str) -> bool:
-    """Claim the one background-handoff slot for an integration this run.
-
-    False means one is already in flight — the caller must fall back to a
-    blocking handoff, because a second detached subagent for the same integration
-    would share its deterministic checkpoint thread id.
-    """
-    session = get_or_create_session(stream_id)
-    if integration_id in session.bg_integrations:
-        return False
-    session.bg_integrations.add(integration_id)
-    return True
-
-
-def release_bg_integration(stream_id: str, integration_id: str) -> None:
-    """Release an integration's background-handoff slot (task finished or parked)."""
-    session = _sessions.get(stream_id)
-    if session is not None:
-        session.bg_integrations.discard(integration_id)
-
-
-def has_bg_integration(stream_id: str, integration_id: str) -> bool:
-    """Whether a background handoff for this integration is in flight this run."""
-    session = _sessions.get(stream_id)
-    return bool(session and integration_id in session.bg_integrations)

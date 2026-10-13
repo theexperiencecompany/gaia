@@ -31,8 +31,23 @@ validate_startup_requirements = startup_validation.validate_startup_requirements
 
 class TestValidateStartupRequirements:
     async def test_passes_when_payment_is_set_up(self) -> None:
-        with patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)):
+        with (
+            patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.backfill_plan_tiers", AsyncMock(return_value=0)) as backfill,
+        ):
             assert await validate_startup_requirements() is None
+        backfill.assert_awaited_once_with()
+
+    async def test_a_catalogue_row_it_cannot_tag_halts_startup(self) -> None:
+        with (
+            patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)),
+            patch(
+                f"{MODULE}.backfill_plan_tiers",
+                AsyncMock(side_effect=RuntimeError("Plan rows with no plan_type")),
+            ),
+            pytest.raises(RuntimeError, match="Plan rows with no plan_type"),
+        ):
+            await validate_startup_requirements()
 
     async def test_raises_when_payment_is_not_set_up(self) -> None:
         with (

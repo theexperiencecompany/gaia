@@ -266,7 +266,7 @@ class TestMergingWhatThePauseReports:
 
 
 class TestItDoesNotMatterWhereThePauseComesFrom:
-    """handoff / spawn_subagent / wait_for_subagents (HIL_PAUSING_TOOLS).
+    """handoff / spawn_subagent (HIL_PAUSING_TOOLS).
 
     These are never gated themselves — they pause from INSIDE, bubbling up the gate of
     a subagent they are driving. That distinction mattered under an earlier design and

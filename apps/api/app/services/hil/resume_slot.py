@@ -5,7 +5,7 @@ landing close together must not start two concurrent LangGraph runs on it
 (checkpoint corruption). resolution claims the slot before dispatching a
 resume; the dispatched run releases it when it finalizes (completes, errors, or
 pauses again). A decision that loses the claim skips dispatch — it is already
-durable on its record, and the in-flight join round or the sweep collects it.
+durable on its record, and the in-flight run's replayed gates or the sweep collect it.
 """
 
 from app.constants.hil import HIL_RESUME_ACTIVE_KEY_PREFIX, HIL_RESUME_ACTIVE_TTL_SECONDS

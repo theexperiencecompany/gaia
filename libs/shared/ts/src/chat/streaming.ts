@@ -83,6 +83,10 @@ export type ChatStreamEvent =
   // A frame that was not valid JSON. Never rendered — consumers must log it
   // loudly and surface a stream error instead of showing garbage text.
   | { type: "parse_error"; raw: string }
+  // The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` one-emoji ack, whose
+  // text the server never streams: the client shows a badge on the user's
+  // message (`reactsToMessageId`), never a bubble of its own.
+  | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -132,6 +136,26 @@ const extractError = (payload: JsonObject): ChatStreamEvent[] =>
   typeof payload.error === "string" && payload.error.length > 0
     ? [{ type: "error", error: payload.error }]
     : [];
+
+// `emoji_ack` arrives when comms' whole reply was an `<EMOJI>…</EMOJI>` tag: the
+// client badges the emoji onto the user's message instead of leaving a bubble.
+const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
+  const ack = payload.emoji_ack;
+  if (!isObject(ack)) return [];
+  if (
+    typeof ack.emoji !== "string" ||
+    typeof ack.reacts_to_message_id !== "string"
+  ) {
+    return [];
+  }
+  return [
+    {
+      type: "emoji_ack",
+      emoji: ack.emoji,
+      reactsToMessageId: ack.reacts_to_message_id,
+    },
+  ];
+};
 
 // The backend emits `{"model_fallback": {"model": "..."}}` at most once per
 // stream when the primary model failed and the backup answered. Modeled as a
@@ -417,6 +441,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   const events: ChatStreamEvent[] = [
     ...extractError(payload),
     ...extractModelFallback(payload),
+    ...extractEmojiAck(payload),
     ...extractResponse(payload),
     ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),

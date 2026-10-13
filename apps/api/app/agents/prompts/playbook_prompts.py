@@ -4,9 +4,8 @@ The check below rides in the executor's opening brief, not in the narration of
 the finished result. Two reasons, both load-bearing:
 
 * Only the executor can act on it. write_playbook lives in the executor's
-  tool registry; comms binds exactly call_executor / cancel_executor /
-  the memory tools and is built with disable_retrieve_tools=True
-  (build_graph.py), so a check delivered at narration time asks for a tool
+  tool registry; comms binds a fixed set without it and is built with
+  disable_retrieve_tools=True (build_graph.py), so a check delivered at narration time asks for a tool
   the narrator cannot reach, and risks being re-voiced into the user's message.
 * The executor already has its own calls in context when it finishes, so the
   judgement is made against what actually happened without rendering a trace
@@ -24,15 +23,15 @@ Work through these five for yourself, against the calls you actually made. This 
 4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by writing a placeholder for it, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
 5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Fix its args before freezing, or decline.
 
-If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR a handoff carrying the steps that subagent ran. Each handoff's result includes a record of the calls that subagent actually ran: the handoff step's nested steps are the calls in that record that did the work, with those exact names and args, minus the subagent's own discovery. Use the real tool names and argument names you actually called, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
+If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR, for work a per-user MCP subagent ran via handoff, a handoff carrying the record of the calls that subagent ran as its nested steps. Provider and built-in integrations never produce handoff steps: their work is the flat sequence of activate_integration + execute calls you actually made. Use the real tool names and argument names you actually called, with those exact names and args, minus the subagent's own discovery, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
 
 steps:
-  - id: unread
-    handoff: gmail
-    steps:
-      - id: inbox
-        tool: GMAIL_FETCH_MESSAGES
-        args: {query: "is:unread newer_than:1d", max_results: 25}
+  - id: activate
+    tool: activate_integration
+    args: {integration_id: "gmail"}
+  - id: inbox
+    tool: execute
+    args: {task_description: "Listing unread mail", tool_name: "GMAIL_FETCH_MESSAGES", data: {query: "is:unread newer_than:1d"}}
   - id: background
     tool: web_search_tool
     args:

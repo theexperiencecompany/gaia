@@ -50,10 +50,10 @@ def _set_non_dumpable() -> None:
 
 def main() -> None:
     _set_non_dumpable()
-    # ``execvp`` replaces the current process image with juicefs. The
-    # dumpable flag persists across this exec because juicefs is not
-    # set-uid (see prctl(2) PR_SET_DUMPABLE notes).
-    os.execvp(JUICEFS_BIN, [JUICEFS_BIN, *sys.argv[1:]])
+    # ``execvp`` replaces this process with juicefs; the dumpable flag survives the exec
+    # because juicefs is not set-uid (prctl(2) PR_SET_DUMPABLE). argv is forwarded
+    # verbatim with no shell and no privilege gain, so the caller controls nothing new.
+    os.execvp(JUICEFS_BIN, [JUICEFS_BIN, *sys.argv[1:]])  # NOSONAR pythonsecurity:S8705
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ class FreeTierBudget:
         if not limit:
             return True
         try:
-            used_raw = await redis_cache.get(self._key(provider))
+            used_raw = await redis_cache.get(self._key(provider), int)
             used = int(used_raw) if used_raw else 0
         except Exception:
             # Fail open: a Redis hiccup or a malformed counter must not disable search.

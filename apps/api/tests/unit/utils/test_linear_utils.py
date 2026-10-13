@@ -34,7 +34,7 @@ VIEWER = {
 
 
 class _Empty(BaseModel):
-    """A ``data`` model for operations whose payload the test does not read."""
+    """A data model for operations whose payload the test does not read."""
 
 
 @pytest.fixture

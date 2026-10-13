@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 import pytest
 
+from app.config.feature_flags import FeatureFlag
 from app.models.first_steps_models import FirstStepsState
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument, UserDocument
 from app.utils.auth_utils import build_user_context
@@ -41,6 +42,7 @@ _STAMP = datetime(2024, 5, 1, tzinfo=UTC)
 _SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
+    ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
     ("datetime", _STAMP),
     ("bool", True),
     ("int", 3),

@@ -20,35 +20,6 @@ from app.services.workflow.run_trace import render_last_run
 from shared.py.wide_events import log
 
 
-class WorkflowFireQueued(Exception):
-    """A fire whose executor dispatch was queued behind an in-flight run.
-
-    One executor runs per conversation, so a fire that arrives while the
-    workflow's previous fire is still working gets put on that conversation's
-    queue and answered with an acknowledgement. Nothing this fire asked for has
-    happened, which is why it is a signal and not a result: completing its
-    execution record from the acknowledgement records work that never ran. The
-    queued task runs on its own once the lock frees, and delivers its own
-    result, so this is not a failure the user needs to be told about either.
-
-    Carries what the fire did produce so the record can still point somewhere.
-    """
-
-    def __init__(
-        self,
-        *,
-        task_id: str,
-        user_id: str,
-        conversation_id: str,
-        trace: list[RecordedCall],
-    ) -> None:
-        super().__init__(f"Workflow fire queued behind an in-flight run (task_id: {task_id})")
-        self.task_id = task_id
-        self.user_id = user_id
-        self.conversation_id = conversation_id
-        self.trace = trace
-
-
 class WorkflowFireTimedOut(Exception):
     """A fire the worker cut off at its job timeout; whatever it had started may still finish."""
 
@@ -62,16 +33,14 @@ class WorkflowFireTimedOut(Exception):
 
 
 class WorkflowFireOverlapped(Exception):
-    """A playbook replay that found this workflow's conversation already busy.
+    """A fire that found this workflow's conversation already busy.
 
-    The replay holds the same per-conversation executor lock an agentic run
-    does, so two fires of one workflow cannot both replay its playbook (seen
-    live: two manual fires at the same moment, two "Replayed 1 step(s)"
-    results, every side effect doubled). Unlike :class:WorkflowFireQueued
-    nothing is put on the queue: the fire is dropped, and the run that holds
-    the lock delivers the workflow's one result. So it is neither a success to
-    record nor a failure to tell the user about. holder is the lock value
-    of the run that was in flight, for the record and the log.
+    A workflow owns one conversation across all runs, and a fire claims its
+    executor lock first, so two fires never run at once. The overlapped fire
+    is dropped, not handed over: the run holding the lock delivers the
+    workflow's one result, and this fire is neither a success to record nor
+    a failure to notify. holder is the in-flight run's lock value, kept for
+    the record and the log.
     """
 
     def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:

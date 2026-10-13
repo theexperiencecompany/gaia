@@ -134,7 +134,8 @@ class LongMemEvalSuite(Suite):
         rng = random.Random(7)
         sampled: list[dict[str, Any]] = []
         for bucket in by_type.values():
-            rng.shuffle(bucket)
+            # fixed-seed sampling so eval runs are reproducible; no security context
+            rng.shuffle(bucket)  # NOSONAR python:S2245
             sampled.extend(bucket)
         cases: list[Case] = []
         seen_ids: set[str] = set()

@@ -248,7 +248,7 @@ export const GAIA_COMPONENT_SPECS = [
   {
     name: "KbdRow",
     description:
-      "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+      "A single keyboard shortcut row: keys + description. Compose inside a Card for a shortcut table.",
     props: kbdRowSchema,
   },
   {
@@ -270,7 +270,7 @@ export const GAIA_COMPONENT_SPECS = [
   {
     name: "TextDocument",
     description:
-      "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters — never when sending a final email directly.",
+      "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.",
     props: textDocumentSchema,
   },
 ] as const;

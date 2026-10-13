@@ -13,7 +13,7 @@ import {
 import InboxZeroAiClient from "./InboxZeroAiClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Inbox Zero with AI — Automated Email Triage by GAIA",
+  title: "Inbox Zero with AI: Automated Email Triage by GAIA",
   description:
     "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
   path: "/inbox-zero-ai",
@@ -35,17 +35,17 @@ const faqs = [
   {
     question: "Does GAIA read my emails?",
     answer:
-      "Yes — that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
+      "Yes, that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
   },
   {
     question: "Can I customize how GAIA triages my inbox?",
     answer:
-      "Yes. You can define custom rules in natural language — for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
+      "Yes. You can define custom rules in natural language, for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
   },
   {
     question: "Will GAIA accidentally delete important emails?",
     answer:
-      "GAIA never deletes emails. It labels and archives — which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
+      "GAIA never deletes emails. It labels and archives, which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
   },
   {
     question: "Does this work with Google Workspace?",
@@ -57,7 +57,7 @@ const faqs = [
 const triageSteps = [
   {
     name: "Connect your Gmail account",
-    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API — no password sharing, no third-party scraping.",
+    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API, no password sharing, no third-party scraping.",
   },
   {
     name: "Set your triage preferences",
@@ -65,13 +65,13 @@ const triageSteps = [
   },
   {
     name: "Wake up to an organized inbox",
-    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails — and drafted replies waiting for your approval.",
+    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails and drafted replies waiting for your approval.",
   },
 ];
 
 export default function InboxZeroAiPage() {
   const webPageSchema = generateWebPageSchema(
-    "Inbox Zero with AI — Automated Email Triage by GAIA",
+    "Inbox Zero with AI: Automated Email Triage by GAIA",
     "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
     `${siteConfig.url}/inbox-zero-ai`,
     [

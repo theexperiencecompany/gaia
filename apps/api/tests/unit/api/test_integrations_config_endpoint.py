@@ -11,11 +11,21 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.integrations.responses import ConnectIntegrationResponse
-from app.services.analytics_service import AnalyticsEvents
+from app.schemas.integrations.responses import (
+    ConnectIntegrationResponse,
+    MyIntegrationsResponse,
+)
+from app.services.connect_link_service import ConnectLinkBinding
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationConnected,
+    IntegrationConnectInitiated,
+    IntegrationDisconnected,
+)
 from tests.factories import make_authenticated_user
 
 API = "/api/v1/integrations"
@@ -110,6 +120,49 @@ class TestGetIntegrationsConfig:
         assert resp.status_code == 200
 
 
+class TestFastIntegrationCatalog:
+    async def test_snapshot_uses_fast_catalog_service(self, client: AsyncClient) -> None:
+        snapshot = MyIntegrationsResponse(integrations=[], total=0)
+        with (
+            patch(
+                f"{_MODULE}.get_my_integrations_snapshot",
+                create=True,
+                new_callable=AsyncMock,
+                return_value=snapshot,
+            ) as mock_snapshot,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
+            resp = await client.get(f"{API}/me/snapshot")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"integrations": [], "total": 0}
+        mock_snapshot.assert_awaited_once_with(_VALID_UID)
+        mock_log.set.assert_any_call(
+            operation="get_my_integrations_snapshot", user={"id": _VALID_UID}
+        )
+        mock_log.set.assert_any_call(result_count=0, outcome="success")
+
+    async def test_status_endpoint_returns_the_refreshable_status_map(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{_MODULE}.get_all_integrations_status",
+                create=True,
+                new_callable=AsyncMock,
+                return_value={"posthog": False},
+            ) as mock_status,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
+            resp = await client.get(f"{API}/status")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"statuses": {"posthog": False}}
+        mock_status.assert_awaited_once_with(_VALID_UID)
+        mock_log.set.assert_any_call(operation="get_integration_statuses", user={"id": _VALID_UID})
+        mock_log.set.assert_any_call(result_count=1, outcome="success")
+
+
 # ===========================================================================
 # DELETE /integrations/{integration_id}
 # ===========================================================================
@@ -130,12 +183,12 @@ class TestDisconnectIntegration:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
-            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.integrations.config.capture") as mock_capture,
         ):
             resp = await client.delete(f"{API}/github")
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "github"}
+            UserId(_VALID_UID), IntegrationDisconnected(integration_id="github")
         )
 
     async def test_disconnect_not_found(self, client: AsyncClient) -> None:
@@ -235,7 +288,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=_connected("test-mcp"),
             ) as mock_connect,
-            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.capture") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
@@ -263,8 +316,8 @@ class TestConnectIntegration:
             bearer_token=None,
         )
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "test-mcp", "managed_by": "mcp"},
+            UserId(_VALID_UID),
+            IntegrationConnected(integration_id="test-mcp", managed_by="mcp"),
         )
         mock_log.set.assert_any_call(
             integration_name="TestInt",
@@ -291,7 +344,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=_redirect("my-mcp", "TestInt"),
             ) as mock_connect,
-            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.capture") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
@@ -310,8 +363,10 @@ class TestConnectIntegration:
             is_platform=False,
             bearer_token="tok-1",
         )
-        # OAuth-managed connects complete at their callback, not here.
-        mock_capture.assert_not_called()
+        mock_capture.assert_called_once_with(
+            UserId(_VALID_UID),
+            IntegrationConnectInitiated(integration_id="my-mcp", managed_by="mcp"),
+        )
         mock_log.set.assert_any_call(
             integration_name="TestInt",
             integration={
@@ -335,12 +390,12 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=_redirect("github", "GitHub"),
             ) as mock_connect,
-            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.capture") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/github",
-                json={"redirect_path": "/integrations"},
+                json={"redirect_path": "/integrations", "account_id": "ca_expired"},
             )
         assert resp.status_code == 200
         assert resp.json() == {
@@ -358,9 +413,12 @@ class TestConnectIntegration:
             integration_name="GitHub",
             provider="GITHUB",
             redirect_path="/integrations",
+            reconnect_account_id="ca_expired",
         )
-        # OAuth-managed connects complete at their callback, not here.
-        mock_capture.assert_not_called()
+        mock_capture.assert_called_once_with(
+            UserId(_VALID_UID),
+            IntegrationConnectInitiated(integration_id="github", managed_by="composio"),
+        )
         mock_log.set.assert_any_call(
             integration_name="GitHub",
             integration={
@@ -385,6 +443,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=_redirect("gcal", "Google Calendar"),
             ) as mock_connect,
+            patch(f"{_MODULE}.capture") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
@@ -400,6 +459,10 @@ class TestConnectIntegration:
             integration_name="Google Calendar",
             provider="GCAL",
             redirect_path="/integrations",
+        )
+        mock_capture.assert_called_once_with(
+            UserId(_VALID_UID),
+            IntegrationConnectInitiated(integration_id="gcal", managed_by="self"),
         )
         mock_log.set.assert_any_call(
             integration_name="Google Calendar",
@@ -563,7 +626,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("conn failed"),
             ),
-            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.capture") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
@@ -593,7 +656,9 @@ class TestConnectLinkEndpoint:
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
-                return_value=(_VALID_UID, "notion"),
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
             ),
             patch(
                 f"{_MODULE}.user_repository.get",
@@ -605,10 +670,51 @@ class TestConnectLinkEndpoint:
                 new_callable=AsyncMock,
                 return_value=result,
             ),
+            patch(f"{_MODULE}.capture") as mock_capture,
         ):
-            resp = await client.get(f"{API}/connect-link?code=somecode", follow_redirects=False)
-        assert resp.status_code in (302, 307)
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
         assert resp.headers["location"] == "https://oauth.example/go"
+        mock_capture.assert_called_once_with(
+            UserId(_VALID_UID),
+            IntegrationConnectInitiated(integration_id="notion", source="connect_link"),
+        )
+
+    async def test_a_reconnect_link_signs_its_account_back_in(self, client: AsyncClient) -> None:
+        result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="gmail", account_id="ca_work"
+                ),
+            ),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ) as initiate,
+            patch(f"{_MODULE}.capture"),
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        initiate.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            integration_id="gmail",
+            user_email="a@b.com",
+            redirect_path="/integrations",
+            reconnect_account_id="ca_work",
+        )
 
     async def test_invalid_token_redirects_to_error(self, client: AsyncClient) -> None:
         with patch(
@@ -616,9 +722,27 @@ class TestConnectLinkEndpoint:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = await client.get(f"{API}/connect-link?code=bad", follow_redirects=False)
-        assert resp.status_code in (302, 307)
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "bad"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
         assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+
+    @pytest.mark.regression
+    async def test_get_does_not_spend_the_code(self, unauthed_client: AsyncClient) -> None:
+        """Regression: Telegram's link-preview GET spent the single-use code before the user tapped it."""
+        with patch(
+            f"{_MODULE}.resolve_and_consume_connect_code",
+            new_callable=AsyncMock,
+            return_value=ConnectLinkBinding(
+                user_id=_VALID_UID, integration_id="notion", account_id=None
+            ),
+        ) as mock_consume:
+            resp = await unauthed_client.get(
+                f"{API}/connect-link?code=somecode", follow_redirects=False
+            )
+        assert resp.status_code == 405
+        mock_consume.assert_not_awaited()
 
     async def test_works_without_login(self, unauthed_client: AsyncClient) -> None:
         """A logged-out user reaches it (not 401) and is sent into OAuth — identity comes from the single-use code, not a session."""
@@ -627,7 +751,9 @@ class TestConnectLinkEndpoint:
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
-                return_value=(_VALID_UID, "notion"),
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
             ),
             patch(
                 f"{_MODULE}.user_repository.get",
@@ -640,8 +766,8 @@ class TestConnectLinkEndpoint:
                 return_value=result,
             ),
         ):
-            resp = await unauthed_client.get(
-                f"{API}/connect-link?code=somecode", follow_redirects=False
+            resp = await unauthed_client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
             )
         assert resp.status_code != 401
         assert resp.headers["location"] == "https://oauth.example/go"

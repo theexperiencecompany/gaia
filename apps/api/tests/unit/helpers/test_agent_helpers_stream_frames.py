@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.core.background.session import RunKind, create_session, teardown_session
@@ -41,6 +41,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.mcp_app_models import McpUiMetadata
 from app.utils.agent_utils import IntegrationDisplayMetadata
+from tests.helpers import ScriptedGraph
 
 HELPERS = "app.helpers.agent_helpers"
 
@@ -895,21 +896,54 @@ async def test_messages_thread_the_user_id_into_the_mcp_resource_fetch() -> None
     assert fetch.await_args.kwargs["user_id"] == "user-1"
 
 
+def _reasoning_chunk(text: str, *, content: str = "") -> AIMessageChunk:
+    """Return a chunk carrying provider-style thinking, as ChatOpenRouter streams it."""
+    return AIMessageChunk(
+        content=content, id="msg-1", additional_kwargs={"reasoning_content": text}
+    )
+
+
+@pytest.mark.asyncio
+async def test_comms_thinking_is_streamed_as_a_top_level_reasoning_frame() -> None:
+    """No subagent_id: the root turn renders as a top-level thinking block, not nested under a delegate."""
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages((_reasoning_chunk("weighing it up"), {}), state, True, "s1", "u1")
+    )
+
+    assert frames == [_sse({"reasoning": {"content": "weighing it up"}})]
+
+
+@pytest.mark.asyncio
+async def test_a_thinking_chunk_carrying_reply_text_emits_both_in_order() -> None:
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages(
+            (_reasoning_chunk("weighing it up", content="hello"), {}), state, True, "s1", "u1"
+        )
+    )
+
+    assert frames == [
+        _sse({"reasoning": {"content": "weighing it up"}}),
+        _sse({"response": "hello"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_with_no_thinking_emits_no_reasoning_frame() -> None:
+    """Non-reasoning models stream every chunk with empty thinking — one empty frame each would be a per-token spinner the client cannot tell from real work."""
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages((AIMessageChunk(content="hello", id="msg-1"), {}), state, True, "s1", "u1")
+    )
+
+    assert frames == [_sse({"response": "hello"})]
+
+
 # ── execute_graph_streaming ──────────────────────────────────────────
-
-
-class _FakeGraph:
-    """A graph whose astream replays a fixed list of stream events."""
-
-    def __init__(self, events: list[tuple[Any, ...]]) -> None:
-        self._events = events
-
-    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
-        async def _gen() -> AsyncGenerator[tuple[Any, ...], None]:
-            for event in self._events:
-                yield event
-
-        return _gen()
 
 
 def _config(stream_id: str | None, user_id: str) -> dict[str, Any]:
@@ -927,7 +961,7 @@ async def test_streaming_run_threads_the_user_id_into_every_stream_mode() -> Non
         id="msg-1",
         tool_calls=[{"id": "call_1", "name": "get_time", "args": {}}],
     )
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "updates", {"agent": {"messages": [reply]}}),
             (("ns",), "custom", {"progress": "working"}),
@@ -956,7 +990,7 @@ async def test_a_streaming_run_threads_the_user_id_into_every_mcp_resource_fetch
     """Both deferred-app paths — the ToolMessage one and the subagent one — need the user."""
     second_entry = _mcp_tool_entry()
     second_entry["data"] = dict(second_entry["data"], tool_call_id="call_2")
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "custom", {"tool_data": _mcp_tool_entry()}),
             (
@@ -987,7 +1021,7 @@ async def test_a_streaming_run_threads_the_user_id_into_every_mcp_resource_fetch
 @pytest.mark.asyncio
 async def test_a_streaming_run_claims_tool_outputs_under_its_own_stream_id() -> None:
     chunk = ToolMessage(content="12:00 UTC", tool_call_id="call_1", name="get_time")
-    graph = _FakeGraph([(("ns",), "messages", (chunk, {})), (("ns",), "messages", (chunk, {}))])
+    graph = ScriptedGraph([(("ns",), "messages", (chunk, {})), (("ns",), "messages", (chunk, {}))])
     create_session("stream-1", RunKind.LIVE)
     try:
         with patch(f"{HELPERS}.stream_manager.is_cancelled", AsyncMock(return_value=False)):
@@ -1008,7 +1042,7 @@ async def test_a_streaming_run_claims_tool_outputs_under_its_own_stream_id() -> 
 @pytest.mark.asyncio
 async def test_a_cancelled_run_emits_the_cancelled_nostream_frame() -> None:
     chunk = AIMessage(content="partial answer", id="msg-1")
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "messages", (chunk, {})),
             (("ns",), "custom", {"progress": "never reached"}),

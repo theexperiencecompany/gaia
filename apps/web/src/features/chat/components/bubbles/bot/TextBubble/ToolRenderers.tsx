@@ -7,7 +7,6 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
-import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import { DeviceApprovalPrompt } from "@/features/chat/components/bubbles/bot/DeviceApprovalPrompt";
@@ -43,9 +42,11 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
-import CalendarEventSection from "../CalendarEventSection";
+import { CalendarEventReadonlySection } from "../CalendarEventReadonlySection";
+import { CalendarListFetchSection } from "../CalendarListFetchSection";
 import CodeExecutionSection from "../CodeExecutionSection";
 import ContactListSection from "../ContactListSection";
 import EmailComposeSection from "../EmailComposeSection";
@@ -133,6 +134,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   // Desktop
   screenshot_data: (data) => <ScreenshotSection screenshot_data={data} />,
 
+  // Browser automation (Browser-Use)
+  browser_task_data: (data) => <BrowserTaskSection data={data} />,
+
   // Email
   email_thread_data: (data) => <EmailThreadCard emailThreadData={data} />,
   email_fetch_data: (data) => {
@@ -166,7 +170,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   // Calendar
-  calendar_options: (data) => <CalendarEventSection calendar_options={data} />,
+  calendar_options: (data) => (
+    <CalendarEventReadonlySection calendar_options={data} />
+  ),
   calendar_delete_options: (data) => (
     <CalendarDeleteSection calendar_delete_options={data} />
   ),
@@ -176,8 +182,11 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
+  // Restored-history only: old conversations still carry this key, and a
+  // null renderer left them blank. Read-only list, no draft or add flows
+  // (those moved to HIL approvals by design).
   calendar_list_fetch_data: (data) => (
-    <CalendarListFetchCard calendars={Array.isArray(data) ? data : [data]} />
+    <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
   ),
 
   // Support ticket

@@ -132,7 +132,7 @@ class TestCommsVoiceRules:
         from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 
         start = COMMS_AGENT_PROMPT.index("## Voice")
-        end = COMMS_AGENT_PROMPT.index("## Length Modes")
+        end = COMMS_AGENT_PROMPT.index("## Reply, react, or stay silent")
 
         assert comms_voice_rules() == COMMS_AGENT_PROMPT[start:end].strip()
 
@@ -141,36 +141,38 @@ class TestCommsVoiceRules:
 
         assert rules.startswith("## Voice\n")
         assert not rules.endswith("\n")
-        assert "## Length Modes" not in rules
-        assert "TONE MIRRORING" in rules
+        assert "## Reply, react, or stay silent" not in rules
+        assert "MATCH THEM." in rules
 
     def test_a_voice_section_at_the_very_start_is_still_read_whole(self) -> None:
         """The end marker is searched from just after the start marker, or the section is lost when it opens the prompt."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort"
+        prompt = "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_a_voice_section_one_character_in_is_still_read(self) -> None:
         """Guards a boundary the compiler cannot: index 1 is ordinary, not a sentinel meaning "missing"."""
-        prompt = "\n## Voice\nbe brief\n\n## Length Modes\nshort"
+        prompt = "\n## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_first_voice_heading_wins_over_a_later_mention(self) -> None:
         """Taking the last occurrence instead picks up a cross-reference further down and hands the model everything between."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\nsee ## Voice above"
+        prompt = (
+            "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort\n\nsee ## Voice above"
+        )
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_closing_heading_is_looked_for_after_the_section_starts(self) -> None:
-        """An earlier "## Length Modes" is not this section's end; searching from the top would return an empty slice."""
-        prompt = "## Length Modes\nearly\n\n## Voice\nbe brief\n\n## Length Modes\nshort"
+        """An earlier closing heading is not this section's end; searching from the top would return an empty slice."""
+        prompt = "## Reply, react, or stay silent\nearly\n\n## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_section_stops_at_the_first_closing_heading_not_the_last(self) -> None:
         """Taking the last closing heading instead would swallow every section in between into the voice rules."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\n## Length Modes\nagain"
+        prompt = "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort\n\n## Reply, react, or stay silent\nagain"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
@@ -185,7 +187,7 @@ class TestCommsVoiceRules:
 
     def test_a_prompt_without_the_voice_heading_contributes_nothing(self) -> None:
         """A rename upstream must drop the section, not paste the whole comms prompt (or a stray tail) into the question prompt."""
-        with patch(f"{MODULE}.COMMS_AGENT_PROMPT", "## Length Modes\nshort"):
+        with patch(f"{MODULE}.COMMS_AGENT_PROMPT", "## Reply, react, or stay silent\nshort"):
             assert comms_voice_rules() == ""
 
     def test_a_prompt_without_the_following_heading_contributes_nothing(self) -> None:
@@ -245,10 +247,8 @@ class TestAnswersFingerprintValue:
         )
 
 
-def _llm_patches(draft: Any = None, error: Exception | None = None) -> tuple[Any, Any]:
-    runnable = MagicMock(name="structured_runnable")
-    invoke = AsyncMock(return_value=draft, side_effect=error)
-    return runnable, invoke
+def _llm_patch(draft: Any = None, error: Exception | None = None) -> AsyncMock:
+    return AsyncMock(return_value=draft, side_effect=error)
 
 
 @pytest.mark.unit
@@ -259,10 +259,9 @@ class TestComposeFirstQuestionPrompt:
         self,
     ) -> None:
         """The two slots are not interchangeable: swapped, the model is told the user's answers are its voice rules."""
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None)
 
@@ -271,10 +270,9 @@ class TestComposeFirstQuestionPrompt:
         )
 
     async def test_the_connected_platform_reaches_the_prompt(self) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), "telegram")
 
@@ -284,43 +282,37 @@ class TestComposeFirstQuestionPrompt:
         )
 
     async def test_the_call_runs_the_draft_schema_on_the_cheap_lane(self) -> None:
-        """The schema IS the validation: the runnable must be built from _QuestionDraft, and that runnable is the one invoked."""
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        """The schema IS the validation: the call must ask for _QuestionDraft."""
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None, user_id="u1")
 
-        assert build.call_args.args == (_QuestionDraft,)
-        assert build.call_args.kwargs["temperature"] == QUESTION_TEMPERATURE
+        assert invoke.await_args.args[0] is _QuestionDraft
+        assert invoke.await_args.kwargs["options"].temperature == QUESTION_TEMPERATURE
         assert QUESTION_TEMPERATURE == 0.4
-        assert invoke.await_args.args[0] is runnable
         assert invoke.await_args.kwargs["label"] == "onboarding_first_question"
 
     async def test_a_user_id_attributes_the_spend_to_that_user(self) -> None:
         """The call is auxiliary COGS: unattributed, it lands on nobody."""
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None, user_id="u1")
 
         expected = {"configurable": {"user_id": "u1"}}
-        assert build.call_args.kwargs["config"] == expected
         assert invoke.await_args.kwargs["config"] == expected
 
     @pytest.mark.parametrize("user_id", [None, ""])
     async def test_without_a_user_id_no_config_is_invented(self, user_id: str | None) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None, user_id=user_id)
 
-        assert build.call_args.kwargs["config"] is None
         assert invoke.await_args.kwargs["config"] is None
 
 
@@ -341,10 +333,9 @@ class TestComposeFirstQuestionBudget:
         self, timeout_seconds: float, expected_attempts: int
     ) -> None:
         """At the prewarm's ceiling a second attempt fits; under it a retry would cost the user the same wait twice."""
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None, timeout_seconds=timeout_seconds)
 
@@ -353,10 +344,9 @@ class TestComposeFirstQuestionBudget:
         assert options.timeout == timeout_seconds
 
     async def test_the_default_ceiling_is_the_prewarms_twenty_seconds(self) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
+        invoke = _llm_patch(_QuestionDraft(chips=GOOD_CHIPS))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             await compose_first_question(_prefs(), None)
 
@@ -371,10 +361,9 @@ class TestComposeFirstQuestionDraft:
 
     async def test_the_drafts_words_are_returned_trimmed(self) -> None:
         """Model output routinely carries leading newlines, which render as blank lines and padded chip labels."""
-        runnable, invoke = _llm_patches(_QuestionDraft(chips=[f" {c} \n" for c in GOOD_CHIPS]))
+        invoke = _llm_patch(_QuestionDraft(chips=[f" {c} \n" for c in GOOD_CHIPS]))
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             result = await compose_first_question(_prefs(), None)
 
@@ -393,21 +382,19 @@ class TestComposeFirstQuestionDraft:
     )
     async def test_a_failed_call_yields_no_question_at_all(self, error: Exception) -> None:
         """Not a fallback question: the caller composes the static line; a placeholder here would ship as the user's first sentence."""
-        runnable, invoke = _llm_patches(error=error)
+        invoke = _llm_patch(error=error)
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
         ):
             assert await compose_first_question(_prefs(), None) is None
 
     async def test_the_fallback_records_why_and_how_long_it_waited(self) -> None:
         """A fallback is silent in the product; log.warning writes message and kwargs into warnings[] (wide_events.py) as the only trace."""
-        runnable, invoke = _llm_patches(error=TimeoutError())
+        invoke = _llm_patch(error=TimeoutError())
         clock = MagicMock()
         clock.monotonic.side_effect = [1.0, 1.0005678]
         with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
+            patch(f"{MODULE}.ainvoke_structured", invoke),
             patch(f"{MODULE}.time", clock),
             patch(f"{MODULE}.log") as mock_log,
         ):

@@ -13,12 +13,13 @@ and must never share the global URL-metadata cache.
 """
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import hashlib
-from typing import Any
+from typing import cast
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 from app.constants.email import (
     DOMAIN_FAVICON_URL_TEMPLATE,
@@ -38,6 +39,11 @@ from app.constants.email import (
     PEOPLE_SEARCH_WARMUP_DELAY_SECONDS,
 )
 from app.db.redis import get_cache, set_cache
+from app.models.composio_schemas.google_people import (
+    GooglePeopleSearchResponseData,
+    GooglePerson,
+    GooglePersonPhoto,
+)
 from app.models.search_models import URLResponse
 from app.services.composio.proxy_client import ProxyRequest, proxy_request
 from app.utils.email_utils import normalize_email
@@ -63,36 +69,64 @@ class _ProfileFields(BaseModel):
     website_name: str | None = None
 
 
-def _first_value(entries: list[dict[str, Any]], key: str) -> str | None:
-    """First non-empty key across a People API field's entries."""
-    return next((str(entry[key]) for entry in entries if entry.get(key)), None)
+class _GravatarName(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    formatted: str | None = None
 
 
-def _pick_photo(photos: list[dict[str, Any]]) -> str | None:
+class _GravatarEntry(BaseModel):
+    """The fields of a Gravatar profile entry a preview reads."""
+
+    model_config = ConfigDict(extra="ignore", alias_generator=to_camel)
+
+    display_name: str | None = None
+    name: _GravatarName | None = None
+    about_me: str | None = None
+    thumbnail_url: str | None = None
+
+
+class _GravatarProfile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    entry: list[_GravatarEntry] = Field(default_factory=list)
+
+
+def _first_value(values: Iterable[str | None]) -> str | None:
+    """First non-empty value across a People API field's entries."""
+    return next((value for value in values if value), None)
+
+
+def _pick_photo(photos: list[GooglePersonPhoto]) -> str | None:
     """Best real photo: prefer the Google account (PROFILE) photo, skip monograms.
 
     default=true marks Google's generated letter avatars — returning None
     instead lets the merge fall through to a source with an actual photo.
     """
-    real = [photo for photo in photos if photo.get("url") and not photo.get("default")]
+    real = [photo for photo in photos if photo.url and not photo.default]
     for photo in real:
-        if photo.get("metadata", {}).get("source", {}).get("type") == "PROFILE":
-            return str(photo["url"])
-    return str(real[0]["url"]) if real else None
+        source = photo.metadata.source if photo.metadata else None
+        if source is not None and source.type == "PROFILE":
+            return photo.url
+    return real[0].url if real else None
 
 
-def _person_to_profile(person: dict[str, Any], email: str) -> _ProfileFields | None:
+def _person_to_profile(person: GooglePerson, email: str) -> _ProfileFields | None:
     """Map a People API person to profile fields, if it matches the email."""
-    emails = {entry.get("value", "").strip().lower() for entry in person.get("emailAddresses", [])}
+    # Unmutated: any placeholder for a missing value never equals a normalized address.
+    emails = {
+        (entry.value or "").strip().lower()  # pragma: no mutate
+        for entry in person.email_addresses
+    }
     if email not in emails:
         return None
-    name = _first_value(person.get("names", []), "displayName")
-    photo = _pick_photo(person.get("photos", []))
+    name = _first_value(entry.display_name for entry in person.names)
+    photo = _pick_photo(person.photos)
     if not name and not photo:
         return None
     return _ProfileFields(
         title=name,
-        description=_first_value(person.get("biographies", []), "value"),
+        description=_first_value(entry.value for entry in person.biographies),
         favicon=photo,
         website_name=GOOGLE_CONTACTS_SOURCE_NAME,
     )
@@ -100,14 +134,14 @@ def _person_to_profile(person: dict[str, Any], email: str) -> _ProfileFields | N
 
 async def _people_search(
     user_id: str, endpoint: str, query: str, read_mask: str
-) -> dict[str, Any] | None:
+) -> GooglePeopleSearchResponseData | None:
     """One People API search call via the Composio Gmail proxy, or None.
 
     Any failure (Gmail not connected, missing scope, provider error) degrades
     silently to the next source — previews must never surface errors.
     """
     try:
-        result: dict[str, Any] | None = await proxy_request(
+        result = await proxy_request(
             ProxyRequest(
                 user_id=user_id,
                 toolkit=_GMAIL_TOOLKIT,
@@ -116,7 +150,6 @@ async def _people_search(
                 query={"query": query, "readMask": read_mask},
             )
         )
-        return result
     except Exception as exc:
         log.debug(
             "email_profile people search failed",
@@ -125,6 +158,7 @@ async def _people_search(
             error_type=type(exc).__name__,
         )
         return None
+    return None if result is None else GooglePeopleSearchResponseData.model_validate(result)
 
 
 async def _search_google_people(
@@ -138,13 +172,16 @@ async def _search_google_people(
     data = await _people_search(user_id, endpoint, email, read_mask)
     if data is None:
         return None
-    if not data.get("results"):
+    if not data.results:
         await _people_search(user_id, endpoint, "", read_mask)
         await asyncio.sleep(PEOPLE_SEARCH_WARMUP_DELAY_SECONDS)
-        data = await _people_search(user_id, endpoint, email, read_mask) or {}
+        data = (
+            await _people_search(user_id, endpoint, email, read_mask)
+            or GooglePeopleSearchResponseData()
+        )
 
-    for result in data.get("results", []):
-        person = result.get("person", {})
+    for result in data.results:
+        person = result.person
         profile = _person_to_profile(person, email)
         if profile is not None:
             profile.favicon = await _fetch_profile_photo(user_id, person) or profile.favicon
@@ -152,7 +189,7 @@ async def _search_google_people(
     return None
 
 
-async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | None:
+async def _fetch_profile_photo(user_id: str, person: GooglePerson) -> str | None:
     """Fetch a saved contact's full photo list and pick the real one.
 
     searchContacts only returns the contact-card photo, which for contacts without
@@ -160,7 +197,8 @@ async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | No
     people.get on the same resource also returns PROFILE-source photos — the
     person's actual Google account picture — which _pick_photo prefers.
     """
-    resource_name = person.get("resourceName") or ""
+    # Unmutated: any placeholder for a missing name fails the people/ check the same way.
+    resource_name = person.resource_name or ""  # pragma: no mutate
     if not resource_name.startswith("people/"):
         return None
     try:
@@ -181,7 +219,7 @@ async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | No
             error_type=type(exc).__name__,
         )
         return None
-    return _pick_photo((full or {}).get("photos", []))
+    return _pick_photo(GooglePerson.model_validate(full or {}).photos)
 
 
 async def _fetch_gravatar_profile(email: str) -> _ProfileFields | None:
@@ -195,7 +233,7 @@ async def _fetch_gravatar_profile(email: str) -> _ProfileFields | None:
             )
         if response.status_code != httpx.codes.OK:
             return None
-        entries = response.json().get("entry", [])
+        entries = _GravatarProfile.model_validate(response.json()).entry
     except (httpx.HTTPError, ValueError) as exc:
         log.debug(
             "email_profile gravatar lookup failed", error=str(exc), error_type=type(exc).__name__
@@ -205,11 +243,11 @@ async def _fetch_gravatar_profile(email: str) -> _ProfileFields | None:
     if not entries:
         return None
     entry = entries[0]
-    name = entry.get("displayName") or (entry.get("name") or {}).get("formatted")
+    name = entry.display_name or (entry.name.formatted if entry.name else None)
     return _ProfileFields(
         title=name,
-        description=entry.get("aboutMe"),
-        favicon=entry.get("thumbnailUrl"),
+        description=entry.about_me,
+        favicon=entry.thumbnail_url,
         website_name=GRAVATAR_SOURCE_NAME,
     )
 
@@ -248,9 +286,8 @@ async def fetch_email_profile(user_id: str, raw_value: str) -> URLResponse:
         return URLResponse(url=raw_value)
 
     cache_key = EMAIL_PROFILE_CACHE_KEY_TEMPLATE.format(user_id=user_id, email=email)
-    # get_cache is typed Any (generic cache wrapper); this key only ever stores
-    # what the write below puts there — a URLResponse minus its `url`.
-    cached: dict[str, Any] | None = await get_cache(cache_key)
+    # This key only ever stores what the write below puts there — a URLResponse minus its url.
+    cached = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached:
         return URLResponse.model_validate({**cached, "url": raw_value})
 

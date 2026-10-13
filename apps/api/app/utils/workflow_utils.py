@@ -153,14 +153,6 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
     return valid
 
 
-def get_user_id(config: RunnableConfig) -> str:
-    """Extract user_id from config. Raises error if missing."""
-    user_id = read_agent_configurable(config).user_id
-    if not user_id:
-        raise WorkflowConfigError("User authentication required")
-    return user_id
-
-
 def get_workflow_id(config: RunnableConfig) -> str:
     """Extract workflow_id from config. Raises error if missing."""
     workflow_id = read_agent_configurable(config).workflow_id
@@ -480,7 +472,7 @@ async def apply_workflow_edit(
     message = f"Workflow '{updated.title}' updated."
     if needs_editor:
         message += (
-            " The integration trigger itself was left unchanged — its config is set "
+            " The integration trigger itself was left unchanged. Its config is set "
             "in the workflow editor in the app."
         )
     return success_response({"status": "updated", "workflow_id": updated.id}, message)

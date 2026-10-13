@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
 from pathlib import Path
+from typing import TypedDict, cast
 
 from app.agents.core.subagents.registry import resolve_subagent_id
 from app.constants.log_tags import LogTag
@@ -39,10 +40,11 @@ _BUILTIN_ROOT = (
 
 
 def target_to_subagent(agent_name: str) -> str:
-    """Resolve a subagent agent_name to the canonical subagent id.
+    """Resolve an integration agent_name to the canonical skills_by_subagent key.
 
-    executor maps to itself. An unknown name is returned unchanged and
-    logged rather than silently misfiled.
+    Uses the subagent registry (the source of truth for agent_name -> id).
+    executor maps to itself; an unknown name is returned unchanged and logged
+    rather than silently misfiled.
     """
     agent_name = agent_name.strip()
     if agent_name == EXECUTOR_SUBAGENT_ID:
@@ -50,7 +52,7 @@ def target_to_subagent(agent_name: str) -> str:
     resolved = resolve_subagent_id(agent_name)
     if resolved is None:
         log.set(skill_target=agent_name, component="skill_loader")
-        log.warning(f"{LogTag.AGENT} skill target matches no subagent agent_name")
+        log.warning(f"{LogTag.AGENT} skill target matches no integration agent_name")
         return agent_name
     return resolved
 
@@ -70,7 +72,15 @@ class BuiltinSkill:
     resources: tuple[tuple[str, str], ...] = ()
 
 
-def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
+class _SkillFrontmatter(TypedDict, total=False):
+    """The SKILL.md frontmatter keys the loader reads; any other key parses but is never read."""
+
+    name: str
+    description: str
+    target: str
+
+
+def _parse_frontmatter(raw: str) -> tuple[_SkillFrontmatter, str]:
     match = SKILL_FRONTMATTER_RE.match(raw)
     if not match:
         return {}, raw
@@ -82,7 +92,7 @@ def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
         if kv:
             meta[kv.group(1)] = kv.group(2).strip().strip('"').strip("'")
     body = raw[match.end() :]
-    return meta, body
+    return cast(_SkillFrontmatter, meta), body
 
 
 def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
@@ -125,6 +135,7 @@ def _load_one(skill_dir: Path) -> BuiltinSkill | None:
     if not skill_path.is_file():
         return None
     raw = skill_path.read_text(encoding="utf-8")
+    meta: _SkillFrontmatter
     meta, body = _parse_frontmatter(raw)
     name = meta.get("name", skill_dir.name)
     target = meta.get("target", EXECUTOR_SUBAGENT_ID)

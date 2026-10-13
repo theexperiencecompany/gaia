@@ -11,12 +11,14 @@ from app.api.v1.endpoints import (
     blog,
     bot,
     bot_links,
+    browser,
     calendar,
     chat,
     conversations,
     desktop,
     device,
     device_ws,
+    features,
     feedback,
     file,
     first_steps,
@@ -34,6 +36,7 @@ from app.api.v1.endpoints import (
     platform_auth,
     platform_links,
     reminders,
+    sandbox_execute,
     search,
     sessions,
     shares,
@@ -55,6 +58,7 @@ router = APIRouter()
 
 router.include_router(voice.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
+router.include_router(browser.router)
 router.include_router(desktop.router)
 router.include_router(device.router)
 router.include_router(device_ws.router)
@@ -64,6 +68,7 @@ router.include_router(sessions.router)
 router.include_router(shares.router, tags=["Shares"])
 router.include_router(feedback.router, tags=["Feedback"])
 router.include_router(image.router, tags=["Image"])
+router.include_router(sandbox_execute.router)
 router.include_router(search.router, tags=["Search"])
 router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
@@ -75,6 +80,7 @@ router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])
 router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(first_steps.router)
+router.include_router(features.router, prefix="/features", tags=["Features"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(file.router, tags=["File"])

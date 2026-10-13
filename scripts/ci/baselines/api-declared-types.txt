@@ -108,7 +108,6 @@ libs/shared/ts/src/chat/types.ts:CalendarEditOptions
 libs/shared/ts/src/chat/types.ts:CalendarEventDateTime
 libs/shared/ts/src/chat/types.ts:CalendarFetchData
 libs/shared/ts/src/chat/types.ts:CalendarListFetchData
-libs/shared/ts/src/chat/types.ts:CalendarOptions
 libs/shared/ts/src/chat/types.ts:CodeChartData
 libs/shared/ts/src/chat/types.ts:CodeData
 libs/shared/ts/src/chat/types.ts:CodeOutput

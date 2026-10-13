@@ -19,6 +19,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import require_active_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
+    ConfirmedSocialProfile,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
     PersistedTriageSummary,
@@ -46,7 +47,7 @@ from app.models.user_models import (
 )
 from app.schemas.errors import error_responses
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
@@ -61,6 +62,15 @@ from app.services.onboarding.writing_style_service import (
     save_user_edited_summary,
 )
 from app.utils.user_preferences_utils import WritingStylePromptFields
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingPhaseCompleted,
+    OnboardingReset,
+    OnboardingSocialProfilesConfirmed,
+    OnboardingWritingStyleExampleRegenerated,
+    OnboardingWritingStyleSaved,
+)
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -149,7 +159,7 @@ async def reset_user_onboarding(
     log.set(user={"id": user.user_id}, onboarding={"operation": "reset"})
     try:
         counts = await reset_onboarding(user.user_id)
-        capture_context_event(AnalyticsEvents.ONBOARDING_RESET)
+        capture(UserId(user.user_id), OnboardingReset())
         return OnboardingResetResponse(success=True, **counts.model_dump())
     except HTTPException:
         raise
@@ -223,7 +233,7 @@ async def update_onboarding_phase(
             log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
             raise HTTPException(status_code=404, detail="User not found")
 
-        capture_context_event(AnalyticsEvents.ONBOARDING_PHASE_COMPLETED, {"phase": phase})
+        capture(UserId(user_id), OnboardingPhaseCompleted(phase=phase))
         log.set_ns("onboarding", phase_updated=True)
 
         try:
@@ -285,14 +295,13 @@ async def update_user_preferences(
         schedule_account_sync(user.user_id)
         # PATCH semantics: only the fields the caller actually sent were written,
         # so `fields` is what changed — not the whole preferences object.
-        capture_context_event(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {
-                "setting": "onboarding_preferences",
-                "fields": sorted(preferences.model_fields_set),
-                "response_style": preferences.response_style,
-                "has_custom_instructions": bool(preferences.custom_instructions),
-            },
+        capture(
+            UserId(user.user_id),
+            SettingsPreferencesChanged(
+                setting="onboarding_preferences",
+                fields=sorted(preferences.model_fields_set),
+                has_custom_instructions=bool(preferences.custom_instructions),
+            ),
         )
 
         return OnboardingResponse(
@@ -517,9 +526,9 @@ async def save_writing_style(
     log.set(user={"id": user_id}, onboarding={"operation": "save_writing_style"})
     try:
         await save_user_edited_summary(user_id, request.edited_summary.strip())
-        capture_context_event(
-            AnalyticsEvents.ONBOARDING_WRITING_STYLE_SAVED,
-            {"summary_length": len(request.edited_summary.strip())},
+        capture(
+            UserId(user_id),
+            OnboardingWritingStyleSaved(summary_length=len(request.edited_summary.strip())),
         )
         return SaveWritingStyleResponse(success=True)
     except Exception as e:
@@ -561,7 +570,7 @@ async def regenerate_writing_style_example(
         )
         if example:
             await save_generated_example(user_id, example)
-        capture_context_event(AnalyticsEvents.ONBOARDING_WRITING_STYLE_EXAMPLE_REGENERATED)
+        capture(UserId(user_id), OnboardingWritingStyleExampleRegenerated())
         return RegenerateWritingStyleExampleResponse(example=example)
     except Exception as e:
         log.error(
@@ -577,7 +586,7 @@ async def regenerate_writing_style_example(
 
 
 class SocialProfilesConfirmRequest(BaseModel):
-    profiles: list[SocialProfile]
+    profiles: list[ConfirmedSocialProfile]
 
 
 @router.post(
@@ -593,12 +602,12 @@ async def confirm_social_profiles(
     log.set(user={"id": user_id}, onboarding={"operation": "confirm_social_profiles"})
     try:
         await save_confirmed_profiles(user_id, request.profiles)
-        capture_context_event(
-            AnalyticsEvents.ONBOARDING_SOCIAL_PROFILES_CONFIRMED,
-            {
-                "profile_count": len(request.profiles),
-                "platforms": sorted({profile.platform for profile in request.profiles}),
-            },
+        capture(
+            UserId(user_id),
+            OnboardingSocialProfilesConfirmed(
+                profile_count=len(request.profiles),
+                platforms=sorted({profile.platform for profile in request.profiles}),
+            ),
         )
         return SaveSocialProfilesResponse(success=True, saved=len(request.profiles))
     except Exception as e:

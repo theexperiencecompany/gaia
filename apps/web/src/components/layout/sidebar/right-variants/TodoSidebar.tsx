@@ -1,22 +1,26 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Checkbox } from "@heroui/checkbox";
-import { Input, Textarea } from "@heroui/input";
 import { Delete02Icon } from "@icons";
+import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 import type React from "react";
-import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
+import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
+import {
+  TodoSidebarDescription,
+  TodoSidebarTitle,
+} from "@/features/todo/components/TodoSidebarEditors";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
+import { useTodoSidebar } from "@/features/todo/hooks/useTodoSidebar";
 import type {
   Priority,
   Project,
-  SubTask,
   Todo,
   TodoUpdate,
 } from "@/types/features/todoTypes";
@@ -35,55 +39,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   projects,
 }) => {
   const user = useCurrentUser();
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [isEditingDescription, setIsEditingDescription] = useState(false);
-
+  const {
+    handleToggleComplete,
+    handleDelete,
+    handleSubtasksChange,
+    handleTitleSave,
+    handleDescriptionSave,
+    handleFieldChange,
+    handleWorkflowLinked,
+  } = useTodoSidebar({ todo, onUpdate, onDelete });
   const userTimezone = user?.timezone;
-
-  const handleToggleComplete = () => {
-    if (!todo) return;
-    onUpdate(todo.id, { completed: !todo.completed });
-  };
-
-  const handleDelete = () => {
-    if (!todo) return;
-    onDelete(todo.id);
-  };
-
-  const handleSubtasksChange = (subtasks: SubTask[]) => {
-    if (!todo) return;
-    onUpdate(todo.id, { subtasks });
-  };
-
-  const handleTitleSave = (newTitle: string) => {
-    if (!todo) return;
-    if (newTitle.trim() && newTitle !== todo.title) {
-      onUpdate(todo.id, { title: newTitle.trim() });
-    }
-    setIsEditingTitle(false);
-  };
-
-  const handleDescriptionSave = (newDescription: string) => {
-    if (!todo) return;
-    if (newDescription !== todo.description) {
-      onUpdate(todo.id, { description: newDescription });
-    }
-    setIsEditingDescription(false);
-  };
-
-  const handleFieldChange = (
-    field: keyof TodoUpdate,
-    value: string | string[] | Priority | undefined,
-  ) => {
-    if (!todo) return;
-    onUpdate(todo.id, { [field]: value } as TodoUpdate);
-  };
-
-  // Called when WorkflowSection generates/links a workflow
-  const handleWorkflowLinked = (workflowId: string) => {
-    if (!todo) return;
-    onUpdate(todo.id, { workflow_id: workflowId });
-  };
 
   if (!todo) return null;
 
@@ -91,94 +56,40 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
     <div className="flex h-full flex-col">
       <SidebarContent className="flex-1 overflow-y-auto">
         <div className="space-y-4 pt-4 pl-6 pr-3">
-          {/* Title and Description Section */}
-          <div className="flex items-start gap-1">
-            <Checkbox
-              isSelected={todo.completed}
-              onValueChange={handleToggleComplete}
-              size="lg"
-              color="success"
-              radius="full"
-              classNames={{
-                wrapper: "mt-1",
-                label: "w-[30vw]",
-              }}
-            />
-            <div className="flex-1 space-y-3">
-              {/* Editable Title */}
-              {isEditingTitle ? (
-                <Input
-                  defaultValue={todo.title}
-                  onKeyDown={(e) => {
-                    // Don't commit while an IME composition is active (CJK
-                    // users press Enter to confirm candidates).
-                    if (e.nativeEvent.isComposing) return;
-                    if (e.key === "Enter") {
-                      handleTitleSave(e.currentTarget.value);
-                    }
-                    if (e.key === "Escape") {
-                      setIsEditingTitle(false);
-                    }
-                  }}
-                  onBlur={(e) => handleTitleSave(e.target.value)}
-                  autoFocus
-                  classNames={{
-                    input:
-                      "text-2xl font-medium text-zinc-100 placeholder:text-zinc-500",
-                  }}
-                  variant="underlined"
-                />
-              ) : (
-                <h1
-                  className={`text-2xl leading-tight font-medium break-all ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingTitle(true)}
-                    className="w-full cursor-pointer text-left transition-colors hover:text-zinc-200"
-                  >
-                    {todo.title}
-                  </button>
-                </h1>
-              )}
-            </div>
-          </div>
+          <TodoSidebarTitle
+            title={todo.title}
+            completed={todo.completed}
+            onToggleComplete={handleToggleComplete}
+            onSave={handleTitleSave}
+          />
+          <TodoSidebarDescription
+            description={todo.description}
+            completed={todo.completed}
+            onSave={handleDescriptionSave}
+          />
 
-          {isEditingDescription ? (
-            <Textarea
-              defaultValue={todo.description || ""}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setIsEditingDescription(false);
-                }
-              }}
-              onBlur={(e) => handleDescriptionSave(e.target.value)}
-              placeholder="Add a description..."
-              minRows={4}
-              maxRows={6}
-              autoFocus
-              classNames={{
-                input: "text-zinc-200 placeholder:text-zinc-500",
-              }}
-              variant="flat"
-            />
-          ) : (
-            <p
-              className={`text-sm leading-relaxed ${todo.completed ? "text-zinc-600" : "text-zinc-400"}`}
-            >
-              <button
-                type="button"
-                onClick={() => setIsEditingDescription(true)}
-                className="w-full cursor-pointer text-left transition-colors hover:text-zinc-300"
+          {todo.parent_todo_id && (
+            <p className="text-xs text-zinc-500">
+              Sub-todo of{" "}
+              <Link
+                href={`/todos?todoId=${todo.parent_todo_id}`}
+                className="font-mono text-zinc-300 hover:underline"
               >
-                {todo.description || "Add a description..."}
-              </button>
+                {todo.parent_todo_id}
+              </Link>
             </p>
           )}
 
           {/* Canvas working memory — only for gaia-tracked todos */}
-          {todo.vfs_path && (
+          {isTrackedTodo(todo) && (
             <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+          )}
+
+          {isTrackedTodo(todo) && !todo.parent_todo_id && (
+            <SubTodosSection
+              parentTodoId={todo.id}
+              openCount={todo.sub_todo_count}
+            />
           )}
 
           {/* Editable Fields */}
@@ -216,12 +127,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             />
           </div>
 
-          <WorkflowSection
-            key={todo.id}
-            hideBg={true}
-            todoId={todo.id}
-            onWorkflowLinked={handleWorkflowLinked}
-          />
+          {/* Tracked todos run on the agent from their canvas, never a workflow */}
+          {!isTrackedTodo(todo) && (
+            <WorkflowSection
+              key={todo.id}
+              hideBg={true}
+              todoId={todo.id}
+              onWorkflowLinked={handleWorkflowLinked}
+            />
+          )}
         </div>
       </SidebarContent>
 

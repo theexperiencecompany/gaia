@@ -11,6 +11,7 @@ import type { MyIntegrationItem } from "@shared/types";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
+  reconcileIntegrationStatus,
 } from "@shared/utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -87,6 +88,38 @@ describe("findIntegrationStatus", () => {
 
   it("returns undefined for an integration missing from the catalog", () => {
     expect(statusOf([item({})], "notion")).toBeUndefined();
+  });
+});
+
+describe("reconcileIntegrationStatus", () => {
+  it("overlays a refreshed status without hiding created states", () => {
+    expect(
+      reconcileIntegrationStatus("not_connected", true, "composio", true),
+    ).toBe("connected");
+    expect(reconcileIntegrationStatus("created", true, "mcp", true)).toBe(
+      "connected",
+    );
+    expect(reconcileIntegrationStatus("expired", true, "mcp", true)).toBe(
+      "connected",
+    );
+    expect(reconcileIntegrationStatus("expired", false, "mcp", true)).toBe(
+      "expired",
+    );
+  });
+
+  it("downgrades only an auth-required MCP with stale connected status", () => {
+    expect(reconcileIntegrationStatus("connected", false, "mcp", true)).toBe(
+      "created",
+    );
+    expect(
+      reconcileIntegrationStatus("connected", false, "composio", true),
+    ).toBe("connected");
+  });
+
+  it("keeps the snapshot status while the refresh query is pending", () => {
+    expect(
+      reconcileIntegrationStatus("connected", undefined, "mcp", true),
+    ).toBe("connected");
   });
 });
 

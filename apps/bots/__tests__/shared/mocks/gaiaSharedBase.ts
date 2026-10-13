@@ -19,9 +19,14 @@
 
 import { vi } from "vitest";
 import {
+  type AnalyticsId,
+  platformIdentity,
+} from "../../../../../libs/shared/ts/src/analytics";
+import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
+import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
@@ -65,8 +70,10 @@ export function makeGaiaSharedMock(
     }
 
     /** Unlinked-user path — adapter tests assert routing, not identity. */
-    protected async resolveDistinctId(platformUserId: string): Promise<string> {
-      return `${this.platform}:${platformUserId}`;
+    protected async resolveDistinctId(
+      platformUserId: string,
+    ): Promise<AnalyticsId> {
+      return platformIdentity(this.platform, platformUserId);
     }
 
     protected async dispatchCommand(
@@ -204,6 +211,8 @@ export function makeGaiaSharedMock(
     // Plain shared constant every adapter's download path imports — the real
     // value, so a test asserting the deadline asserts production's.
     MEDIA_READ_TIMEOUT_MS: 30_000,
+    // The real outcome set, so an adapter's reaction result is production's value.
+    REACTION_OUTCOME,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

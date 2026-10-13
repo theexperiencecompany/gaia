@@ -352,3 +352,116 @@ class TestHasSentMessage:
         collection.count_documents.return_value = 1
 
         assert await repo.has_sent_message(USER_ID) is True
+
+
+class TestBackgroundVisibility:
+    def _matches(self, repo: ConversationRepository, doc: dict[str, object]) -> bool:
+        """Evaluate the active filter against a stub doc (equality subset)."""
+
+        flt = repo._active_filter(USER_ID)
+        if doc.get("user_id") != flt.get("user_id"):
+            return False
+        for clause in flt["$and"]:
+            ok = False
+            for branch in clause["$or"]:
+                good = True
+                for key, cond in branch.items():
+                    value = doc.get(key)
+                    if isinstance(cond, dict):
+                        if "$ne" in cond and value == cond["$ne"]:
+                            good = False
+                        if "$exists" in cond and (key in doc) != cond["$exists"]:
+                            good = False
+                    elif value != cond:
+                        good = False
+                if good:
+                    ok = True
+                    break
+            if not ok:
+                return False
+        return True
+
+    async def test_background_run_is_hidden_without_a_live_approval(
+        self, repo: ConversationRepository
+    ) -> None:
+        assert (
+            self._matches(
+                repo,
+                {"user_id": USER_ID, "source": "background", "starred": False},
+            )
+            is False
+        )
+
+    async def test_background_run_surfaces_while_it_holds_approval(
+        self, repo: ConversationRepository
+    ) -> None:
+        assert (
+            self._matches(
+                repo,
+                {
+                    "user_id": USER_ID,
+                    "source": "background",
+                    "starred": False,
+                    "has_live_approval": True,
+                },
+            )
+            is True
+        )
+
+    async def test_sourceless_legacy_row_stays_visible(self, repo: ConversationRepository) -> None:
+        assert self._matches(repo, {"user_id": USER_ID, "starred": False}) is True
+
+    async def test_null_starred_reads_as_unstarred(self, repo: ConversationRepository) -> None:
+        """Several write paths store explicit null: a null-starred background row with a live approval must surface, not vanish."""
+        assert (
+            self._matches(
+                repo,
+                {
+                    "user_id": USER_ID,
+                    "source": "background",
+                    "starred": None,
+                    "has_live_approval": True,
+                },
+            )
+            is True
+        )
+        assert (
+            self._matches(
+                repo,
+                {"user_id": USER_ID, "source": "background", "starred": None},
+            )
+            is False
+        )
+
+    async def test_web_conversation_ignores_the_flag(self, repo: ConversationRepository) -> None:
+        assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": False}) is True
+
+    async def test_mark_raises_flag_and_stamps_source_only_when_missing(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        assert (
+            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is True
+        )
+
+        first, second = collection.update_one.await_args_list
+        assert first.args[1] == {"$set": {"has_live_approval": True}}
+        assert second.args[0]["source"] == {"$exists": False}
+        assert second.args[1] == {"$set": {"source": "background"}}
+
+    async def test_mark_on_missing_conversation_touches_nothing(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        _matched(collection, 0)
+
+        assert (
+            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is False
+        )
+        collection.update_one.assert_awaited_once()
+
+    async def test_refresh_rewrites_the_flag(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        await repo.refresh_live_approval_flag(CONVERSATION_ID, user_id=USER_ID, live=False)
+
+        flt, update, _kwargs = _update_call(collection)
+        assert update == {"$set": {"has_live_approval": False}}

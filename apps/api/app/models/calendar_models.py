@@ -630,8 +630,13 @@ class SingleEventInput(BaseModel):
         ...,
         description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's local time.",
     )
-    duration_hours: float = Field(default=0, description="Duration hours (0-23)", ge=0, le=23)
-    duration_minutes: float = Field(default=30, description="Duration minutes (0-59)", ge=0, le=59)
+    end_datetime: str | None = Field(
+        default=None,
+        description=(
+            "End time in ISO format, same style as start_datetime. "
+            "Omit for a 30-minute event. For all-day events this is the last day (inclusive)."
+        ),
+    )
     calendar_id: str = Field(default="primary", description="Calendar ID")
     description: str | None = Field(default=None, description="Event description")
     location: str | None = Field(default=None, description="Event location")
@@ -646,15 +651,16 @@ class SingleEventInput(BaseModel):
 
 
 class CreateEventInput(BaseModel):
-    """Input for creating one or more calendar events."""
+    """Input for creating one or more calendar events.
+
+    Creation is immediate: under HIL the approval card is the confirmation,
+    so there is no draft mode (removed — it split approval from execution
+    across two ungated surfaces and confused models into double-confirming).
+    """
 
     events: list[SingleEventInput] = Field(
         ...,
         description="List of events to create",
-    )
-    confirm_immediately: bool = Field(
-        default=False,
-        description="If True, create events immediately. If False (default), send to frontend for confirmation.",
     )
 
 
@@ -815,24 +821,3 @@ class CreatedEventSummary(BaseModel):
     link: str | None
     start: GoogleCalendarEventDateTime
     end: GoogleCalendarEventDateTime
-
-
-class CalendarOptionDraft(BaseModel):
-    """An event drafted for the user's confirmation card, not yet sent to Google.
-
-    ``location`` / ``attendees`` / ``create_meeting_room`` are ``None`` when the
-    draft has none, and ``exclude_none`` keeps them out of the tool output.
-    """
-
-    index: int
-    summary: str
-    description: str
-    is_all_day: bool
-    start: GoogleCalendarEventDateTime
-    end: GoogleCalendarEventDateTime
-    calendar_id: str
-    color: str
-    calendar_name: str
-    location: str | None = None
-    attendees: list[str] | None = None
-    create_meeting_room: bool | None = None

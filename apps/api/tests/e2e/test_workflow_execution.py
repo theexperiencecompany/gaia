@@ -17,6 +17,7 @@ and notification delivery.
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bson import ObjectId
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool as lc_tool
 from langgraph.checkpoint.memory import MemorySaver
@@ -24,11 +25,16 @@ from langgraph.store.memory import InMemoryStore
 import pytest
 
 from app.agents.core import agent as agent_module
-from app.agents.core.graph_builder.build_graph import build_comms_graph, build_executor_graph
+from app.agents.core.graph_builder.build_graph import (
+    EXECUTOR_INITIAL_TOOL_IDS,
+    build_comms_graph,
+    build_executor_graph,
+)
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.api.v1.middleware import tiered_rate_limiter
 from app.db.repositories.playbooks import playbook_repository
+from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.agent_models import SilentRunResult
@@ -48,7 +54,7 @@ from app.services.workflow.scheduler import WorkflowScheduler
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 from tests.e2e.conftest import build_gaia_test_graph
-from tests.helpers import BindableToolsFakeModel
+from tests.helpers import BindableToolsFakeModel, users_get
 
 
 @pytest.mark.e2e
@@ -331,10 +337,7 @@ class TestWorkflowExecution:
         )
 
     async def test_executor_graph_binds_the_real_subagent_middleware_tool(self):
-        """build_executor_graph must wire the REAL executor middleware stack, binding spawn_subagent."""
-        import ast
-        import inspect
-
+        """Build_executor_graph must wire the REAL executor middleware stack."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -359,18 +362,14 @@ class TestWorkflowExecution:
             _stub.__doc__ = f"Stub for {name}."
             return lc_tool(_stub)
 
-        # Dynamically read initial_tool_ids from the real source so the mock
-        # registry always provides stubs for every tool the graph expects.
-        src = inspect.getsource(build_executor_graph)
+        # Stub every tool the graph binds up front, so the mock registry always
+        # satisfies what build_executor_graph expects.
         injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
-        idx = src.find("initial_tool_ids=")
-        if idx != -1:
-            bracket_start = src.index("[", idx)
-            bracket_end = src.index("]", bracket_start) + 1
-            raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
-        else:
-            raw_ids = []
-        tool_dict = {tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph}
+        tool_dict = {
+            tid: _make_stub(tid)
+            for tid in EXECUTOR_INITIAL_TOOL_IDS
+            if tid not in injected_by_graph
+        }
 
         mock_registry = MagicMock()
         mock_registry.get_tool_dict.return_value = tool_dict
@@ -485,6 +484,8 @@ def _make_multi_step_workflow(user_id: str) -> Workflow:
 
 
 @pytest.mark.e2e
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowExecutionFailurePropagation:
     """E2E tests for the real workflow-execution path.
 
@@ -532,12 +533,19 @@ class TestWorkflowExecutionFailurePropagation:
             "get_or_create_workflow_conversation",
             AsyncMock(return_value="conv-workflow-1"),
         )
+        # The fire claims that conversation before it spends anything. Stubbed
+        # so the tier stays offline: the claim is Redis, and its own behaviour
+        # is proven in tests/unit/agents/test_executor_queue.py.
+        monkeypatch.setattr(workflow_tasks, "try_acquire_lock", AsyncMock(return_value=True))
+        monkeypatch.setattr(workflow_tasks, "release_lock_if_owned", AsyncMock())
         monkeypatch.setattr(
             workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
         )
         monkeypatch.setattr(
             workflow_tasks, "get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         )
+        # The owner check reads the users collection; every owner here is a real user.
+        monkeypatch.setattr(user_repository, "get", users_get)
         # The checkpoint reset is Postgres; its own behaviour is proven in
         # tests/unit/services/workflow/test_thread_reset.py.
         monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
@@ -592,7 +600,7 @@ class TestWorkflowExecutionFailurePropagation:
     ):
         """A step that fails partway through must surface as a failed execution naming the step."""
 
-        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        workflow = _make_multi_step_workflow(user_id=str(ObjectId()))
         completed = self._install_stepwise_agent(
             monkeypatch, failing_step_title="Summarize the thread"
         )
@@ -643,7 +651,7 @@ class TestWorkflowExecutionFailurePropagation:
     ):
         """Control for the failure test: an uneventful run must record success."""
 
-        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        workflow = _make_multi_step_workflow(user_id=str(ObjectId()))
         completed = self._install_stepwise_agent(monkeypatch, failing_step_title=None)
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
@@ -678,7 +686,7 @@ class TestWorkflowExecutionFailurePropagation:
     ):
         """Notification delivery is best-effort; it must not lose the failure record."""
 
-        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        workflow = _make_multi_step_workflow(user_id=str(ObjectId()))
         self._install_stepwise_agent(monkeypatch, failing_step_title="Post to Slack")
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))

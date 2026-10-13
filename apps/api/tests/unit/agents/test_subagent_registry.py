@@ -6,6 +6,7 @@ refactor that introduced the Subagent dataclass and centralized lookups in
 the registry module.
 """
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,7 +14,9 @@ import pytest
 from app.agents.core.subagents.builtin_subagents import BUILTIN_SUBAGENTS
 from app.agents.core.subagents.registry import (
     _from_oauth,
+    _third_party_name_matchers,
     all_subagents,
+    foreign_provider_named_in,
     get_subagent_by_id,
 )
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
@@ -33,7 +36,6 @@ def _make_subagent_config(
         has_subagent=True,
         agent_name=agent_name,
         tool_space=f"{integration_id}_space",
-        handoff_tool_name=f"call_{integration_id}",
         domain=integration_id,
         capabilities=f"{integration_id} capabilities",
         use_cases=f"{integration_id} use cases",
@@ -88,7 +90,6 @@ def _make_integration(
             has_subagent=True,
             agent_name=agent_name,
             tool_space=f"{integration_id}_space",
-            handoff_tool_name=f"call_{integration_id}",
             domain=integration_id,
             capabilities=f"{integration_id} capabilities",
             use_cases=f"{integration_id} use cases",
@@ -126,6 +127,30 @@ FAKE_INTEGRATIONS = [
 def _clear_registry_cache() -> None:
     """all_subagents() is @functools.cached; tests patching OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS must clear it first."""
     all_subagents.cache_clear()
+
+
+@pytest.fixture
+def _fake_provider_registry():
+    """Five composio providers incl. the three common-word ids; clears both caches around the test."""
+    _clear_registry_cache()
+    _third_party_name_matchers.cache_clear()
+    fakes = [
+        _make_integration("trello", "trello", True, "trello_agent"),
+        _make_integration("notion", "notion", True, "notion_agent"),
+        _make_integration("slack", "slack", True, "slack_agent"),
+        _make_integration("linear", "linear", True, "linear_agent"),
+        _make_integration("todoist", "todoist", True, "todoist_agent"),
+    ]
+    with (
+        patch(
+            "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+            fakes,
+        ),
+        patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
+    ):
+        yield
+    _clear_registry_cache()
+    _third_party_name_matchers.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -436,3 +461,68 @@ class TestGetSubagentByIdExtended:
         _clear_registry_cache()
         with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
             assert get_subagent_by_id("gaia_knowledge_guide_agent") is None
+
+
+# ---------------------------------------------------------------------------
+# foreign_provider_named_in — common-word providers need a capitalized mention
+# ---------------------------------------------------------------------------
+
+
+class TestForeignProviderNamedIn:
+    def test_lowercase_verb_phrase_does_not_flag_slack(self, _fake_provider_registry) -> None:
+        assert foreign_provider_named_in("cut some slack", "trello") is None
+
+    def test_lowercase_adjective_does_not_flag_linear(self, _fake_provider_registry) -> None:
+        assert foreign_provider_named_in("linear progress on the migration", "trello") is None
+
+    def test_lowercase_noun_phrase_does_not_flag_notion(self, _fake_provider_registry) -> None:
+        assert foreign_provider_named_in("the notion that this works", "trello") is None
+
+    def test_capitalized_comparative_still_flags(self, _fake_provider_registry) -> None:
+        hit = foreign_provider_named_in("migrate Trello cards, unlike Notion", "trello")
+        assert hit is not None
+        assert hit.id == "notion"
+
+    def test_capitalized_slack_still_flags(self, _fake_provider_registry) -> None:
+        hit = foreign_provider_named_in("Post it to Slack for the team", "trello")
+        assert hit is not None
+        assert hit.id == "slack"
+
+    def test_allcaps_still_flags(self, _fake_provider_registry) -> None:
+        hit = foreign_provider_named_in("sync my NOTION database", "trello")
+        assert hit is not None
+        assert hit.id == "notion"
+
+    def test_target_itself_never_flags(self, _fake_provider_registry) -> None:
+        assert foreign_provider_named_in("migrate Trello cards", "trello") is None
+
+    def test_ordinary_provider_still_flags_lowercase(self, _fake_provider_registry) -> None:
+        hit = foreign_provider_named_in("add it to my todoist", "trello")
+        assert hit is not None
+        assert hit.id == "todoist"
+
+    def test_a_skipped_common_word_does_not_hide_a_later_provider(
+        self, _fake_provider_registry
+    ) -> None:
+        hit = foreign_provider_named_in("cut some slack and add it to my todoist", "trello")
+        assert hit is not None
+        assert hit.id == "todoist"
+
+
+class TestInternalSubagentsAreNeverForeignProviders:
+    """Against the real registry, where internal subagents sit between the third-party ones."""
+
+    @pytest.fixture(autouse=True)
+    def _real_matchers(self) -> Iterator[None]:
+        _clear_registry_cache()
+        _third_party_name_matchers.cache_clear()
+        yield
+        _third_party_name_matchers.cache_clear()
+
+    def test_an_internal_subagents_name_is_ordinary_prose(self) -> None:
+        assert foreign_provider_named_in("add these to my todos", "gmail") is None
+
+    def test_a_provider_listed_after_an_internal_subagent_still_flags(self) -> None:
+        hit = foreign_provider_named_in("put it in Todoist", "gmail")
+        assert hit is not None
+        assert hit.id == "todoist"

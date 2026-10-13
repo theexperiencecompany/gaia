@@ -10,9 +10,10 @@ Two invariants, both owned by result_delivery.py:
   the user already saw, or resurrects an approval they already decided.
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -24,13 +25,32 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
 )
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
+    SILENCE_NOTE,
+)
+from app.constants.executor import (
+    EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
+    EXECUTOR_NARRATION_FAILED_MESSAGE,
+)
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
+
+# A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _run(
@@ -45,7 +65,7 @@ def _run(
     run = ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
-        user=AuthenticatedUser(user_id="user-1"),
+        user=AuthenticatedUser(user_id=USER_ID),
         kind=kind,
         task_id=task_id,
         user_message_id=None,
@@ -67,6 +87,7 @@ async def _deliver(
     *,
     comms_text="result text",
     result_text="raw",
+    result_type="final",
     platform_delivered=True,
     task_id=None,
 ):
@@ -95,10 +116,74 @@ async def _deliver(
         await rd.deliver_result(
             _run(task_id=task_id),
             result_text=result_text,
-            result_type="final",
+            result_type=result_type,
             tool_data=None,
         )
     return save, platform, ws
+
+
+class TestABotReplyGeneratesNoFollowUps:
+    """No bot renders follow-up chips, so a bot reply never pays for the second LLM call."""
+
+    async def _deliver_to_telegram(self, *, delivered: bool):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(
+                rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]
+            ) as inline,
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(
+                rd,
+                "_get_conversation_source",
+                new_callable=AsyncMock,
+                return_value=ConversationSource.TELEGRAM,
+            ),
+            patch.object(
+                rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=delivered
+            ) as platform,
+            patch.object(rd, "_spawn_deferred_follow_ups") as deferred,
+        ):
+            await rd.deliver_result(_run(), result_text="raw", result_type="final", tool_data=None)
+        return inline, platform, deferred, save
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("delivered", [True, False])
+    async def test_neither_inline_nor_deferred_follow_ups_run(self, delivered: bool) -> None:
+        inline, platform, deferred, save = await self._deliver_to_telegram(delivered=delivered)
+
+        platform.assert_awaited_once()
+        inline.assert_not_awaited()
+        deferred.assert_not_called()
+        assert save.await_args.args[0].messages[0].follow_up_actions is None
+
+
+class TestAWorkflowAnswerCarriesItsFollowUpsInline:
+    """A workflow run has no one waiting on a live stream, so suggestions ride on the saved message."""
+
+    async def test_the_saved_message_holds_the_generated_follow_ups(self) -> None:
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(
+                rd,
+                "_safe_inline_follow_ups",
+                new_callable=AsyncMock,
+                return_value=["Run it again tomorrow"],
+            ),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+        ):
+            await rd.deliver_result(
+                _run(workflow=True), result_text="done", result_type="final", tool_data=None
+            )
+
+        saved = save.await_args.args[0].messages[0]
+        assert saved.follow_up_actions == ["Run it again tomorrow"]
 
 
 class TestDeliverResultRouting:
@@ -139,14 +224,31 @@ class TestDeliverResultRouting:
         """update_messages scopes the write by user — an unattributed save lands on nobody's conversation."""
         save, _platform, _ws = await _deliver(ConversationSource.WEB)
 
-        assert save.await_args.kwargs["user"] == AuthenticatedUser(user_id="user-1")
+        assert save.await_args.kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
 
-    async def test_falls_back_to_raw_executor_text_when_comms_unavailable(self) -> None:
-        # comms returns "" → the raw executor text must still be delivered.
+    async def test_never_leaks_raw_executor_text_when_comms_unavailable(self) -> None:
+        # The executor's terminal text is internal monologue, so a narration
+        # failure delivers a notice instead of publishing it verbatim.
         _save, platform, _ws = await _deliver(
-            ConversationSource.WHATSAPP, comms_text="", result_text="raw executor output"
+            ConversationSource.WHATSAPP,
+            comms_text="",
+            result_text="Let me find the delete tool.",
         )
-        assert platform.await_args.args[2] == "raw executor output"
+        delivered = platform.await_args.args[2]
+        assert delivered == EXECUTOR_NARRATION_FAILED_MESSAGE
+        assert "delete tool" not in delivered
+
+    async def test_never_leaks_a_raw_exception_when_error_narration_fails(self) -> None:
+        # The error path carries str(e) from executor_runner, not curated copy.
+        _save, platform, _ws = await _deliver(
+            ConversationSource.WHATSAPP,
+            comms_text="",
+            result_text="KeyError('composio_auth')",
+            result_type="error",
+        )
+        delivered = platform.await_args.args[2]
+        assert delivered == EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE
+        assert "KeyError" not in delivered
 
 
 class TestDeliveryOutcomeIsOnTheWideEvent:
@@ -202,7 +304,7 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         await _deliver(ConversationSource.TELEGRAM, comms_text="", result_text="raw output")
 
         assert log.get()["result_delivery"]["narrated"] is False
-        assert log.get()["result_delivery"]["text_length"] == len("raw output")
+        assert log.get()["result_delivery"]["text_length"] == len(EXECUTOR_NARRATION_FAILED_MESSAGE)
         assert log.get()["result_delivery"]["delivered"] is True
 
 
@@ -254,8 +356,8 @@ class TestWorkflowResultReachesThePlatformDelivery:
 
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user"] == AuthenticatedUser(user_id="user-1")
-        assert kwargs["user_id"] == "user-1"
+        assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
+        assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
         notify.assert_awaited_once()  # the in-app badge still fires alongside
 
@@ -271,26 +373,26 @@ class TestGetConversationSource:
     async def test_returns_source_from_repository(self) -> None:
         with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = ConversationSource.WHATSAPP
-            src = await rd._get_conversation_source("conv-1", "user-1")
+            src = await rd._get_conversation_source("conv-1", USER_ID)
         assert src is ConversationSource.WHATSAPP
 
     async def test_query_is_scoped_to_conversation_and_owner(self) -> None:
         with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = ConversationSource.WEB
-            await rd._get_conversation_source("conv-1", "user-1")
+            await rd._get_conversation_source("conv-1", USER_ID)
         # must be scoped by BOTH conversation_id and user_id (no cross-user read)
         assert get.await_args.args[0] == "conv-1"
-        assert get.await_args.kwargs["user_id"] == "user-1"
+        assert get.await_args.kwargs["user_id"] == USER_ID
 
     async def test_missing_conversation_returns_none(self) -> None:
         with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = None
-            assert await rd._get_conversation_source("conv-1", "user-1") is None
+            assert await rd._get_conversation_source("conv-1", USER_ID) is None
 
     async def test_db_error_returns_none(self) -> None:
         with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.side_effect = RuntimeError("mongo down")
-            assert await rd._get_conversation_source("conv-1", "user-1") is None
+            assert await rd._get_conversation_source("conv-1", USER_ID) is None
 
 
 class TestPersistCancelledRun:
@@ -376,7 +478,7 @@ class TestDeliveryLatency:
         before = _persist_count("save_bot_message")
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": "user-1"}, bot_message) is True
+            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
@@ -400,7 +502,7 @@ class TestDeliveryLatency:
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd.time, "perf_counter", side_effect=[7.0, 7.25]),
         ):
-            assert await rd._save_bot_message("conv-1", {"user_id": "user-1"}, bot_message) is True
+            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
     async def test_narration_records_exact_seconds(self) -> None:
@@ -415,7 +517,7 @@ class TestDeliveryLatency:
         assert REGISTRY.get_sample_value("delivery_narration_seconds_sum", labels) == before + 0.5
 
     async def test_narration_fallback_is_recorded_under_the_fallback_status(self) -> None:
-        # comms unavailable -> the raw text is delivered, and the sample is
+        # comms unavailable -> the notice is delivered, and the sample is
         # labelled "fallback". A recased or renamed status would silently split
         # the fallback rate across two series.
         run = _run(RunKind.QUEUED, stream_id="queued_lat3", task_id="task-lat3")
@@ -431,7 +533,7 @@ class TestDeliveryLatency:
             patch.object(rd.time, "perf_counter", side_effect=[3.0, 3.5]),
         ):
             assert await rd._narrate_result(run, "raw fallback text", "final", "") == (
-                "raw fallback text"
+                EXECUTOR_NARRATION_FAILED_MESSAGE
             )
         assert (
             REGISTRY.get_sample_value("delivery_narration_seconds_count", count_labels)
@@ -484,7 +586,7 @@ class TestDeliverResultToolDataOwnership:
 
         save, _ws = await self._deliver_with_cards(run, None)
 
-        assert save.await_args.kwargs["user"] == AuthenticatedUser(user_id="user-1")
+        assert save.await_args.kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
 
     async def test_live_run_never_self_attaches_cards(self) -> None:
         """The comms stream owns a live run's cards, so its snapshot is None — delivery must not invent tool_data."""
@@ -564,7 +666,8 @@ class TestRunLifecycleAnalytics:
         result_type: str,
         *,
         task_id: str | None = "task-1",
-        user_id: str | None = "user-1",
+        user_id: str | None = USER_ID,
+        error_type: str | None = None,
     ):
         from app.agents.core.background.executor_runner import _ExecutorResult
 
@@ -578,12 +681,12 @@ class TestRunLifecycleAnalytics:
             user_message_id=None,
         )
         with (
-            patch("app.agents.core.background.executor_runner.capture_event") as mock_capture,
+            patch("app.services.analytics_service.capture") as mock_capture,
             patch.object(
                 er,
                 "_execute_executor",
                 new_callable=AsyncMock,
-                return_value=_ExecutorResult(result_text, result_type),
+                return_value=_ExecutorResult(result_text, result_type, error_type=error_type),
             ),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):
@@ -593,42 +696,48 @@ class TestRunLifecycleAnalytics:
     async def test_started_and_completed_on_final(self) -> None:
         mock_capture = await self._run_lifecycle("done", "final")
 
-        events = [c.args[1] for c in mock_capture.call_args_list]
-        assert events == [
-            AnalyticsEvents.AGENT_RUN_STARTED,
-            AnalyticsEvents.AGENT_RUN_COMPLETED,
-        ]
-        expected_props = {
-            "agent": "executor",
-            "mode": "background",
-            "conversation_id": "conv-1",
-            "task_id": "task-1",
-        }
-        assert mock_capture.call_args_list[0].args[0] == "user-1"
-        assert mock_capture.call_args_list[0].args[2] == expected_props
+        events = [type(c.args[1]) for c in mock_capture.call_args_list]
+        assert events == [AgentRunStarted, AgentRunCompleted]
+        assert mock_capture.call_args_list[0].args == (
+            UserId(USER_ID),
+            AgentRunStarted(
+                agent="executor", mode="background", conversation_id="conv-1", task_id="task-1"
+            ),
+        )
         # The TERMINAL event needs the same scrutiny as the opening one: it was
         # asserted only by name, so its user id and payload could both go null
         # without a test noticing.
-        assert mock_capture.call_args_list[1].args[0] == "user-1"
-        terminal_props = mock_capture.call_args_list[1].args[2]
-        assert terminal_props["agent"] == "executor"
-        assert terminal_props["mode"] == "background"
-        assert terminal_props["conversation_id"] == "conv-1"
-        assert terminal_props["task_id"] == "task-1"
-        assert terminal_props["queued"] is False
-        assert terminal_props["executor_active_ms"] >= 0.0
+        assert mock_capture.call_args_list[1].args[0] == UserId(USER_ID)
+        terminal = mock_capture.call_args_list[1].args[1]
+        assert terminal.agent == "executor"
+        assert terminal.mode == "background"
+        assert terminal.conversation_id == "conv-1"
+        assert terminal.task_id == "task-1"
+        assert terminal.queued is False
+        assert terminal.executor_active_ms is not None
+        assert terminal.executor_active_ms >= 0.0
+        # A resumed segment re-enters with the same task, so the terminal is keyed on it.
+        assert mock_capture.call_args_list[0].kwargs["dedupe"] is None
+        assert mock_capture.call_args_list[1].kwargs["dedupe"].key == "task-1"
+
+    async def test_a_run_without_a_task_keys_its_terminal_on_the_stream(self) -> None:
+        mock_capture = await self._run_lifecycle("done", "final", task_id=None)
+
+        assert mock_capture.call_args_list[1].kwargs["dedupe"].key == "stream-1"
 
     async def test_failed_on_error_result(self) -> None:
-        mock_capture = await self._run_lifecycle("it broke", "error")
+        mock_capture = await self._run_lifecycle("it broke", "error", error_type="RuntimeError")
 
-        events = [c.args[1] for c in mock_capture.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
-        assert mock_capture.call_args_list[1].args[0] == "user-1"
-        terminal_props = mock_capture.call_args_list[1].args[2]
-        assert terminal_props["agent"] == "executor"
-        assert terminal_props["task_id"] == "task-1"
-        assert terminal_props["queued"] is False
-        assert terminal_props["executor_active_ms"] >= 0.0
+        events = [type(c.args[1]) for c in mock_capture.call_args_list]
+        assert events == [AgentRunStarted, AgentRunFailed]
+        assert mock_capture.call_args_list[1].args[0] == UserId(USER_ID)
+        terminal = mock_capture.call_args_list[1].args[1]
+        assert terminal.agent == "executor"
+        assert terminal.task_id == "task-1"
+        assert terminal.queued is False
+        assert terminal.executor_active_ms is not None
+        assert terminal.executor_active_ms >= 0.0
+        assert terminal.reason == "RuntimeError"
 
     async def test_a_run_with_no_user_id_captures_nothing(self) -> None:
         """run.user with no id must produce no events at all — the guard relies on a "" default staying falsy."""
@@ -640,8 +749,8 @@ class TestRunLifecycleAnalytics:
         """A HIL pause is not a terminal outcome — the resume re-enters and captures its own STARTED."""
         mock_capture = await self._run_lifecycle("", "paused")
 
-        events = [c.args[1] for c in mock_capture.call_args_list]
-        assert events == [AnalyticsEvents.AGENT_RUN_STARTED]
+        events = [type(c.args[1]) for c in mock_capture.call_args_list]
+        assert events == [AgentRunStarted]
 
     async def test_no_user_id_skips_events(self) -> None:
         mock_capture = await self._run_lifecycle("done", "final", user_id="")
@@ -792,7 +901,7 @@ def _approval_card(approval_id: str, status: str, **extra) -> dict:
 def _record(approval_id: str, status: HILApprovalStatus, tool_name: str = "SEND_GMAIL"):
     return HILApprovalRecord(
         approval_id=approval_id,
-        user_id="user-1",
+        user_id=USER_ID,
         conversation_id="conv-1",
         stream_id="stream-1",
         tool_name=tool_name,
@@ -1123,7 +1232,7 @@ class TestMergeResumedResultFailurePaths:
         set_fu.assert_awaited_once()
         assert set_fu.await_args.args == ("conv-1",)
         assert set_fu.await_args.kwargs["message_id"] == "orig-msg-1"
-        assert set_fu.await_args.kwargs["user_id"] == "user-1"
+        assert set_fu.await_args.kwargs["user_id"] == USER_ID
         assert set_fu.await_args.kwargs["actions"] == ["do the next thing"]
 
     async def test_no_follow_ups_means_no_write(self) -> None:
@@ -1152,13 +1261,13 @@ class TestMergeResumedResultFailurePaths:
 
         read = calls["get_message"].await_args
         assert read.args == ("conv-1", "orig-msg-1")
-        assert read.kwargs["user_id"] == "user-1"
+        assert read.kwargs["user_id"] == USER_ID
 
         for name in ("set_response", "set_tool_data"):
             write = calls[name].await_args
             assert write.args == ("conv-1",), f"{name} was not scoped to the conversation"
             assert write.kwargs["message_id"] == "orig-msg-1", f"{name} targeted another message"
-            assert write.kwargs["user_id"] == "user-1", f"{name} was not scoped to the owner"
+            assert write.kwargs["user_id"] == USER_ID, f"{name} was not scoped to the owner"
 
 
 class TestApprovalOutcomesNoteContent:
@@ -1186,7 +1295,7 @@ class TestApprovalOutcomesNoteContent:
         _note, get_msg = await self._note([], {})
 
         assert get_msg.await_args.args == ("conv-1", "orig-msg-1")
-        assert get_msg.await_args.kwargs["user_id"] == "user-1"
+        assert get_msg.await_args.kwargs["user_id"] == USER_ID
 
     async def test_an_ordinary_card_does_not_stop_the_scan(self) -> None:
         """Cards arrive in stream order, so a plain tool card routinely sits before an approval; stopping there loses it."""
@@ -1362,7 +1471,7 @@ class TestDeliveredMessageIdentity:
         run = ExecutorRun(
             stream_id="",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="user-1"),
+            user=AuthenticatedUser(user_id=USER_ID),
             kind=RunKind.QUEUED,
             task_id="task-7",
             user_message_id="user-msg-1",
@@ -1377,7 +1486,7 @@ class TestDeliveredMessageIdentity:
         run = ExecutorRun(
             stream_id="",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="user-1"),
+            user=AuthenticatedUser(user_id=USER_ID),
             kind=RunKind.QUEUED,
             task_id="task-7",
             user_message_id="user-msg-1",
@@ -1692,7 +1801,7 @@ class TestBuildFollowUpActions:
         msg_type: str = "final",
         notification_text: str = "Archived 3 emails.",
         user_msg_content: str = "clean my inbox",
-        user_id: str = "user-1",
+        user_id: str = USER_ID,
         conversation_id: str | None = "conv-1",
     ) -> AsyncMock:
         with patch.object(
@@ -1712,13 +1821,13 @@ class TestBuildFollowUpActions:
         gen = await self._build()
 
         assert gen.call_args.args[2] == {
-            "configurable": {"user_id": "user-1", "session_id": "conv-1"}
+            "configurable": {"user_id": USER_ID, "session_id": "conv-1"}
         }
 
     async def test_a_conversationless_run_still_names_its_user(self) -> None:
         gen = await self._build(conversation_id=None)
 
-        assert gen.call_args.args[2] == {"configurable": {"user_id": "user-1", "session_id": None}}
+        assert gen.call_args.args[2] == {"configurable": {"user_id": USER_ID, "session_id": None}}
 
     async def test_the_prompt_pairs_the_request_with_the_answer(self) -> None:
         gen = await self._build()
@@ -1735,7 +1844,7 @@ class TestBuildFollowUpActions:
     async def test_the_spend_is_attributed_to_the_run_owner(self) -> None:
         gen = await self._build()
 
-        assert gen.call_args.args[1] == "user-1"
+        assert gen.call_args.args[1] == USER_ID
 
     async def test_a_non_final_result_asks_for_nothing(self) -> None:
         """An error or intermediate ack gets no suggestions, and costs no call."""
@@ -1750,7 +1859,7 @@ def _quoting_run(user: dict | None = None) -> ExecutorRun:
     return ExecutorRun(
         stream_id="",
         conversation_id="conv-1",
-        user=AuthenticatedUser(user_id="user-1") if user is None else user,
+        user=AuthenticatedUser(user_id=USER_ID) if user is None else user,
         kind=RunKind.QUEUED,
         task_id="task-7",
         user_message_id="user-msg-1",
@@ -1760,7 +1869,7 @@ def _quoting_run(user: dict | None = None) -> ExecutorRun:
 def _target(**over) -> rd._DeliveryTarget:
     """Build the delivery target a quoting queued run produces."""
     fields: dict = {
-        "user_id": "user-1",
+        "user_id": USER_ID,
         "conversation_id": "conv-1",
         "task_id": "task-7",
         "emit_task_id": True,
@@ -1776,7 +1885,7 @@ class TestNarrateResultCallContract:
 
     Every one of these is a scoping key: the conversation decides which
     checkpoint (and therefore which persona and history) comms loads, the user
-    decides whose it is, and the workflow_id switches it to the workflow voice.
+    decides whose it is, and the preamble decides the voice (a workflow's here).
     A blanked or dropped one still returns text, so nothing downstream notices
     that the text was voiced for the wrong conversation.
     """
@@ -1789,15 +1898,9 @@ class TestNarrateResultCallContract:
             msg_type: str,
             conversation_id: str,
             user,
-            returned_note: str = "",
-            workflow_id: str | None = None,
+            preamble: str,
         ) -> str:
-            calls.append(
-                (
-                    (result_text, msg_type, conversation_id, user),
-                    {"returned_note": returned_note, "workflow_id": workflow_id},
-                )
-            )
+            calls.append(((result_text, msg_type, conversation_id, user), {"preamble": preamble}))
             return "voiced"
 
         with patch.object(rd, "narrate_executor_result", new=_record):
@@ -1808,24 +1911,10 @@ class TestNarrateResultCallContract:
         assert narrated == "voiced"
         assert calls == [
             (
-                ("raw text", "final", "conv-1", AuthenticatedUser(user_id="user-1")),
-                {"returned_note": "handed back by the subagent", "workflow_id": "wf-1"},
+                ("raw text", "final", "conv-1", AuthenticatedUser(user_id=USER_ID)),
+                {"preamble": PLATFORM_DELIVERY_NOTE},
             )
         ]
-
-    async def test_the_decided_approval_outcomes_ride_on_the_result_text(self) -> None:
-        """The note stops comms re-offering an approve/decline the user already answered, so it must be in the text comms reads."""
-        with (
-            patch.object(
-                rd, "_approval_outcomes_note", new=AsyncMock(return_value="\n\n[APPROVAL] done")
-            ),
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ) as narrate,
-        ):
-            await rd._narrate_result(_run(), "raw text", "final", "")
-
-        assert narrate.await_args.args[0] == "raw text\n\n[APPROVAL] done"
 
 
 class TestBuildBotMessageShape:
@@ -1870,7 +1959,7 @@ class TestAttachReplyQuoteLookup:
         result, get, _bot_message = await self._attach(_quoting_run())
 
         assert get.await_args.args == ("conv-1", "user-msg-1")
-        assert get.await_args.kwargs == {"user_id": "user-1"}
+        assert get.await_args.kwargs == {"user_id": USER_ID}
         assert result == (True, "what I asked")
 
     async def test_a_run_with_no_user_id_scopes_to_empty_not_none(self) -> None:
@@ -1928,6 +2017,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
             "response": "voiced",
             "message_id": "msg-1",
             "date": "2026-01-01T00:00:00+00:00",
+            "kind": "text",
             "task_id": "task-7",
             "replyToMessage": {
                 "id": "user-msg-1",
@@ -1944,6 +2034,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
             "response": "voiced",
             "message_id": "msg-1",
             "date": "2026-01-01T00:00:00+00:00",
+            "kind": "text",
         }
 
 
@@ -2016,7 +2107,7 @@ class TestDeliveryContextIsThreadedWhole:
         """The broadcast is a per-user fan-out: a blank owner reaches nobody while every log line still reads delivered."""
         ws, _spawn = await self._deliver_queued()
 
-        assert ws.await_args.args[0] == "user-1"
+        assert ws.await_args.args[0] == USER_ID
 
     async def test_the_quote_the_user_sees_survives_the_hand_off(self) -> None:
         ws, _spawn = await self._deliver_queued()
@@ -2047,7 +2138,24 @@ class TestDeliveryContextIsThreadedWhole:
                 _run(), "raw", "final", "handed back by the subagent", tool_data=None
             )
 
-        assert narrate.await_args.kwargs["returned_note"] == "handed back by the subagent"
+        assert narrate.await_args.kwargs["preamble"].startswith("handed back by the subagent")
+
+
+class TestDeliveryPreamble:
+    """Which delivery instructions comms writes a run's reply under."""
+
+    CARD_NOTE = "<returned_to_frontend>a card is on screen</returned_to_frontend>"
+
+    def test_a_workflow_result_is_restated_in_full_with_no_card_note(self) -> None:
+        """The card note would tell comms not to list data that has no card to fall back on."""
+        assert rd._delivery_preamble(_run(workflow=True), self.CARD_NOTE) == (
+            PLATFORM_DELIVERY_NOTE
+        )
+
+    def test_an_interactive_result_reads_the_card_note_before_the_split_rule(self) -> None:
+        assert rd._delivery_preamble(_run(), self.CARD_NOTE) == (
+            self.CARD_NOTE + INTERACTIVE_DELIVERY_NOTE + SILENCE_NOTE
+        )
 
 
 class TestWorkflowNotificationRef:
@@ -2105,13 +2213,13 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
         run = ExecutorRun(
             stream_id="stream-1",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="user-1"),
+            user=AuthenticatedUser(user_id=USER_ID),
             kind=RunKind.LIVE,
             task_id="task-1",
             user_message_id=None,
         )
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture"),
             patch.object(
                 er,
                 "_execute_executor",
@@ -2152,7 +2260,7 @@ class TestRunBoundaryCarriesWorkflowExecution:
         run = ExecutorRun(
             stream_id="stream-1",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="user-1"),
+            user=AuthenticatedUser(user_id=USER_ID),
             kind=RunKind.LIVE,
             task_id="task-1",
             user_message_id=None,
@@ -2166,12 +2274,12 @@ class TestRunBoundaryCarriesWorkflowExecution:
             return _ExecutorResult("done", "final")
 
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture"),
             patch.object(er, "_execute_executor", side_effect=capture),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):
             await er.run_executor_background(
-                run, "do things", {"user_id": "user-1", "workflow_id": "wf-9"}
+                run, "do things", {"user_id": USER_ID, "workflow_id": "wf-9"}
             )
 
         assert seen["workflow"] == {"id": "wf-9", "execution_id": "exec-42"}
@@ -2191,7 +2299,7 @@ class TestRunBoundaryCarriesWorkflowExecution:
         run = ExecutorRun(
             stream_id="stream-1",
             conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="user-1"),
+            user=AuthenticatedUser(user_id=USER_ID),
             kind=RunKind.LIVE,
             task_id="task-1",
             user_message_id=None,
@@ -2205,10 +2313,599 @@ class TestRunBoundaryCarriesWorkflowExecution:
             return _ExecutorResult("done", "final")
 
         with (
-            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch("app.services.analytics_service.capture"),
             patch.object(er, "_execute_executor", side_effect=capture),
             patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
         ):
-            await er.run_executor_background(run, "do things", {"user_id": "user-1"})
+            await er.run_executor_background(run, "do things", {"user_id": USER_ID})
 
         assert seen["workflow"] is None
+
+
+class TestCommsDirectiveDelivery:
+    """Comms can answer a not-mention-worthy background update with a control line: SILENCE (deliver nothing) or REACT (a one-emoji acknowledgment)."""
+
+    async def test_silence_delivers_nothing_on_any_surface(self) -> None:
+        with patch.object(rd, "capture") as capture:
+            save, platform, ws = await _deliver(
+                ConversationSource.WHATSAPP,
+                comms_text="<SILENCE>routine calendar refresh</SILENCE>",
+            )
+        save.assert_not_awaited()
+        platform.assert_not_awaited()
+        ws.assert_not_awaited()
+        # Attributed to the run's owner, or the funnel joins nobody. One resolution
+        # event per update, tagged with the outcome; the reason text never leaves.
+        capture.assert_called_once()
+        assert capture.call_args.args == (
+            UserId(USER_ID),
+            ChatBackgroundUpdateResolved(outcome="silence"),
+        )
+
+    @pytest.mark.regression
+    async def test_a_message_with_a_trailing_directive_delivers_only_the_message(self) -> None:
+        message = "Your passport expires in 13 days."
+        save, platform, _ws = await _deliver(
+            ConversationSource.TELEGRAM,
+            comms_text=f"{message}{NEW_MESSAGE_BREAKER}<EMOJI>👍</EMOJI>",
+        )
+        assert platform.await_args.args[2] == message
+        saved = save.await_args.args[0].messages[0]
+        assert (saved.response, saved.kind) == (message, rd.MessageKind.TEXT)
+
+    async def test_silence_on_web_broadcasts_nothing(self) -> None:
+        save, platform, ws = await _deliver(
+            ConversationSource.WEB, comms_text="<SILENCE>nothing new</SILENCE>"
+        )
+        save.assert_not_awaited()
+        ws.assert_not_awaited()
+        platform.assert_not_awaited()
+
+    async def test_react_delivers_the_emoji_as_the_message_on_a_bot(self) -> None:
+        with patch.object(rd, "capture") as capture:
+            save, platform, _ws = await _deliver(
+                ConversationSource.WHATSAPP, comms_text="<EMOJI>👍</EMOJI>"
+            )
+        platform.assert_awaited_once()
+        assert platform.await_args.args[2] == "👍"
+        capture.assert_called_once()
+        assert capture.call_args.args == (
+            UserId(USER_ID),
+            ChatBackgroundUpdateResolved(outcome="react", emoji="👍", delivery="fallback_text"),
+        )
+        # The ack intent is recorded on the persisted message, not left to be
+        # reverse-engineered from the body being emoji-only.
+        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
+
+    async def test_react_delivers_the_emoji_over_websocket_on_web(self) -> None:
+        save, _platform, ws = await _deliver(ConversationSource.WEB, comms_text="<EMOJI>✅</EMOJI>")
+        ws.assert_awaited_once()
+        assert ws.await_args.args[1]["message"]["response"] == "✅"
+        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
+
+    async def test_react_attaches_a_native_reaction_when_the_platform_id_is_known(
+        self,
+    ) -> None:
+        """The recorded platform id turns the ack into a real reaction: the reaction envelope goes out and no text bubble is sent."""
+        run = replace(_run(), user_message_id="user-msg-1")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>👍</EMOJI>",
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(
+                rd,
+                "_get_conversation_source",
+                new_callable=AsyncMock,
+                return_value=ConversationSource.WHATSAPP,
+            ),
+            patch.object(
+                rd,
+                "_lookup_platform_message_id",
+                new_callable=AsyncMock,
+                return_value="wamid.123",
+            ),
+            patch.object(
+                rd, "deliver_reaction_to_platform", new_callable=AsyncMock, return_value=True
+            ) as react,
+            patch.object(rd, "deliver_message_to_platform", new_callable=AsyncMock) as platform,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "capture") as capture,
+        ):
+            await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
+        react.assert_awaited_once_with(
+            ConversationSource.WHATSAPP,
+            USER_ID,
+            "wamid.123",
+            "👍",
+            conversation_id="conv-1",
+        )
+        platform.assert_not_awaited()
+        ws.assert_not_awaited()
+        # The ack is still persisted (history/audit), targeted at the GAIA
+        # message it answers so every surface can render it as a reaction.
+        saved = save.await_args.args[0].messages[0]
+        assert saved.kind is rd.MessageKind.EMOJI_ACK
+        assert saved.response == "👍"
+        assert saved.reacts_to_message_id == "user-msg-1"
+        assert capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="react", emoji="👍", delivery="reaction"
+        )
+
+    async def test_react_falls_back_to_text_without_a_platform_id(self) -> None:
+        """Older turns and non-bot triggers have no recorded platform id: the emoji goes out as a text bubble and the ack is never lost."""
+        run = replace(_run(), user_message_id="user-msg-1")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>👍</EMOJI>",
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(
+                rd,
+                "_get_conversation_source",
+                new_callable=AsyncMock,
+                return_value=ConversationSource.WHATSAPP,
+            ),
+            patch.object(
+                rd, "_lookup_platform_message_id", new_callable=AsyncMock, return_value=None
+            ),
+            patch.object(rd, "deliver_reaction_to_platform", new_callable=AsyncMock) as react,
+            patch.object(
+                rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
+            ) as platform,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+        ):
+            await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
+        react.assert_not_awaited()
+        platform.assert_awaited_once()
+        assert platform.await_args.args[2] == "👍"
+
+    async def test_web_badge_payload_carries_kind_and_reaction_target(self) -> None:
+        """The web client renders an emoji-ack as a badge on the answered message, not a new bubble — it needs kind + target in the push."""
+        run = replace(_run(), user_message_id="user-msg-1")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd,
+                "_lookup_user_message_content",
+                new_callable=AsyncMock,
+                return_value="",
+            ),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "_spawn_deferred_follow_ups"),
+        ):
+            await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
+        message = ws.await_args.args[1]["message"]
+        assert message["response"] == "✅"
+        assert message["kind"] == "emoji_ack"
+        assert message["reacts_to_message_id"] == "user-msg-1"
+
+    async def test_react_resolves_to_no_speakable_text(self) -> None:
+        """Voice must not read the emoji aloud: a react returns (None, id)."""
+        run = replace(_run(), user_message_id="user-msg-1")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd,
+                "_lookup_user_message_content",
+                new_callable=AsyncMock,
+                return_value="",
+            ),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "_spawn_deferred_follow_ups"),
+        ):
+            text, message_id = await rd.deliver_result(
+                run, result_text="raw", result_type="final", tool_data=None
+            )
+        assert text is None
+        assert message_id
+
+    async def test_react_spawns_no_deferred_follow_ups(self) -> None:
+        """Follow-up chips attach to a rendered message; a badge has none, so generating them burns an LLM call for chips that go nowhere."""
+        run = replace(_run(), user_message_id="user-msg-1")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd,
+                "_lookup_user_message_content",
+                new_callable=AsyncMock,
+                return_value="",
+            ),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
+        ):
+            await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
+        spawn.assert_not_called()
+
+    async def test_ordinary_text_still_delivers_normally(self) -> None:
+        with patch.object(rd, "capture") as capture:
+            save, platform, _ws = await _deliver(
+                ConversationSource.WHATSAPP, comms_text="Booked your 9am flight."
+            )
+        assert platform.await_args.args[2] == "Booked your 9am flight."
+        # The baseline outcome is captured too, so silence/react rates have a
+        # denominator; an ordinary message stays MessageKind.TEXT.
+        assert capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="reply", delivery="message"
+        )
+        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.TEXT
+
+
+@dataclass
+class _Delivered:
+    """Every seam one deliver_result call touched, plus the wide event it wrote."""
+
+    returned: tuple[str | None, str | None]
+    event: dict[str, Any]
+    save: AsyncMock
+    platform: AsyncMock
+    reaction: AsyncMock
+    lookup: AsyncMock
+    ws: AsyncMock
+    follow_ups: AsyncMock
+    spawn: MagicMock
+    capture: MagicMock
+    to_platforms: AsyncMock
+    notify: AsyncMock
+
+
+@dataclass(frozen=True)
+class _Seams:
+    """What the stubbed I/O seams answer during one delivery."""
+
+    comms_text: str
+    source: ConversationSource | None
+    follow_ups: list[str] | None = None
+    platform_id: str | None = None
+
+
+async def _deliver_run(
+    run: ExecutorRun,
+    seams: _Seams,
+    *,
+    result_type: str = "final",
+    tool_data: list[ToolDataEntry] | None = None,
+) -> _Delivered:
+    """Run deliver_result with every I/O seam recorded; the routing logic runs for real."""
+    async with captured_wide_event() as event:
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value=seams.comms_text
+            ),
+            patch.object(
+                rd,
+                "generate_follow_up_actions",
+                new_callable=AsyncMock,
+                return_value=seams.follow_ups or [],
+            ) as generated,
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(
+                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=seams.source
+            ),
+            patch.object(
+                rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=""
+            ),
+            patch.object(
+                rd,
+                "_lookup_platform_message_id",
+                new_callable=AsyncMock,
+                return_value=seams.platform_id,
+            ) as lookup,
+            patch.object(
+                rd, "deliver_reaction_to_platform", new_callable=AsyncMock, return_value=True
+            ) as reaction,
+            patch.object(
+                rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
+            ) as platform,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
+            patch.object(rd, "capture") as capture,
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as to_platforms,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            returned = await rd.deliver_result(
+                run, result_text="raw", result_type=result_type, tool_data=tool_data
+            )
+    return _Delivered(
+        returned=returned,
+        event=event,
+        save=save,
+        platform=platform,
+        reaction=reaction,
+        lookup=lookup,
+        ws=ws,
+        follow_ups=generated,
+        spawn=spawn,
+        capture=capture,
+        to_platforms=to_platforms,
+        notify=notify,
+    )
+
+
+def _saved(delivered: _Delivered) -> MessageModel:
+    return delivered.save.await_args.args[0].messages[0]
+
+
+class TestTheCommsVerdictIsOnTheWideEvent:
+    @pytest.mark.parametrize(
+        ("comms_text", "expected"),
+        [
+            (
+                "<SILENCE>routine refresh</SILENCE>",
+                {"comms_delivery": "silenced", "silence_reason": "routine refresh"},
+            ),
+            ("<EMOJI>👍</EMOJI>", {"comms_delivery": "reacted"}),
+            ("Booked your flight.", {"comms_delivery": "message"}),
+        ],
+    )
+    async def test_how_comms_answered_is_recorded(
+        self, comms_text: str, expected: dict[str, str]
+    ) -> None:
+        delivered = await _deliver_run(
+            _run(), _Seams(comms_text=comms_text, source=ConversationSource.WHATSAPP)
+        )
+
+        assert {key: delivered.event.get(key) for key in expected} == expected
+        assert ("silence_reason" in delivered.event) is ("silence_reason" in expected)
+
+
+class TestResolutionAnalyticsIsOnePerUpdate:
+    """One chat:background_update_resolved per update, deduped on the run it resolved."""
+
+    async def test_a_queued_run_dedupes_on_its_task_and_dispatch_time(self) -> None:
+        run = _run(RunKind.QUEUED, task_id="task-7")
+        delivered = await _deliver_run(run, _Seams(comms_text="Done.", source=None))
+
+        assert delivered.capture.call_args.kwargs == {
+            "dedupe": Dedupe(key="task-7", occurred_at=run.dispatched_at)
+        }
+
+    async def test_a_run_with_no_id_is_not_deduped_onto_its_conversation(self) -> None:
+        """Every update in a conversation would otherwise collapse into one row."""
+        delivered = await _deliver_run(_run(), _Seams(comms_text="Done.", source=None))
+
+        assert delivered.capture.call_args.kwargs == {"dedupe": None}
+
+    async def test_a_web_react_lands_as_a_badge(self) -> None:
+        delivered = await _deliver_run(
+            replace(_run(), user_message_id="user-msg-1"),
+            _Seams(comms_text="<EMOJI>✅</EMOJI>", source=None),
+        )
+
+        assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="react", emoji="✅", delivery="badge"
+        )
+
+    async def test_a_web_reply_is_delivered_over_the_websocket(self) -> None:
+        delivered = await _deliver_run(
+            _run(), _Seams(comms_text="Done.", source=ConversationSource.WEB)
+        )
+
+        assert delivered.event["result_delivery"]["transport"] == "websocket"
+        assert delivered.event["result_delivery"]["delivered"] is True
+
+
+class TestInlineFollowUpsOnlyWhereNothingWaits:
+    """Only a workflow attaches follow-ups inline; web defers them; bots and reactions get none."""
+
+    async def test_a_bot_reaction_generates_no_follow_ups(self) -> None:
+        delivered = await _deliver_run(
+            _run(), _Seams(comms_text="<EMOJI>👍</EMOJI>", source=ConversationSource.WHATSAPP)
+        )
+
+        delivered.follow_ups.assert_not_awaited()
+
+    async def test_the_web_answer_is_not_gated_on_follow_ups(self) -> None:
+        delivered = await _deliver_run(
+            _run(), _Seams(comms_text="Done.", source=ConversationSource.WEB), tool_data=CARDS
+        )
+
+        delivered.follow_ups.assert_not_awaited()
+        kwargs = delivered.spawn.call_args.kwargs
+        assert kwargs["bot_message"].message_id == _saved(delivered).message_id
+        assert kwargs["result_type"] == "final"
+        assert kwargs["tool_data"] == CARDS
+        assert kwargs["target"].conversation_id == "conv-1"
+
+    async def test_a_web_ack_with_no_answered_message_carries_no_reaction_target(self) -> None:
+        delivered = await _deliver_run(_run(), _Seams(comms_text="<EMOJI>✅</EMOJI>", source=None))
+
+        assert "reacts_to_message_id" not in delivered.ws.await_args.args[1]["message"]
+
+
+class TestAWorkflowResult:
+    async def test_a_finished_workflow_reaches_the_platforms_and_the_badge(self) -> None:
+        delivered = await _deliver_run(
+            _run(workflow=True), _Seams(comms_text="Digest ready.", source=None)
+        )
+
+        assert delivered.to_platforms.await_args.kwargs["notification_text"] == "Digest ready."
+        notify = delivered.notify.await_args.kwargs
+        assert notify["msg_type"] == "final"
+        assert notify["target"].conversation_id == "conv-1"
+        assert notify["target"].user_id == USER_ID
+        assert delivered.returned == ("Digest ready.", _saved(delivered).message_id)
+        assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="reply", delivery="message"
+        )
+
+    async def test_a_failed_workflow_notifies_failure_but_posts_nothing_to_platforms(self) -> None:
+        delivered = await _deliver_run(
+            _run(workflow=True), _Seams(comms_text="It failed.", source=None), result_type="error"
+        )
+
+        delivered.to_platforms.assert_not_awaited()
+        assert delivered.notify.await_args.kwargs["msg_type"] == "error"
+
+    async def test_a_silent_workflow_posts_nothing_to_platforms(self) -> None:
+        run = replace(_run(workflow=True), workflow_notify_on_completion=False)
+
+        delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
+
+        delivered.to_platforms.assert_not_awaited()
+
+    async def test_a_workflow_react_falls_back_to_the_text_ack(self) -> None:
+        delivered = await _deliver_run(
+            _run(workflow=True), _Seams(comms_text="<EMOJI>👍</EMOJI>", source=None)
+        )
+
+        assert delivered.returned == (None, _saved(delivered).message_id)
+        assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="react", emoji="👍", delivery="fallback_text"
+        )
+
+
+class TestAPlatformReaction:
+    async def test_a_known_platform_id_attaches_a_native_reaction(self) -> None:
+        delivered = await _deliver_run(
+            replace(_run(), user_message_id="user-msg-1"),
+            _Seams(
+                comms_text="<EMOJI>👍</EMOJI>",
+                source=ConversationSource.WHATSAPP,
+                platform_id="wamid.123",
+            ),
+        )
+
+        delivered.lookup.assert_awaited_once_with("conv-1", "user-msg-1", USER_ID)
+        delivered.platform.assert_not_awaited()
+        assert delivered.event["platform_reaction"] == "attached"
+
+    async def test_no_platform_id_falls_back_to_a_text_bubble(self) -> None:
+        delivered = await _deliver_run(
+            replace(_run(), user_message_id="user-msg-1"),
+            _Seams(comms_text="<EMOJI>👍</EMOJI>", source=ConversationSource.WHATSAPP),
+        )
+
+        delivered.reaction.assert_not_awaited()
+        delivered.platform.assert_awaited_once_with(
+            ConversationSource.WHATSAPP, USER_ID, "👍", conversation_id="conv-1"
+        )
+        assert delivered.event["platform_reaction"] == "fallback_text"
+
+
+class TestLookupPlatformMessageId:
+    async def test_no_user_message_means_nothing_to_anchor_to(self) -> None:
+        with patch.object(rd, "conversation_repository") as repo:
+            assert await rd._lookup_platform_message_id("conv-1", None, USER_ID) is None
+        repo.get_message.assert_not_called()
+
+    async def test_the_answered_messages_platform_id_is_read_for_this_user(self) -> None:
+        message = MessageModel(type="user", response="hi", date="2026-01-01")
+        message.platform_message_id = "wamid.123"
+        with patch.object(rd, "conversation_repository") as repo:
+            repo.get_message = AsyncMock(return_value=message)
+            found = await rd._lookup_platform_message_id("conv-1", "user-msg-1", USER_ID)
+
+        assert found == "wamid.123"
+        repo.get_message.assert_awaited_once_with("conv-1", "user-msg-1", user_id=USER_ID)
+
+    async def test_a_missing_message_has_no_platform_id(self) -> None:
+        with patch.object(rd, "conversation_repository") as repo:
+            repo.get_message = AsyncMock(return_value=None)
+            assert await rd._lookup_platform_message_id("conv-1", "user-msg-1", USER_ID) is None
+
+    async def test_a_lookup_failure_is_logged_and_falls_back(self) -> None:
+        async with captured_wide_event() as event:
+            with patch.object(rd, "conversation_repository") as repo:
+                repo.get_message = AsyncMock(side_effect=RuntimeError("mongo down"))
+                found = await rd._lookup_platform_message_id("conv-1", "user-msg-1", USER_ID)
+
+        assert found is None
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.AGENT} _lookup_platform_message_id: failed",
+                "error": "mongo down",
+            }
+        ]
+
+
+class TestBroadcastRetry:
+    async def test_a_failed_push_is_retried_once_and_logged(self) -> None:
+        event_out = {"type": "conversation.new_message"}
+        ws = MagicMock()
+        ws.broadcast_to_user = AsyncMock(side_effect=[RuntimeError("socket gone"), None])
+
+        async with captured_wide_event() as event:
+            with (
+                patch.object(rd, "websocket_manager", ws),
+                patch.object(rd, "WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS", 0),
+            ):
+                await rd._broadcast_message(USER_ID, event_out)
+
+        assert ws.broadcast_to_user.await_count == 2
+        ws.broadcast_to_user.assert_awaited_with(USER_ID, event_out)
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.AGENT} _broadcast_message: broadcast attempt failed",
+                "attempt": 1,
+                "user_id": USER_ID,
+                "error": "socket gone",
+            }
+        ]
+
+
+class TestWorkflowNotificationIsTraceable:
+    async def test_the_dispatch_log_names_the_message_the_badge_opens(self) -> None:
+        """Operators trace a workflow badge back to its saved message by this id."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="Digest ready."
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch(
+                "app.services.workflow.notifications.send_workflow_completion_notification",
+                new_callable=AsyncMock,
+            ) as completion,
+            patch.object(rd, "log") as log_mock,
+        ):
+            _, message_id = await rd.deliver_result(
+                _run(workflow=True), result_text="raw", result_type="final", tool_data=None
+            )
+
+        completion.assert_awaited_once_with(
+            workflow_id="wf-1",
+            workflow_title="Morning digest",
+            conversation_id="conv-1",
+            user_id=USER_ID,
+        )
+        dispatched = [
+            call.kwargs
+            for call in log_mock.info.call_args_list
+            if "workflow notification dispatched" in call.args[0]
+        ]
+        assert dispatched == [{"workflow_id": "wf-1", "message_id": message_id}]

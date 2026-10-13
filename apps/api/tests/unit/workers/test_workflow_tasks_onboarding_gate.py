@@ -15,7 +15,7 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 MODULE = "app.workers.tasks.workflow_tasks"
 
 
-def _workflow(user_id: str = "user-1") -> MagicMock:
+def _workflow(user_id: str = "6812f0b3c9a14e2b7d5a91cc") -> MagicMock:
     wf = MagicMock()
     wf.user_id = user_id
     wf.steps = []
@@ -46,7 +46,7 @@ async def _run_task(
         ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.claim_task_for_execution = AsyncMock(return_value=True)

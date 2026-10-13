@@ -12,7 +12,7 @@ import {
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -26,6 +26,7 @@ import { BearerTokenModal } from "@/features/integrations/components/BearerToken
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
@@ -176,24 +177,17 @@ export function IntegrationDetailClient({
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
-  // Fetch the user's personalized catalog (only when authenticated) to check
-  // whether they have already added this integration.
-  const { data: myIntegrationsData } = useQuery({
-    queryKey: integrationKeys.me,
-    queryFn: integrationsApi.getMyIntegrations,
-    enabled: isAuthenticated,
-  });
+  const { integrations: myIntegrations } = useIntegrations();
 
-  // The /me catalog lists every integration with a connection status; the user
-  // "has" one once its status is anything other than not_connected.
+  // The personalized catalog lists every integration; the user "has" one once
+  // its status is anything other than not_connected.
   const alreadyHasIntegration = useMemo(() => {
-    if (!myIntegrationsData?.integrations) return false;
-    return myIntegrationsData.integrations.some(
+    return myIntegrations.some(
       (item) =>
         item.id === integration.integrationId &&
         item.status !== "not_connected",
     );
-  }, [myIntegrationsData, integration.integrationId]);
+  }, [myIntegrations, integration.integrationId]);
 
   const isNative = integration.source === "platform";
 

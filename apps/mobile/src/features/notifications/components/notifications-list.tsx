@@ -371,10 +371,12 @@ export function NotificationsList({
               isActionLoading={(actionId) =>
                 !!isActionLoading?.(item.notification.id, actionId)
               }
-              isSelectMode={isSelectMode}
-              isSelected={selectedIds?.has(item.notification.id) ?? false}
-              onLongPress={onLongPress}
-              onSelectToggle={onSelectToggle}
+              selection={{
+                mode: isSelectMode,
+                selected: selectedIds?.has(item.notification.id) ?? false,
+                onToggle: onSelectToggle,
+                onLongPress,
+              }}
             />
           </View>
         );

@@ -17,9 +17,11 @@ stale last_active_at; nothing reads that field off a cached path.
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import cast
 
 from bson import ObjectId
 
+from app.config.feature_flags import FeatureFlag
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -210,7 +212,8 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         for doc in docs:
             entry = (doc.platform_links or {}).get(platform)
             if isinstance(entry, dict):
-                platform_user_id = entry.get("id")
+                link: PlatformLinkRecord = cast(PlatformLinkRecord, entry)
+                platform_user_id = link.get("id")
                 if isinstance(platform_user_id, str):
                     ids.append(platform_user_id)
         return ids
@@ -358,6 +361,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         *,
         mode: str | None = None,
         tool_overrides: dict[str, bool] | None = None,
+        never_auto_tools: list[str] | None = None,
     ) -> None:
         """$set the provided hil_preferences fields, leaving the rest alone."""
         set_fields: dict[str, object] = {}
@@ -365,6 +369,8 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields["hil_preferences.mode"] = mode
         if tool_overrides is not None:
             set_fields["hil_preferences.tool_overrides"] = tool_overrides
+        if never_auto_tools is not None:
+            set_fields["hil_preferences.never_auto_tools"] = never_auto_tools
         if not set_fields:
             return
         await self._apply_raw_update(
@@ -472,7 +478,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_social_profiles(self, user_id: str, profiles: list[SocialProfile]) -> None:
+    async def set_social_profiles(self, user_id: str, profiles: Iterable[SocialProfile]) -> None:
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
@@ -676,6 +682,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_feature_flag(self, user_id: str, flag: FeatureFlag, enabled: bool) -> bool:
+        """Store the user's choice for one flag, leaving their other choices alone; returns whether the user existed."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"feature_flags.{flag.value}": enabled}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return updated is not None
+
     async def mark_email_processing_complete(self, user_id: str, memory_count: int) -> None:
         """Mark the user's Gmail→memory processing as complete."""
         await self._apply_raw_update(
@@ -730,18 +745,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "onboarding.overlay_opacity": overlay_opacity,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-        return updated is not None
-
-    async def set_provider_metadata(
-        self, user_id: str, provider: str, metadata: dict[str, str]
-    ) -> bool:
-        """Store a provider's extracted user metadata under provider_metadata; returns whether the user existed."""
-        updated = await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"provider_metadata.{provider}": metadata}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

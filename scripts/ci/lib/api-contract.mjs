@@ -108,18 +108,24 @@ function schemaFieldSets(schemas) {
 }
 
 function schemaTwinsIn(src, names) {
-  return [...src.matchAll(TYPE_DECLARATION)]
-    .map((m) => m[1])
-    .filter((name) => names.has(name) && !schemaAliasIn(src, name, names));
+  const found = [];
+  for (const match of src.matchAll(TYPE_DECLARATION)) {
+    const name = match[1];
+    if (names.has(name) && !schemaAliasIn(src, name, names)) found.push(name);
+  }
+  return found;
 }
 
 // Every declaration in an API-type directory, with the aliases and re-exports
 // filtered out. `export type { X } from "…"` never reaches here — the regex
 // needs an identifier after `type`, and a re-export has a brace.
 function handWrittenDeclsIn(src, names) {
-  return [...src.matchAll(TYPE_DECLARATION)]
-    .map((m) => m[1])
-    .filter((name) => !schemaAliasIn(src, name, names));
+  const found = [];
+  for (const match of src.matchAll(TYPE_DECLARATION)) {
+    const name = match[1];
+    if (!schemaAliasIn(src, name, names)) found.push(name);
+  }
+  return found;
 }
 
 // `interface X {` / `interface X extends Y {` / `type X = {` — only the forms
@@ -151,10 +157,12 @@ function topLevelFields(src, open) {
       current += char;
     }
   }
-  return members
-    .map((member) => member.match(FIELD_NAME)?.[1])
-    .filter(Boolean)
-    .map(normaliseField);
+  const fields = [];
+  for (const member of members) {
+    const name = member.match(FIELD_NAME)?.[1];
+    if (name) fields.push(normaliseField(name));
+  }
+  return fields;
 }
 
 function shapeTwinsIn(src, fieldSets) {
@@ -185,9 +193,11 @@ const UNTYPED_CALL = /\bapiService\b/;
 
 function untypedCallLines(file) {
   const lines = readFileSync(file, "utf8").split("\n");
-  return lines
-    .map((line, index) => (UNTYPED_CALL.test(line) ? index + 1 : 0))
-    .filter(Boolean);
+  const hits = [];
+  for (let index = 0; index < lines.length; index++) {
+    if (UNTYPED_CALL.test(lines[index])) hits.push(index + 1);
+  }
+  return hits;
 }
 
 const isTestFile = (file) =>

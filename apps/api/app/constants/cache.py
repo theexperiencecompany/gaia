@@ -66,7 +66,6 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 # missing invalidation, not a safety net.
 INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
 SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
-PROVIDER_METADATA_CACHE_TTL = ONE_DAY_TTL
 WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
 WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
@@ -91,6 +90,7 @@ LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 # Per-repository cache-key prefixes (one namespace per domain).
 NOTE_CACHE_PREFIX = "note"
 TODO_CACHE_PREFIX = "todo"
+USER_INTEGRATION_CACHE_PREFIX = "user_integration"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
 # A user's paired devices and the servers they expose. Generation scoped (see
@@ -196,8 +196,42 @@ BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
-EXECUTOR_QUEUE_PREFIX = "executor:queue:"
-EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
+# Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
+# run for as long as its park); a lock without it is a dead holder, reclaimable by anyone.
+EXECUTOR_ALIVE_PREFIX = "executor:alive:"
+EXECUTOR_ALIVE_TTL = 60
+EXECUTOR_ALIVE_BEAT_SECONDS = 20
+EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# A holder that has not proven it lives for this long could lapse before its next
+# renewal lands, so it stops rather than run beside whoever reclaims its lock.
+EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS
+# A lock this young may be a run between taking it and its first beat: never reclaimed.
+EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
+# Pending messages for a conversation's executor (see executor_channel). Not a
+# queue of runs: an entry is text some executor run will read into its history.
+EXECUTOR_INBOX_PREFIX = "executor:inbox:"
+# Per-subagent mailbox (see subagent_channel). Keyed by the subagent's own
+# thread_id, written ONLY by the executor's message_subagent tool, drained by
+# that subagent's own pre-model hook — never a broadcast, never read by peers.
+SUBAGENT_INBOX_PREFIX = "subagent:inbox:"
+SUBAGENT_INBOX_TTL = ONE_HOUR_TTL
+# Integrations one conversation activated in-context (see active_integrations);
+# retrieve_tools discovery searches these namespaces too. Stamped only after a
+# successful activation, so membership implies entitlement; a lost key degrades.
+ACTIVATION_ACTIVE_PREFIX = "activation:active:"
+ACTIVATION_ACTIVE_TTL = ONE_DAY_TTL
+# Targeted cancel flag for one running subagent, keyed by its thread_id, checked
+# in the subagent stream loop so a cancel stops that subagent alone.
+SUBAGENT_CANCEL_PREFIX = "subagent:cancel:"
+SUBAGENT_CANCEL_TTL = ONE_HOUR_TTL
+# Registry of a conversation's currently-running subagents (Redis hash keyed by
+# conversation_id, field = subagent_id) so the executor can enumerate and
+# address live subagents by a stable id.
+RUNNING_SUBAGENTS_PREFIX = "subagents:running:"
+RUNNING_SUBAGENTS_TTL = ONE_HOUR_TTL
+# One live run per subagent checkpoint thread (SET NX, value = subagent_id): two
+# runs on one LangGraph thread corrupt its checkpoint. Held for the run's lifetime.
+RUNNING_SUBAGENT_THREAD_PREFIX = "subagents:thread:"
 # Max time a caller waits for a detached executor to finish before draining
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.

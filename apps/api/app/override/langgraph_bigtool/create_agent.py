@@ -8,9 +8,11 @@ Type/lint errors here are expected: adapted from an external library.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
 import functools
+import math
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
@@ -21,6 +23,9 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+
+# LangGraph's default limit (env-overridable) has no public export.
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 
 # Compat shim marked "to be removed in v1" (we're on 1.2.7); re-exports
 # without __all__, so it's invisible to no_implicit_reexport — imported
@@ -34,6 +39,7 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
     LLMInvokeOptions,
+    _is_openai_wire,
     _is_openrouter_wire,
     ainvoke_llm,
     invoke_llm,
@@ -46,6 +52,8 @@ from app.agents.middleware.completion import (
     work_looks_unfinished,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
@@ -55,8 +63,8 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
-    STICKY_ROUTING_PROVIDERS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -79,10 +87,12 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
     dedupe_tool_bindings,
     format_selected_tools,
+    pop_injected_messages,
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
@@ -157,11 +167,13 @@ def _bind_session_id(
     byte-identical resend of comms' own request still hit 99.9% seconds later.
     """
     # Must run AFTER bind_tools, which rebuilds the runnable and drops outer bindings.
-    # session_id is an OpenRouter-only routing hint; sending it to Gemini or another
-    # OpenAI-compatible endpoint is an unsupported argument that fails the call.
+    # Each key goes only to the client that speaks it, judged by the real client rather
+    # than the configured provider: any other endpoint rejects it and fails the call.
     key = _agent_sticky_key(model_configurations, agent_name)
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
+    if key and _is_openai_wire(llm_with_tools):
+        return llm_with_tools.bind(prompt_cache_key=key)
     return llm_with_tools
 
 
@@ -171,11 +183,9 @@ def _agent_sticky_key(
     """Compute this agent's sticky-routing key, shared by the primary bind and the fallback.
 
     Deriving it separately used to leave the fallback on the bare session id,
-    dropping every agent back into one shared chain. None when the provider
-    has no stickiness to pin (Gemini) or no session_id is configured.
+    dropping every agent back into one shared chain. None when no session_id is
+    configured; whether a client may receive it is judged by its wire, not here.
     """
-    if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
-        return None
     session_id = model_configurations.get("session_id")
     if not session_id:
         return None
@@ -217,22 +227,32 @@ def _build_retrieve_tools(
     return retrieve_tools, get_store_arg(retrieve_tools)
 
 
-def _maybe_inject_wrapup(state: State) -> State:
-    """Warn the model to finish when the recursion budget is nearly spent.
+def _maybe_inject_wrapup(state: State, config: RunnableConfig) -> State:
+    """Tell the model to answer now once its remaining steps reach the wrap-up window.
 
-    Injected per model call (never persisted): a trailing HumanMessage,
-    because Gemini drops trailing SystemMessages. Without this, the run
-    dies mid-exploration with a hard GraphRecursionError the model never
-    saw coming.
+    A trailing HumanMessage (Gemini drops trailing SystemMessages) on each model
+    call in the window, never persisted: the executor thread spans delegations,
+    and a stored notice would greet the next one.
     """
-    remaining = state.get("remaining_steps")
-    if not isinstance(remaining, int) or remaining > RECURSION_WRAPUP_THRESHOLD_STEPS:
+    remaining = state.get(REMAINING_STEPS_KEY)
+    # LangGraph strips a limit equal to its default from the node's config.
+    recursion_limit = config.get("recursion_limit", DEFAULT_RECURSION_LIMIT)
+    threshold = max(
+        RECURSION_WRAPUP_MIN_STEPS,
+        math.ceil(recursion_limit * RECURSION_WRAPUP_REMAINING_FRACTION),
+    )
+    if not isinstance(remaining, int) or remaining > threshold:
         return state
+    log.info(
+        f"{LogTag.AGENT} Recursion wrap-up notice shown",
+        remaining_steps=remaining,
+        recursion_limit=recursion_limit,
+    )
     notice = HumanMessage(
         content=(
             "[System notice: you are almost out of steps for this run "
-            f"(~{remaining} left). Stop exploring now — summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            f"(~{remaining} left). Stop calling tools and give your final answer now. "
+            "Summarize what you did, what you found and what remains to be done.]"
         )
     )
     return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
@@ -283,25 +303,25 @@ def _log_message_preview(state: State) -> None:
         preview = []
         for msg in recent_messages:
             role = msg.__class__.__name__
-            # extract_text_content, not the raw content: a tool result carrying
-            # inline media holds megabytes of base64 that must never reach a log.
+            # The text's length, not the raw content's: inline media is megabytes of base64.
             content = extract_text_content(getattr(msg, "content", ""))
-            if len(content) > 200:
-                content = content[:197] + "..."
-            preview.append({"role": role, "content": content})
+            preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
         log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
 
 
 def _after_model_result(
-    tombstones: list[Any], response: AIMessage, updated_state: State
+    tombstones: list[Any],
+    injected: list[Any],
+    response: AIMessage,
+    updated_state: State,
 ) -> dict[str, object]:
     # Messages use an append reducer, so only the new response is returned,
-    # not the full list. Tombstones prune slot-stale prompt copies the
-    # pre-model hooks dropped, keeping the checkpointed thread bounded.
-    result: dict[str, object] = {"messages": [*tombstones, response]}
-    base_keys = {"messages", "selected_tool_ids"}
+    # not the full list. Tombstones prune slot-stale prompt copies; injected
+    # messages are committed AHEAD of the response so the thread reads in order.
+    result: dict[str, object] = {"messages": [*tombstones, *injected, response]}
+    base_keys = {"messages", "selected_tool_ids", REMAINING_STEPS_KEY}
     result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
 
@@ -314,6 +334,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
+        injected = pop_injected_messages(state)
 
         if middleware_executor:
             raise RuntimeError(
@@ -329,7 +350,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
@@ -338,21 +359,29 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             options=LLMInvokeOptions(
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
 
-        return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
+        return {
+            "messages": [
+                *tombstones,
+                *injected,
+                _finalize_model_response(response, deps.agent_name),
+            ]
+        }  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
+        injected = pop_injected_messages(state)
 
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
 
         # The raw bag goes back to LangChain untouched (it owns the keys it
         # merged in); the typed view is what GAIA reads its own keys through.
@@ -374,6 +403,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             options=LLMInvokeOptions(
                 meter_auxiliary=False,
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
@@ -407,13 +437,13 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
                 updated_state, config, store
             )
 
-        return _after_model_result(tombstones, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
+        return _after_model_result(tombstones, injected, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     return RunnableCallable(call_model, acall_model)
 
 
 def _retrieval_call_kwargs(
-    tool_call: dict[str, Any],
+    tool_call: Mapping[str, Any],
     store_arg: str | None,
     store: BaseStore,
     config: RunnableConfig,
@@ -456,6 +486,41 @@ def _resolve_retrieval_result(
     return filtered_bind, response
 
 
+def _retrieval_request(
+    tool_call: Mapping[str, Any],
+    retrieve_tools: BaseTool,
+    config: RunnableConfig,
+    store: BaseStore,
+) -> ToolCallRequest:
+    """Wrap one select_tools call as the request the tool node would hand its middleware."""
+    return ToolCallRequest(
+        # Every call routed here is a retrieve_tools call (see should_continue).
+        tool_call=ToolCall(name=retrieve_tools.name, args=tool_call["args"], id=tool_call["id"]),
+        tool=retrieve_tools,
+        state={},
+        runtime=BigtoolToolRuntime.from_graph_context(
+            config=config, store=store, tool_name=retrieve_tools.name
+        ),
+    )
+
+
+async def _through_loop_guard(
+    loop_guard: LoopGuardMiddleware | None,
+    request: ToolCallRequest,
+    retrieve: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
+) -> ToolMessage:
+    """Answer one retrieve_tools call, letting the stack's loop guard warn on or block it."""
+    if loop_guard is None:
+        return await retrieve(request)
+    guarded = await loop_guard.awrap_tool_call(request, retrieve)
+    if not isinstance(guarded, ToolMessage):
+        raise TypeError(
+            f"loop guard returned {type(guarded).__name__} for retrieve_tools call "
+            f"{request.tool_call['id']}; select_tools only renders ToolMessages"
+        )
+    return guarded
+
+
 def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any]:
     def select_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
@@ -482,23 +547,48 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
     async def aselect_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        """Async twin of select_tools — resolve retrieve_tools calls into bindings."""
-        if deps.retrieve_tools is None:
+        """Async twin of select_tools — resolve retrieve_tools calls into bindings.
+
+        Each call passes through the stack's loop guard: retrieve_tools never
+        reaches the tool node, the only other place the guard sits, so without
+        this a model re-issuing the same search is never warned or stopped.
+        """
+        retrieve_tools = deps.retrieve_tools
+        if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
+        loop_guard = deps.middleware_executor.loop_guard if deps.middleware_executor else None
 
-        selected_tools = {}
-        response_tools = {}
-        response_texts: dict[str, str] = {}
-        for tool_call in tool_calls:
-            kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = await deps.retrieve_tools.ainvoke(kwargs, config=config)
+        selected_tools: dict[str, list[str]] = {}
+
+        async def retrieve(request: ToolCallRequest) -> ToolMessage:
+            """Run one retrieve_tools call; record what it binds, return what the model reads."""
+            tool_call_id = request.tool_call["id"]
+            if tool_call_id is None:
+                raise ValueError("retrieve_tools call carries no id to answer it under")
+            kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
+            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
-                result, tool_call["id"], response_texts
+                result, tool_call_id, response_texts
             )
-            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
-            response_tools[tool_call["id"]] = dedupe_str_list(response)
+            selected_tools[tool_call_id] = dedupe_str_list(filtered_bind)
+            messages, _ = format_selected_tools(
+                {tool_call_id: dedupe_str_list(response)},
+                deps.tool_registry,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+                response_texts,
+            )
+            return messages[0]
 
-        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        tool_messages = [
+            await _through_loop_guard(
+                loop_guard,
+                _retrieval_request(tool_call, retrieve_tools, config, store),
+                retrieve,
+            )
+            for tool_call in tool_calls
+        ]
+
+        # A call the guard blocked never ran, so it binds nothing.
         _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 

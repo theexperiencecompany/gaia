@@ -132,8 +132,8 @@ def test_a_reworded_rule_raises_instead_of_checking_nothing(
     """Reword the rule into prose: the gate must refuse to run rather than check nothing against an empty banned list."""
 
     def dequote(text: str) -> str:
-        start = text.index("- Banned literals (phrases that scream chatbot):")
-        stop = text.index("- When the user is just chatting,")
+        start = text.index("- Banned literals (phrases):")
+        stop = text.index("- Banned literals (dashes):")
         return text[:start] + text[start:stop].replace('"', "") + text[stop:]
 
     _edit(monkeypatch, dequote)
@@ -151,8 +151,8 @@ def test_a_reworded_dash_rule_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "- Banned literals (dashes): NEVER use em dashes (—) or en dashes (–) anywhere in your output, ever.",
-            "- Banned literals (dashes): NEVER use em dashes or en dashes anywhere in your output, ever.",
+            "- Banned literals (dashes): never use em dashes (—) or en dashes (–), in chat or in anything you write.",
+            "- Banned literals (dashes): never use em dashes or en dashes, in chat or in anything you write.",
         ),
     )
     banned_dashes.cache_clear()

@@ -264,7 +264,9 @@ def _importers_of(module: str) -> tuple[str, ...]:
     return sorted(importers)
 
 
-def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
+def _test_files_for(
+    module_rel: str, tests_dir: Path = TESTS_DIR, _seen: set[str] | None = None
+) -> list[str]:
     """Test files (repo-root-relative) referencing the module, unit tier first.
 
     Ordered rather than filtered here: ``with_unit_mirror`` decides which
@@ -273,6 +275,18 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     inherits from its job the way every other lane does.
     """
     module = f"app.{module_rel.replace('/', '.')}"
+    if _seen is None:
+        _seen = set()
+    # The consumer fallback below walks the importer graph, which has cycles:
+    # two modules that import each other (or a module that imports itself)
+    # recurse A -> B -> A -> ... until the interpreter gives up. A module with
+    # no direct test hit would therefore crash the plan step with a
+    # RecursionError instead of reporting "no test file". Track the modules
+    # already on this traversal's path and stop at a revisit — the revisit
+    # adds no test file the first visit did not already collect.
+    if module in _seen:
+        return []
+    _seen.add(module)
     module_py = f"{module}.py"
     hits: list[str] = []
     for path in _py_files(tests_dir):
@@ -294,7 +308,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
         # app.memory.engine, whose real-tier tests drive every store line.)
         consumers = _importers_of(module)
         for consumer in consumers:
-            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir))
+            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir, _seen))
     hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits
 

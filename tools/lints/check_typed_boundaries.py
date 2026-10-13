@@ -33,6 +33,7 @@ import ast
 from collections import Counter
 from pathlib import Path
 import sys
+from typing import Literal
 
 from _common import iter_python_files
 from _ratchet import REPO_ROOT, RatchetRule, run_ratchet
@@ -60,6 +61,12 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
+    "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/host.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/engine.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/storage.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
 }
 
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
@@ -70,7 +77,69 @@ PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
 # A key read on a TypedDict is a declared shape, not a guess: mypy checks the key
 # (apps/api/CLAUDE.md, Type Safety item 6). Repo TypedDicts are discovered from
 # ``class X(TypedDict)``; these come from libraries and cannot be discovered.
-EXTERNAL_TYPEDDICTS = ("ToolCall", "RunnableConfig")
+EXTERNAL_TYPEDDICTS = (
+    "ErrorDetails",
+    "ToolCall",
+    "InvalidToolCall",
+    "RunnableConfig",
+    "UsageMetadata",
+    "InputTokenDetails",
+    "OutputTokenDetails",
+    # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
+    "ToolExecuteParams",
+)
+# Library TypedDicts app classes subclass, by the path they are imported from: the
+# local name is often an alias (``State as _BigtoolState``), so the bare name can't
+# be listed. Each is verified with typing_extensions.is_typeddict.
+EXTERNAL_TYPEDDICT_PATHS = frozenset(
+    {
+        "langgraph_bigtool.graph.State",
+        "langgraph.graph.MessagesState",
+        "langgraph.graph.message.MessagesState",
+        "langchain.agents.AgentState",
+        "langchain.agents.middleware.types.AgentState",
+        "chromadb.GetResult",
+        "chromadb.QueryResult",
+        "chromadb.api.types.GetResult",
+        "chromadb.api.types.QueryResult",
+        "langchain_core.messages.ReasoningContentBlock",
+        "langchain_core.messages.content.ReasoningContentBlock",
+        "langgraph.store.base.IndexConfig",
+        "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.sync_api.StorageState",
+        "playwright.sync_api.StorageStateCookie",
+        "cdp_use.cdp.dom.commands.ResolveNodeReturns",
+        "cdp_use.cdp.domsnapshot.commands.CaptureSnapshotReturns",
+        "cdp_use.cdp.domsnapshot.types.DocumentSnapshot",
+        "cdp_use.cdp.domsnapshot.types.NodeTreeSnapshot",
+        "cdp_use.cdp.domsnapshot.types.RareBooleanData",
+        "cdp_use.cdp.domsnapshot.types.RareStringData",
+        "cdp_use.cdp.network.events.LoadingFailedEvent",
+        "cdp_use.cdp.network.events.LoadingFinishedEvent",
+        "cdp_use.cdp.network.events.RequestWillBeSentEvent",
+        "cdp_use.cdp.page.commands.CaptureScreenshotReturns",
+        "cdp_use.cdp.page.commands.GetNavigationHistoryReturns",
+        "cdp_use.cdp.page.events.FrameNavigatedEvent",
+        "cdp_use.cdp.page.events.FrameRequestedNavigationEvent",
+        "cdp_use.cdp.page.events.FrameStartedNavigatingEvent",
+        "cdp_use.cdp.page.events.FrameStoppedLoadingEvent",
+        "cdp_use.cdp.page.types.Frame",
+        "cdp_use.cdp.page.types.NavigationEntry",
+        "cdp_use.cdp.runtime.commands.CallFunctionOnReturns",
+        "cdp_use.cdp.runtime.commands.EvaluateReturns",
+        "cdp_use.cdp.runtime.types.ExceptionDetails",
+        "cdp_use.cdp.runtime.types.RemoteObject",
+        "cdp_use.cdp.target.events.TargetCreatedEvent",
+        "cdp_use.cdp.target.types.TargetInfo",
+    }
+)
+# Collections whose one type argument is the element a loop over them yields.
+TYPED_COLLECTIONS = ("list", "Sequence", "Iterable", "set", "frozenset")
+# Mappings whose second type argument is what .values() / .items() yield as the value.
+TYPED_MAPPINGS = ("dict", "Mapping")
+
+#: How a loop reaches a container's TypedDict elements: directly, or via .values()/.items().
+ContainerKind = Literal["sequence", "mapping"]
 
 _BASELINE_HEADER = """\
 # typed-boundaries grandfather baseline.
@@ -173,7 +242,7 @@ def _decorator_ids(tree: ast.AST) -> set[int]:
 def typeddict_names(trees: list[ast.AST]) -> set[str]:
     """Every TypedDict class name in ``trees``, subclasses included, plus the external ones."""
     classes = [node for tree in trees for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    names = {"TypedDict", *EXTERNAL_TYPEDDICTS}
+    names = {"TypedDict", *EXTERNAL_TYPEDDICTS, *_imported_external_typeddicts(trees)}
     grew = True
     while grew:
         found = {
@@ -184,6 +253,18 @@ def typeddict_names(trees: list[ast.AST]) -> set[str]:
         names |= found
         grew = bool(found)
     return names - {"TypedDict"}
+
+
+def _imported_external_typeddicts(trees: list[ast.AST]) -> set[str]:
+    """Local names bound by ``from M import N [as A]`` where ``M.N`` is a listed library TypedDict."""
+    return {
+        alias.asname or alias.name
+        for tree in trees
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+        for alias in node.names
+        if f"{node.module}.{alias.name}" in EXTERNAL_TYPEDDICT_PATHS
+    }
 
 
 def _base_name(base: ast.AST) -> str:
@@ -198,7 +279,16 @@ def _names_typeddict(annotation: ast.expr, typeddicts: set[str]) -> bool:
     return any(_base_name(node) in typeddicts for node in ast.walk(annotation))
 
 
-_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+# Comprehensions are scopes too (Python 3): a target bound in one never rebinds a sibling's.
+_SCOPES = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
 
 
 def _own_scope_nodes(scope: ast.AST) -> list[ast.AST]:
@@ -224,14 +314,27 @@ def _rebound_names(nodes: list[ast.AST]) -> set[str]:
     }
 
 
-def _typed_receivers(scope: ast.AST, typeddicts: set[str], inherited: set[str]) -> set[int]:
+def _typed_receivers(
+    scope: ast.AST,
+    typeddicts: set[str],
+    inherited: set[str],
+    inherited_containers: dict[str, ContainerKind],
+) -> set[int]:
     """Ids of reads on TypedDict-bound names, each name resolved to its innermost binding scope."""
     nodes = _own_scope_nodes(scope)
-    bound = (inherited - _rebound_names(nodes)) | _typeddict_bound_names(nodes, typeddicts)
+    rebound = _rebound_names(nodes)
+    containers = {
+        name: kind for name, kind in inherited_containers.items() if name not in rebound
+    } | _typeddict_container_names(nodes, typeddicts)
+    bound = (
+        (inherited - rebound)
+        | _typeddict_bound_names(nodes, typeddicts)
+        | _typed_loop_targets(nodes, containers)
+    )
     found: set[int] = set()
     for node in nodes:
         if isinstance(node, _SCOPES):
-            found |= _typed_receivers(node, typeddicts, bound)
+            found |= _typed_receivers(node, typeddicts, bound, containers)
             continue
         receiver = _receiver(node)
         if isinstance(receiver, ast.Name) and receiver.id in bound:
@@ -255,6 +358,105 @@ def _typeddict_bound_names(nodes: list[ast.AST], typeddicts: set[str]) -> set[st
     return bound
 
 
+def _without_none(annotation: ast.expr) -> ast.expr:
+    """Strip the None arm of ``X | None`` / ``Optional[X]``; anything else is returned as-is."""
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        arms = [
+            arm
+            for arm in (annotation.left, annotation.right)
+            if not (isinstance(arm, ast.Constant) and arm.value is None)
+        ]
+        return arms[0] if len(arms) == 1 else annotation
+    if isinstance(annotation, ast.Subscript) and _base_name(annotation.value) == "Optional":
+        return annotation.slice
+    return annotation
+
+
+def _typeddict_container(annotation: ast.expr, typeddicts: set[str]) -> ContainerKind | None:
+    """Classify a collection (``tuple[T, ...]`` included) or mapping annotation whose element is a TypedDict."""
+    annotation = _without_none(annotation)
+    if not isinstance(annotation, ast.Subscript):
+        return None
+    container = _base_name(annotation.value)
+    elts = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else []
+    element: ast.expr | None = None
+    kind: ContainerKind = "sequence"
+    if container in TYPED_COLLECTIONS:
+        element = annotation.slice
+    elif container == "tuple" and len(elts) == 2:
+        if isinstance(elts[1], ast.Constant) and elts[1].value is Ellipsis:
+            element = elts[0]
+    elif container in TYPED_MAPPINGS and len(elts) == 2:
+        element, kind = elts[1], "mapping"
+    if isinstance(element, ast.Name | ast.Attribute) and _base_name(element) in typeddicts:
+        return kind
+    return None
+
+
+def _typeddict_container_names(
+    nodes: list[ast.AST], typeddicts: set[str]
+) -> dict[str, ContainerKind]:
+    """Names annotated as a collection or mapping of TypedDicts among ``nodes``."""
+    names: dict[str, ContainerKind] = {}
+    for node in nodes:
+        if isinstance(node, ast.arg) and node.annotation is not None:
+            if kind := _typeddict_container(node.annotation, typeddicts):
+                names[node.arg] = kind
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if kind := _typeddict_container(node.annotation, typeddicts):
+                names[node.target.id] = kind
+    return names
+
+
+def _typeddict_loop_target(
+    loop: ast.For | ast.AsyncFor | ast.comprehension, containers: dict[str, ContainerKind]
+) -> ast.Name | None:
+    """Return the name a loop binds to a TypedDict element: x in seq, v in m.values(), k, v in m.items()."""
+    iterated = loop.iter
+    if isinstance(iterated, ast.Name):
+        if containers.get(iterated.id) == "sequence" and isinstance(loop.target, ast.Name):
+            return loop.target
+        return None
+    if not (
+        isinstance(iterated, ast.Call)
+        and not iterated.args
+        and isinstance(iterated.func, ast.Attribute)
+        and isinstance(iterated.func.value, ast.Name)
+        and containers.get(iterated.func.value.id) == "mapping"
+    ):
+        return None
+    target = loop.target
+    if iterated.func.attr == "values" and isinstance(target, ast.Name):
+        return target
+    if (
+        iterated.func.attr == "items"
+        and isinstance(target, ast.Tuple)
+        and len(target.elts) == 2
+        and isinstance(target.elts[1], ast.Name)
+    ):
+        return target.elts[1]
+    return None
+
+
+def _typed_loop_targets(nodes: list[ast.AST], containers: dict[str, ContainerKind]) -> set[str]:
+    """Loop/comprehension targets bound to a TypedDict element that nothing else rebinds."""
+    targets = [
+        target
+        for node in nodes
+        if isinstance(node, ast.For | ast.AsyncFor | ast.comprehension)
+        and (target := _typeddict_loop_target(node, containers)) is not None
+    ]
+    target_ids = {id(target) for target in targets}
+    stored_elsewhere = {
+        node.id
+        for node in nodes
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and id(node) not in target_ids
+    }
+    return {target.id for target in targets} - stored_elsewhere
+
+
 def _receiver(node: ast.AST) -> ast.expr | None:
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         return node.func.value
@@ -265,7 +467,7 @@ def _receiver(node: ast.AST) -> ast.expr | None:
 
 def _string_key_reads(tree: ast.AST, typeddicts: set[str]) -> list[int]:
     decorators = _decorator_ids(tree)
-    typed_receivers = _typed_receivers(tree, typeddicts, set())
+    typed_receivers = _typed_receivers(tree, typeddicts, set(), {})
     return [
         node.lineno
         for node in ast.walk(tree)

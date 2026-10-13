@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 import pytest
 
 from app.agents.llm.client import (
@@ -27,6 +28,7 @@ from app.agents.llm.client import (
     _sim_llm,
     init_custom_llm,
     init_openrouter_llm,
+    without_sdk_retry,
 )
 from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
 
@@ -62,6 +64,15 @@ class TestLLMRetryBudget:
         """Disabling SDK retry must not leave the system with no retry at all."""
         assert LLM_RETRY_MAX_ATTEMPTS > 1
 
+    def test_the_custom_dev_client_pins_zero_sdk_retries(self) -> None:
+        """None is not zero here: ChatOpenAI then leaves the OpenAI SDK's own two retries on."""
+        assert _construct(init_custom_llm).max_retries == 0
+
+    def test_a_model_with_no_sdk_client_passes_through_untouched(self) -> None:
+        llm = GenericFakeChatModel(messages=iter([]))
+
+        assert without_sdk_retry(llm) is llm
+
 
 def _construct(factory: Callable[[], Any]) -> Any:
     """Run a @lazy_provider factory's real body and unwrap the chat model.
@@ -78,9 +89,12 @@ def _construct(factory: Callable[[], Any]) -> Any:
 def _retries(llm: Any) -> bool:
     """Whether the SDK client will run its own retry loop.
 
-    Asserted on the config the SDK actually reads at request time, not on
-    max_retries: that kwarg cannot express "off" — setting it to 0 only stops
-    langchain passing a config, and the SDK then applies its own one-hour default.
+    The OpenRouter SDK ignores max_retries=0 (applies a one-hour default), so
+    its truth lives in retry_config, which without_sdk_retry sets non-backoff.
+    The OpenAI SDK (the dev lane's ChatOpenAI) honors max_retries=0 — there the
+    count is the honest signal.
     """
-    config = llm.client.sdk_configuration.retry_config
-    return getattr(config, "strategy", None) == "backoff"
+    sdk_config = getattr(getattr(llm, "client", None), "sdk_configuration", None)
+    if sdk_config is not None:
+        return getattr(sdk_config.retry_config, "strategy", None) == "backoff"
+    return getattr(llm, "max_retries", None) not in (0, None)

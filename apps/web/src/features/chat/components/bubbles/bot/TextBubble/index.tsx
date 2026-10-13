@@ -25,6 +25,7 @@ import {
   ApprovalResolveProvider,
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
+import type { ApprovalOutcome } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
@@ -416,18 +417,21 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
-  // Settled decisions, keyed the same way — the tool's own row in the thread
-  // carries the outcome as a chip instead of a separate receipts block.
-  const approvalStatusByToolCallId = React.useMemo(() => {
-    const statuses = new Map<string, ApprovalRequestData["status"]>();
+  // Settled decisions, keyed the same way — the tool's row carries the outcome
+  // as a chip, with feedback so it shows the receipt, not just "Approved".
+  const { approvalOutcomeByToolCallId } = React.useMemo(() => {
+    const outcomes = new Map<string, ApprovalOutcome>();
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
       if (data?.tool_call_id && data.status !== "pending") {
-        statuses.set(data.tool_call_id, data.status);
+        outcomes.set(data.tool_call_id, {
+          status: data.status,
+          feedback: data.feedback ?? null,
+        });
       }
     });
-    return statuses;
+    return { approvalOutcomeByToolCallId: outcomes };
   }, [tool_data]);
 
   return (
@@ -442,7 +446,7 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-          approvalStatusByToolCallId={approvalStatusByToolCallId}
+          approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
         />
       )}
 

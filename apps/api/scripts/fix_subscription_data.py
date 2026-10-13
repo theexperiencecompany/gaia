@@ -25,6 +25,8 @@ from bson import ObjectId
 
 from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.mongodb import init_mongodb
+from app.utils.money import format_money
+from scripts._prompt import ainput
 from shared.py.wide_events import log as logger
 
 plans_collection = get_async_collection("subscription_plans")
@@ -132,7 +134,7 @@ async def show_plans():
         async for plan in plans_cursor:
             print(f"ID: {plan['_id']}")
             print(f"Name: {plan['name']}")
-            print(f"Amount: ₹{plan['amount'] / 100:.2f}")
+            print(f"Amount: {format_money(plan['amount'], plan['currency'])}")
             print(f"Duration: {plan['duration']}")
             print(f"Active: {plan['is_active']}")
             print("-" * 40)
@@ -164,12 +166,14 @@ async def main():
     print("3. Update them to point to GAIA Pro Yearly")
     print("4. Show details and exit")
 
-    choice = input("\nEnter your choice (1-4): ").strip()
+    choice = (await ainput("\nEnter your choice (1-4): ")).strip()
 
     if choice == "1":
         confirm = (
-            input(
-                f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): "
+            (
+                await ainput(
+                    f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): "
+                )
             )
             .strip()
             .lower()

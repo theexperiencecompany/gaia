@@ -27,6 +27,7 @@ import { hasExecutorDelegation } from "./executorDelegation";
 import {
   buildTurnMessageRecord,
   buildUserMessageRecord,
+  type EmojiAckStamp,
   resolveTurnOutcome,
   type TurnMessageMeta,
 } from "./messageRecord";
@@ -83,6 +84,10 @@ export class TurnSession {
   private flushHandle: number | null = null;
   private lastPartialPersistAt = 0;
   private closeHandled = false;
+  /** The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack — see
+   *  handleEmojiAck. Stamped on the record so the fold badges the emoji onto
+   *  the user's message instead of rendering the turn as a bubble. */
+  private reactionAck: EmojiAckStamp | null = null;
   /** Client cross-check clock. Server timing is the SLO; these deltas only
    *  validate it from the user's side. */
   private sendStartMs = 0;
@@ -101,14 +106,26 @@ export class TurnSession {
     () => this.handleStall(),
   );
 
-  constructor(key: string, args: SendArgs, callbacks: TurnSessionCallbacks) {
+  constructor(
+    key: string,
+    args: SendArgs,
+    callbacks: TurnSessionCallbacks,
+    options?: { steering?: boolean },
+  ) {
     this.key = key;
     this.args = args;
     this.callbacks = callbacks;
     this.conversationId = args.options.conversationId;
     this.isNewConversation = args.options.conversationId == null;
     this.inputText = args.inputText;
+    this.steering = options?.steering ?? false;
   }
+
+  /** A mid-turn steer: sent while this conversation already streams, folded
+   *  into the live run server-side. It renders its own bubbles but owns none
+   *  of the conversation's shared session slot (spinner, loading text, phase)
+   *  — ending it must never tear down state the main turn still needs. */
+  private readonly steering: boolean;
 
   get isAborted(): boolean {
     return this.aborted;
@@ -117,6 +134,12 @@ export class TurnSession {
   /** The conversation this turn writes into (null until init for new convos). */
   get boundConversationId(): string | null {
     return this.conversationId;
+  }
+
+  /** True for a mid-turn steer, which shares the conversation but owns none of
+   *  its session slot. */
+  get isSteering(): boolean {
+    return this.steering;
   }
 
   /** The store key the live session lives under. `bindNewConversation()` rekeys
@@ -130,7 +153,15 @@ export class TurnSession {
 
   async start(): Promise<void> {
     const store = useStreamStore.getState();
-    store.startSession(this.key, this.inputText);
+    if (!this.steering) {
+      store.startSession(this.key, this.inputText);
+    } else {
+      streamLog("lifecycle", "turn:start-steering", {
+        turnKey: this.key,
+        conversationId: this.conversationId,
+        detail: { prompt: this.inputText },
+      });
+    }
     // Re-attach measures reattach-to-first-replayed-frame, not the send.
     this.sendStartMs = performance.now();
     streamLog("lifecycle", "turn:start", {
@@ -166,6 +197,7 @@ export class TurnSession {
         selectedCalendarEvent: this.args.options.selectedCalendarEvent,
         replyToMessage: this.args.options.replyToMessage,
         isOnboardingDemo: this.args.options.isOnboardingDemo,
+        isRetry: this.args.options.isRetry,
       });
     } catch (error) {
       // fetchEventSource rejects on abort and on fatal errors; both paths have
@@ -330,6 +362,10 @@ export class TurnSession {
 
       case "main_response_complete":
         this.handleMainResponseComplete();
+        return undefined;
+
+      case "emoji_ack":
+        this.handleEmojiAck(event.emoji, event.reactsToMessageId);
         return undefined;
 
       case "progress": {
@@ -580,7 +616,7 @@ export class TurnSession {
   private handleMainResponseComplete(): void {
     this.sawMainResponseComplete = true;
     const store = useStreamStore.getState();
-    // The comms agent acked — unlock the composer so the user can queue.
+    // The comms agent acked — unlock the composer so the user can steer.
     store.updateSession(this.sessionKey, { composerLocked: false });
 
     // A delegated turn isn't done: the executor streams over this same SSE
@@ -588,12 +624,32 @@ export class TurnSession {
     // the first executor event re-arms it.
     if (hasExecutorDelegation(this.acc.toolData)) return;
 
-    this.setSpinner(false);
-    store.resetSessionLoadingText(this.sessionKey);
+    if (!this.steering) {
+      this.setSpinner(false);
+      store.resetSessionLoadingText(this.sessionKey);
+    }
     this.scheduleFlush();
   }
 
+  /**
+   * The server ruled this turn a comms `<EMOJI>…</EMOJI>` ack and streamed none
+   * of its text: the emoji is a reaction on the user's message. Stamp the
+   * record (bare emoji + kind + target) in the
+   * store and IndexedDB now, so `foldReactionAcks` hides the ack bubble and
+   * badges the emoji without a reload; the close write carries the same stamp.
+   */
+  private handleEmojiAck(emoji: string, reactsToMessageId: string): void {
+    this.reactionAck = { kind: "emoji_ack", emoji, reactsToMessageId };
+    const record = this.buildRecord("sending");
+    if (!record) return;
+    useChatStore.getState().updateMessageInPlace(record);
+    db.putMessage(record).catch((error) => {
+      console.error("Failed to persist reaction ack:", error);
+    });
+  }
+
   private setSpinner(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.spinnerActive === active) return;
@@ -604,6 +660,7 @@ export class TurnSession {
   }
 
   private setAwaitingApproval(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.awaitingApproval === active) return;
@@ -637,6 +694,7 @@ export class TurnSession {
   /** Set the loading label if this event carries one. Shared with the executor
    *  stream so both paths label a run the same way. */
   private applyLoadingLabel(event: ChatStreamEvent): void {
+    if (this.steering) return;
     const label = loadingLabelForEvent(event);
     if (!label) return;
     useStreamStore
@@ -657,7 +715,13 @@ export class TurnSession {
       createdAt: this.botCreatedAt ?? new Date(),
       options: this.args.options,
     };
-    return buildTurnMessageRecord(meta, this.acc, status, error);
+    return buildTurnMessageRecord(
+      meta,
+      this.acc,
+      status,
+      error,
+      this.reactionAck,
+    );
   }
 
   /** Batch accumulator flushes to one store write per animation frame. */
@@ -753,12 +817,13 @@ export class TurnSession {
         markConversationUnread(this.conversationId);
       }
 
-      // Only a completed turn can wait on an executor tail — normal delegation
-      // acks (main_response_complete) long before the executor streams, so a
-      // truncated turn here died before hand-off; park it as failed/retryable.
+      // Only a completed turn can wait on an executor tail (normal delegation
+      // acks long before the executor streams). A steering turn never parks —
+      // its tail arrives as its own bg message, so parking would clobber the UI.
       if (
         outcome.status === "sent" &&
-        hasExecutorDelegation(this.acc.toolData)
+        hasExecutorDelegation(this.acc.toolData) &&
+        !this.steering
       ) {
         this.enterAwaitingExecutor();
         return;
@@ -907,10 +972,12 @@ export class TurnSession {
   }
 
   private end(): void {
-    useStreamStore.getState().endSession(this.conversationId ?? this.key);
-    // Also clear under the original pending key if init never rekeyed it.
-    if (this.conversationId && this.conversationId !== this.key) {
-      useStreamStore.getState().endSession(this.key);
+    if (!this.steering) {
+      useStreamStore.getState().endSession(this.conversationId ?? this.key);
+      // Also clear under the original pending key if init never rekeyed it.
+      if (this.conversationId && this.conversationId !== this.key) {
+        useStreamStore.getState().endSession(this.key);
+      }
     }
     streamLog("lifecycle", "turn:end", {
       turnKey: this.key,

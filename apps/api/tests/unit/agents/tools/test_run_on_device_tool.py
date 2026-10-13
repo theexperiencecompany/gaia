@@ -240,7 +240,7 @@ _DESKTOP_HINT = (
     "\nmacOS blocked this path with its privacy protection (TCC); you cannot grant "
     "this yourself. This device is the GAIA desktop app. Tell the user to grant it "
     "Full Disk Access in System Settings > Privacy & Security > Full Disk Access "
-    "(enable GAIA), then reopen the app — the grant carries into the commands it "
+    "(enable GAIA), then reopen the app. The grant carries into the commands it "
     "runs. They can open that pane with "
     '`open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"`.'
 )

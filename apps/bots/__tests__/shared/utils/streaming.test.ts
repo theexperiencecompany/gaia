@@ -50,6 +50,7 @@ const KEPT = { boundary: { discarded: false } } as const;
 function streamingGaia(
   chunks: StreamStep[],
   approvalAfter?: number,
+  approval?: Partial<ApprovalRequestData>,
 ): GaiaClient {
   return {
     chatStream: async (
@@ -101,6 +102,7 @@ function streamingGaia(
             status: "pending",
             feedback: null,
             timeout_seconds: 3600,
+            ...approval,
           } as ApprovalRequestData);
         }
       }
@@ -153,11 +155,13 @@ async function deliver(
   {
     editable = true,
     approvalAfter,
+    approval,
     failEdit,
     failStream,
   }: {
     editable?: boolean;
     approvalAfter?: number;
+    approval?: Partial<ApprovalRequestData>;
     /** Throws on the Nth edit (0-based), emulating a platform rejection. */
     failEdit?: { at: number; error: unknown };
     /** The transport error to fail the whole stream with, instead of streaming. */
@@ -209,7 +213,7 @@ async function deliver(
 
   await handleStreamingChat(
     failStream === undefined
-      ? streamingGaia(chunks, approvalAfter)
+      ? streamingGaia(chunks, approvalAfter, approval)
       : failingGaia(failStream),
     {
       message: "drive the streamer",
@@ -238,6 +242,11 @@ async function deliver(
 function words(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
+
+// Each is a message on its own: a segment under 40 characters is glued to its neighbour.
+const GREETING = "Hey there, I just looked into this for you.";
+const CHECKED = "I checked your calendar for the whole of next week.";
+const ANSWER = "You are free at 3pm on Tuesday and all of Thursday.";
 
 describe("handleStreamingChat delivery", () => {
   describe("a trailing break token must not swallow the reply", () => {
@@ -296,17 +305,17 @@ describe("handleStreamingChat delivery", () => {
       "%s emits one bubble per segment",
       async (platform) => {
         const { bubbles } = await deliver(platform, [
-          "Hey there.",
+          GREETING,
           BREAK,
-          "I checked your calendar.",
+          CHECKED,
           BREAK,
-          "You are free at 3pm.",
+          ANSWER,
         ]);
 
         expect(bubbles).toEqual([
-          renderForPlatform("Hey there.", platform),
-          renderForPlatform("I checked your calendar.", platform),
-          renderForPlatform("You are free at 3pm.", platform),
+          renderForPlatform(GREETING, platform),
+          renderForPlatform(CHECKED, platform),
+          renderForPlatform(ANSWER, platform),
         ]);
       },
     );
@@ -346,6 +355,19 @@ describe("handleStreamingChat delivery", () => {
     expect(bubbles.at(-1)).not.toContain("Approval needed");
   });
 
+  it("shows how long ago the approval was asked", async () => {
+    // Ledger-backed approvals carry age_seconds; the prompt should surface it
+    // so a user answering hours later knows the request is stale.
+    const { bubbles } = await deliver("telegram", ["Checking that first. "], {
+      approvalAfter: 0,
+      approval: { age_seconds: 3700 },
+    });
+
+    const prompt = bubbles.find((b) => b.includes("Approval needed"));
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("asked 1h ago");
+  });
+
   it("never shows a break token, whole or partially received", async () => {
     // The 18-char token arrives split across stream chunks; a half-received
     // `<NEW_MESSAG` must not flash in the bubble (and on Telegram an unclosed
@@ -368,14 +390,14 @@ describe("handleStreamingChat delivery", () => {
     // <NEW_MESSAGE_BREAK>. Only the exact token was split on, so the variant
     // shipped to Telegram as literal text.
     const { bubbles } = await deliver("telegram", [
-      "Hey there.",
+      GREETING,
       "<NEW_LINE_BREAK>",
-      "I checked your calendar.",
+      CHECKED,
     ]);
 
     expect(bubbles).toEqual([
-      renderForPlatform("Hey there.", "telegram"),
-      renderForPlatform("I checked your calendar.", "telegram"),
+      renderForPlatform(GREETING, "telegram"),
+      renderForPlatform(CHECKED, "telegram"),
     ]);
   });
 
@@ -583,36 +605,32 @@ describe("handleStreamingChat delivery", () => {
       "First paragraph, long enough to stand on its own as a bubble.\n\n" +
       "Second paragraph, also long enough to stand on its own here.\n\n" +
       "Third paragraph, which is likewise long enough to be a bubble.";
-    const PARAGRAPH_BUBBLES = [
-      "First paragraph, long enough to stand on its own as a bubble.",
-      "Second paragraph, also long enough to stand on its own here.",
-      "Third paragraph, which is likewise long enough to be a bubble.",
-    ].map((bubble) => renderForPlatform(bubble, "telegram"));
+    const PARAGRAPH_BUBBLES = [renderForPlatform(PARAGRAPHS, "telegram")];
 
-    it("segments a multi-paragraph reply at the boundary", async () => {
+    it("delivers a multi-paragraph reply with no sentinel as one bubble at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS, KEPT]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
-    it("segments the same reply when no boundary ever arrives", async () => {
+    it("delivers the same one bubble when no boundary ever arrives", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
     it("splits a sentinel reply into the same bubbles at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [
-        "Hey there.",
+        GREETING,
         BREAK,
-        "I checked your calendar.",
+        CHECKED,
         BREAK,
-        "You are free at 3pm.",
+        ANSWER,
         KEPT,
       ]);
 
       expect(bubbles).toEqual([
-        renderForPlatform("Hey there.", "telegram"),
-        renderForPlatform("I checked your calendar.", "telegram"),
-        renderForPlatform("You are free at 3pm.", "telegram"),
+        renderForPlatform(GREETING, "telegram"),
+        renderForPlatform(CHECKED, "telegram"),
+        renderForPlatform(ANSWER, "telegram"),
       ]);
     });
   });

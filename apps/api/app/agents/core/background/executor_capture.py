@@ -13,7 +13,8 @@ implementation so chat and workflow runs render identically.
 import asyncio
 from pathlib import Path
 from types import CoroutineType, FrameType
-from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.session import (
     RunKind,
@@ -24,10 +25,12 @@ from app.agents.core.background.session import (
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
+from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
+    ToolDataEnvelope,
     absorb_collector_event,
     apply_outputs_to_tool_data,
     reconstruct_subagent_groups,
@@ -139,17 +142,25 @@ def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     # The accumulator envelope is an open bag; only "tool_data" has a fixed
     # shape, and it's this list object throughout, rebound by
     # reconstruct_subagent_groups, hence the re-read at the end.
-    accumulated: dict[str, Any] = {"tool_data": entries}
+    accumulated: dict[str, object] = {"tool_data": entries}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
         # Hooks emit raw field payloads like {"email_fetch_data": [...]};
         # normalize to {"tool_data": {...}} or absorb_collector_event drops
         # them and the list card never persists.
         absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
-    apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
+    apply_outputs_to_tool_data(entries, outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
-    grouped: list[ToolDataEntry] = accumulated["tool_data"]
-    return grouped
+    return ToolDataEnvelope.model_validate(accumulated).tool_data
+
+
+class _SubagentGroupProducer(BaseModel):
+    """A subagent_group entry's data, read for the id and name it credits cards to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str | None = None
+    subagent_name: str | None = None
 
 
 def build_returned_to_frontend_note(stream_id: str) -> str:
@@ -160,13 +171,14 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
     executor summary credited the wrong product: "8 tasks created (Todoist)"
     for GAIA todos). MUST be called before the session is torn down.
     """
-    entries = drain_executor_tool_data(stream_id)
+    entries: list[ToolDataEntry] = drain_executor_tool_data(stream_id)
     subagent_names: dict[str, str] = {}
     for entry in entries:
         group = entry.get("data")
-        if entry.get("tool_name") != "subagent_group" or not isinstance(group, dict):
+        if entry.get("tool_name") != SUBAGENT_GROUP_TOOL_NAME or not isinstance(group, dict):
             continue
-        subagent_names[str(group.get("subagent_id"))] = str(group.get("subagent_name") or "")
+        credited = _SubagentGroupProducer.model_validate(group)
+        subagent_names[str(credited.subagent_id)] = credited.subagent_name or ""
 
     # (field name, producer) -> item count. Eight separate one-item todo cards
     # from one subagent are one fact, not eight lines of noise.
@@ -197,26 +209,26 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
         "They visually render the RAW items, so don't re-type those items "
-        "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+        "row-by-row and don't re-emit them as OpenUI. That literal duplication "
         "is the ONLY thing to avoid here.\n"
         "The cards are visual aids, NOT your reply. You still owe the user the "
-        "ANSWER in your own voice — the substance the executor produced: what it "
+        "ANSWER in your own voice, the substance the executor produced: what it "
         "found, grouped and counted, the few items that actually matter (and "
         'why), and the natural next step. This synthesis is never "card '
         'contents"; suppressing it because a card exists is the worst failure '
         "you can have.\n"
         "Match the depth to the work: a quick outcome gets a line or two; a "
         "large, comprehensive result (a full triage, a multi-item analysis) gets "
-        "a real structured rundown — never a one-liner. Replying just \"here's "
+        "a real structured rundown, never a one-liner. Replying just \"here's "
         'the list 👇" with no substance, when the executor did real work, fails '
         "the user. Point them to the card for the granular rows AFTER you've "
         "actually delivered the gist.\n"
-        "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+        "CRITICAL EXCEPTION (LONG-FORM DELIVERABLE): if the executor's result is "
         "itself a finished written piece (a research report, an article, an "
         "analysis, a document), that is the ANSWER, not raw card rows. The cards "
         "above were just the research/loading steps along the way. Deliver the "
-        "deliverable IN FULL per the long-form rule — every section, point, and "
-        "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+        "deliverable IN FULL per the long-form rule: every section, point, and "
+        "citation, and do NOT compress it to a 'here's the breakdown' summary. "
         "This note never authorizes shrinking a report; it only stops you "
         "re-typing rows a card already lists.",
     )

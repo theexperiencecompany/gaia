@@ -8,7 +8,11 @@ from langchain_core.tools import BaseTool
 from langgraph.errors import GraphInterrupt
 import pytest
 
+from app.agents.core.subagents.subagent_runner import subagent_row_id
+from app.models.agent_models import SubagentKind
+
 MODULE = "app.agents.middleware.subagent"
+DELEGATION = "app.agents.core.subagents.delegation"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,14 +83,18 @@ def _spawn_harness(outcomes, decisions=("approved",), recovered=None):
     execute = AsyncMock(side_effect=outcomes)
     resume = MagicMock(side_effect=decisions)
     recover = AsyncMock(return_value=recovered)
+    registry = MagicMock(claim=AsyncMock(return_value=True), deregister=AsyncMock())
     with (
-        patch(f"{MODULE}.get_stream_writer", return_value=writer),
         patch(f"{MODULE}.build_initial_messages", new=AsyncMock(return_value=[])),
-        patch(f"{MODULE}.execute_subagent_stream", new=execute),
-        patch(f"{MODULE}.resume_for_gate", new=resume),
-        patch(f"{MODULE}.recover_from_checkpoint", new=recover),
+        patch(f"{DELEGATION}.current_stream_writer", return_value=writer),
+        patch(f"{DELEGATION}.execute_subagent_stream", new=execute),
+        patch(f"{DELEGATION}.resume_for_gate", new=resume),
+        patch(f"{DELEGATION}.recover_from_checkpoint", new=recover),
+        patch(f"{DELEGATION}.RunningSubagents", return_value=registry),
     ):
-        yield SimpleNamespace(writer=writer, execute=execute, resume=resume, recover=recover)
+        yield SimpleNamespace(
+            writer=writer, execute=execute, resume=resume, recover=recover, registry=registry
+        )
 
 
 @contextmanager
@@ -146,7 +154,11 @@ class TestSubagentMiddlewareInit:
         # tool_call_id, selected_tool_ids and config are injected at runtime. If
         # they leak into the model-facing schema the LLM invents a tool_call_id
         # (breaking the row id and the resume checkpoint) and its own tool allowlist.
-        assert set(spawn.tool_call_schema.model_json_schema()["properties"]) == {"task", "context"}
+        assert set(spawn.tool_call_schema.model_json_schema()["properties"]) == {
+            "task",
+            "context",
+            "background",
+        }
         assert "spawn_subagent" in mw._excluded_tools
 
     async def test_default_available_tools_yield_an_empty_spawn_registry(self):
@@ -365,7 +377,7 @@ class TestSpawnSubagentTool:
         h.recover.assert_awaited_once()
         h.execute.assert_not_awaited()
 
-    async def test_spawn_context_isolates_the_thread_and_drops_excluded_tools(self):
+    async def test_spawn_context_isolates_the_thread_and_starts_lean(self):
         mw = _ready_middleware(excluded_tool_names={"handoff"})
         with _spawn_harness(outcomes=[_done("ok")]) as h:
             await mw.tools[0].coroutine(
@@ -377,7 +389,43 @@ class TestSpawnSubagentTool:
 
         ctx = h.execute.await_args.kwargs["ctx"]
         assert ctx.config["configurable"]["thread_id"] == "spawn_conv-9_call_abc"
-        assert ctx.initial_state["selected_tool_ids"] == ["read"]
+        assert ctx.initial_state["selected_tool_ids"] == []
+
+
+class TestSpawnToolInheritance:
+    """Under integration activation the executor binds an integration's tools in its own turn and delegates bulky work to a spawn, so those tools have to ride into the spawn — both as the child's starting bind set and, crucially, in the runtime that keys the (cached) spawn graph, or a graph compiled before the activation would reject them as out of scope."""
+
+    async def test_inherits_parent_tools_when_enabled(self):
+        mw = _ready_middleware(inherit_parent_tools=True, excluded_tool_names={"handoff"})
+        with _context_harness():
+            ctx = await mw._build_context(
+                "do it",
+                "",
+                _make_spawn_config()["configurable"],
+                "call_abc",
+                ["gmail_send", "handoff", "spawn_subagent", "read"],
+            )
+
+        # Orchestration tools drop; the integration tools carry over.
+        assert ctx.initial_state["selected_tool_ids"] == ["gmail_send", "read"]
+        runtime = mw._spawn_graph_provider.await_args.kwargs["runtime"]
+        assert "gmail_send" in runtime.initial_tool_names
+        assert "handoff" not in runtime.initial_tool_names
+
+    async def test_no_inheritance_when_disabled(self):
+        mw = _ready_middleware(excluded_tool_names={"handoff"})
+        with _context_harness():
+            ctx = await mw._build_context(
+                "do it",
+                "",
+                _make_spawn_config()["configurable"],
+                "call_abc",
+                ["gmail_send", "read"],
+            )
+
+        assert ctx.initial_state["selected_tool_ids"] == []
+        runtime = mw._spawn_graph_provider.await_args.kwargs["runtime"]
+        assert "gmail_send" not in runtime.initial_tool_names
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +518,11 @@ class TestBuildContextWiring:
 
     async def _build(self, mw):
         return await mw._build_context(
-            self.TASK, "", _make_spawn_config(conversation_id="conv-9"), "call_abc", []
+            self.TASK,
+            "",
+            _make_spawn_config(conversation_id="conv-9")["configurable"],
+            "call_abc",
+            [],
         )
 
     async def test_the_spawn_runs_as_the_parents_user_in_the_parents_conversation(self):
@@ -495,7 +547,7 @@ class TestBuildContextWiring:
         mw = _ready_middleware(max_turns=7)
         config = _make_spawn_config(conversation_id="conv-9")
         with _context_harness() as h:
-            await mw._build_context(self.TASK, "", config, "call_abc", [])
+            await mw._build_context(self.TASK, "", config["configurable"], "call_abc", [])
 
         assert h.thread == AgentThread(
             thread_id="spawn_conv-9_call_abc",
@@ -521,6 +573,75 @@ class TestBuildContextWiring:
         )
 
 
+class TestBuildDelegation:
+    """build_delegation is also how a parked spawn is rebuilt, so its recipe must round-trip whole."""
+
+    async def test_the_delegation_carries_the_recipe_that_rebuilds_it(self):
+        mw = _ready_middleware(inherit_parent_tools=True)
+        parent = _make_spawn_config(conversation_id="conv-9")["configurable"]
+        with _context_harness() as h:
+            delegation = await mw.build_delegation(
+                task="draw the flowchart",
+                context="the user's notes",
+                parent_configurable=parent,
+                tool_call_id="call_abc",
+                inherited_tool_names=["create_flowchart"],
+            )
+
+        assert delegation.kind is SubagentKind.SPAWN
+        assert delegation.subagent_id == subagent_row_id("call_abc")
+        assert delegation.resume_item() == {
+            "kind": SubagentKind.SPAWN,
+            "tool_call_id": "call_abc",
+            "task": "draw the flowchart",
+            "context": "the user's notes",
+            "integration_id": "",
+            "inherited_tool_names": ["create_flowchart"],
+            "parent_configurable": parent,
+        }
+        assert h.task == "Context:\nthe user's notes\n\nTask:\ndraw the flowchart"
+        assert delegation.ctx.initial_state["selected_tool_ids"] == ["create_flowchart"]
+
+    async def test_no_inherited_tools_is_an_empty_recipe_entry(self):
+        mw = _ready_middleware()
+        with _context_harness():
+            delegation = await mw.build_delegation(
+                task="t",
+                context="",
+                parent_configurable=_make_spawn_config()["configurable"],
+                tool_call_id="call_abc",
+                inherited_tool_names=None,
+            )
+
+        assert delegation.inherited_tool_names == ()
+
+    @pytest.mark.parametrize(
+        ("task", "name"),
+        [
+            (
+                "Summarise the quarterly revenue report,  then draft the board memo",
+                "Summarise the quarterly revenue report,…",
+            ),
+            ("a" * 41, "a" * 40 + "…"),
+            ("a" * 40, "a" * 40),
+            ("", "Subagent"),
+        ],
+        ids=["long_task_truncates_and_trims", "one_past_the_limit", "at_the_limit", "no_task"],
+    )
+    async def test_the_row_is_named_after_its_task(self, task: str, name: str):
+        mw = _ready_middleware()
+        with _context_harness():
+            delegation = await mw.build_delegation(
+                task=task,
+                context="",
+                parent_configurable=_make_spawn_config()["configurable"],
+                tool_call_id="call_abc",
+                inherited_tool_names=None,
+            )
+
+        assert delegation.display.name == name
+
+
 class TestSpawnStartEvent:
     async def test_the_start_event_is_pinned_whole(self):
         """tool_category marks it a spawn and drops out entirely when nulled (exclude_none), so pin the payload whole."""
@@ -528,12 +649,11 @@ class TestSpawnStartEvent:
 
         mw = _ready_middleware()
         with _spawn_harness(outcomes=[_done("ok")]) as h:
-            await mw._run_spawn(
+            await mw.tools[0].coroutine(
                 task="summarise the attachment",
-                context="",
-                config=_make_spawn_config(subagent_id="parent-row-1"),
                 tool_call_id="call_abc",
-                inherited_tool_names=[],
+                selected_tool_ids=[],
+                config=_make_spawn_config(subagent_id="parent-row-1"),
             )
 
         event = _start_event(h.writer)
@@ -544,3 +664,48 @@ class TestSpawnStartEvent:
             "tool_category": "spawn_subagent",
             "parent_subagent_id": "parent-row-1",
         }
+
+
+class TestSpawnRunsInTheBackgroundByDefault:
+    """The executor keeps working while a spawn runs; waiting for it is the explicit choice."""
+
+    async def test_a_live_conversation_gets_the_acknowledgement_naming_the_subagent(self):
+        from app.agents.core.subagents.subagent_runner import subagent_row_id
+
+        mw = _ready_middleware()
+        with (
+            _spawn_harness(outcomes=[]) as h,
+            patch(f"{DELEGATION}.try_claim_bg_dispatch", new=AsyncMock(return_value=True)),
+            patch(f"{DELEGATION}._start_background_run") as start,
+        ):
+            result = await mw.tools[0].coroutine(
+                task="summarise the attachment",
+                tool_call_id="call_bg",
+                selected_tool_ids=[],
+                config=_make_spawn_config(stream_id="stream-1", execution_mode="interactive"),
+            )
+
+        content = _tool_message(result).content
+        assert "started in the background" in content
+        assert subagent_row_id("call_bg") in content
+        start.assert_called_once()
+        # Nothing ran inside the executor's tool call: the run belongs to the task.
+        h.execute.assert_not_awaited()
+        assert h.registry.claim.await_args.args[0].subagent_thread_id == "spawn_conv-1_call_bg"
+
+    async def test_background_false_waits_and_returns_the_result(self):
+        mw = _ready_middleware()
+        with (
+            _spawn_harness(outcomes=[_done("the summary")]),
+            patch(f"{DELEGATION}._start_background_run") as start,
+        ):
+            result = await mw.tools[0].coroutine(
+                task="summarise the attachment",
+                tool_call_id="call_fg",
+                selected_tool_ids=[],
+                config=_make_spawn_config(stream_id="stream-1", execution_mode="interactive"),
+                background=False,
+            )
+
+        assert _tool_message(result).content == "the summary"
+        start.assert_not_called()

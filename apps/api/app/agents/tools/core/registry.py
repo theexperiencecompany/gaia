@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
@@ -266,6 +267,7 @@ class ToolRegistry:
         self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
     def setup(self) -> None:
+        """Initialize and (re)register every tool category on this registry."""
         self._initialize_categories()
 
     def _add_category(
@@ -340,16 +342,16 @@ class ToolRegistry:
 
         HIL INVARIANT: every internal category passes an explicit
         ``destructive_tools`` set (empty when none are destructive) so no in-repo
-        tool is ever left unclassified. The three destructive built-ins are
-        code-reviewed: ``send_notification`` (external delivery),
-        ``execute_workflow`` (autonomous run-now), ``connect_integration``
-        (connects an external account). Everything else is reversible /
-        user-owned / read-only / sandbox-local and therefore safe.
+        tool is ever left unclassified. The destructive built-ins are code-reviewed:
+        ``send_notification`` (external delivery), ``execute_workflow`` (autonomous
+        run-now), ``connect_integration`` (connects an external account). Everything
+        else is reversible / user-owned / read-only / sandbox-local and therefore safe.
         """
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             account_tools,
+            browser_tool,
             context_tool,
             desktop_tools,
             download_tool,
@@ -357,6 +359,7 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
+            integration_account_tools,
             integration_instructions_tools,
             integration_tool,
             manual_tool,
@@ -460,7 +463,9 @@ class ToolRegistry:
         )
         self._add_category(
             "control",
-            tools=[finish_task_tool.finish_task],
+            tools=[
+                finish_task_tool.finish_task,
+            ],
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
@@ -485,13 +490,16 @@ class ToolRegistry:
         )
         self._add_category(
             "integrations",
-            tools=integration_tool.tools,
+            tools=[*integration_tool.tools, *integration_account_tools.tools],
             risk=CategoryRisk(
-                destructive_tools={"connect_integration"},
-                # add_custom_mcp_server: untrusted, LLM-resolved MCP server. approve_device_pairing:
-                # links a device to the account. Both always confirm with the user in every
-                # HIL mode (see hil/policy).
-                always_gate_tools={"add_custom_mcp_server", "approve_device_pairing"},
+                destructive_tools={CONNECT_INTEGRATION_TOOL},
+                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a device linked to
+                # the account, and a revoked account only a new sign-in restores.
+                always_gate_tools={
+                    "add_custom_mcp_server",
+                    "approve_device_pairing",
+                    DISCONNECT_INTEGRATION_TOOL,
+                },
             ),
         )
         self._add_category(
@@ -510,6 +518,16 @@ class ToolRegistry:
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
+        from app.agents.tools.execute import execute_tool, schema_tool
+
+        # The execute proxy is never classified by its own name: the HIL gate
+        # unwraps args["tool_name"] and classifies the REAL tool (hil/utils).
+        self._add_category(
+            "execute",
+            tools=[execute_tool.execute, schema_tool.get_tool_schema],
+            options=CategoryOptions(internal=True),
+            risk=CategoryRisk(destructive_tools=set()),
+        )
         self._add_category(
             "creative",
             tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
@@ -524,6 +542,13 @@ class ToolRegistry:
             "context",
             tools=[context_tool.gather_context],
             risk=CategoryRisk(destructive_tools=set()),
+        )
+        # browser_task is gated by HIL: the executor must get user approval before
+        # spinning up a browser ("do you want me to use a browser for this?").
+        self._add_category(
+            "browser",
+            tools=[browser_tool.browser_task],
+            risk=CategoryRisk(destructive_tools={"browser_task"}),
         )
         # Desktop-executed tools live in their own space so discovery can be
         # gated to conversations that originate from the desktop app. They act on
@@ -543,7 +568,7 @@ class ToolRegistry:
         exclude_tools: list[str] | None = None,
     ) -> ToolCategory:
         """
-        Register provider tools on-demand when subagent is created.
+        Register provider tools on-demand when an integration is first used.
         Tools are loaded from Composio and indexed in ChromaDB.
         """
         if toolkit_name in self._categories:
@@ -611,11 +636,15 @@ class ToolRegistry:
 
         composio_service = get_composio_service()
 
+        # Unavailable integrations are hidden from retrieval and the marketplace
+        # and refuse connect, so indexing their toolkits only spends startup on
+        # Composio round trips for tools nobody can reach.
         integrations = [
             integration
             for integration in OAUTH_INTEGRATIONS
             if (
-                integration.managed_by == "composio"
+                integration.available
+                and integration.managed_by == "composio"
                 and integration.composio_config
                 and integration.subagent_config
                 and integration.subagent_config.has_subagent
@@ -626,6 +655,7 @@ class ToolRegistry:
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:
+            """Load tool metadata (setups, inputs) for the provider catalog."""
             nonlocal total
             toolkit = integration.composio_config.toolkit
             space = integration.subagent_config.tool_space
@@ -903,6 +933,7 @@ async def get_tool_registry() -> ToolRegistry:
     auto_initialize=True,
 )
 async def init_tool_registry() -> ToolRegistry:
+    """Construct and return a fully populated ToolRegistry singleton."""
     tool_registry = ToolRegistry()
     tool_registry.setup()
     return tool_registry

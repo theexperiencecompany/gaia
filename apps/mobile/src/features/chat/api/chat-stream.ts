@@ -27,10 +27,11 @@ export interface StreamCallbacks {
   /** Called for each response text delta. Optional — accumulator consumers
    *  derive text from acc.responseText instead. */
   onChunk?: (text: string) => void;
+  /** Called once with the server ids of the turn's user and assistant messages. */
+  onMessageIds?: (userMessageId: string, botMessageId: string) => void;
+  /** Called after onMessageIds when the turn opened a new conversation. */
   onConversationCreated?: (
     conversationId: string,
-    userMessageId: string,
-    botMessageId: string,
     description?: string | null,
   ) => void;
   /** Called once with the stream_id received from the backend, used for cancellation. */
@@ -155,15 +156,12 @@ function handleParsedStreamEvent(
       if (parsed.stream_id) {
         callbacks.onStreamId?.(parsed.stream_id);
       }
-      if (
-        parsed.conversation_id &&
-        parsed.bot_message_id &&
-        parsed.user_message_id
-      ) {
+      if (parsed.user_message_id && parsed.bot_message_id) {
+        callbacks.onMessageIds?.(parsed.user_message_id, parsed.bot_message_id);
+      }
+      if (parsed.conversation_id) {
         callbacks.onConversationCreated?.(
           parsed.conversation_id,
-          parsed.user_message_id,
-          parsed.bot_message_id,
           parsed.conversation_description,
         );
       }
@@ -198,7 +196,7 @@ function handleParsedStreamEvent(
     default:
       // keepalive/token_usage/main_response_complete/conversation_description are
       // intentionally ignored; reasoning/subagent_start/subagent_end/todo_progress
-      // are forwarded via onStreamEvent above (the turn accumulator owns their state).
+      // and emoji_ack are forwarded via onStreamEvent above.
       return false;
   }
 }

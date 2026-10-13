@@ -1,9 +1,10 @@
 """OAuth integration models."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
 
 from app.models.mcp_config import (
     ComposioConfig,
@@ -13,6 +14,18 @@ from app.models.mcp_config import (
     SubAgentConfig,
 )
 from app.models.trigger_config import TriggerConfig
+
+
+class OAuthStateData(TypedDict):
+    """The OAuth state a callback consumes from Redis; validation rejects a missing or empty field.
+
+    connected_account_id is the exception: empty unless a Composio connect attached one.
+    """
+
+    user_id: Annotated[str, StringConstraints(min_length=1)]
+    redirect_path: Annotated[str, StringConstraints(min_length=1)]
+    integration_id: Annotated[str, StringConstraints(min_length=1)]
+    connected_account_id: str
 
 
 class IntegrationHowItWorksStep(BaseModel):
@@ -86,6 +99,13 @@ class OAuthIntegration(BaseModel):
         if self.managed_by == "composio" and self.composio_config is None:
             raise ValueError(
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
+            )
+        # Available with an empty auth_config_id would mint Connect Links against
+        # an empty Composio config; staged integrations keep available=False.
+        if self.available and self.composio_config and not self.composio_config.auth_config_id:
+            raise ValueError(
+                f"Integration {self.id!r} is available but has no Composio auth_config_id; "
+                "set it from the Composio dashboard or keep available=False."
             )
         return self
 

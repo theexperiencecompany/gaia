@@ -9,17 +9,7 @@ from app.models.message_models import MessageDict
 from app.utils.chat_utils import (
     _generate_description_from_message,
     do_prompt_no_stream,
-    get_user_id_from_config,
 )
-
-
-class TestGetUserIdFromConfig:
-    def test_returns_the_metadata_user_id(self) -> None:
-        assert get_user_id_from_config({"metadata": {"user_id": "user-1"}}) == "user-1"
-
-    @patch("app.utils.chat_utils.log")
-    def test_missing_user_id_returns_empty_string(self, mock_log: MagicMock) -> None:
-        assert get_user_id_from_config({"metadata": {}}) == ""
 
 
 class TestGenerateDescriptionFromMessage:
@@ -41,7 +31,7 @@ class TestGenerateDescriptionFromMessage:
 
         assert description == "New Chat"
 
-    @patch("app.agents.llm.chatbot.get_helper_llm")
+    @patch("app.agents.llm.chatbot.resolve_model")
     @patch("app.agents.llm.chatbot.ainvoke_llm", new_callable=AsyncMock)
     async def test_uses_llm_response_on_success(
         self, mock_ainvoke: AsyncMock, mock_get_default: MagicMock
@@ -58,7 +48,7 @@ class TestGenerateDescriptionFromMessage:
 
 
 class TestDoPromptNoStream:
-    @patch("app.agents.llm.chatbot.get_helper_llm")
+    @patch("app.agents.llm.chatbot.resolve_model")
     @patch("app.agents.llm.chatbot.ainvoke_llm", new_callable=AsyncMock)
     async def test_propagates_operational_llm_failures(
         self, mock_ainvoke: AsyncMock, mock_get_default: MagicMock

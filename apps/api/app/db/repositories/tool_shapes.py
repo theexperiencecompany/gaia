@@ -1,0 +1,56 @@
+"""Repository for the tool_output_shapes collection — observed tool shapes.
+
+Keyed by the business (scope, tool_name) pair; the incidental Mongo _id never
+surfaces above this boundary. scope is what keeps a private MCP server's shapes
+invisible to other users (see ResolvedTool.shape_scope).
+"""
+
+from collections.abc import Mapping
+from datetime import UTC, datetime
+
+from pymongo.errors import DuplicateKeyError
+
+from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.db.repositories.base import MongoRepository
+from app.models.tool_shape_models import ToolOutputShapeDocument, ToolOutputShapeUpdate
+
+
+class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputShapeUpdate]):
+    collection_name = "tool_output_shapes"
+    document_model = ToolOutputShapeDocument
+    update_model = ToolOutputShapeUpdate
+    uses_object_id = True
+    identity_field = "tool_name"
+    cache_policy = None
+
+    async def get_shape(self, scope: str, tool_name: str) -> ToolOutputShapeDocument | None:
+        return await self._find_one({"scope": scope, "tool_name": tool_name})
+
+    async def record(self, scope: str, tool_name: str, output_schema: dict[str, object]) -> None:
+        """Store the merged schema for one more observation of the tool.
+
+        Two first observations of the same scoped tool can both miss the upsert
+        and both insert; the unique (scope, tool_name) index rejects the loser
+        with DuplicateKeyError, and the retry merges into the winner — one
+        document, never a duplicate that splits call_count.
+        """
+        key = {"scope": scope, "tool_name": tool_name}
+        update: dict[str, Mapping[str, object]] = {
+            "$set": {"output_schema": output_schema, "last_seen": datetime.now(UTC)},
+            "$inc": {"call_count": 1},
+        }
+        # pragma: no mutate start — with cache_policy None, scope and return_document are
+        # inert (nothing is cached, the read-back is discarded), and the retry's upsert
+        # only runs once the winner's row exists; mutmut cannot pragma a single argument.
+        try:
+            await self._apply_raw_update(
+                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
+            )
+        except DuplicateKeyError:
+            await self._apply_raw_update(
+                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
+            )
+        # pragma: no mutate end
+
+
+tool_shapes_repository = ToolShapesRepository()

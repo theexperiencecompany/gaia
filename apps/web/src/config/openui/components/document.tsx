@@ -35,7 +35,7 @@ function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
 export const textDocumentDef = defineComponent({
   name: "TextDocument",
   description:
-    "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters — never when sending a final email directly.",
+    "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.",
   props: textDocumentSchema,
   component: ({ props }) => React.createElement(TextDocumentView, props),
 });

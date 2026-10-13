@@ -174,7 +174,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
             </div>
           }
         >
-          <div onClick={(e) => e.stopPropagation()}>
+          <div>
             <div className="grid grid-cols-2 gap-2 pl-1">
               {myIntegrations
                 .toSorted((a, b) => {

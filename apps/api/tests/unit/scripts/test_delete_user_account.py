@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, call
 from bson import ObjectId
 import pytest
 
-from app.db.mongodb.mongodb import object_id_filter
+from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
 from app.scripts.delete_user_account import (
     JFS_USERS_ROOT,
     PG_USER_TABLES,
@@ -660,7 +660,10 @@ class TestRunGuards:
         user = {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
         db.users.find.return_value = [user]
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             patch("app.scripts.delete_user_account._build_footprint", new_callable=AsyncMock),
         ):
             with pytest.raises(SystemExit, match="does not match resolved uid"):
@@ -672,7 +675,6 @@ class TestRunGuards:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from app.config.settings import settings
-        from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
         from app.scripts.delete_user_account import _run
 
         args = argparse.Namespace(
@@ -1154,7 +1156,10 @@ class TestRunExecuteMode:
         db.users.find.return_value = [{"_id": "not-a-hex-id", "email": "user@example.com"}]
 
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             pytest.raises(SystemExit, match="not a 24-hex ObjectId"),
         ):
             await _run(args)
@@ -1174,7 +1179,10 @@ class TestRunExecuteMode:
         ]
 
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             pytest.raises(SystemExit, match=r"^ABORT: --confirm-email does not match email$"),
         ):
             await _run(args)
@@ -1191,7 +1199,10 @@ class TestRunExecuteMode:
         db.users.find.return_value = [{"_id": ObjectId(UID), "email": "xxxx", "name": "U"}]
 
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             pytest.raises(SystemExit, match=r"^ABORT: --confirm-email does not match email$"),
         ):
             await _run(args)
@@ -1215,7 +1226,10 @@ class TestRunExecuteMode:
         footprint.db.list_collection_names.return_value = []
 
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             patch(
                 "app.scripts.delete_user_account._build_footprint",
                 new_callable=AsyncMock,
@@ -1286,7 +1300,10 @@ class TestRunExecuteMode:
             return 7
 
         with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account.MongoClient",
+                return_value={MONGO_DATABASE_NAME: db},
+            ),
             patch(
                 "app.scripts.delete_user_account._build_footprint",
                 new_callable=AsyncMock,

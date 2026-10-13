@@ -1,26 +1,50 @@
 """Shared test utilities for GAIA API tests."""
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
+from contextlib import asynccontextmanager, contextmanager
+import importlib.util
 import math
 import os
+from pathlib import Path
 import re
 import socket
+import sys
+import time
+from types import ModuleType
 from typing import Any, ClassVar
+import zoneinfo
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp
+import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from shared.py.wide_events import log, log_context
+
+#: A well-formed user id with no users row behind it.
+UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
+
+
+async def users_get(user_id: str) -> UserDocument | None:
+    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
+    if not ObjectId.is_valid(user_id):
+        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
+    if user_id == UNKNOWN_USER_ID:
+        return None
+    return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
@@ -46,6 +70,20 @@ def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+LLM_STUB_DIR = Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+
+
+def load_llm_stub_module(name: str) -> ModuleType:
+    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
+    spec = importlib.util.spec_from_file_location(name, LLM_STUB_DIR / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 # Resolved DB is never 0 (the app's live DB, flushed by this helper's teardown).
@@ -93,6 +131,30 @@ def worker_redis_url(base_url: str) -> str:
     return base_url.rstrip("/") + f"/{db}"
 
 
+@contextmanager
+def local_timezone(tz_name: str) -> Iterator[None]:
+    """Run the body with the process local timezone set, restoring it afterwards.
+
+    datetime.now reads the local zone and datetime.now(UTC) does not, so a test
+    that has to tell the two apart has to run where they differ. Asia/Kolkata
+    is UTC+5:30, so anything near midnight separates them.
+    """
+    zoneinfo.ZoneInfo(tz_name)  # fail loudly on a zone this box does not have
+    original = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = tz_name
+        if hasattr(time, "tzset"):
+            time.tzset()
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        if hasattr(time, "tzset"):
+            time.tzset()
+
+
 def worker_mongo_db_name(base_name: str | None = None) -> str:
     """Return a per-xdist-worker MongoDB database name.
 
@@ -126,6 +188,43 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
+
+
+#: One (namespace, mode, payload) triple of a graph's astream(subgraphs=True).
+GraphStreamEvent = tuple[tuple[str, ...], str, Any]
+
+
+class ScriptedGraph:
+    """A graph whose astream replays exactly the events handed to it.
+
+    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    real model wire never produces: an id-less message, a tool call announced
+    before its text, arguments that never parse, a retraction mid-node.
+    """
+
+    def __init__(self, events: Sequence[tuple[Any, ...]]) -> None:
+        self._events = events
+
+    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
+        events = self._events
+
+        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
+            for event in events:
+                yield event
+
+        return stream()
+
+
+def message_chunk_event(
+    *, message_id: str | None, content: str = "", **kwargs: Any
+) -> GraphStreamEvent:
+    """Build a messages-mode event carrying one assistant chunk."""
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
+
+
+def agent_update_event(message: AIMessage) -> GraphStreamEvent:
+    """Build an updates-mode event closing the agent node with message as its reply."""
+    return ((), "updates", {"agent": {"messages": [message]}})
 
 
 def create_fake_llm(responses: list[str]) -> BindableToolsFakeModel:
@@ -385,3 +484,49 @@ async def pg_advisory_lock(
             yield
         finally:
             await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+
+
+#: The CDP URL of the fake Browser-Use sessions the patch tests drive.
+OBSCURA_TEST_CDP_URL = "ws://obscura.test:9300/devtools/browser/run-1"
+
+
+#: How long a test's in-process ASGI server gets to start listening.
+_ASGI_STARTUP_TIMEOUT_SECONDS = 5
+
+
+@asynccontextmanager
+async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
+    """Serve an ASGI app on a port the OS picks; yield its base URL.
+
+    Binding port 0 leaves no window for another process to take a pre-picked
+    port, and a server that never starts fails the test instead of yielding.
+    """
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
+    )
+    task = asyncio.create_task(server.serve())
+    try:
+        async with asyncio.timeout(_ASGI_STARTUP_TIMEOUT_SECONDS):
+            while not server.started:
+                if task.done():
+                    task.result()
+                    raise RuntimeError("test ASGI server exited before it started")
+                await asyncio.sleep(0)
+    except BaseException:
+        # A server stuck in startup never sees should_exit; cancel it rather than wait forever.
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    try:
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await task
+
+
+async def drain_at_most_once_sends() -> None:
+    """Wait for the gated sends capture spawned, so their outcome is observable."""
+    await asyncio.gather(
+        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )

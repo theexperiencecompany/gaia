@@ -41,9 +41,8 @@ function NotificationSelectionCheckbox({
 interface NotificationCardHeaderProps {
   notification: InAppNotification;
   isUnread: boolean;
-  isSelectMode: boolean;
-  isSelected: boolean;
   isMarkingAsRead: boolean;
+  selection: { mode: boolean; selected: boolean };
   onMarkAsRead: () => void;
 }
 
@@ -54,11 +53,11 @@ interface NotificationCardHeaderProps {
 export function NotificationCardHeader({
   notification,
   isUnread,
-  isSelectMode,
-  isSelected,
   isMarkingAsRead,
+  selection,
   onMarkAsRead,
 }: NotificationCardHeaderProps) {
+  const { mode: isSelectMode, selected: isSelected } = selection;
   return (
     <View
       style={{

@@ -1,15 +1,15 @@
 """Tool-loop guardrail middleware.
 
-Detects a model stuck retrying a failing tool call and nudges it to change
-strategy. Tracks identical failures (same tool + args returning
-status="error") and same-tool failures (one tool failing repeatedly
-regardless of args). Escalates: warn thresholds append an in-band note to
-the error ToolMessage; hard_stop mode (silent/workflow runs) stops executing
-the offending tool and returns a synthetic error once stop thresholds hit.
+Tracks identical failures (same tool + args returning status="error"),
+same-tool failures, and repeats (the same tool + args issued again this run,
+whatever the outcome). Warn thresholds append an in-band note to the
+ToolMessage; in a background run (no user present) stop thresholds skip the
+call and return a synthetic error. Interactive runs only warn.
 
-Counters are keyed by thread_id, not the middleware instance, since the graph
-is a per-process singleton cached by the lazy provider; a bounded LRU over
-recent threads keeps memory flat.
+Counters are keyed by run (thread_id + root_request_id): the graph is a
+per-process singleton, and the executor keeps one thread per conversation
+across every turn and scheduled run. A bounded LRU keeps memory flat.
+retrieve_tools runs in the select_tools node, which consults this same guard.
 """
 
 from __future__ import annotations
@@ -36,16 +36,20 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_models import runtime_configurable
+from app.models.agent_models import AgentConfigurable, runtime_configurable
+from app.services.hil.utils import raw_tool_call
 from shared.py.wide_events import log
 
 _UNKNOWN_RUN = "unknown"
 
+#: (thread_id, root_request_id): one run of one graph thread.
+RunKey = tuple[str, str]
+
 
 class _RunCounters:
-    """Failure tallies for a single run (one thread_id)."""
+    """Call and failure tallies for a single run."""
 
-    __slots__ = ("identical", "last_call_key", "last_failure_key", "per_tool", "repeat")
+    __slots__ = ("calls", "identical", "last_failure_key", "per_tool")
 
     def __init__(self) -> None:
         # (tool_name, args_hash) -> consecutive identical-argument failures
@@ -56,44 +60,36 @@ class _RunCounters:
         self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
-        # The most recent call's (tool_name, args_hash) and its repeat count.
-        # Counts redundant duplicate calls a weak model loops on even when
-        # they *succeed* — the failure counters never see those.
-        self.last_call_key: tuple[str, str] | None = None
-        self.repeat: int = 0
+        # (tool_name, args_hash) -> times issued this run, whatever the outcome,
+        # consecutive or not: interleaving reset a consecutive-only count while a
+        # live run issued one query 14 times.
+        self.calls: dict[tuple[str, str], int] = {}
 
 
 class LoopGuardMiddleware(AgentMiddleware):
-    """Nudge (or, in hard_stop mode, halt) a model looping on a failing tool.
+    """Nudge a model looping on a tool call; halt it in a background run.
 
-    Usage::
-
-        middleware = LoopGuardMiddleware(hard_stop=False)
+    Blocking is decided per call from the run's execution_mode: the executor
+    graph is one per-process singleton shared by both run kinds.
     """
 
-    def __init__(
-        self,
-        hard_stop: bool = False,
-        max_tracked_runs: int = LOOP_GUARD_MAX_TRACKED_RUNS,
-    ) -> None:
+    def __init__(self, max_tracked_runs: int = LOOP_GUARD_MAX_TRACKED_RUNS) -> None:
         super().__init__()
-        self.hard_stop = hard_stop
         self._max_tracked_runs = max_tracked_runs
-        self._runs: OrderedDict[str, _RunCounters] = OrderedDict()
+        self._runs: OrderedDict[RunKey, _RunCounters] = OrderedDict()
 
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
-        tool_call = request.tool_call
-        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
-        args_key = self._args_key(args)
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        call = raw_tool_call(request)
+        tool_name, tool_call_id = call.name, call.id
+        args_key = self._args_key(call.args)
         failure_key = (tool_name, args_key)
 
-        counters = self._counters_for(request)
+        configurable: AgentConfigurable = runtime_configurable(request)
+        counters = self._counters_for(self._run_key(configurable))
         # Only carry the identical tally when the immediately-preceding failure was
         # this same call — a success or a different failing call in between resets
         # the "consecutive" streak.
@@ -104,15 +100,12 @@ class LoopGuardMiddleware(AgentMiddleware):
         )
         same_tool_before = counters.per_tool.get(tool_name, 0)
 
-        # Consecutive identical calls, regardless of outcome (redundant duplicates).
-        if counters.last_call_key == failure_key:
-            counters.repeat += 1
-        else:
-            counters.last_call_key = failure_key
-            counters.repeat = 1
-        repeat = counters.repeat
+        # Identical calls this run, regardless of outcome (redundant duplicates).
+        repeat = counters.calls.get(failure_key, 0) + 1
+        counters.calls[failure_key] = repeat
 
-        if self.hard_stop:
+        # Only a background run has no user to be surprised by a refused call.
+        if configurable.get("execution_mode") == "background":
             # Failure-specific stop is checked FIRST: it's the more specific
             # diagnosis, and checking repeat first would shadow it with the
             # generic duplicate message on a run of identical failing calls.
@@ -137,7 +130,7 @@ class LoopGuardMiddleware(AgentMiddleware):
                 return ToolMessage(
                     content=(
                         f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
-                        f"called {repeat} times in a row with identical arguments (limit "
+                        f"called {repeat} times this run with identical arguments (limit "
                         f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
                         "reuse the earlier result, or if the task is done, stop and report it."
                     ),
@@ -165,7 +158,7 @@ class LoopGuardMiddleware(AgentMiddleware):
                 self._append_note(
                     result,
                     f"{TOOL_RESULT_NOTE_SEPARATOR}[Loop guard: `{tool_name}` has now been called "
-                    f"{repeat} times in a row "
+                    f"{repeat} times this run "
                     "with identical arguments. The result won't change — reuse the earlier result "
                     "and move on instead of repeating this call.]",
                 )
@@ -253,21 +246,23 @@ class LoopGuardMiddleware(AgentMiddleware):
             "loop_guard_warned": True,
         }
 
-    def _counters_for(self, request: ToolCallRequest) -> _RunCounters:
-        thread_id = self._thread_id(request)
-        counters = self._runs.get(thread_id)
+    def _counters_for(self, run_key: RunKey) -> _RunCounters:
+        counters = self._runs.get(run_key)
         if counters is None:
             counters = _RunCounters()
-            self._runs[thread_id] = counters
+            self._runs[run_key] = counters
             while len(self._runs) > self._max_tracked_runs:
                 self._runs.popitem(last=False)
         else:
-            self._runs.move_to_end(thread_id)
+            self._runs.move_to_end(run_key)
         return counters
 
     @staticmethod
-    def _thread_id(request: ToolCallRequest) -> str:
-        return runtime_configurable(request).get("thread_id") or _UNKNOWN_RUN
+    def _run_key(configurable: AgentConfigurable) -> RunKey:
+        return (
+            configurable.get("thread_id") or _UNKNOWN_RUN,
+            configurable.get("root_request_id") or _UNKNOWN_RUN,
+        )
 
     @staticmethod
     def _args_key(args: object) -> str:

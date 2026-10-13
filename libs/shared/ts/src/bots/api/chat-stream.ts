@@ -13,6 +13,10 @@ import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
+import {
+  REACTION_OUTCOME,
+  type ReactionHandler,
+} from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
@@ -22,6 +26,7 @@ import type {
   NoticeHandler,
 } from "./chat-stream.types";
 
+export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
@@ -58,6 +63,7 @@ export async function streamChat(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -76,6 +82,7 @@ export async function streamChat(
         onApprovalUpdate,
         onMessageBoundary,
         onNotice,
+        onReaction,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -127,6 +134,7 @@ interface SseFrame {
   notice?: { text: string };
   text?: string;
   message_boundary?: MessageBoundary;
+  emoji_ack?: { emoji: string; reacts_to_message_id?: string };
   done?: boolean;
   conversation_id?: string;
 }
@@ -137,7 +145,7 @@ function toStreamErrorMessage(message: string): string {
     return "Connection interrupted. Please try again.";
   }
   if (message.includes("timeout")) {
-    return "Request timed out. The server may be busy - please try again.";
+    return "Request timed out. The server might be busy, so try again.";
   }
   return message;
 }
@@ -157,6 +165,7 @@ async function streamChatOnce(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary; joins `fullText` only once the backend
@@ -165,6 +174,9 @@ async function streamChatOnce(
   let pendingText = "";
   let conversationId = "";
   let streamError: Error | null = null;
+  // A natively attached reaction is the whole reply, so the turn has content with no text.
+  let reacted = false;
+  const turnHasContent = (): boolean => reacted || fullText !== "";
 
   const keepPendingText = (): void => {
     if (!pendingText) return;
@@ -172,6 +184,36 @@ async function streamChatOnce(
       ? `${fullText}${NEW_MESSAGE_BREAK_TOKEN}${pendingText}`
       : pendingText;
     pendingText = "";
+  };
+
+  const applyText = async (text: string): Promise<void> => {
+    pendingText += text;
+    await onChunk(text);
+  };
+
+  // The `<EMOJI>…</EMOJI>` ack: the backend sends it only when the whole reply is the
+  // directive, and never streams the directive's text. Attached as a reaction, the turn
+  // delivers no text; otherwise the emoji is its one chunk, or streaming platforms show nothing.
+  const applyEmojiAck = async (emoji: string): Promise<void> => {
+    if ((await onReaction?.(emoji)) === REACTION_OUTCOME.ATTACHED) {
+      reacted = true;
+      fullText = "";
+      return;
+    }
+    fullText = emoji;
+    await onChunk(emoji);
+  };
+
+  const applyMessageBoundary = async (discarded: boolean): Promise<void> => {
+    if (discarded) {
+      pendingText = "";
+    } else {
+      keepPendingText();
+    }
+    // A kept boundary tells a streaming platform its message is final and may now be
+    // split into bubbles — announcing any earlier would leave nothing for a retraction
+    // arriving next to take back.
+    await onMessageBoundary?.(discarded);
   };
 
   const ctx = {
@@ -189,6 +231,9 @@ async function streamChatOnce(
         platform_user_id: request.platformUserId,
         channel_id: request.channelId,
         is_dm: request.isDm ?? false,
+        ...(request.platformMessageId
+          ? { platform_message_id: request.platformMessageId }
+          : {}),
         ...(request.fileIds && request.fileIds.length > 0
           ? { file_ids: request.fileIds }
           : {}),
@@ -219,14 +264,14 @@ async function streamChatOnce(
           finished = true;
           stream.destroy();
           keepPendingText();
-          if (fullText) {
+          if (turnHasContent()) {
             // If we got some content, consider it a success
             await onDone(fullText, conversationId);
           } else {
             // No content after timeout - this is an error
             const errorMsg = receivedKeepalive
               ? "The AI is taking longer than expected. Please try a simpler request or try again later."
-              : "Connection timeout - no response from server. Please try again.";
+              : "Connection timed out with no response from the server. Try again.";
             await onError(new Error(errorMsg));
           }
           resolve();
@@ -255,21 +300,10 @@ async function streamChatOnce(
         if (frame.notice) {
           await onNotice?.(frame.notice.text);
         }
-        if (frame.text) {
-          pendingText += frame.text;
-          await onChunk(frame.text);
-        }
+        if (frame.text) await applyText(frame.text);
+        if (frame.emoji_ack) await applyEmojiAck(frame.emoji_ack.emoji);
         if (frame.message_boundary) {
-          const { discarded } = frame.message_boundary;
-          if (discarded) {
-            pendingText = "";
-          } else {
-            keepPendingText();
-          }
-          // A kept boundary tells a streaming platform its message is final and may now be
-          // split into bubbles — announcing any earlier would leave nothing for a retraction
-          // arriving next to take back.
-          await onMessageBoundary?.(discarded);
+          await applyMessageBoundary(frame.message_boundary.discarded);
         }
       };
 
@@ -306,14 +340,19 @@ async function streamChatOnce(
       // signalling the caller to resolve and stop reading.
       const processLine = async (line: string): Promise<boolean> => {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) return false;
+        if (!trimmed.startsWith("data: ")) return false;
         const raw = trimmed.slice(6);
         if (raw === "[DONE]") return false;
 
         try {
           return await handleFrame(JSON.parse(raw) as SseFrame);
         } catch (parseErr) {
-          if (parseErr instanceof SyntaxError) return false;
+          if (parseErr instanceof SyntaxError) {
+            wideLog.warning("chat_stream_frame_unparseable", {
+              bytes: raw.length,
+            });
+            return false;
+          }
           finish();
           await onError(
             parseErr instanceof Error
@@ -344,8 +383,13 @@ async function streamChatOnce(
               return;
             }
           }
-        } catch {
-          // Prevent unhandled rejection if a callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
           if (!finished) {
             finish();
             resolve();
@@ -364,7 +408,7 @@ async function streamChatOnce(
           if (!finished) {
             finished = true;
             keepPendingText();
-            if (fullText) {
+            if (turnHasContent()) {
               // Got partial response - return what we have
               await onDone(fullText, conversationId);
             } else if (receivedKeepalive) {
@@ -383,8 +427,13 @@ async function streamChatOnce(
               );
             }
           }
-        } catch {
-          // Prevent unhandled rejection if a callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
         } finally {
           resolve();
         }
@@ -400,10 +449,10 @@ async function streamChatOnce(
               err.message.includes(retryableErr),
             );
 
-            if (isRetryable && !fullText) {
+            if (isRetryable && !turnHasContent()) {
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
-            } else if (fullText) {
+            } else if (turnHasContent()) {
               // The connection died but the answer is already assembled — deliver it exactly as
               // the `end` handler does. An error card here would lose an earned reply, and on a
               // non-streaming platform (Discord/WhatsApp render only at onDone) show nothing at all.
@@ -412,8 +461,13 @@ async function streamChatOnce(
               await onError(new Error(toStreamErrorMessage(err.message)));
             }
           }
-        } catch {
-          // Prevent unhandled rejection if callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
         } finally {
           resolve();
         }
@@ -437,6 +491,7 @@ async function streamChatOnce(
         // Dropped here until now: a stale session token cost the retried
         // attempt every rate-limit notice it produced.
         onNotice,
+        onReaction,
       );
     }
 

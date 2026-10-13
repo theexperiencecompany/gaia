@@ -16,6 +16,7 @@ api/.env
 
 venv/
 .venv
+.venv-voice-agent
 .venv/
 .venv311/
 
@@ -123,6 +124,7 @@ postman/
 .agents/prod-convos/
 .agents/recording/
 .agents/sim/
+.agents/scratch/
 
 # whatsapp-web.js
 .wwebjs_auth/

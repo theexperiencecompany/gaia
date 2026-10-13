@@ -29,10 +29,9 @@ class PublishError(Exception):
 async def publish_custom_integration(
     integration_id: str,
     user_id: str,
-) -> dict:
-    """Publish a custom integration to the community marketplace.
+) -> str:
+    """Publish a custom integration to the marketplace, returning its public URL.
 
-    Returns dict with integration_id and public_url on success.
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "publish"})
@@ -49,16 +48,18 @@ async def publish_custom_integration(
     if not await user_integration_repository.is_connected(user_id, integration_id):
         raise PublishError("Integration must be connected before publishing")
 
-    tools = [t.model_dump() for t in integration.tools]
+    tools = integration.tools
     if not tools:
         raise PublishError("Integration must be connected with tools before publishing")
+    # The validator and the Chroma index still read the dumped shape.
+    tool_dicts = [t.model_dump() for t in tools]
 
     server_url = integration.mcp_config.server_url if integration.mcp_config else ""
 
     validation_errors = await PublishIntegrationValidator.validate_for_publish(
         name=integration.name,
         description=integration.description,
-        tools=tools,
+        tools=tool_dicts,
     )
     if validation_errors:
         raise PublishError("; ".join(validation_errors))
@@ -68,6 +69,7 @@ async def publish_custom_integration(
         description=integration.description,
         tools=tools,
         server_url=server_url,
+        user_id=user_id,
     )
 
     content = await infer_integration_content(
@@ -104,7 +106,7 @@ async def publish_custom_integration(
         integration_id=integration_id,
         name=integration.name,
         description=integration.description,
-        tools=tools,
+        tools=tool_dicts,
     )
 
     await delete_cache_by_pattern("marketplace:community:*")
@@ -112,19 +114,15 @@ async def publish_custom_integration(
     await invalidate_user_integration_caches(user_id)
     log.info(f"{LogTag.INTEGRATION} Published integration", integration_id=integration_id)
 
-    return {
-        "integration_id": integration_id,
-        "public_url": f"/marketplace/{slug}",
-    }
+    return f"/marketplace/{slug}"
 
 
 async def unpublish_custom_integration(
     integration_id: str,
     user_id: str,
-) -> dict:
+) -> None:
     """Unpublish a custom integration from the community marketplace.
 
-    Returns dict with integration_id on success.
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "unpublish"})
@@ -145,5 +143,3 @@ async def unpublish_custom_integration(
     await delete_cache_by_pattern("marketplace:community:*")
     await invalidate_user_integration_caches(user_id)
     log.info(f"{LogTag.INTEGRATION} Unpublished integration", integration_id=integration_id)
-
-    return {"integration_id": integration_id}

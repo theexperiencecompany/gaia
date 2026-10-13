@@ -3,17 +3,17 @@
 Native integrations ship both curated by hand in app/config/oauth_content.py;
 custom integrations get them generated here at publish time instead of the
 frontend's generic fallbacks. Both run on the default model via
-get_helper_llm + ainvoke_llm — the same path used for memory extraction,
+resolve_model + ainvoke_llm — the same path used for memory extraction,
 follow-ups, and research helpers.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_helper_llm, metered_config
+from app.agents.llm.client import ainvoke_llm, ainvoke_structured, metered_config, resolve_model
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
@@ -25,6 +25,7 @@ from app.constants.integrations import (
     USE_CASES_COUNT,
 )
 from app.constants.log_tags import LogTag
+from app.models.integration_models import StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent
 from shared.py.wide_events import log
 
@@ -34,9 +35,9 @@ _CONTENT_GENERATION_TIMEOUT_SECONDS = 12
 _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
 
 
-def _tools_summary(tools: list[dict[str, Any]], limit: int) -> str:
+def _tools_summary(tools: list[StoredIntegrationTool], limit: int) -> str:
     """Comma-joined names of the first limit tools, or "None" when empty."""
-    names = [str(t.get("name")) for t in tools[:limit] if t.get("name")]
+    names = [t.name for t in tools[:limit] if t.name]
     return ", ".join(names) or "None"
 
 
@@ -51,8 +52,9 @@ def _server_domain(server_url: str) -> str:
 async def infer_integration_category(
     name: str,
     description: str,
-    tools: list[dict[str, Any]],
+    tools: list[StoredIntegrationTool],
     server_url: str,
+    user_id: str,
 ) -> str:
     """Classify an integration into one INTEGRATION_CATEGORIES value.
 
@@ -69,7 +71,10 @@ async def infer_integration_category(
     try:
         async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
             response = await ainvoke_llm(
-                get_helper_llm(), [HumanMessage(content=prompt)], label="integration_category"
+                resolve_model(),
+                [HumanMessage(content=prompt)],
+                label="integration_category",
+                config=metered_config(user_id),
             )
     except Exception as e:
         log.error(
@@ -102,10 +107,9 @@ async def infer_integration_category(
 async def infer_integration_content(
     name: str,
     description: str,
-    tools: list[dict[str, Any]],
+    tools: list[StoredIntegrationTool],
     server_url: str,
     category: str,
-    *,
     user_id: str,
 ) -> IntegrationContent | None:
     """Generate rich marketplace content for an integration, or None.

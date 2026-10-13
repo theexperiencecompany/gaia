@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.api.v1.endpoints.browser_live_view import router as browser_live_view_router
 from app.api.v1.endpoints.dev import router as dev_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
@@ -85,6 +86,10 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
     app.include_router(health_router, responses=ERROR_RESPONSES)
+    # Root-mounted on purpose: these are the links a user is handed, fronted by a
+    # friendly vhost that proxies here, so they carry no /api/v1 prefix. Each one
+    # authenticates itself with the capability in its own URL.
+    app.include_router(browser_live_view_router, responses=ERROR_RESPONSES)
 
     # Dev-only identity + seeding router. Mounted only when the auth bypass is
     # active in development, so it never exists in production (every route 404s).

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useClearPaywallWhenPaid } from "@/features/pricing/hooks/useClearPaywallWhenPaid";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useChatStore, useChatStoreSync } from "@/stores/chatStore";
 import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
 import { usePopupEscapeDismiss } from "../hooks/usePopupEscapeDismiss";
@@ -48,7 +48,7 @@ export default function AssistantPopup() {
 
   useEffect(() => {
     const offActivate = onPopupActivate((data) => {
-      trackEvent(ANALYTICS_EVENTS.DESKTOP_POPUP_OPENED, {
+      track("desktop_popup:opened", {
         triggered_by_wake_word: data?.trigger === "wake-word",
       });
       setActivationCount((count) => count + 1);
@@ -59,7 +59,7 @@ export default function AssistantPopup() {
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
     });
     const offDeactivate = onPopupDeactivate(() => {
-      trackEvent(ANALYTICS_EVENTS.DESKTOP_POPUP_DISMISSED);
+      track("desktop_popup:dismissed", {});
       // Window-level fade handles the visual exit; stop the voice session
       // and clear the conversation — each summon starts a fresh chat,
       // while messages within one summon accumulate.

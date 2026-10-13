@@ -70,10 +70,14 @@ async def raw_collection(
     # Both modules that hold the accessor: the base owns every standard path,
     # and notifications binds its own for the one bulk update_many the base
     # has no seam for. Missing either sends that repository at real Mongo.
-    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda _name: coll)
-    monkeypatch.setattr(
-        "app.db.repositories.notifications.get_async_collection", lambda _name: coll
-    )
+    def accessor(name: str) -> AsyncIOMotorCollection:
+        # pymongo refuses a non-str name, so a repository that lost its name fails here too.
+        if not isinstance(name, str):
+            raise TypeError("name must be an instance of str")
+        return coll
+
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", accessor)
+    monkeypatch.setattr("app.db.repositories.notifications.get_async_collection", accessor)
 
     yield coll
 

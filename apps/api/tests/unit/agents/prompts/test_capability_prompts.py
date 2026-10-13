@@ -11,11 +11,13 @@ from app.agents.prompts.capability_prompts import (
     _describe_cron,
     _describe_trigger,
     _describe_workflow,
+    _inbox_desk_line,
     _integrations_line,
     build_capability_block,
 )
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -158,6 +160,17 @@ class TestCapabilityBlock:
         assert len(lines) >= 2
         assert all(line.startswith("- ") for line in lines[1:])
 
+    def test_the_inbox_desk_is_its_own_section_with_its_real_schedule(self) -> None:
+        assert f"\n\n{_inbox_desk_line()}\n\n" in build_capability_block()
+        assert _inbox_desk_line() == (
+            f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the "
+            f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages "
+            "new mail, opens a tracked todo for every thread where the user owes a reply or is "
+            "waiting on one, saves reply drafts without sending them, puts personal events from "
+            "mail on the calendar, and ends with one briefing. The user changes when it runs or "
+            "what it does by telling GAIA, like any tracked todo."
+        )
+
     def test_todos_cover_the_tracked_and_recurring_shape(self) -> None:
         block = build_capability_block()
         assert "TRACKED" in block
@@ -166,10 +179,10 @@ class TestCapabilityBlock:
 
     def test_the_comms_prompt_carries_the_block_and_the_connect_rule(self) -> None:
         assert CAPABILITY_SECTION_HEADER in COMMS_AGENT_PROMPT
-        assert "12. CONNECT MEANS A LINK:" in COMMS_AGENT_PROMPT
-        # The rule sits with the other non-negotiables, ahead of the voice.
-        assert COMMS_AGENT_PROMPT.index("12. CONNECT MEANS A LINK:") < COMMS_AGENT_PROMPT.index(
-            "## Voice"
+        rule = COMMS_AGENT_PROMPT.index("- CONNECT MEANS A CARD:")
+        # The rule sits with the other hard rules.
+        assert (
+            COMMS_AGENT_PROMPT.index("## Hard rules") < rule < COMMS_AGENT_PROMPT.index("## Memory")
         )
 
 

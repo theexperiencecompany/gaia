@@ -115,3 +115,186 @@ def test_a_typeddict_binding_reaches_closures_but_not_rebindings_or_other_scopes
         "payload['ok']\n"
     )
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [9, 11, 12]
+
+
+def test_a_class_built_on_an_imported_library_typeddict_is_a_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from langgraph_bigtool.graph import State as _BigtoolState\n"
+        "from langgraph.graph import MessagesState\n"
+        "from elsewhere.graph import State as _Unlisted\n"
+        "class State(_BigtoolState):\n"
+        "    todos: list\n"
+        "class Other(_Unlisted):\n"
+        "    todos: list\n"
+        "def f(state: State, plain: MessagesState, other: Other) -> None:\n"
+        "    a = state.get('messages')\n"
+        "    b = plain['messages']\n"
+        "    c = other.get('messages')\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [11]
+
+
+def test_a_loop_over_a_typeddict_collection_binds_a_typed_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Iterable, Sequence\n"
+        "from typing import Any, TypedDict\n"
+        "class Turn(TypedDict):\n"
+        "    role: str\n"
+        "def f(history: list[Turn], seq: Sequence[Turn], it: Iterable[Turn], s: set[Turn],\n"
+        "      fs: frozenset[Turn], tup: tuple[Turn, ...], calls: list[ToolCall],\n"
+        "      raw, loose: list[dict[str, Any]]) -> None:\n"
+        "    a = [turn.get('role') for turn in history]\n"
+        "    for t in seq:\n"
+        "        b = t['role']\n"
+        "    c = {x['role'] for x in it}\n"
+        "    d = {y['role']: 1 for y in s}\n"
+        "    e = list(z['role'] for z in tup)\n"
+        "    g = [call['name'] for call in calls]\n"
+        "    h = [r['role'] for r in raw]\n"
+        "    i = [w['role'] for w in loose]\n"
+        "    for u in history:\n"
+        "        u = u.copy()\n"
+        "        j = u['role']\n"
+        "    for k, v in enumerate(history):\n"
+        "        m = v['role']\n"
+        "    n = [q['role'] for q in fs]\n"
+        "    def closure():\n"
+        "        return [p['role'] for p in history]\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [15, 16, 19, 21]
+
+
+def test_a_loop_over_a_typeddict_mapping_binds_its_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Mapping\n"
+        "from typing import Any, TypedDict\n"
+        "class Entry(TypedDict):\n"
+        "    name: str\n"
+        "def f(tools: dict[str, Entry], ro: Mapping[str, Entry], raw: dict[str, dict[str, Any]]) -> None:\n"
+        "    for v in tools.values():\n"
+        "        a = v['name']\n"
+        "    for k, e in ro.items():\n"
+        "        b = e['name']\n"
+        "    c = {k2: w['name'] for k2, w in tools.items()}\n"
+        "    d = [x.get('name') for x in ro.values()]\n"
+        "    for r in raw.values():\n"
+        "        g = r['name']\n"
+        "    for key in tools.keys():\n"
+        "        h = key['name']\n"
+        "    for y in tools.values():\n"
+        "        y = {}\n"
+        "        i = y['name']\n"
+        "    for m, n in tools.values():\n"
+        "        j = n['name']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [13, 15, 18, 20]
+
+
+def test_chromadb_results_are_library_typeddicts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from chromadb.api.types import GetResult, QueryResult\n"
+        "def f(got: GetResult, found: QueryResult, other: dict) -> None:\n"
+        "    a = got['ids']\n"
+        "    b = found.get('documents')\n"
+        "    c = other['ids']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [5]
+
+
+def test_each_comprehension_is_its_own_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "def f(messages, made: list[ToolCall]) -> None:\n"
+        "    raw = [call for m in messages for call in m.tool_calls]\n"
+        "    a = [call.get('name') for call in made]\n"
+        "    b = [call.get('name') for call in raw]\n"
+        "    for call in raw:\n"
+        "        d = call['name']\n"
+        "    c = [call['name'] for call in made]\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [4, 6]
+
+
+def test_an_optional_typeddict_collection_still_binds_its_loop_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from typing import Any, Optional, TypedDict\n"
+        "class Turn(TypedDict):\n"
+        "    role: str\n"
+        "def f(history: list[Turn] | None, old: Optional[list[Turn]],\n"
+        "      loose: list[dict[str, Any]] | None) -> None:\n"
+        "    a = [turn.get('role') for turn in history or []]\n"
+        "    b = [turn.get('role') for turn in history]\n"
+        "    c = [turn['role'] for turn in old]\n"
+        "    d = [w['role'] for w in loose]\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [6, 9]
+
+
+def test_a_composio_execution_response_is_a_library_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from composio.core.models.tools import ToolExecutionResponse\n"
+        "def f(response: ToolExecutionResponse, other: dict) -> None:\n"
+        "    a = response.get('successful')\n"
+        "    b = response['error']\n"
+        "    c = other['error']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [5]
+
+
+def test_a_dom_nodes_attributes_are_a_string_key_read_like_any_other_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "def f(node, request) -> None:\n"
+        "    a = node.attributes.get('type')\n"
+        "    b = node.attributes['href']\n"
+        "    c = request.headers['authorization']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [2, 3]
+
+
+def test_playwrights_storage_state_is_a_library_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from playwright.sync_api import StorageState, StorageStateCookie\n"
+        "def f(state: StorageState, cookie: StorageStateCookie, other: dict) -> None:\n"
+        "    a = state['cookies']\n"
+        "    b = cookie.get('domain')\n"
+        "    c = other['cookies']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [5]
+
+
+def test_a_storage_state_from_anywhere_but_playwright_is_not_a_known_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from elsewhere.state import StorageState\n"
+        "def f(state: StorageState) -> None:\n"
+        "    a = state['cookies']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [3]

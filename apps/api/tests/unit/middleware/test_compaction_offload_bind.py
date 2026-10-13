@@ -112,6 +112,71 @@ async def test_awrap_excluded_self_offloading_tool_still_binds() -> None:
     assert res.update["selected_tool_ids"] == ["query_json", "grep"]
 
 
+def _gmail_request(selected: list[str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        tool_call={"name": "GMAIL_FETCH_MESSAGES", "id": "1", "args": {}},
+        runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
+        state={"messages": [], "selected_tool_ids": selected},
+    )
+
+
+async def test_awrap_miners_already_bound_leave_a_plain_message() -> None:
+    mw = WorkspaceCompactionMiddleware(excluded_tools={"GMAIL_FETCH_MESSAGES"})
+    marked = _marked()
+
+    async def handler(_req):
+        return marked
+
+    res = await mw.awrap_tool_call(_gmail_request(["query_json", "grep"]), handler)
+
+    assert res is marked
+
+
+async def test_awrap_a_compacted_command_output_replaces_the_original_message() -> None:
+    """With nothing left to bind, the compacted message itself must still land in the Command."""
+    mw = WorkspaceCompactionMiddleware()
+    original = ToolMessage(content="huge", tool_call_id="1", name="GMAIL_FETCH_MESSAGES")
+    compacted = _marked()
+    command = Command(update={"messages": [original], "selected_tool_ids": ["read"]})
+
+    async def handler(_req):
+        return command
+
+    with patch.object(compaction_mod, "compact_tool_output", AsyncMock(return_value=compacted)):
+        res = await mw.awrap_tool_call(_gmail_request(["query_json", "grep"]), handler)
+
+    assert res is command
+    assert res.update == {"messages": [compacted], "selected_tool_ids": ["read"]}
+
+
+async def test_awrap_hands_the_tool_its_own_request() -> None:
+    mw = WorkspaceCompactionMiddleware()
+    req = _gmail_request([])
+    seen: list[object] = []
+
+    async def handler(request):
+        seen.append(request)
+        return ToolMessage(content="small", tool_call_id="1", name="GMAIL_FETCH_MESSAGES")
+
+    await mw.awrap_tool_call(req, handler)
+
+    assert seen == [req]
+
+
+async def test_awrap_without_a_vfs_session_offloads_under_the_thread() -> None:
+    mw = WorkspaceCompactionMiddleware()
+    compact = AsyncMock(return_value=None)
+
+    async def handler(_req):
+        return ToolMessage(content="huge", tool_call_id="1", name="GMAIL_FETCH_MESSAGES")
+
+    with patch.object(compaction_mod, "compact_tool_output", compact):
+        await mw.awrap_tool_call(_gmail_request([]), handler)
+
+    assert compact.await_args.kwargs["conversation_id"] == "c1"
+    assert compact.await_args.kwargs["user_id"] == "u1"
+
+
 async def test_awrap_command_result_passes_through_untouched() -> None:
     mw = WorkspaceCompactionMiddleware()
     cmd = Command(update={"messages": []})

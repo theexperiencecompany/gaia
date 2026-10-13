@@ -22,6 +22,9 @@ from directives import Response, ToolCallResponse
 # Split streamed payloads across a few chunks so the stub exercises the client's
 # delta-assembly path (tool-call argument concatenation, content joining).
 _STREAM_PIECES = 3
+# The usual rough size of a token, so sim replies report the non-zero usage a
+# real provider does and GAIA meters them as it meters production calls.
+_CHARS_PER_TOKEN = 4
 
 
 def _now() -> int:
@@ -47,7 +50,31 @@ def _tool_call_block(response: ToolCallResponse, *, call_id: str) -> dict[str, A
     }
 
 
-def build_chat_completion(model: str, response: Response) -> dict[str, Any]:
+def estimate_tokens(text: str) -> int:
+    """Approximate token count of text, at least 1."""
+    return max(1, len(text) // _CHARS_PER_TOKEN)
+
+
+def prompt_tokens(messages: list[dict[str, Any]]) -> int:
+    """Approximate prompt size of a request's messages, the input side of its usage."""
+    return estimate_tokens(json.dumps(messages, ensure_ascii=False))
+
+
+def _usage(prompt_tokens: int, response: Response) -> dict[str, int]:
+    """OpenAI usage block: the request's size in, the scripted reply's size out."""
+    if isinstance(response, ToolCallResponse):
+        output = response.name + json.dumps(response.args, ensure_ascii=False)
+    else:
+        output = response.text
+    completion_tokens = estimate_tokens(output)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+
+
+def build_chat_completion(model: str, response: Response, prompt_tokens: int) -> dict[str, Any]:
     """Non-streaming ``chat.completion`` payload."""
     if isinstance(response, ToolCallResponse):
         message = {
@@ -74,7 +101,7 @@ def build_chat_completion(model: str, response: Response) -> dict[str, Any]:
                 "logprobs": None,
             }
         ],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "usage": _usage(prompt_tokens, response),
     }
 
 
@@ -97,8 +124,8 @@ def _split(text: str, pieces: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
-def stream_chunks(model: str, response: Response) -> Iterator[dict[str, Any]]:
-    """OpenAI-style streaming chunks, opener → deltas → terminator."""
+def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterator[dict[str, Any]]:
+    """OpenAI-style streaming chunks, opener → deltas → terminator → usage-only chunk."""
     completion_id = _completion_id()
     created = _now()
 
@@ -138,10 +165,19 @@ def stream_chunks(model: str, response: Response) -> Iterator[dict[str, Any]]:
         finish_reason = "stop"
 
     yield _chunk(model, completion_id, created, {}, finish_reason)
+    # What stream_options.include_usage asks for: a final chunk with no choices.
+    yield {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [],
+        "usage": _usage(prompt_tokens, response),
+    }
 
 
-def sse_lines(model: str, response: Response) -> Iterator[str]:
+def sse_lines(model: str, response: Response, prompt_tokens: int) -> Iterator[str]:
     """Serialize streaming chunks as SSE ``data:`` lines terminated by ``[DONE]``."""
-    for chunk in stream_chunks(model, response):
+    for chunk in stream_chunks(model, response, prompt_tokens):
         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"

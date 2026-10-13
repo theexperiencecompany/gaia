@@ -24,12 +24,12 @@ from scripts.evals.suites.quality import (
 
 
 def test_required_rubric_carries_the_forcing_clause() -> None:
-    """Rule 5's real content is in sub-bullets; a line-only parse quotes the bare header and grades nothing at all."""
+    """Rule 4's real content is in sub-bullets; a line-only parse quotes the bare header and grades nothing at all."""
     first = openui_policy_criteria("required")[0]
 
-    assert "forcing rule" in first, "rule 5 was quoted without its forcing clause"
+    assert "this one is required" in first, "rule 4 was quoted without its forcing clause"
     assert ":::openui" in first
-    assert "stats/KPIs" in first
+    assert "Steps" in first
 
 
 def test_suppressed_rubric_lists_the_live_tool_set() -> None:

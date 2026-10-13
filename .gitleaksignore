@@ -12,3 +12,11 @@ d57c64207d2a4275bbd922fc7fe898a4419298a6:apps/api/tests/integration/api/test_sha
 # line and there is no value to rotate. The literal is deliberately not quoted
 # here: reproducing it makes this file itself a finding.
 b93f415acf402c230a5692af29d55ae49c486337:apps/api/tests/unit/api/test_oauth_dependencies.py:generic-api-key:176
+
+# generic-api-key reads the hex ObjectId user ids these bridge e2e callers
+# were first given as literals (entropy of 24 hex chars). They identify test
+# users, not credentials; the file now generates them, but gitleaks scans the
+# PR's commits, so the literals stay reachable in history.
+ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:680
+ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:681
+ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:751

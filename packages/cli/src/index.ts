@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
+import { connectCommand } from "./commands/connect/command.js";
 import { runDev } from "./commands/dev/handler.js";
 import { runInit } from "./commands/init/handler.js";
 import { runSetup } from "./commands/setup/handler.js";
@@ -20,6 +21,7 @@ program
   .version(CLI_VERSION);
 
 program.addCommand(bridgeCommand);
+program.addCommand(connectCommand);
 
 program
   .command("init")

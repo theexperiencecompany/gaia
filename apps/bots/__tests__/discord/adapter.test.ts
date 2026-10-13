@@ -74,6 +74,7 @@ vi.mock("discord.js", () => {
       ClientReady: "ready",
       InteractionCreate: "interactionCreate",
       MessageCreate: "messageCreate",
+      Error: "error",
     },
     GatewayIntentBits: {
       Guilds: 1,
@@ -96,7 +97,16 @@ vi.mock("discord.js", () => {
 // Mock @gaia/shared so we control handleStreamingChat.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared/bots", () => {
+vi.mock("@gaia/shared/bots", async () => {
+  // The real boundary and failure recorder, so the client-error test reads the
+  // bot_event the adapter really prints.
+  const actual =
+    await vi.importActual<typeof import("@gaia/shared/bots")>(
+      "@gaia/shared/bots",
+    );
+  const { platformIdentity } = await vi.importActual<
+    typeof import("@gaia/shared/analytics")
+  >("@gaia/shared/analytics");
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
@@ -113,8 +123,8 @@ vi.mock("@gaia/shared/bots", () => {
     }
 
     /** Unlinked-user path — these tests assert routing, not identity. */
-    protected async resolveDistinctId(platformUserId: string): Promise<string> {
-      return `${this.platform}:${platformUserId}`;
+    protected async resolveDistinctId(platformUserId: string) {
+      return platformIdentity(this.platform, platformUserId);
     }
 
     protected async dispatchCommand(
@@ -191,6 +201,8 @@ vi.mock("@gaia/shared/bots", () => {
 
   return {
     BaseBotAdapter,
+    withWideEvent: actual.withWideEvent,
+    recordBotFailure: actual.recordBotFailure,
     createBotLogger: vi.fn(() => ({
       debug: vi.fn(),
       info: vi.fn(),
@@ -221,6 +233,7 @@ vi.mock("@gaia/shared/bots", () => {
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0],
     })),
+    REACTION_OUTCOME: actual.REACTION_OUTCOME,
   };
 });
 
@@ -228,8 +241,13 @@ vi.mock("@gaia/shared/bots", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type OutboundFile,
+  type ReactionOutcome,
+} from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
+import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -656,6 +674,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -685,6 +704,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -733,6 +753,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 });
@@ -847,6 +868,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -922,7 +944,7 @@ describe("DiscordAdapter - context menu interaction", () => {
   function makeContextMenuInteraction(commandName: string, content: string) {
     return {
       commandName,
-      targetMessage: { content },
+      targetMessage: { content, id: "target-msg-by-someone-else" },
       user: { id: "user-ctx" },
       channelId: "channel-ctx",
       replied: false,
@@ -964,6 +986,24 @@ describe("DiscordAdapter - context menu interaction", () => {
         distinctId: expect.any(String),
       }),
     );
+  });
+
+  it("never records the target message as the user's own message", async () => {
+    // A later background reaction anchors to the stored id; the target is often
+    // someone else's message, and the turn's user message is GAIA's own prompt.
+    vi.clearAllMocks();
+    const adapter = new DiscordAdapter();
+
+    const interaction = makeContextMenuInteraction("Add as Todo", "buy milk");
+
+    await (
+      adapter as unknown as {
+        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+      }
+    ).handleContextMenuInteraction(interaction);
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).not.toHaveProperty("platformMessageId");
   });
 
   it("calls handleStreamingChat for 'Add as Todo' with non-empty content", async () => {
@@ -1263,5 +1303,252 @@ describe("DiscordAdapter - deliverOutbound channel routing", () => {
     expect(client.users.fetch).toHaveBeenCalledWith("user-1");
     expect(userSend).toHaveBeenCalledWith("hi");
     expect(client.channels.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("DiscordAdapter - sendOutboundFile channel routing", () => {
+  type FileDeliverer = {
+    sendOutboundFile: (
+      destinationId: string,
+      file: OutboundFile,
+      isChannel: boolean,
+    ) => Promise<void>;
+    client: unknown;
+  };
+
+  const shot: OutboundFile = {
+    data: Buffer.from("png"),
+    mime: "image/png",
+    filename: "browser-step-1.png",
+    caption: "Step 1",
+  };
+
+  function makeAdapter() {
+    const adapter = new DiscordAdapter() as unknown as FileDeliverer;
+    const channelSend = vi.fn().mockResolvedValue(undefined);
+    const userSend = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      channels: {
+        fetch: vi
+          .fn()
+          .mockResolvedValue({ isTextBased: () => true, send: channelSend }),
+      },
+      users: { fetch: vi.fn().mockResolvedValue({ send: userSend }) },
+    };
+    adapter.client = client;
+    return { adapter, client, channelSend, userSend };
+  }
+
+  it("posts a group's photo into the channel, never a DM", async () => {
+    const { adapter, client, channelSend } = makeAdapter();
+
+    await adapter.sendOutboundFile("chan-1", shot, true);
+
+    expect(client.channels.fetch).toHaveBeenCalledWith("chan-1");
+    expect(channelSend).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Step 1" }),
+    );
+    expect(client.users.fetch).not.toHaveBeenCalled();
+  });
+
+  it("DMs a photo to the user when not a channel", async () => {
+    const { adapter, client, userSend } = makeAdapter();
+
+    await adapter.sendOutboundFile("user-1", shot, false);
+
+    expect(client.users.fetch).toHaveBeenCalledWith("user-1");
+    expect(userSend).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Step 1" }),
+    );
+    expect(client.channels.fetch).not.toHaveBeenCalled();
+  });
+
+  it("throws when the channel a photo is for is not a sendable text channel", async () => {
+    const { adapter, client } = makeAdapter();
+    client.channels.fetch.mockResolvedValueOnce({ isTextBased: () => false });
+
+    await expect(
+      adapter.sendOutboundFile("voice-1", shot, true),
+    ).rejects.toThrow("not a sendable text channel");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// client errors — an unhandled 'error' event would crash the process
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - client errors", () => {
+  it("records a client error as a failed bot_runtime_error with its reason", async () => {
+    const adapter = new DiscordAdapter();
+    const client = { on: vi.fn(), once: vi.fn() };
+    (adapter as unknown as { client: typeof client }).client = client;
+    await (
+      adapter as unknown as { registerEvents: () => Promise<void> }
+    ).registerEvents();
+    const listener = client.on.mock.calls.find(
+      ([event]) => event === "error",
+    )?.[1] as ((error: Error) => void) | undefined;
+    expect(listener).toBeDefined();
+
+    const events = await captureBotEvents("bot_runtime_error", async () => {
+      listener?.(new Error("read ECONNRESET"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      platform: "discord",
+      outcome: "failed",
+      reason: "backend_unreachable",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reactToMessage — the native reaction primitive, and the live turns using it
+// ---------------------------------------------------------------------------
+
+type DiscordReactor = {
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<ReactionOutcome>;
+  client: unknown;
+};
+
+describe("DiscordAdapter - reactToMessage", () => {
+  function makeReactor(channel: unknown, user: unknown) {
+    const adapter = new DiscordAdapter() as unknown as DiscordReactor;
+    adapter.client = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+      users: { fetch: vi.fn().mockResolvedValue(user) },
+    };
+    return adapter;
+  }
+
+  it("reacts to the target message in a channel", async () => {
+    const react = vi.fn().mockResolvedValue(undefined);
+    const fetchMessage = vi.fn().mockResolvedValue({ react });
+    const adapter = makeReactor(
+      { isTextBased: () => true, messages: { fetch: fetchMessage } },
+      {},
+    );
+
+    const attached = await adapter.reactToMessage(
+      "chan-1",
+      "msg-7",
+      "👍",
+      true,
+    );
+
+    expect(attached).toBe("attached");
+    expect(fetchMessage).toHaveBeenCalledWith("msg-7");
+    expect(react).toHaveBeenCalledWith("👍");
+  });
+
+  it("reacts via the user's DM channel when not a channel", async () => {
+    const react = vi.fn().mockResolvedValue(undefined);
+    const dmChannel = {
+      isTextBased: () => true,
+      messages: { fetch: vi.fn().mockResolvedValue({ react }) },
+    };
+    const adapter = makeReactor(null, {
+      createDM: vi.fn().mockResolvedValue(dmChannel),
+    });
+
+    const attached = await adapter.reactToMessage(
+      "user-1",
+      "msg-7",
+      "👍",
+      false,
+    );
+
+    expect(attached).toBe("attached");
+    expect(react).toHaveBeenCalledWith("👍");
+  });
+
+  it("refuses without sending anything when the target cannot be fetched", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const adapter = makeReactor(
+      {
+        isTextBased: () => true,
+        messages: {
+          fetch: vi.fn().mockRejectedValue(new Error("Unknown Message")),
+        },
+        send,
+      },
+      {},
+    );
+
+    const attached = await adapter.reactToMessage(
+      "chan-1",
+      "msg-7",
+      "👍",
+      true,
+    );
+
+    expect(attached).toBe("attach_failed");
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("DiscordAdapter - live turn reactions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** The reaction hook the adapter handed to its last handleStreamingChat call. */
+  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
+    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
+    return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
+  }
+
+  function spyReact(adapter: DiscordAdapter) {
+    return vi
+      .spyOn(adapter as unknown as DiscordReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+  }
+
+  it("reacts to a guild mention in its channel", async () => {
+    const adapter = new DiscordAdapter();
+    const react = spyReact(adapter);
+    const message = { ...makeGuildMessage({}), id: "msg-in" };
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, b: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, "bot-id");
+
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("channel-abc", "msg-in", "👍", true);
+  });
+
+  it("reacts to a DM through the author's DM channel", async () => {
+    const adapter = new DiscordAdapter();
+    const react = spyReact(adapter);
+    const message = {
+      id: "dm-msg",
+      content: "thanks!",
+      author: { id: "user-dm", bot: false },
+      guild: null,
+      channelId: "dm-channel",
+      partial: false,
+      channel: {
+        send: vi.fn().mockResolvedValue({ edit: vi.fn() }),
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+
+    await (
+      adapter as unknown as {
+        handleDMMessage: (m: typeof message) => Promise<void>;
+      }
+    ).handleDMMessage(message);
+
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false);
   });
 });

@@ -2,7 +2,6 @@
 
 import { Spinner } from "@heroui/spinner";
 import { ToolsIcon } from "@icons";
-import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
@@ -11,9 +10,15 @@ import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
-import { ToolCallRow, WaitingForApprovalPill } from "./ToolCallRow";
+import {
+  type ApprovalOutcome,
+  ToolCallRow,
+  WaitingForApprovalPill,
+} from "./ToolCallRow";
 import { expandTransition } from "./toolCallDisplay";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
+
+export type { ApprovalOutcome };
 
 // A step where the model reasoned (ToolCallEntry carrying `reasoning`).
 // Mirrors ToolCallRow's layout so thinking sits naturally between tool steps.
@@ -76,7 +81,8 @@ interface StepCallbacks {
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
   /** tool_call_ids blocked on a pending HIL approval. */
   pendingApprovalToolCallIds: Set<string>;
-  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
+  /** Settled HIL outcomes (status + receipt/feedback) keyed by tool_call_id. */
+  approvalOutcomeByToolCallId?: Map<string, ApprovalOutcome>;
 }
 
 // One timeline step: a thinking block when the entry carries `reasoning`, else a
@@ -86,7 +92,7 @@ export function StepRow(
 ) {
   const {
     pendingApprovalToolCallIds,
-    approvalStatusByToolCallId,
+    approvalOutcomeByToolCallId,
     ...rowProps
   } = props;
   if (props.call.reasoning != null) {
@@ -97,14 +103,14 @@ export function StepRow(
   const awaitingApproval =
     !!props.call.tool_call_id &&
     pendingApprovalToolCallIds.has(props.call.tool_call_id);
-  const approvalStatus = props.call.tool_call_id
-    ? approvalStatusByToolCallId?.get(props.call.tool_call_id)
+  const approvalOutcome = props.call.tool_call_id
+    ? approvalOutcomeByToolCallId?.get(props.call.tool_call_id)
     : undefined;
   return (
     <ToolCallRow
       {...rowProps}
       awaitingApproval={awaitingApproval}
-      approvalStatus={approvalStatus}
+      approvalOutcome={approvalOutcome}
     />
   );
 }

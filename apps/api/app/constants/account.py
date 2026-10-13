@@ -95,8 +95,8 @@ def account_mutation_refusal(rel_path: str) -> str | None:
     tool = AREA_MUTATION_TOOL.get(area) if area is not None else None
     if tool:
         return (
-            f"Error: {rel_path} is a read-only projection of your settings — "
-            f"editing it changes nothing. To change this, call the {tool} tool."
+            f"Error: {rel_path} is a read-only projection of your settings. "
+            f"Editing it changes nothing. To change this, call the {tool} tool."
         )
     return (
         f"Error: {rel_path} is a read-only projection of the user's account "

@@ -34,6 +34,12 @@ from app.scripts.repair_memory_store import (
     main,
     state_rows_to_forget,
 )
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 
 NOW = datetime(2026, 8, 24, tzinfo=UTC)
 
@@ -717,3 +723,20 @@ class TestCommandLine:
             "--extends-containment EXTENDS_CONTAINMENT Share of a parent's words its child must "
             "repeat before the parent is retired." in options
         )
+
+
+class TestMainAttribution:
+    """An operator's repair run is system work, so its model calls can be captured at all."""
+
+    def test_the_run_executes_as_system_work(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: list[AnalyticsContext] = []
+
+        async def _record(_args: argparse.Namespace) -> int:
+            seen.append(current_analytics_context())
+            return 0
+
+        monkeypatch.setattr("sys.argv", ["repair_memory_store", "--user", "u1"])
+        with patch.object(repair_memory_store, "_run", _record), pytest.raises(SystemExit):
+            repair_memory_store.main()
+
+        assert seen == [worker_context(Trigger.SYSTEM)]

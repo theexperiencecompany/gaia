@@ -29,8 +29,14 @@ from app.agents.skills.registry import (
     uninstall_skill,
     update_skill,
 )
-from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
+from app.agents.skills.utils import (
+    GITHUB_API_BASE,
+    GitHubContentEntry,
+    get_github_headers,
+    github_url,
+)
 from app.constants.log_tags import LogTag
+from app.constants.skills import SKILL_SOURCE_FILENAME
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
@@ -81,12 +87,12 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> list[dict]:
+) -> list[GitHubContentEntry]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
     """
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    url = github_url(GITHUB_API_BASE, "repos", owner, repo, "contents", path)
     params = {"ref": branch}
 
     resp = await client.get(url, params=params, headers=get_github_headers())
@@ -103,15 +109,18 @@ async def _fetch_github_contents(
         )
 
     resp.raise_for_status()
-    data: list[dict] | dict = resp.json()
+    data: list[GitHubContentEntry] | GitHubContentEntry = resp.json()
 
-    if isinstance(data, dict):
-        return [data]
-    return data
+    if isinstance(data, list):
+        return data
+    return [data]
 
 
-async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> str:
-    """Download raw file content from a URL."""
+async def _fetch_file_content(entry: GitHubContentEntry, client: httpx.AsyncClient) -> str:
+    """Download a file entry's raw content."""
+    download_url = entry["download_url"]
+    if download_url is None:
+        raise ValueError(f"GitHub returned no download URL for {entry['path']}")
     resp = await client.get(download_url, headers=get_github_headers())
     resp.raise_for_status()
     return resp.text
@@ -151,22 +160,20 @@ async def install_from_github(
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Fetch the directory contents
-        contents = await _fetch_github_contents(owner, repo, base_path, client=client)
+        contents: list[GitHubContentEntry] = await _fetch_github_contents(
+            owner, repo, base_path, client=client
+        )
 
-        # Find SKILL.md
-        skill_md_entry = None
-        for entry in contents:
-            if entry["name"] == "SKILL.md":
-                skill_md_entry = entry
-                break
-
-        if not skill_md_entry:
+        skill_md_entry: GitHubContentEntry | None = next(
+            (entry for entry in contents if entry["name"] == SKILL_SOURCE_FILENAME), None
+        )
+        if skill_md_entry is None:
             raise ValueError(
                 f"No SKILL.md found in {owner}/{repo}/{base_path}. "
                 "A valid skill must contain a SKILL.md file."
             )
 
-        skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
+        skill_md_content = await _fetch_file_content(skill_md_entry, client=client)
 
         errors = validate_skill_content(skill_md_content)
         if errors:
@@ -192,8 +199,8 @@ async def install_from_github(
         file_list: list[str] = []
 
         # Write body-only SKILL.md to JuiceFS (metadata lives in MongoDB)
-        await write_skill_file(user_id, metadata.name, "SKILL.md", body)
-        file_list.append("SKILL.md")
+        await write_skill_file(user_id, metadata.name, SKILL_SOURCE_FILENAME, body)
+        file_list.append(SKILL_SOURCE_FILENAME)
 
         # Download subdirectories and files recursively
         await _download_github_dir(
@@ -250,7 +257,7 @@ class _GitHubRef:
 async def _download_github_dir(
     ref: _GitHubRef,
     remote_path: str,
-    contents: list[dict],
+    contents: list[GitHubContentEntry],
     file_list: list[str],
     client: httpx.AsyncClient,
 ) -> None:
@@ -259,11 +266,11 @@ async def _download_github_dir(
         name = entry["name"]
         entry_type = entry["type"]
 
-        if name == "SKILL.md":
+        if name == SKILL_SOURCE_FILENAME:
             continue  # Already handled
 
         if entry_type == "file":
-            content = await _fetch_file_content(entry["download_url"], client=client)
+            content = await _fetch_file_content(entry, client=client)
             relative_path = entry["path"].removeprefix(f"{remote_path}/")
             await write_skill_file(ref.user_id, ref.skill_name, relative_path, content)
             file_list.append(relative_path)
@@ -318,7 +325,7 @@ async def install_from_inline(
     # Write body-only to JuiceFS (metadata lives in MongoDB)
     storage_path = _skill_storage_path(user_id, metadata.name)
     await ensure_user_skills_dir(user_id)
-    await write_skill_file(user_id, metadata.name, "SKILL.md", body)
+    await write_skill_file(user_id, metadata.name, SKILL_SOURCE_FILENAME, body)
 
     # Register flat metadata in MongoDB
     # install_skill is wrapped in @CacheInvalidator, whose __call__ erases the
@@ -334,7 +341,7 @@ async def install_from_inline(
                 vfs_path=storage_path,
                 source=SkillSource.INLINE,
                 body_content=body,
-                files=["SKILL.md"],
+                files=[SKILL_SOURCE_FILENAME],
                 license_name=metadata.license,
                 compatibility=metadata.compatibility,
                 metadata=metadata.metadata,
@@ -397,7 +404,7 @@ async def update_skill_inline(
     # metadata-only and never touch the filesystem.
     if body != (skill.body_content or ""):
         await ensure_user_skills_dir(user_id)
-        await write_skill_file(user_id, skill.name, "SKILL.md", body)
+        await write_skill_file(user_id, skill.name, SKILL_SOURCE_FILENAME, body)
 
     # update_skill is wrapped in @CacheInvalidator, whose __call__ erases the
     # return type to Awaitable[Any]; update_skill itself is annotated -> Skill | None.

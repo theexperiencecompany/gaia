@@ -11,6 +11,7 @@
 export {
   BaseBotAdapter,
   BotServer,
+  type OutboundFile,
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";
@@ -37,10 +38,12 @@ export { injectInfisicalSecrets, loadConfig } from "./config";
 export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
+  OutboundReaction,
 } from "./consumer/envelope";
 export {
-  outboundAttachmentSchema,
-  outboundMessageEnvelopeSchema,
+  outboundAttachmentSchemaFor,
+  outboundMessageEnvelopeSchemaFor,
+  outboundReactionSchema,
 } from "./consumer/envelope";
 export {
   buildLinkCodeFailureMessage,
@@ -86,6 +89,7 @@ export type {
   UnauthenticatedSettingsResponse,
 } from "./types";
 export type {
+  BotFailureReason,
   BotLogFields,
   BotLogger,
   BotLogLevel,
@@ -95,6 +99,7 @@ export type {
   MediaOutcome,
   MessageEditor,
   NewMessageSender,
+  ReactionOutcome,
   StreamingOptions,
   WideEventBoundaryFields,
   WideEventEntry,
@@ -102,11 +107,13 @@ export type {
 export {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
+  BOT_FAILURE_REASON,
   BOT_MEDIA_LIMITS,
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
   COMMAND_HELP,
   chunkResponse,
+  classifyBotFailure,
   convertToDiscordMarkdown,
   convertToImessageText,
   convertToSlackMrkdwn,
@@ -154,10 +161,12 @@ export {
   PLATFORM_MARKDOWN,
   parseTextArgs,
   processBotMedia,
+  REACTION_OUTCOME,
   readBodyBounded,
   readBodyBytesBounded,
   readResponseBytesCapped,
   readStreamBytesCapped,
+  recordBotFailure,
   renderForPlatform,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,

@@ -1,4 +1,6 @@
-"""What Composio hands a custom tool at call time."""
+"""Composio shapes GAIA reads: a custom tool's call context and a minted connect link."""
+
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -41,3 +43,11 @@ class ProxyErrorMeta(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     provider_response: object = None
+
+
+class ComposioConnectLink(TypedDict):
+    """A hosted Connect Link minted for a user; the account stays pending until they authorize it."""
+
+    status: Literal["pending"]
+    redirect_url: str
+    connection_id: str

@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`marketing price strings > the FAQ answers that name a price or a free tier 1`] = `
+[
+  {
+    "answer": "GAIA is a paid product. Pro starts at $30 a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
+    "question": "Is GAIA free?",
+  },
+  {
+    "answer": "GAIA's free plan includes core features: email automation, calendar management, task organization, basic workflow automation, and access to community integrations. It is designed to let you experience GAIA's proactive productivity capabilities before upgrading.",
+    "question": "What is included in GAIA's free plan?",
+  },
+  {
+    "answer": "GAIA Pro starts at $30/month, comparable to ChatGPT Plus ($20/month) and Motion ($19/month). Unlike these tools, GAIA offers a free tier, self-hosting for $0, and combines capabilities that would otherwise require multiple subscriptions (email management, calendar AI, workflow automation, task management).",
+    "question": "How does GAIA's pricing compare to competitors?",
+  },
+  {
+    "answer": "Yes. Self-hosting GAIA is completely free with no recurring costs. You maintain full control over your data and infrastructure. The only cost is your own server/hosting. Our Docker-based setup makes deployment straightforward.",
+    "question": "Can I self-host GAIA for free?",
+  },
+]
+`;
+
+exports[`receipts > prints a EUR subscription in its own currency 1`] = `"GAIAMonthly subscriptionTotal€25.84Order completeRECEIPTOct 1, 2026reader@example.comGAIA (Monthly)€25.84Total€25.84BillingMonthly subscriptionNext chargeNov 1, 2026StatusActiveRefsub_zarYou're in. Everything's unlocked, welcome aboard!"`;
+
+exports[`receipts > prints a INR subscription in its own currency 1`] = `"GAIAMonthly subscriptionTotal₹2,500.00Order completeRECEIPTOct 1, 2026reader@example.comGAIA (Monthly)₹2,500.00Total₹2,500.00BillingMonthly subscriptionNext chargeNov 1, 2026StatusActiveRefsub_zarYou're in. Everything's unlocked, welcome aboard!"`;
+
+exports[`receipts > prints a USD subscription in its own currency 1`] = `"GAIAMonthly subscriptionTotal$30.00Order completeRECEIPTOct 1, 2026reader@example.comGAIA (Monthly)$30.00Total$30.00BillingMonthly subscriptionNext chargeNov 1, 2026StatusActiveRefsub_zarYou're in. Everything's unlocked, welcome aboard!"`;
+
+exports[`receipts > prints a ZAR subscription in its own currency 1`] = `"GAIAMonthly subscriptionTotalR 572.84Order completeRECEIPTOct 1, 2026reader@example.comGAIA (Monthly)R 572.84TotalR 572.84BillingMonthly subscriptionNext chargeNov 1, 2026StatusActiveRefsub_zarYou're in. Everything's unlocked, welcome aboard!"`;

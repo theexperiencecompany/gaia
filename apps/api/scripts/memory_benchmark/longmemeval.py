@@ -128,7 +128,7 @@ def _parse_date(raw: str) -> datetime:
     return datetime.strptime(cleaned, _DATE_FORMAT).replace(tzinfo=UTC)
 
 
-async def _answer(question: str, question_date: str, memories: list[str]) -> str:
+async def _answer(question: str, question_date: str, memories: list[str], user_id: str) -> str:
     context = "\n".join(f"- {m}" for m in memories) or "(no memories found)"
     result = await _invoke_structured(
         _Answer,
@@ -171,11 +171,12 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
             ),
         ],
         operation="lme_answer",
+        user_id=user_id,
     )
     return result.answer if result else "I don't know"
 
 
-async def _judge(question: str, gold: str, model_answer: str) -> bool:
+async def _judge(question: str, gold: str, model_answer: str, user_id: str) -> bool:
     result = await _invoke_structured(
         _Verdict,
         [
@@ -212,6 +213,7 @@ async def _judge(question: str, gold: str, model_answer: str) -> bool:
             ),
         ],
         operation="lme_judge",
+        user_id=user_id,
     )
     return bool(result and result.correct)
 
@@ -248,8 +250,8 @@ async def _run_question(
             + [f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:12]]
             + [f"(conversation on {date})\n{text}" for date, text, _ in transcript_hits]
         )
-        model_answer = await _answer(item["question"], item["question_date"], notes)
-        correct = await _judge(item["question"], str(item["answer"]), model_answer)
+        model_answer = await _answer(item["question"], item["question_date"], notes, user_id)
+        correct = await _judge(item["question"], str(item["answer"]), model_answer, user_id)
         print(
             f"[{index + 1}/{total}] {'OK ' if correct else 'MISS'} {qtype:26} "
             f"q={item['question'][:48]!r} -> {model_answer[:60]!r} (gold {str(item['answer'])[:40]!r})",
@@ -337,7 +339,8 @@ async def main() -> None:
         "callbacks": [meter],
     }
 
-    data = json.loads(Path(args.dataset).read_text())
+    # operator-run benchmark reading the dataset file the operator names; no trust boundary crossed
+    data = json.loads(Path(args.dataset).read_text())  # NOSONAR pythonsecurity:S8707
     by_type: dict[str, list[dict]] = defaultdict(list)
     for item in data:
         if str(item["question_id"]).endswith("_abs"):

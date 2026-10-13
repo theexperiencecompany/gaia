@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
@@ -151,6 +152,132 @@ class TestDeliverMessageToPlatform:
     async def test_blank_text_is_not_published(self) -> None:
         with patch.object(pms, "publish_outbound_message", new_callable=AsyncMock) as pub:
             ok = await pms.deliver_message_to_platform("whatsapp", "user-1", "   ")
+        assert ok is False
+        pub.assert_not_awaited()
+
+    async def test_breaker_splits_text_into_stripped_parts(self) -> None:
+        """NEW_MESSAGE_BREAKER-delimited text is split and each part stripped."""
+        text = f"  first bubble  {NEW_MESSAGE_BREAKER}  second bubble  "
+        with patch.object(
+            pms,
+            "publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
+        ) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is True
+        pub.assert_awaited_once_with(
+            ConversationSource.WHATSAPP,
+            "user-1",
+            ["first bubble", "second bubble"],
+            destination_override=None,
+            is_channel=False,
+        )
+
+    async def test_breaker_only_whitespace_parts_are_not_published(self) -> None:
+        """Splitting on the breaker can leave only blank parts, which must not publish."""
+        text = f"   {NEW_MESSAGE_BREAKER}   "
+        with patch.object(pms, "publish_outbound_message", new_callable=AsyncMock) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is False
+        pub.assert_not_awaited()
+
+    async def test_breaker_drops_blank_parts_but_keeps_real_ones(self) -> None:
+        """A blank bubble alongside a real one is dropped, not published as empty text."""
+        text = f"   {NEW_MESSAGE_BREAKER}real bubble"
+        with patch.object(
+            pms,
+            "publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
+        ) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is True
+        pub.assert_awaited_once_with(
+            ConversationSource.WHATSAPP,
+            "user-1",
+            ["real bubble"],
+            destination_override=None,
+            is_channel=False,
+        )
+
+
+class TestDeliverReactionToPlatform:
+    async def test_a_dm_reaction_targets_the_message_in_the_users_dm(self) -> None:
+        with patch.object(
+            pms,
+            "publish_outbound_reaction",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
+        ) as pub:
+            ok = await pms.deliver_reaction_to_platform("telegram", "user-1", "777", "👍")
+
+        assert ok is True
+        pub.assert_awaited_once_with(
+            ConversationSource.TELEGRAM,
+            "user-1",
+            "777",
+            "👍",
+            destination_override=None,
+            is_channel=False,
+        )
+
+    async def test_a_group_conversation_reacts_in_its_channel(self) -> None:
+        session = SimpleNamespace(channel_id="C-group-1")
+        with (
+            patch.object(
+                pms.bot_session_repository,
+                "get_by_conversation_id",
+                new_callable=AsyncMock,
+                return_value=session,
+            ) as get_session,
+            patch.object(
+                pms,
+                "publish_outbound_reaction",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.PUBLISHED,
+            ) as pub,
+        ):
+            ok = await pms.deliver_reaction_to_platform(
+                ConversationSource.SLACK, "user-1", "1700.1", "👍", conversation_id="conv-g"
+            )
+
+        assert ok is True
+        get_session.assert_awaited_once_with("conv-g")
+        pub.assert_awaited_once_with(
+            ConversationSource.SLACK,
+            "user-1",
+            "1700.1",
+            "👍",
+            destination_override="C-group-1",
+            is_channel=True,
+        )
+
+    @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
+    async def test_an_unpublished_reaction_returns_false(self, result: OutboundResult) -> None:
+        with patch.object(
+            pms, "publish_outbound_reaction", new_callable=AsyncMock, return_value=result
+        ):
+            ok = await pms.deliver_reaction_to_platform("telegram", "user-1", "777", "👍")
+
+        assert ok is False
+
+    @pytest.mark.parametrize(
+        ("source", "message_id", "emoji"),
+        [
+            ("web", "777", "👍"),
+            (None, "777", "👍"),
+            ("telegram", "", "👍"),
+            ("telegram", "777", "  "),
+        ],
+        ids=["non-bot-source", "no-source", "no-target-message", "blank-emoji"],
+    )
+    async def test_an_undeliverable_reaction_publishes_nothing(
+        self, source: str | None, message_id: str, emoji: str
+    ) -> None:
+        with patch.object(pms, "publish_outbound_reaction", new_callable=AsyncMock) as pub:
+            ok = await pms.deliver_reaction_to_platform(source, "user-1", message_id, emoji)
+
         assert ok is False
         pub.assert_not_awaited()
 

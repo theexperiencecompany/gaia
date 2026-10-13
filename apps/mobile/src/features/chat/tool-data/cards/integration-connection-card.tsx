@@ -1,7 +1,7 @@
 import {
-  CONNECT_ACTION_LABEL,
   connectionPromptState,
   type IntegrationConnectionData,
+  PROMPT_ACTION_LABEL,
 } from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { useCallback, useRef } from "react";
@@ -32,7 +32,8 @@ export function IntegrationConnectionCard({
   data,
   onConnect,
 }: IntegrationConnectionCardProps) {
-  const { integration_id, message, expired } = data;
+  const { integration_id, message, expired, add_account, connected_accounts } =
+    data;
   const { integrations, connect } = useIntegrations();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
@@ -64,7 +65,10 @@ export function IntegrationConnectionCard({
     return null;
   }
 
-  const state = connectionPromptState(expired, integration.status);
+  const state = connectionPromptState(
+    { expired, add_account },
+    integration.status,
+  );
   const isConnected = state === "connected";
   const isAvailable =
     integration.source === "custom" || !!integration.available;
@@ -81,7 +85,9 @@ export function IntegrationConnectionCard({
         icon={headerIcon ? undefined : ConnectIcon}
         iconSize={20}
         title={(open) =>
-          `${open ? "Hide" : "Show"} 1 ${state === "expired" ? "Reconnect" : "Integration"} Required`
+          state === "add_account"
+            ? `${open ? "Hide" : "Show"} Add Account`
+            : `${open ? "Hide" : "Show"} 1 ${state === "expired" ? "Reconnect" : "Integration"} Required`
         }
         titleTone="muted"
       >
@@ -100,7 +106,8 @@ export function IntegrationConnectionCard({
                 <Text className="text-zinc-100 text-sm font-medium">
                   {integration.name}
                 </Text>
-                {isConnected ? (
+                {/* Adding an account leaves the integration connected. */}
+                {isConnected || state === "add_account" ? (
                   <Chip
                     size="sm"
                     variant="soft"
@@ -129,6 +136,24 @@ export function IntegrationConnectionCard({
             </View>
           </View>
 
+          {state === "add_account" && connected_accounts?.length ? (
+            <View className="mt-3 gap-1.5">
+              <Text className="text-zinc-400 text-xs">Already connected</Text>
+              <View className="flex-row flex-wrap gap-1.5">
+                {connected_accounts.map((name) => (
+                  <Chip
+                    key={name}
+                    size="sm"
+                    variant="soft"
+                    animation="disable-all"
+                  >
+                    <Chip.Label>{name}</Chip.Label>
+                  </Chip>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {/* Warning + Connect — only when not connected and available */}
           {!isConnected && isAvailable ? (
             <View className="mt-3 gap-2">
@@ -148,7 +173,7 @@ export function IntegrationConnectionCard({
                   void handleConnect();
                 }}
               >
-                <Button.Label>{CONNECT_ACTION_LABEL[state]}</Button.Label>
+                <Button.Label>{PROMPT_ACTION_LABEL[state]}</Button.Label>
               </Button>
             </View>
           ) : null}

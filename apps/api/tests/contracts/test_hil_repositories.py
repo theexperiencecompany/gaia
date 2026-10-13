@@ -31,6 +31,18 @@ def _record(approval_id: str, **overrides: object) -> HILApprovalRecord:
     return HILApprovalRecord.model_validate(data)
 
 
+#: What the gate files on an approval a background subagent raised.
+_RECIPE: dict[str, object] = {
+    "kind": "spawn",
+    "tool_call_id": "tc-spawn",
+    "task": "send the report",
+    "context": "",
+    "integration_id": "",
+    "inherited_tool_names": [],
+    "parent_configurable": {"user_id": "u1"},
+}
+
+
 @pytest.fixture
 def repo(raw_collection) -> HilApprovalRepository:
     return HilApprovalRepository()
@@ -91,42 +103,64 @@ class TestHilApprovalRepository:
         assert got.resume_item == {"task": "t"}
         assert got.resumed_at is not None
 
-    async def test_parked_subagent_finder_excludes_collected(self, repo):
+    async def test_parked_subagent_finder_excludes_resumed(self, repo):
         await repo.create_if_absent(_record("plain"))
-        await repo.create_if_absent(_record("parked"))
-        await repo.update(
-            "parked", HILApprovalUpdate(subagent_thread_id="t-1", subagent_agent_name="gmail")
+        await repo.create_if_absent(
+            _record("parked", subagent_thread_id="t-1", subagent_resume=_RECIPE)
         )
-        await repo.create_if_absent(_record("collected"))
-        await repo.update(
-            "collected",
-            HILApprovalUpdate(
-                subagent_thread_id="t-2",
-                subagent_agent_name="slack",
-                subagent_collected_at=datetime.now(UTC),
-            ),
+        await repo.create_if_absent(
+            _record("resumed", subagent_thread_id="t-2", subagent_resume=_RECIPE)
         )
+        await repo.update("resumed", HILApprovalUpdate(resumed_at=datetime.now(UTC)))
 
         parked = await repo.list_parked_subagents_for_conversation("conv-1")
 
         assert [r.approval_id for r in parked] == ["parked"]
 
+    async def test_a_cleared_recipe_is_no_longer_parked(self, repo):
+        # Cancelling a task clears the recipe; only an explicit None write unsets it.
+        await repo.create_if_absent(
+            _record("parked", subagent_thread_id="t-1", subagent_resume=_RECIPE)
+        )
+        await repo.update("parked", HILApprovalUpdate(resume_item=None, subagent_resume=None))
+
+        assert await repo.list_parked_subagents_for_conversation("conv-1") == []
+
     async def test_parked_subagent_finder_is_scoped_to_one_conversation(self, repo):
         # Dropping the conversation term would collect a subagent parked in an
         # unrelated conversation; only a second conversation can observe that
         # filter, since with one, "scoped" and "unfiltered" return the same row.
-        await repo.create_if_absent(_record("mine"))
-        await repo.update(
-            "mine", HILApprovalUpdate(subagent_thread_id="t-1", subagent_agent_name="gmail")
+        await repo.create_if_absent(
+            _record("mine", subagent_thread_id="t-1", subagent_resume=_RECIPE)
         )
-        await repo.create_if_absent(_record("theirs", conversation_id="conv-2"))
-        await repo.update(
-            "theirs", HILApprovalUpdate(subagent_thread_id="t-2", subagent_agent_name="slack")
+        await repo.create_if_absent(
+            _record(
+                "theirs",
+                conversation_id="conv-2",
+                subagent_thread_id="t-2",
+                subagent_resume=_RECIPE,
+            )
         )
 
         parked = await repo.list_parked_subagents_for_conversation("conv-1")
 
         assert [r.approval_id for r in parked] == ["mine"]
+
+    async def test_a_decided_parked_subagent_is_swept_like_a_paused_executor(self, repo):
+        await repo.create_if_absent(
+            _record("parked", subagent_thread_id="t-1", subagent_resume=_RECIPE)
+        )
+        await repo.mark_decided("parked", "approved", feedback=None, scope="once", decided_by="u1")
+        await repo._apply_raw_update(
+            {"_id": "parked"},
+            {"$set": {"decided_at": datetime.now(UTC) - timedelta(minutes=10)}},
+            scope="global",
+            return_document=False,
+        )
+
+        stale = await repo.list_decided_unresumed(["approved"], grace_seconds=120)
+
+        assert [r.approval_id for r in stale] == ["parked"]
 
     async def test_expired_pending_finder_ignores_live_and_decided(self, repo):
         past = datetime.now(UTC) - timedelta(minutes=1)

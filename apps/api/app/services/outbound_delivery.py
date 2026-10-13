@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from pydantic import ValidationError
+
 from app.constants.outbound import (
     OUTBOUND_QUEUES,
     OUTBOUND_TTL_SECONDS_DEFAULT,
@@ -17,8 +19,10 @@ from app.constants.outbound import (
 )
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
+from app.models.platform_models import PlatformLinkEntry
+from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope, OutboundReaction
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.log_identifiers import hash_platform_user_id
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.wide_events import log
 
@@ -37,10 +41,20 @@ class OutboundResult(StrEnum):
     FAILED = "failed"
 
 
+def _envelope_fields(envelope: OutboundMessageEnvelope, user_id: str) -> dict[str, str]:
+    """Who and where an outbound log line is about; envelope_id joins the bot's line."""
+    return {
+        "platform": envelope.platform,
+        "user_id": user_id,
+        "envelope_id": envelope.id,
+        "destination_hash": hash_platform_user_id(envelope.destination_id),
+    }
+
+
 async def _resolve_destination(platform: ConversationSource, user_id: str) -> str | None:
     """Resolve a GAIA user_id to its platform-native destination id, or None."""
     linked = await PlatformLinkService.get_linked_platforms(user_id)
-    info = linked.get(platform.value)
+    info: PlatformLinkEntry | None = linked.get(platform.value)
     return info["platformUserId"] if info else None
 
 
@@ -64,19 +78,76 @@ async def _prepare(
     destination_id = destination_override or await _resolve_destination(platform, user_id)
     if not destination_id:
         log.warning(
-            ": account not linked", log_label=log_label, user_id=user_id, platform=platform.value
+            "outbound publish skipped: account not linked",
+            operation=log_label,
+            user_id=user_id,
+            platform=platform.value,
         )
         return OutboundResult.SKIPPED
 
     try:
         publisher = await get_rabbitmq_publisher()
-    except RuntimeError:
+    except RuntimeError as e:
         log.warning(
-            ": RabbitMQ unavailable", log_label=log_label, user_id=user_id, platform=platform.value
+            "outbound publish failed: RabbitMQ unavailable",
+            operation=log_label,
+            user_id=user_id,
+            platform=platform.value,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         return OutboundResult.FAILED
 
     return queue_name, str(destination_id), publisher
+
+
+async def publish_outbound_reaction(
+    platform: ConversationSource,
+    user_id: str,
+    target_platform_message_id: str,
+    emoji: str,
+    *,
+    destination_override: str | None = None,
+    is_channel: bool = False,
+) -> OutboundResult:
+    """Enqueue a native emoji reaction to an existing platform message.
+
+    Same destination resolution as publish_outbound_message: the reaction
+    goes to the user DM, or back into the group channel named by
+    destination_override and is_channel. Falls back to a one-emoji text
+    bubble when the platform cannot attach it.
+    """
+    prep = await _prepare(platform, user_id, "publish_outbound_reaction", destination_override)
+    if isinstance(prep, OutboundResult):
+        return prep
+    queue_name, destination_id, publisher = prep
+
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value,
+        destination_id=destination_id,
+        reaction=OutboundReaction(
+            target_platform_message_id=target_platform_message_id,
+            emoji=emoji,
+        ),
+        is_channel=is_channel,
+    )
+
+    try:
+        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+    except Exception as e:
+        log.error(
+            "publish_outbound_reaction: publish failed",
+            platform=platform.value,
+            error=str(e),
+        )
+        return OutboundResult.FAILED
+
+    log.info(
+        "outbound_reaction_published",
+        platform=platform.value,
+        queue=queue_name,
+    )
+    return OutboundResult.PUBLISHED
 
 
 async def publish_outbound_message(
@@ -129,30 +200,20 @@ async def publish_outbound_message(
     except Exception as e:
         log.error(
             "publish_outbound_message: publish failed",
-            platform=platform.value,
+            **_envelope_fields(envelope, user_id),
             error=str(e),
+            error_type=type(e).__name__,
             total=len(parts),
         )
         return OutboundResult.FAILED
 
     log.info(
         "outbound_message_published",
-        platform=platform.value,
+        **_envelope_fields(envelope, user_id),
         queue=queue_name,
         parts=len(parts),
     )
     return OutboundResult.PUBLISHED
-
-
-# Friendly platform names for user-facing copy (e.g. the link confirmation,
-# delivery provenance frames). Single source — import, don't restate.
-PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
-    ConversationSource.TELEGRAM: "Telegram",
-    ConversationSource.DISCORD: "Discord",
-    ConversationSource.SLACK: "Slack",
-    ConversationSource.WHATSAPP: "WhatsApp",
-    ConversationSource.IMESSAGE: "iMessage",
-}
 
 
 async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
@@ -167,11 +228,11 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     if source is None or source not in OUTBOUND_QUEUES:
         return OutboundResult.SKIPPED
 
-    display_name = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+    display_name = source.display_name
     text = (
-        "✅ **You're connected!**\n\n"
-        f"Your {display_name} account is now linked to GAIA. "
-        "Send me a message or use `/help` to see everything I can do."
+        "✅ **You're connected**\n\n"
+        f"Your {display_name} account is linked. "
+        "Message me anytime, or send `/help` to see what I can do."
     )
     return await publish_outbound_message(
         source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
@@ -215,12 +276,71 @@ async def publish_outbound_file(
             queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
         )
     except Exception as e:
-        log.error("publish_outbound_file: publish failed", platform=platform.value, error=str(e))
+        log.error(
+            "publish_outbound_file: publish failed",
+            **_envelope_fields(envelope, user_id),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return False
 
     log.info(
         "outbound_file_published",
-        platform=platform.value,
+        **_envelope_fields(envelope, user_id),
+        queue=queue_name,
+        filename=filename,
+    )
+    return True
+
+
+async def publish_outbound_photo(
+    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
+) -> bool:
+    """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for the bot to deliver as a photo.
+
+    Unlike publish_outbound_file, the bot fetches the bytes directly from url;
+    nothing is proxied through the session artifact store. Best-effort: unknown
+    platform, unlinked account, unavailable broker, and publish errors all
+    return False without raising.
+    """
+    prep = await _prepare(platform, user_id, "publish_outbound_photo")
+    if isinstance(prep, OutboundResult):
+        return False
+    queue_name, destination_id, publisher = prep
+
+    try:
+        envelope = OutboundMessageEnvelope(
+            platform=platform.value,
+            destination_id=destination_id,
+            attachment=OutboundAttachment(url=url, filename=filename, caption=caption),
+        )
+    except ValidationError:
+        # A rejected URL (non-https, non-own-API origin) must degrade to the
+        # caption text, never to silence: the caller falls back on False.
+        log.warning(
+            "publish_outbound_photo: attachment URL rejected",
+            platform=platform.value,
+            user_id=user_id,
+            destination_hash=hash_platform_user_id(destination_id),
+            filename=filename,
+        )
+        return False
+    try:
+        await publisher.publish_outbound(
+            queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
+        )
+    except Exception as e:
+        log.error(
+            "publish_outbound_photo: publish failed",
+            **_envelope_fields(envelope, user_id),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+
+    log.info(
+        "outbound_photo_published",
+        **_envelope_fields(envelope, user_id),
         queue=queue_name,
         filename=filename,
     )

@@ -94,7 +94,9 @@ async def attach_dev_conversation_file(
 
 @router.get("/subagents")
 async def list_subagents() -> list[DevSubagentInfo]:
-    """List every registered subagent runnable via POST /dev/subagents/{id}."""
+    """List every registered subagent. Only per-user MCP ones run via
+    POST /dev/subagents/{id}; provider ids answer with an activation
+    redirect, like production handoff does."""
     log.set(dev={"operation": "list_subagents"})
     subagents = list_dev_subagents()
     log.set(dev={"count": len(subagents)})
@@ -106,7 +108,9 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, skipping the comms agent."""
     log.set(dev={"operation": "run_executor", "email": payload.email})
     try:
-        result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
+        result = await run_executor_direct(
+            payload.email, payload.task, payload.conversation_id, payload.model
+        )
     except GraphRecursionError as e:
         # The agent looped without converging — a result about the agent, not
         # a server fault. Raising 500 let callers classify it as infrastructure
@@ -129,7 +133,7 @@ async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> DevAgen
     """Run one subagent directly with a task, skipping comms and the executor."""
     log.set(dev={"operation": "run_subagent", "email": payload.email, "subagent_id": subagent_id})
     result = await run_subagent_direct(
-        payload.email, subagent_id, payload.task, payload.conversation_id
+        payload.email, subagent_id, payload.task, payload.conversation_id, payload.model
     )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result

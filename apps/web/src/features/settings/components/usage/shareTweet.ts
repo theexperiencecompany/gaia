@@ -12,7 +12,7 @@ export function buildTweetText(
   const standing = tierLabel
     ? `I'm in the ${tierLabel} of GAIA users by activity`
     : "I'm building my streak on GAIA";
-  const streakClause = streak > 0 ? ` — a ${streak}-day streak.` : ".";
+  const streakClause = streak > 0 ? `, a ${streak}-day streak.` : ".";
   return `${standing}${streakClause} Meet your proactive AI assistant.`;
 }
 

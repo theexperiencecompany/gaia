@@ -63,12 +63,70 @@ SCRIPTED_CRITERIA = ["scripted directives executed"]
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
 RETRIEVE_TOOLS_TOOL = "retrieve_tools"
+# The execute proxy: integration tools are never bound (retrieve_tools returns
+# their schema docs instead), so a tool still unbound after one retrieval routes
+# through execute — retrieving it again would loop forever.
+EXECUTE_TOOL = "execute"
 
 _DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
 _JSON_DECODER = json.JSONDecoder()
+
+# Agent tiers frame internal payloads in XML-ish tags (see app/constants/agents.py
+# ``wrap_agent_payload``). A real model reads those as quoted context, never as new
+# commands — but a cancelled run's record and other notices echo the ORIGINAL
+# request verbatim, ``[[tool:...]]`` directives and all. Only ``<user_interjection>``
+# is the user genuinely speaking new work into a live run; every other tag is an
+# echo whose directives must NOT be re-executed. Strip those blocks before parsing
+# so the stub stops re-firing quoted work (phantom todos, a re-dispatched cancel).
+USER_INTERJECTION_TAG = "user_interjection"
+_ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
+
+
+# compose_executor_brief lays the brief out as sections joined by a blank line:
+# the user's request under this header, the task, then the definition of done.
+# The front door forwards that request as the task word for word, so a quote the
+# task restates is a second copy of the script the task already carries.
+VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+DONE_SECTION_HEAD = "Definition of done"
+_SECTION_BREAK = "\n\n"
+
+
+def _strip_echoed_payloads(text: str) -> str:
+    """Remove every internal-tag block except ``<user_interjection>``, and a restated request quote."""
+    stripped = _ECHO_BLOCK_RE.sub(
+        lambda m: m.group(0) if m.group(1) == USER_INTERJECTION_TAG else "", text
+    )
+    return _strip_restated_request(stripped)
+
+
+def _strip_restated_request(text: str) -> str:
+    """Drop the brief's request quote when the task section is that same request.
+
+    Quote and task fill the span from the header to the definition of done (the
+    last_run and playbook sections are tag blocks, gone before this runs), so the
+    quote is restated only when that span is one text twice.
+    """
+    header_at = text.find(VERBATIM_REQUEST_HEADER)
+    if header_at < 0:
+        return text
+    span_at = header_at + len(VERBATIM_REQUEST_HEADER)
+    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
+    span_end = len(text) if done_at < 0 else done_at
+    span = text[span_at:span_end]
+    cut = span.find(_SECTION_BREAK)
+    while cut >= 0:
+        quote, task = span[:cut].strip(), span[cut:].strip()
+        if quote and quote == task:
+            return text[:header_at] + text[span_at + cut :].lstrip()
+        cut = span.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
+    return text
+
+
+def _is_interjection(text: str) -> bool:
+    return text.lstrip().startswith(f"<{USER_INTERJECTION_TAG}")
 
 
 class DirectiveError(ValueError):
@@ -77,12 +135,16 @@ class DirectiveError(ValueError):
 
 @dataclass(frozen=True)
 class ToolDirective:
+    """One scripted [[tool:...]] call: the tool to emit and its arguments."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayDirective:
+    """The script's terminal [[say:...]] reply."""
+
     text: str
 
 
@@ -91,12 +153,16 @@ Directive = ToolDirective | SayDirective
 
 @dataclass(frozen=True)
 class ToolCallResponse:
+    """A tool call as the answer to one invocation."""
+
     name: str
     args: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class SayResponse:
+    """Plain assistant text as the answer to one invocation."""
+
     text: str
 
 
@@ -231,7 +297,9 @@ def _script_message_index(messages: Sequence[dict[str, Any]]) -> int | None:
     a test scripted. A malformed directive raises here — fail loud."""
     for idx in range(len(messages) - 1, -1, -1):
         message = messages[idx]
-        if message.get("role") == "user" and parse_directives(message_text(message)):
+        if message.get("role") == "user" and parse_directives(
+            _strip_echoed_payloads(message_text(message))
+        ):
             return idx
     return None
 
@@ -246,6 +314,20 @@ def _emitted_tool_names(messages: Sequence[dict[str, Any]]) -> list[str]:
             name = (call.get("function") or {}).get("name")
             if name:
                 names.append(name)
+    return names
+
+
+def _retrieved_tool_names(messages: Sequence[dict[str, Any]]) -> set[str]:
+    """Every name an emitted retrieve_tools call asked to bind."""
+    names: set[str] = set()
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            if function.get("name") == RETRIEVE_TOOLS_TOOL:
+                args = json.loads(function.get("arguments") or "{}")
+                names.update(args.get("exact_tool_names") or [])
     return names
 
 
@@ -277,42 +359,128 @@ def _cursor(
     return di
 
 
-def resolve_response(
+def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
+    """Newest non-interjection user message carrying directives — the current task.
+
+    Newest, not first: an executor thread persists per conversation, so a later
+    run's context still holds earlier runs' tasks. The task in flight is the most
+    recent genuine (non-interjection, echo-stripped) instruction; steers for it
+    arrive after it."""
+    for idx in range(len(messages) - 1, -1, -1):
+        message = messages[idx]
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        if _is_interjection(text):
+            continue
+        if parse_directives(_strip_echoed_payloads(text)):
+            return idx
+    return None
+
+
+def _collect_work_directives(
     messages: Sequence[dict[str, Any]],
-    available_tools: frozenset[str] = frozenset(),
-) -> Response:
-    """Pick the next scripted action for this invocation (stateless)."""
+) -> tuple[list[ToolDirective], SayDirective | None, int | None]:
+    """Collect the current task's directives PLUS every steer folded into its run.
+
+    A run works through the whole plan — the original tool directives and each
+    ``<user_interjection>`` the drain hook injected, in order, each once — then
+    the final say. This is what lets a burst of steers all land in one run and
+    the plan survive a mid-run steer (a real model keeps its plan; the old
+    "newest scripted message wins" made the stub drop it)."""
+    primary_idx = _work_primary_index(messages)
+    if primary_idx is None:
+        return [], None, None
+    genuine: list[Directive] = list(
+        parse_directives(_strip_echoed_payloads(message_text(messages[primary_idx])))
+    )
+    for message in messages[primary_idx + 1 :]:
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        if _is_interjection(text):
+            genuine.extend(parse_directives(_strip_echoed_payloads(text)))
+    tool_dirs = [d for d in genuine if isinstance(d, ToolDirective)]
+    say = next((d for d in reversed(genuine) if isinstance(d, SayDirective)), None)
+    return tool_dirs, say, primary_idx
+
+
+def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
+    """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
+    tool_dirs, say, primary_idx = _collect_work_directives(messages)
+    if not tool_dirs and say is None:
+        return SayResponse(DEFAULT_REPLY)
+
+    tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
+    di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
+    if di < len(tool_dirs):
+        nxt = tool_dirs[di]
+        if nxt.name not in available_tools:
+            # retrieve_tools decides: internal tools bind, integration tools come
+            # back as schema docs and stay unbound — those run through execute.
+            retrieved = nxt.name in _retrieved_tool_names(tail)
+            if RETRIEVE_TOOLS_TOOL in available_tools and not retrieved:
+                return ToolCallResponse(
+                    name=RETRIEVE_TOOLS_TOOL,
+                    args={"query": nxt.name, "exact_tool_names": [nxt.name]},
+                )
+            if EXECUTE_TOOL in available_tools:
+                return ToolCallResponse(
+                    name=EXECUTE_TOOL,
+                    args={
+                        "task_description": f"Run {nxt.name}",
+                        "tool_name": nxt.name,
+                        "data": nxt.args,
+                    },
+                )
+        return ToolCallResponse(name=nxt.name, args=nxt.args)
+    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+
+
+def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
+    """Front-door tier: forward / cancel the newest genuine instruction this turn.
+
+    One user message per comms turn (each steer is its own request), so newest —
+    not aggregated. Echo-stripping keeps comms from forwarding a quoted
+    ``<executor_cancelled>`` record as if it were fresh work."""
     latest = _script_message_index(messages)
     if latest is None:
         return SayResponse(DEFAULT_REPLY)
 
-    user_text = message_text(messages[latest])
-    directives = parse_directives(user_text)
+    task_text = _strip_echoed_payloads(message_text(messages[latest]))
+    directives = parse_directives(task_text)
     tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
     say = next((d for d in directives if isinstance(d, SayDirective)), None)
     if not tool_dirs and say is None:
         return SayResponse(DEFAULT_REPLY)
 
-    emitted = _emitted_tool_names(messages[latest + 1 :])
-    di = _cursor(tool_dirs, emitted, available_tools)
-
+    di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
-        if nxt.name not in available_tools:
-            if CALL_EXECUTOR_TOOL in available_tools:
-                # acceptance_criteria became required with the structured handoff.
-                return ToolCallResponse(
-                    name=CALL_EXECUTOR_TOOL,
-                    args={"task": user_text, "acceptance_criteria": SCRIPTED_CRITERIA},
-                )
-            if RETRIEVE_TOOLS_TOOL in available_tools:
-                return ToolCallResponse(
-                    name=RETRIEVE_TOOLS_TOOL,
-                    args={"query": nxt.name, "exact_tool_names": [nxt.name]},
-                )
+        # Only the executor tier runs a tool itself, so the execute/retrieve
+        # fallbacks live in _resolve_work. Comms forwards and is done.
+        if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
+            # acceptance_criteria became required with the structured handoff.
+            return ToolCallResponse(
+                name=CALL_EXECUTOR_TOOL,
+                args={"task": task_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+            )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
-
     return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+
+
+def resolve_response(
+    messages: Sequence[dict[str, Any]],
+    available_tools: frozenset[str] = frozenset(),
+) -> Response:
+    """Pick the next scripted action for this invocation (stateless).
+
+    The front door (``call_executor`` bound) forwards/cancels the newest
+    instruction; the tier that runs work aggregates the task and every steer
+    folded into its run."""
+    if CALL_EXECUTOR_TOOL in available_tools:
+        return _resolve_comms(messages, available_tools)
+    return _resolve_work(messages, available_tools)
 
 
 @dataclass(frozen=True)
@@ -326,6 +494,7 @@ class ChatRequest:
 
 
 def parse_request(body: dict[str, Any]) -> ChatRequest:
+    """Read the model, messages, stream flag and bound tool names off a chat-completions body."""
     tool_names = {
         (tool.get("function") or {}).get("name")
         for tool in body.get("tools") or []

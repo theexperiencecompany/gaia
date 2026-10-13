@@ -30,6 +30,7 @@ import signal
 import subprocess
 import time
 
+from bson import ObjectId
 import httpx
 import pytest
 
@@ -418,7 +419,7 @@ def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
-OWNER_USER_ID = "device-e2e-owner"
+OWNER_USER_ID = str(ObjectId())
 
 
 async def wait_device_online(
@@ -592,7 +593,7 @@ class TestDeviceServerRemoval:
         make_pro_subscription,
     ):
         """Device-initiated: gaia bridge rm clears local config and the cloud row."""
-        owner_id = "device-rm-owner"
+        owner_id = str(ObjectId())
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -629,7 +630,7 @@ class TestDeviceServerRemoval:
         make_pro_subscription,
     ):
         """Cloud-initiated: deleting the integration sends a server.remove frame down the live tunnel."""
-        owner_id = "device-del-owner"
+        owner_id = str(ObjectId())
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -650,18 +651,21 @@ class TestDeviceServerRemoval:
             listing_after = await owner.get("/api/v1/device/list")
             assert listing_after.json()["devices"][0]["servers"] == []
 
-            # ...and the running daemon receives server.remove over its live socket
-            # and forgets the server. Poll its config until the frame lands.
+            # ...and the running daemon receives server.remove over its live socket,
+            # forgets the server, then logs it. Poll both: the log line is written
+            # after the config, so checking it the instant the config clears races.
             loop = asyncio.get_running_loop()
             deadline = loop.time() + 10.0
-            while daemon.read_config_keys() != set():
+            while (
+                daemon.read_config_keys() != set()
+                or "removed server 'everything'" not in daemon.daemon_log().lower()
+            ):
                 if loop.time() >= deadline:
                     raise AssertionError(
                         f"daemon still exposes {daemon.read_config_keys()} after delete; "
                         f"daemon.log:\n{daemon.daemon_log()}"
                     )
                 await asyncio.sleep(0.1)
-            assert "removed server 'everything'" in daemon.daemon_log().lower()
         finally:
             await owner.aclose()
             await daemon.stop_all()
@@ -674,8 +678,8 @@ class TestCrossUserIsolation:
         self, tmp_path, live_api_server, clean_bridge_tables, warm_cli
     ):
         daemon = BridgeDaemon(tmp_path / "home")
-        owner = _client(live_api_server.url, "cross-user-owner")
-        intruder = _client(live_api_server.url, "cross-user-intruder")
+        owner = _client(live_api_server.url, str(ObjectId()))
+        intruder = _client(live_api_server.url, str(ObjectId()))
         try:
             await daemon.start_login(live_api_server.url, "cross-user-test-machine")
             user_code = await daemon.wait_for_user_code()
@@ -745,7 +749,7 @@ class TestRefreshTokenReuseDetection:
         self, live_api_server, real_redis, clean_bridge_tables
     ):
         """Clears the 60s post-rotation grace-window Redis key directly, since no exposed API can skip it, to force the real reuse-detection branch."""
-        owner = _client(live_api_server.url, "reuse-test-owner")
+        owner = _client(live_api_server.url, str(ObjectId()))
         anon = _client(live_api_server.url)
         try:
             start = await anon.post(

@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from scripts.evals.core.app_boot import ensure_app_registered
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import score_gates, validate_gates
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -83,16 +84,6 @@ def _terminate_stub() -> None:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-
-
-async def _ensure_registered() -> None:
-    """Register the app's lazy providers + services the executor graph needs."""
-    from app.core.provider_registration import register_lazy_providers
-    from app.db.redis import redis_cache
-    from app.helpers.lifespan_helpers import init_mongodb_async
-
-    register_lazy_providers("arq_worker")
-    await asyncio.gather(init_mongodb_async(), redis_cache.verify_connection())
 
 
 @register_suite("regression")
@@ -206,7 +197,7 @@ class RegressionSuite(Suite):
                 error="regression suite requires --sim (GAIA_SIM_MODE)",
             )
         await ensure_stub()
-        await _ensure_registered()
+        await ensure_app_registered()
         tokens_in_before = tracker.input_tokens.get(provider.name, 0)
         tokens_out_before = tracker.output_tokens.get(provider.name, 0)
         config = {

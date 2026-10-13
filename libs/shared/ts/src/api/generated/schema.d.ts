@@ -380,6 +380,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/browser/handoffs/{handoff_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Browser Handoff
+         * @description Continue (user finished the step in live-view) or cancel a browser handoff.
+         */
+        post: operations["browser_decide_browser_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Browser Sessions
+         * @description Receive a browser profile from the local CLI and store it as saved logins.
+         *
+         *     Authenticated by the single-use import code, not a session cookie — the CLI
+         *     runs outside the browser. The uploaded storage_state is split per host and
+         *     encrypted at rest by the same store that seeds every future task.
+         */
+        post: operations["browser_import_browser_sessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/import/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint Browser Import Token
+         * @description Mint the short-lived, single-use code the local ``gaia connect`` CLI
+         *     presents to upload this user's browser profile. Authorised by the web
+         *     session; the CLI, which has no cookie, authenticates with the returned code.
+         */
+        post: operations["browser_mint_browser_import_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Logins Endpoint
+         * @description Domains the user has a saved browser login for (never the encrypted state).
+         */
+        get: operations["browser_list_browser_logins_endpoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Clear Browser Logins Endpoint
+         * @description Forget every saved browser login for the user.
+         */
+        delete: operations["browser_clear_browser_logins_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/logins/{domain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Browser Login Endpoint
+         * @description Forget the saved login for one domain.
+         */
+        delete: operations["browser_forget_browser_login_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/sessions/{session_id}/live-view-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Live View Token
+         * @description Mint a short-lived takeover token the web card carries on its live-view
+         *     socket and full-page link, so neither depends on the session cookie.
+         */
+        get: operations["browser_get_live_view_token"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Tasks Endpoint
+         * @description The user's browser task history (settings), newest first, with recap URLs.
+         */
+        get: operations["browser_list_browser_tasks_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Browser Task Endpoint
+         * @description Remove one task from the user's browser history.
+         */
+        delete: operations["browser_delete_browser_task_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/{calendar_id}/events": {
         parameters: {
             query?: never;
@@ -1009,6 +1180,46 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Features
+         * @description The flags the caller may toggle, each with the value in effect for them.
+         */
+        get: operations["features_list_features"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/features/{flag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Feature
+         * @description Turn one user-facing flag on or off for the caller; unknown and internal flags are 404.
+         */
+        patch: operations["features_update_feature"];
         trace?: never;
     };
     "/api/v1/fetch-url-metadata": {
@@ -1748,6 +1959,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/{integration_id}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Integration Accounts */
+        get: operations["integrations_list_integration_accounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{integration_id}/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Integration Account */
+        delete: operations["integrations_remove_integration_account"];
+        options?: never;
+        head?: never;
+        /** Update Integration Account */
+        patch: operations["integrations_update_integration_account"];
+        trace?: never;
+    };
     "/api/v1/integrations/{integration_id}/tools": {
         parameters: {
             query?: never;
@@ -1815,20 +2061,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Connect Link Endpoint
-         * @description Login-free entry point for bot / non-UI users.
+         * @description Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
          *
-         *     Resolves the single-use connect code to its bound ``(user, integration)``
-         *     (no session required — the code is the credential) and bounces the user
-         *     straight into the provider OAuth flow. Invalid/expired/used codes redirect
-         *     to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
-         *     self-authenticates. Per-IP rate limited so the short code can't be brute
-         *     forced online.
+         *     POST-only because spending the code is a state change: link-preview
+         *     crawlers (Telegram, Slack) GET every link in a message and would burn it
+         *     before the user taps. The web /connect/<code> page posts here from a button.
+         *     Excluded from auth (the code is the credential) and per-IP rate limited
+         *     so the short code can't be brute forced online.
          */
-        get: operations["integrations_connect_link_endpoint"];
-        put?: never;
-        post?: never;
+        post: operations["integrations_connect_link_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1980,6 +2225,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/me/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Integrations Snapshot Endpoint
+         * @description Return the workspace catalog without waiting for connection checks.
+         */
+        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/public/{identifier}": {
         parameters: {
             query?: never;
@@ -2052,6 +2317,26 @@ export interface paths {
          * @description Search public integrations using semantic search.
          */
         get: operations["integrations_search_integrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Integration Statuses Endpoint
+         * @description Refresh connection state independently from the fast catalog snapshot.
+         */
+        get: operations["integrations_get_integration_statuses_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3262,6 +3547,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/discount-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discount Codes Endpoint
+         * @description Get the discount codes the clients advertise.
+         */
+        get: operations["payments_get_discount_codes_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/plans": {
         parameters: {
             query?: never;
@@ -3727,11 +4032,51 @@ export interface paths {
         };
         /**
          * Validate Cron Endpoint
-         * @description Validate a cron expression and preview its next few run times.
+         * @description Check a cron expression against the recurring-schedule rule and preview its next runs.
          */
         get: operations["reminders_validate_cron_endpoint"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sandbox/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sandbox Execute */
+        post: operations["sandbox_sandbox_execute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sandbox/tool-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sandbox Tool Schema
+         * @description The full tool contract behind the discovery doc's pointer.
+         *
+         *     Metadata only (no tool runs), but it shares the execute budget so a leaked
+         *     token cannot use it as an unmetered probe of the catalog.
+         */
+        post: operations["sandbox_sandbox_tool_schema"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4072,7 +4417,7 @@ export interface paths {
         /**
          * List Skill Targets Endpoint
          * @description List the targets a skill can run in: the executor plus the user's
-         *     connected integration subagents.
+         *     connected integrations.
          */
         get: operations["skills_list_skill_targets_endpoint"];
         put?: never;
@@ -5347,6 +5692,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/live/{code}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Live View Handoff
+         * @description Done or Stop from the bot user's live-view page: the code that opened the page is the authority.
+         *
+         *     The same decision a chat reply or the web card's buttons make, for the
+         *     handoff this link was sent for.
+         */
+        post: operations["browser_decide_live_view_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/replays/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Replay Page
+         * @description Standalone recap slideshow for a finished session: its code is the capability.
+         */
+        get: operations["browser_replay_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shots/{code}/{index}.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Step Screenshot
+         * @description One step frame of a run, for deployments with no object store.
+         *
+         *     Same capability model as the recap page it feeds: the code is the secret, so
+         *     a frame cannot be reached by guessing a session id, and it expires with the
+         *     code.
+         */
+        get: operations["browser_step_screenshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5539,12 +5951,18 @@ export interface components {
              * @enum {string}
              */
             scope?: "once" | "always_tool";
+            /** V */
+            v?: number | null;
         };
         /**
          * ApprovalDecisionResponse
          * @description Result of relaying an approval decision to the awaiting gate.
          */
         ApprovalDecisionResponse: {
+            /** Reason */
+            reason?: string | null;
+            /** Status */
+            status?: string | null;
             /** Success */
             success: boolean;
         };
@@ -5708,10 +6126,6 @@ export interface components {
             platform_links_connected_at?: {
                 [key: string]: unknown;
             } | null;
-            /** Provider Metadata */
-            provider_metadata?: {
-                [key: string]: unknown;
-            } | null;
             /** Selected Voice Id */
             selected_voice_id?: string | null;
             /** Starred Voice Ids */
@@ -5773,6 +6187,8 @@ export interface components {
             decision: "approve" | "deny";
             /** Feedback */
             feedback?: string | null;
+            /** V */
+            v?: number | null;
         };
         /**
          * BatchDecisionOutcome
@@ -5785,6 +6201,8 @@ export interface components {
             reason?: string | null;
             /** Resolved */
             resolved: boolean;
+            /** Status */
+            status?: string | null;
         };
         /**
          * BatchEventCreateFailure
@@ -5941,6 +6359,11 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** Body_integrations_connect_link_endpoint */
+        Body_integrations_connect_link_endpoint: {
+            /** Code */
+            code: string;
+        };
         /** Body_notification_unregister_device_token */
         Body_notification_unregister_device_token: {
             /** Token */
@@ -6056,6 +6479,11 @@ export interface components {
              */
             platform: string;
             /**
+             * Platform Message Id
+             * @description Platform-native id of the user's message (WhatsApp wamid, Telegram message_id, Discord id, Slack ts). Persisted on the saved user message so a later background reaction can anchor to it.
+             */
+            platform_message_id?: string | null;
+            /**
              * Platform User Id
              * @description User's ID on the platform
              */
@@ -6091,6 +6519,93 @@ export interface components {
              * @description User's display name (null if not set)
              */
             user_name?: string | null;
+        };
+        /**
+         * BrowserImportRequest
+         * @description A profile upload from the local CLI: the mint code plus a Playwright
+         *     storage_state (cookies + localStorage), split per host on the server.
+         */
+        BrowserImportRequest: {
+            /** Cookies */
+            cookies?: components["schemas"]["ImportedCookie"][];
+            /** Origins */
+            origins?: components["schemas"]["ImportedOrigin"][];
+            /** Source Browser */
+            source_browser?: string | null;
+            /** Token */
+            token: string;
+        };
+        /**
+         * BrowserImportResponse
+         * @description What landed: the hosts now seeded and how many cookies each carries.
+         */
+        BrowserImportResponse: {
+            /** Cookie Count */
+            cookie_count: number;
+            /** Host Count */
+            host_count: number;
+            /** Imported */
+            imported?: components["schemas"]["BrowserLoginResponse"][];
+        };
+        /**
+         * BrowserLoginResponse
+         * @description A saved browser login. Only the domain is exposed — never the encrypted state.
+         */
+        BrowserLoginResponse: {
+            /** Domain */
+            domain: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Source */
+            source: string | null;
+            /** Source Browser */
+            source_browser: string | null;
+            /** Source Ip */
+            source_ip: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * BrowserSessionStatus
+         * @description Lifecycle state of a browser session: working, then how it ended.
+         * @enum {string}
+         */
+        BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
+        /**
+         * BrowserTaskFrame
+         * @description One recap frame: a step screenshot plus what the agent was doing.
+         */
+        BrowserTaskFrame: {
+            /** Caption */
+            caption?: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * BrowserTaskResponse
+         * @description One row in the user's browser task history (settings).
+         */
+        BrowserTaskResponse: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Frames
+             * @description Recap frames (screenshot + caption), in order.
+             */
+            frames: components["schemas"]["BrowserTaskFrame"][];
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            status: components["schemas"]["BrowserSessionStatus"];
+            /** Steps */
+            steps: number;
+            /** Success */
+            success: boolean;
+            /** Task */
+            task: string;
         };
         /**
          * BudgetWindow
@@ -6132,7 +6647,7 @@ export interface components {
             group_label: string;
             /**
              * Icon
-             * @description Icon key (owning subagent id, or 'executor')
+             * @description Icon key (owning integration id, or 'executor')
              */
             icon: string;
             /**
@@ -6147,7 +6662,7 @@ export interface components {
             slug: string;
             /**
              * Target
-             * @description Target agent_name (executor or a subagent)
+             * @description Target agent_name (executor or an integration)
              */
             target: string;
         };
@@ -6627,10 +7142,25 @@ export interface components {
          */
         ConditionOperator: "equals" | "not_equals" | "contains" | "not_contains" | "starts_with" | "ends_with" | "greater_than" | "greater_or_equal" | "less_than" | "less_or_equal";
         /**
+         * ConfirmedSocialProfile
+         * @description A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.
+         */
+        ConfirmedSocialProfile: {
+            /** Platform */
+            platform: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * ConnectIntegrationRequest
          * @description Request to connect an integration.
          */
         ConnectIntegrationRequest: {
+            /**
+             * Account Id
+             * @description An expired account to sign back in, in place, instead of adding one
+             */
+            account_id?: string | null;
             /** Bearer Token */
             bearer_token?: string | null;
             /**
@@ -6701,6 +7231,11 @@ export interface components {
              * @default New Chat
              */
             description?: string;
+            /**
+             * Has Live Approval
+             * @default false
+             */
+            has_live_approval?: boolean;
             /**
              * Id
              * @default
@@ -6809,6 +7344,8 @@ export interface components {
             createdAt: string | null;
             /** Description */
             description: string | null;
+            /** Has Live Approval */
+            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -6853,6 +7390,8 @@ export interface components {
             createdAt: string | null;
             /** Description */
             description: string;
+            /** Has Live Approval */
+            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -7047,7 +7586,7 @@ export interface components {
             source_conversation_id?: string | null;
             /**
              * Stop After
-             * @description Stop executing after this date (optional)
+             * @description Stop executing after this date (optional); defaults to 180 days after creation
              */
             stop_after?: string | null;
             /**
@@ -7196,7 +7735,7 @@ export interface components {
         CronValidationResponse: {
             /**
              * Error
-             * @description Why the expression could not be evaluated, if it raised
+             * @description Why the expression is not an acceptable schedule
              */
             error?: string | null;
             /**
@@ -7209,9 +7748,11 @@ export interface components {
              * @description ISO timestamps of the next few runs; empty unless the expression is valid
              */
             next_runs?: string[];
+            /** @description Machine-readable reason the expression was refused */
+            reason?: components["schemas"]["ScheduleRejection"] | null;
             /**
              * Valid
-             * @description Whether the expression parses as a valid cron
+             * @description Whether the expression is an acceptable recurring schedule
              */
             valid: boolean;
         };
@@ -7231,12 +7772,13 @@ export interface components {
         };
         /**
          * DeactivationReason
-         * @description Why a workflow was deactivated by the system, so an automatic resume can tell
-         *     its own pauses apart from a workflow the user deliberately switched off. A
-         *     user-initiated deactivation records no reason at all.
+         * @description Why the system paused a reminder or deactivated a workflow.
+         *
+         *     An automatic resume only touches tasks carrying the reason it owns, so a task
+         *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -7492,6 +8034,17 @@ export interface components {
             status: string;
         };
         /**
+         * DiscountCodesResponse
+         * @description Coupon codes the clients advertise, each a Dodo discount code or null when unset.
+         */
+        DiscountCodesResponse: {
+            /**
+             * Founder Letter
+             * @description Code the founder's letter offers
+             */
+            founder_letter: string | null;
+        };
+        /**
          * DiscoveredSkillInfo
          * @description A skill found in a remote GitHub repository but not yet installed.
          */
@@ -7545,6 +8098,19 @@ export interface components {
             /** Skills */
             skills: components["schemas"]["DiscoveredSkillInfo"][];
         };
+        /** DispatchError */
+        DispatchError: {
+            /** Detail */
+            detail: string;
+            /** Hint */
+            hint: string;
+            kind: components["schemas"]["DispatchErrorKind"];
+        };
+        /**
+         * DispatchErrorKind
+         * @enum {string}
+         */
+        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
         /**
          * DodoWebhookAckResponse
          * @description Acknowledgement returned to Dodo once a webhook has been accepted.
@@ -7808,6 +8374,12 @@ export interface components {
             used: number;
         };
         /**
+         * FeatureStage
+         * @description How finished a user-facing feature is, shown next to its toggle.
+         * @enum {string}
+         */
+        FeatureStage: "experimental";
+        /**
          * FeatureUpgrade
          * @description The Pro tier's limits for a feature, so a free user sees the delta.
          */
@@ -7975,6 +8547,19 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
+         * FoldedCards
+         * @description Cards a detached run closed before the message they fold into was saved; its save takes them.
+         */
+        FoldedCards: {
+            /** Cards */
+            cards?: components["schemas"]["ToolDataEntry"][];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+        };
+        /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
          */
@@ -8109,6 +8694,17 @@ export interface components {
             }[];
             /** Nextpagetoken */
             nextPageToken?: string | null;
+        };
+        /**
+         * GmailEmailSentConfig
+         * @description Config for the gmail sent-mail trigger; account-level, so nothing to scope.
+         */
+        GmailEmailSentConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            trigger_name: "gmail_email_sent";
         };
         /**
          * GmailLabelResource
@@ -8418,6 +9014,36 @@ export interface components {
             trigger_name: "google_sheets_new_sheet";
         };
         /**
+         * HandoffDecision
+         * @description User decision on a pending handoff, or a note-only reply.
+         * @enum {string}
+         */
+        HandoffDecision: "continue" | "cancel";
+        /**
+         * HandoffDecisionRequest
+         * @description Body of ``POST /browser/handoffs/{handoff_id}/decision``.
+         */
+        HandoffDecisionRequest: {
+            decision: components["schemas"]["HandoffDecision"];
+            /** Message */
+            message?: string | null;
+        };
+        /**
+         * HandoffDecisionResponse
+         * @description Outcome of a handoff decision: accepted with note, cancelled, or errored.
+         */
+        HandoffDecisionResponse: {
+            /** Handoff Id */
+            handoff_id: string;
+            status: components["schemas"]["HandoffStatus"];
+        };
+        /**
+         * HandoffStatus
+         * @description State of a live-view handoff: pending, completed, cancelled, expired, or failed.
+         * @enum {string}
+         */
+        HandoffStatus: "pending" | "completed" | "cancelled" | "timeout" | "failed";
+        /**
          * HealthResponse
          * @description ``GET /health`` (and its ping/root aliases) when the API is serving normally.
          */
@@ -8458,6 +9084,8 @@ export interface components {
              * @enum {string}
              */
             mode: "always_allow" | "always_ask" | "auto";
+            /** Never Auto Tools */
+            never_auto_tools: string[];
             /** Tool Overrides */
             tool_overrides: {
                 [key: string]: boolean;
@@ -8511,6 +9139,70 @@ export interface components {
             response: string;
         };
         /**
+         * ImportedCookie
+         * @description One cookie in a Playwright storage_state. Field aliases match Playwright's
+         *     camelCase exactly, so a dump ``by_alias`` re-emits the shape the browser host
+         *     seeds — this is an external schema boundary, not our own.
+         */
+        ImportedCookie: {
+            /** Domain */
+            domain: string;
+            /**
+             * Expires
+             * @default -1
+             */
+            expires?: number;
+            /**
+             * Httponly
+             * @default false
+             */
+            httpOnly?: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Path
+             * @default /
+             */
+            path?: string;
+            /**
+             * Samesite
+             * @default Lax
+             * @enum {string}
+             */
+            sameSite?: "Strict" | "Lax" | "None";
+            /**
+             * Secure
+             * @default false
+             */
+            secure?: boolean;
+            /** Value */
+            value: string;
+        };
+        /** ImportedLocalStorageItem */
+        ImportedLocalStorageItem: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: string;
+        };
+        /** ImportedOrigin */
+        ImportedOrigin: {
+            /** Localstorage */
+            localStorage?: components["schemas"]["ImportedLocalStorageItem"][];
+            /** Origin */
+            origin: string;
+        };
+        /**
+         * ImportTokenResponse
+         * @description The short-lived code the CLI presents, and how long it lives.
+         */
+        ImportTokenResponse: {
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** Token */
+            token: string;
+        };
+        /**
          * InitiatePlatformConnectRequest
          * @description Request model for initiating a platform connection.
          *
@@ -8561,6 +9253,40 @@ export interface components {
          * @enum {string}
          */
         InstructionsEditor: "user" | "agent";
+        /** IntegrationAccountResponse */
+        IntegrationAccountResponse: {
+            /**
+             * Connectedat
+             * Format: date-time
+             */
+            connectedAt: string;
+            /** Displayname */
+            displayName: string;
+            /** Expiredat */
+            expiredAt: string | null;
+            /** Id */
+            id: string;
+            /** Isprimary */
+            isPrimary: boolean;
+            /** Label */
+            label: string;
+            /** Nickname */
+            nickname: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "expired";
+        };
+        /** IntegrationAccountsResponse */
+        IntegrationAccountsResponse: {
+            /** Accounts */
+            accounts: components["schemas"]["IntegrationAccountResponse"][];
+            /** Integrationid */
+            integrationId: string;
+            /** Maxaccounts */
+            maxAccounts: number;
+        };
         /** IntegrationConfigItem */
         IntegrationConfigItem: {
             /** Authtype */
@@ -8755,6 +9481,19 @@ export interface components {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
+        /**
+         * IntegrationStatusesResponse
+         * @description Current connection status map, fetched independently of the catalog.
+         */
+        IntegrationStatusesResponse: {
+            /**
+             * Statuses
+             * @description Connection state keyed by integration id
+             */
+            statuses: {
+                [key: string]: boolean;
+            };
+        };
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
             /** Integrationid */
@@ -8941,6 +9680,19 @@ export interface components {
              * @description Username on the platform
              */
             username: string | null;
+        };
+        /**
+         * LiveViewTokenResponse
+         * @description A short-lived takeover token for opening the cross-origin live view.
+         */
+        LiveViewTokenResponse: {
+            /**
+             * Expires In
+             * @description Seconds until the token expires.
+             */
+            expires_in: number;
+            /** Token */
+            token: string;
         };
         /**
          * LogoutResponse
@@ -9562,6 +10314,18 @@ export interface components {
          */
         MemorySearchResult: {
             /**
+             * Degraded
+             * @description Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Has Confident Match
+             * @description Whether any memory matched the query confidently rather than as a weak fallback
+             * @default false
+             */
+            has_confident_match: boolean;
+            /**
              * Memories
              * @description List of matching memories
              */
@@ -9662,6 +10426,14 @@ export interface components {
             trace_id?: string | null;
         };
         /**
+         * MessageKind
+         * @description What a bot message IS beyond its text, set when comms' intent is known at
+         *     creation and would otherwise be unrecoverable from the body alone (a deliberate
+         *     one-emoji acknowledgement reads identically to a coincidental one-emoji reply).
+         * @enum {string}
+         */
+        MessageKind: "text" | "emoji_ack";
+        /**
          * MessageModel
          * @description A single chat message with its content, attachments and tool data.
          */
@@ -9688,9 +10460,13 @@ export interface components {
             filename?: string | null;
             /** Filetype */
             filetype?: string | null;
+            /** First Contact */
+            first_contact?: boolean | null;
             /** Follow Up Actions */
             follow_up_actions?: string[] | null;
             image_data?: components["schemas"]["ImageData"] | null;
+            /** @default text */
+            kind?: components["schemas"]["MessageKind"];
             /** Message Id */
             message_id?: string | null;
             /** Metadata */
@@ -9699,6 +10475,10 @@ export interface components {
             } | null;
             /** Pinned */
             pinned?: boolean | null;
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            /** Reacts To Message Id */
+            reacts_to_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -9741,9 +10521,13 @@ export interface components {
             filename?: string | null;
             /** Filetype */
             filetype?: string | null;
+            /** First Contact */
+            first_contact?: boolean | null;
             /** Follow Up Actions */
             follow_up_actions?: string[] | null;
             image_data?: components["schemas"]["ImageData"] | null;
+            /** @default text */
+            kind?: components["schemas"]["MessageKind"];
             /** Message Id */
             message_id?: string | null;
             /** Metadata */
@@ -9752,6 +10536,10 @@ export interface components {
             } | null;
             /** Pinned */
             pinned?: boolean | null;
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            /** Reacts To Message Id */
+            reacts_to_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -9801,10 +10589,17 @@ export interface components {
              * @default false
              */
             is_onboarding_demo?: boolean;
+            /**
+             * Is Retry
+             * @default false
+             */
+            is_retry?: boolean;
             /** Message */
             message: string;
             /** Messages */
             messages: components["schemas"]["MessageDict"][];
+            /** Platform Message Id */
+            platform_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selectedtool */
@@ -9853,12 +10648,12 @@ export interface components {
             first_message: string;
             /**
              * Handoff Text
-             * @description first_message with ' #<code>' appended — the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
+             * @description first_message with ' #<code>' appended, the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
              */
             handoff_text: string;
             /**
              * Links
-             * @description Deep link per platform that carries the code. iMessage is absent by construction — its number is assigned per user.
+             * @description Deep link per platform that carries the code. iMessage is absent by construction; its number is assigned per user.
              */
             links: {
                 [key: string]: string;
@@ -10422,7 +11217,10 @@ export interface components {
             /** @description The onboarding phase to transition to */
             phase: components["schemas"]["OnboardingPhase"];
         };
-        /** OnboardingPhaseUpdateResponse */
+        /**
+         * OnboardingPhaseUpdateResponse
+         * @description Response body for an onboarding phase update.
+         */
         OnboardingPhaseUpdateResponse: {
             /** Message */
             message: string;
@@ -10487,7 +11285,10 @@ export interface components {
              */
             timezone?: string | null;
         };
-        /** OnboardingResetResponse */
+        /**
+         * OnboardingResetResponse
+         * @description Response body for the onboarding reset endpoint.
+         */
         OnboardingResetResponse: {
             /** Conversation Deleted */
             conversation_deleted: number;
@@ -10603,6 +11404,24 @@ export interface components {
             subscription_id?: string | null;
         };
         /**
+         * PendingApprovalRef
+         * @description A live approval parked against this todo — the UI's jump link to the
+         *     conversation holding the card. Oldest live row wins; terminal rows never
+         *     appear here.
+         */
+        PendingApprovalRef: {
+            /**
+             * Approval Id
+             * @description Ledger approval id (ap_*)
+             */
+            approval_id: string;
+            /**
+             * Conversation Id
+             * @description Conversation holding the card
+             */
+            conversation_id: string;
+        };
+        /**
          * PersistedTriageSummary
          * @description ``users.onboarding.triage_summary``.
          *
@@ -10677,7 +11496,10 @@ export interface components {
             user_bio: string;
             writing_style: components["schemas"]["PersonalizationWritingStyle"] | null;
         };
-        /** PersonalizationTodo */
+        /**
+         * PersonalizationTodo
+         * @description A suggested todo as rendered by the onboarding cards.
+         */
         PersonalizationTodo: {
             /** Description */
             description: string | null;
@@ -10702,7 +11524,10 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** PersonalizationWritingStyle */
+        /**
+         * PersonalizationWritingStyle
+         * @description The learned writing style as rendered by the onboarding cards.
+         */
         PersonalizationWritingStyle: {
             example: components["schemas"]["WritingStyleExampleBlocks"] | null;
             /** Style Summary */
@@ -10823,6 +11648,8 @@ export interface components {
              * @description Plan name
              */
             name: string;
+            /** @description Tier this plan sells */
+            plan_type: components["schemas"]["PlanTier"];
             /**
              * Updated At
              * Format: date-time
@@ -10830,6 +11657,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * PlanTier
+         * @description What a catalogue row sells.
+         *
+         *     Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+         *     never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+         * @enum {string}
+         */
+        PlanTier: "free" | "pro" | "enterprise";
         /**
          * PlanType
          * @description Subscription plan types.
@@ -11368,7 +12204,7 @@ export interface components {
             delivered: boolean;
             /**
              * First Contact
-             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true — sending them then would say everything twice.
+             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.
              */
             first_contact?: string[];
             /**
@@ -11422,7 +12258,10 @@ export interface components {
              */
             reason?: string | null;
         };
-        /** RegenerateWritingStyleExampleResponse */
+        /**
+         * RegenerateWritingStyleExampleResponse
+         * @description Response body for regenerating the writing-style example.
+         */
         RegenerateWritingStyleExampleResponse: {
             example: components["schemas"]["WritingStyleExampleBlocks"] | null;
         };
@@ -11595,14 +12434,44 @@ export interface components {
              */
             success: boolean;
         };
-        /** SaveSocialProfilesResponse */
+        /** SandboxExecuteRequest */
+        SandboxExecuteRequest: {
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            };
+            /** Tool Name */
+            tool_name: string;
+        };
+        /** SandboxExecuteResponse */
+        SandboxExecuteResponse: {
+            error?: components["schemas"]["DispatchError"] | null;
+            /** Ok */
+            ok: boolean;
+            /** Output */
+            output?: unknown;
+            /** Resolved Name */
+            resolved_name: string;
+        };
+        /** SandboxToolSchemaRequest */
+        SandboxToolSchemaRequest: {
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * SaveSocialProfilesResponse
+         * @description Response body for confirming social profiles, carrying how many were kept.
+         */
         SaveSocialProfilesResponse: {
             /** Saved */
             saved: number;
             /** Success */
             success: boolean;
         };
-        /** SaveWritingStyleResponse */
+        /**
+         * SaveWritingStyleResponse
+         * @description Response body for saving a user-edited writing style.
+         */
         SaveWritingStyleResponse: {
             /** Success */
             success: boolean;
@@ -11613,6 +12482,12 @@ export interface components {
          * @enum {string}
          */
         ScheduledTaskStatus: "scheduled" | "executing" | "completed" | "failed" | "cancelled" | "paused";
+        /**
+         * ScheduleRejection
+         * @description Why a recurring schedule was refused; the value is the machine-readable reason code.
+         * @enum {string}
+         */
+        ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -11950,7 +12825,7 @@ export interface components {
             source_url: string | null;
             /**
              * Target
-             * @description Target agent: 'executor', or a subagent agent_name (gmail_agent, github_agent, etc.)
+             * @description Target agent: 'executor', or an integration agent_name (gmail_agent, github_agent, etc.)
              * @default executor
              */
             target: string;
@@ -11989,7 +12864,7 @@ export interface components {
             name: string;
             /**
              * Target
-             * @description Target agent: 'executor' or a subagent agent_name (e.g., gmail_agent)
+             * @description Target agent: 'executor' or an integration agent_name (e.g., gmail_agent)
              * @default executor
              */
             target?: string;
@@ -12015,9 +12890,9 @@ export interface components {
         SkillSource: "github" | "url" | "upload" | "inline";
         /**
          * SkillTarget
-         * @description A place a skill can run: the executor, or a connected integration subagent.
+         * @description A place a skill can run: the executor, or a connected integration.
          *
-         *     ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
+         *     ``value`` is the integration ``agent_name`` written to a skill's ``target``;
          *     ``icon`` is the integration id (``executor`` for the general bucket) so the
          *     UI can reuse the integration logo set.
          */
@@ -12084,7 +12959,7 @@ export interface components {
             instructions?: string | null;
             /**
              * Target
-             * @description Target agent: 'executor' or a connected subagent agent_name (unchanged if omitted)
+             * @description Target agent: 'executor' or a connected integration agent_name (unchanged if omitted)
              */
             target?: string | null;
         };
@@ -12145,7 +13020,10 @@ export interface components {
              */
             trigger_name: "slack_new_message";
         };
-        /** SocialProfile */
+        /**
+         * SocialProfile
+         * @description One social account belonging to the user, as stored and sent to the client.
+         */
         SocialProfile: {
             /** Platform */
             platform: string;
@@ -12155,7 +13033,7 @@ export interface components {
         /** SocialProfilesConfirmRequest */
         SocialProfilesConfirmRequest: {
             /** Profiles */
-            profiles: components["schemas"]["SocialProfile"][];
+            profiles: components["schemas"]["ConfirmedSocialProfile"][];
         };
         /**
          * StarConversationResponse
@@ -12825,7 +13703,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence?: string | null;
             /**
@@ -12929,6 +13807,13 @@ export interface components {
              */
             notify_on_run: boolean;
             /**
+             * Parent Todo Id
+             * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
+             */
+            parent_todo_id: string | null;
+            /** @description Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation */
+            pending_approval: components["schemas"]["PendingApprovalRef"] | null;
+            /**
              * @description Priority level
              * @default none
              */
@@ -12940,7 +13825,7 @@ export interface components {
             project_id: string | null;
             /**
              * Recurrence
-             * @description Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).
+             * @description On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron that fires at most once an hour, evaluated in the user's current timezone (user.timezone). On a plain todo, display-only recurrence (e.g. an RRULE) that nothing runs.
              */
             recurrence: string | null;
             /**
@@ -12953,6 +13838,12 @@ export interface components {
              * @description When GAIA should execute this tracked todo
              */
             scheduled_at: string | null;
+            /**
+             * Sub Todo Count
+             * @description Open sub-todos of this tracked todo
+             * @default 0
+             */
+            sub_todo_count: number;
             /**
              * Subtasks
              * @description List of subtasks
@@ -13107,6 +13998,35 @@ export interface components {
             todo_id: string;
             workflow?: components["schemas"]["WorkflowWithIntegrations"] | null;
             workflow_status: components["schemas"]["TodoWorkflowStatus"];
+        };
+        /**
+         * ToolContract
+         * @description Everything known about one tool's contract, both provider and observed.
+         */
+        ToolContract: {
+            /** Compact Output Type */
+            compact_output_type?: string | null;
+            /** Description */
+            description: string;
+            /** Input Schema */
+            input_schema: {
+                [key: string]: unknown;
+            };
+            /**
+             * Observed Call Count
+             * @default 0
+             */
+            observed_call_count?: number;
+            /** Observed Output Schema */
+            observed_output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Provider Output Schema */
+            provider_output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tool Name */
+            tool_name: string;
         };
         /**
          * ToolDataEntry
@@ -13282,7 +14202,7 @@ export interface components {
              * Trigger Data
              * @description Provider-specific trigger configuration
              */
-            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
+            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
             /**
              * Trigger Name
              * @description Specific trigger slug for identification
@@ -13347,6 +14267,11 @@ export interface components {
          * @description A tracked todo's standing interest in one trigger.
          */
         TriggerSubscription: {
+            /**
+             * Account Id
+             * @description GAIA id of the one connected account whose events fire it; None for every account
+             */
+            account_id?: string | null;
             action: components["schemas"]["SubscriptionAction"];
             /**
              * Composio Trigger Ids
@@ -13524,6 +14449,8 @@ export interface components {
         UpdateHILPreferencesRequest: {
             /** Mode */
             mode?: ("always_allow" | "always_ask" | "auto") | null;
+            /** Never Auto Tools */
+            never_auto_tools?: string[] | null;
             /** Tool Overrides */
             tool_overrides?: {
                 [key: string]: boolean;
@@ -13554,6 +14481,16 @@ export interface components {
              * @description Whether the update succeeded
              */
             success: boolean;
+        };
+        /**
+         * UpdateIntegrationAccountRequest
+         * @description Make the account primary and/or rename it; an empty nickname clears it.
+         */
+        UpdateIntegrationAccountRequest: {
+            /** Isprimary */
+            isPrimary?: boolean | null;
+            /** Nickname */
+            nickname?: string | null;
         };
         /**
          * UpdateIntegrationInstructionsRequest
@@ -13664,6 +14601,14 @@ export interface components {
              * @description The timezone that was set
              */
             timezone: string;
+        };
+        /** UpdateUserFeatureFlagRequest */
+        UpdateUserFeatureFlagRequest: {
+            /**
+             * Enabled
+             * @description The caller's choice; it overrides the rollout for them
+             */
+            enabled: boolean;
         };
         /**
          * UpdateVoiceRequest
@@ -13776,6 +14721,52 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** UserFeatureFlagListResponse */
+        UserFeatureFlagListResponse: {
+            /**
+             * Features
+             * @description Every user-facing flag, in registry order
+             */
+            features: components["schemas"]["UserFeatureFlagResponse"][];
+        };
+        /**
+         * UserFeatureFlagResponse
+         * @description One flag the user may toggle, with the value currently in effect for them.
+         */
+        UserFeatureFlagResponse: {
+            /**
+             * Available
+             * @description False while ops have the feature killed for everyone; the switch is locked
+             */
+            available: boolean;
+            /**
+             * Description
+             * @description One or two sentences on what turning it on changes
+             */
+            description: string;
+            /**
+             * Enabled
+             * @description In effect for the caller: off while killed, else their own choice, else the rollout, else the default
+             */
+            enabled: boolean;
+            /**
+             * Key
+             * @description Flag key, the {flag} path parameter of the PATCH route
+             */
+            key: string;
+            /**
+             * Label
+             * @description Short name shown next to the toggle
+             */
+            label: string;
+            /** @description How finished the feature is */
+            stage: components["schemas"]["FeatureStage"];
+            /**
+             * Unavailable Reason
+             * @description Why the switch is locked, shown beside it; null when available
+             */
+            unavailable_reason: string | null;
+        };
         /**
          * UserSubscriptionStatus
          * @description Response model for user subscription status.
@@ -13802,7 +14793,7 @@ export interface components {
             days_remaining: number | null;
             /**
              * Has Ever Subscribed
-             * @description Whether the user has ever had a subscription, in any status — separates a lapsed subscriber from one who has never paid
+             * @description Whether the user has ever had a subscription, in any status; separates a lapsed subscriber from one who has never paid
              * @default false
              */
             has_ever_subscribed: boolean;
@@ -14500,7 +15491,10 @@ export interface components {
             /** Edited Summary */
             edited_summary: string;
         };
-        /** WritingStyleExampleBlocks */
+        /**
+         * WritingStyleExampleBlocks
+         * @description An example email split into the parts the onboarding card renders separately.
+         */
         WritingStyleExampleBlocks: {
             /**
              * Body
@@ -14583,6 +15577,7 @@ export type BlogPost = components['schemas']['BlogPost'];
 export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_transcribe_bot_audio'];
 export type Body_file_upload_file_endpoint = components['schemas']['Body_file_upload_file_endpoint'];
 export type Body_image_image_to_text = components['schemas']['Body_image_image_to_text'];
+export type Body_integrations_connect_link_endpoint = components['schemas']['Body_integrations_connect_link_endpoint'];
 export type Body_notification_unregister_device_token = components['schemas']['Body_notification_unregister_device_token'];
 export type Body_support_submit_support_request_with_attachments = components['schemas']['Body_support_submit_support_request_with_attachments'];
 export type Body_user_update_holo_card_colors = components['schemas']['Body_user_update_holo_card_colors'];
@@ -14592,6 +15587,12 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
+export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
+export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
+export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
+export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltinSkillInfo = components['schemas']['BuiltinSkillInfo'];
 export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse'];
@@ -14625,6 +15626,7 @@ export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
+export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
@@ -14669,8 +15671,11 @@ export type DeviceServerResponse = components['schemas']['DeviceServerResponse']
 export type DeviceTokenRequest = components['schemas']['DeviceTokenRequest'];
 export type DeviceTokenResponse = components['schemas']['DeviceTokenResponse'];
 export type DisconnectPlatformResponse = components['schemas']['DisconnectPlatformResponse'];
+export type DiscountCodesResponse = components['schemas']['DiscountCodesResponse'];
 export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
+export type DispatchError = components['schemas']['DispatchError'];
+export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type DraftMutationResponse = components['schemas']['DraftMutationResponse'];
 export type DraftRequest = components['schemas']['DraftRequest'];
@@ -14686,6 +15691,7 @@ export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
+export type FeatureStage = components['schemas']['FeatureStage'];
 export type FeatureUpgrade = components['schemas']['FeatureUpgrade'];
 export type FeatureUsageSummary = components['schemas']['FeatureUsageSummary'];
 export type FileData = components['schemas']['FileData'];
@@ -14696,6 +15702,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
+export type FoldedCards = components['schemas']['FoldedCards'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -14706,6 +15713,7 @@ export type GitHubStarAddedConfig = components['schemas']['GitHubStarAddedConfig
 export type GmailDeletionResponse = components['schemas']['GmailDeletionResponse'];
 export type GmailDraftResource = components['schemas']['GmailDraftResource'];
 export type GmailDraftsResponse = components['schemas']['GmailDraftsResponse'];
+export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig'];
 export type GmailLabelResource = components['schemas']['GmailLabelResource'];
 export type GmailLabelsResponse = components['schemas']['GmailLabelsResponse'];
 export type GmailMessageResponse = components['schemas']['GmailMessageResponse'];
@@ -14722,15 +15730,25 @@ export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsD
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];
 export type GoogleSheetsNewRowConfig = components['schemas']['GoogleSheetsNewRowConfig'];
 export type GoogleSheetsNewSheetConfig = components['schemas']['GoogleSheetsNewSheetConfig'];
+export type HandoffDecision = components['schemas']['HandoffDecision'];
+export type HandoffDecisionRequest = components['schemas']['HandoffDecisionRequest'];
+export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResponse'];
+export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];
 export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
+export type ImportedCookie = components['schemas']['ImportedCookie'];
+export type ImportedLocalStorageItem = components['schemas']['ImportedLocalStorageItem'];
+export type ImportedOrigin = components['schemas']['ImportedOrigin'];
+export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
+export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
+export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
@@ -14740,6 +15758,7 @@ export type IntegrationInstructionsResponse = components['schemas']['Integration
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
+export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
@@ -14751,6 +15770,7 @@ export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
+export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
@@ -14792,6 +15812,7 @@ export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageDict = components['schemas']['MessageDict'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
+export type MessageKind = components['schemas']['MessageKind'];
 export type MessageModelInput = components['schemas']['MessageModelInput'];
 export type MessageModelOutput = components['schemas']['MessageModelOutput'];
 export type MessageRequest = components['schemas']['MessageRequest'];
@@ -14840,6 +15861,7 @@ export type OnboardingStatusResponse = components['schemas']['OnboardingStatusRe
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
+export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
 export type PersonalizationTodo = components['schemas']['PersonalizationTodo'];
@@ -14852,6 +15874,7 @@ export type PinRequest = components['schemas']['PinRequest'];
 export type PinResponse = components['schemas']['PinResponse'];
 export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
+export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
@@ -14885,9 +15908,13 @@ export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
+export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
+export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
+export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
 export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfilesResponse'];
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
+export type ScheduleRejection = components['schemas']['ScheduleRejection'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
@@ -14961,6 +15988,7 @@ export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflow
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
 export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStatusResponse'];
+export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
@@ -14987,6 +16015,7 @@ export type UpdateDocumentRequest = components['schemas']['UpdateDocumentRequest
 export type UpdateFileRequest = components['schemas']['UpdateFileRequest'];
 export type UpdateHILPreferencesRequest = components['schemas']['UpdateHILPreferencesRequest'];
 export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCardColorsResponse'];
+export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
 export type UpdateIntegrationInstructionsRequest = components['schemas']['UpdateIntegrationInstructionsRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
 export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
@@ -14994,6 +16023,7 @@ export type UpdateMessagesResponse = components['schemas']['UpdateMessagesRespon
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
+export type UpdateUserFeatureFlagRequest = components['schemas']['UpdateUserFeatureFlagRequest'];
 export type UpdateVoiceRequest = components['schemas']['UpdateVoiceRequest'];
 export type UpdateWorkflowRequest = components['schemas']['UpdateWorkflowRequest'];
 export type URLRequest = components['schemas']['URLRequest'];
@@ -15002,6 +16032,8 @@ export type UsageActivityResponse = components['schemas']['UsageActivityResponse
 export type UsageBudget = components['schemas']['UsageBudget'];
 export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
+export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
+export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -16098,6 +17130,441 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
                 };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_decide_browser_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_import_browser_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserImportResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_mint_browser_import_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_list_browser_logins_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserLoginResponse"][];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_clear_browser_logins_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_forget_browser_login_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_get_live_view_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveViewTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_list_browser_tasks_endpoint: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserTaskResponse"][];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_delete_browser_task_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {
@@ -17981,6 +19448,106 @@ export interface operations {
             };
         };
     };
+    features_list_features: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    features_update_feature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserFeatureFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     search_fetch_url_metadata_endpoint: {
         parameters: {
             query?: never;
@@ -19712,6 +21279,159 @@ export interface operations {
             };
         };
     };
+    integrations_list_integration_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_remove_integration_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_update_integration_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIntegrationAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     integrations_get_integration_tools_endpoint: {
         parameters: {
             query?: never;
@@ -19863,14 +21583,16 @@ export interface operations {
     };
     integrations_connect_link_endpoint: {
         parameters: {
-            query: {
-                code: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_integrations_connect_link_endpoint"];
+            };
+        };
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -19891,7 +21613,7 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            307: {
+            303: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20357,6 +22079,53 @@ export interface operations {
             };
         };
     };
+    integrations_get_my_integrations_snapshot_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyIntegrationsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -20556,6 +22325,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchIntegrationsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_get_integration_statuses_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -23833,6 +25649,53 @@ export interface operations {
             };
         };
     };
+    payments_get_discount_codes_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     payments_get_plans_endpoint: {
         parameters: {
             query?: {
@@ -25066,6 +26929,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CronValidationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sandbox_sandbox_execute: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxExecuteResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sandbox_sandbox_tool_schema: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxToolSchemaRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolContract"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -26320,6 +28289,7 @@ export interface operations {
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
+                parent_todo_id?: string | null;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;
@@ -29520,6 +31490,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DegradedHealthResponse"];
+                };
+            };
+        };
+    };
+    browser_decide_live_view_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_replay_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_step_screenshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

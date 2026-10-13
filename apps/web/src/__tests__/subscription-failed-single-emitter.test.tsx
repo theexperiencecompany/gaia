@@ -25,8 +25,7 @@ vi.mock("@/features/pricing/hooks/usePricing", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { SUBSCRIPTION_FAILED: "subscription:failed" },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/lib/toast", () => ({
@@ -34,7 +33,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
-import { trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 /**
@@ -58,7 +57,7 @@ describe("subscription:failed has no client emitter for server-seen failures", (
     });
 
     expect(toast.error).toHaveBeenCalledWith("No Pro plan");
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "subscription:failed",
       expect.anything(),
     );
@@ -73,7 +72,7 @@ describe("subscription:failed has no client emitter for server-seen failures", (
     });
 
     expect(toast.error).toHaveBeenCalledWith("Plan not available");
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "subscription:failed",
       expect.anything(),
     );

@@ -10,7 +10,6 @@ from app.models.workflow_execution_models import RecordedCall, WorkflowExecution
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
     WorkflowFireOverlapped,
-    WorkflowFireQueued,
     WorkflowFireTimedOut,
     get_last_run_brief,
 )
@@ -84,13 +83,7 @@ class TestLastRunBriefFailsOpen:
 
 @pytest.mark.unit
 class TestTheFireSignalsSayExactlyWhatHappened:
-    """The fire exceptions ARE user/log-facing copy: timed-out reaches the user as the run summary; the rest, the worker's log."""
-
-    def test_a_queued_fire_names_its_task(self) -> None:
-        queued = WorkflowFireQueued(task_id="task_9", user_id="u1", conversation_id="c1", trace=[])
-
-        assert str(queued) == "Workflow fire queued behind an in-flight run (task_id: task_9)"
-        assert queued.task_id == "task_9"
+    """The fire exceptions ARE user- and log-facing copy: the timed-out text is delivered to the user as the run summary, and the overlapped string is what the worker logs as the reason a fire never ran."""
 
     def test_an_overlapped_fire_names_its_holder(self) -> None:
         overlapped = WorkflowFireOverlapped(user_id="u1", conversation_id="c1", holder="run_3")

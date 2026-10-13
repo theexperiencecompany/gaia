@@ -4,11 +4,10 @@ from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.support_models import (
     SupportRequestType,
 )
@@ -48,14 +47,10 @@ async def create_support_ticket(
     Returns:
         String confirmation that the support ticket draft has been prepared
     """
+    user_id = get_user_id(config)
     try:
         log.set(tool={"name": "create_support_ticket", "action": "create"})
         log.info(f"{LogTag.TOOL} Preparing support ticket draft")
-
-        user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-
-        if not user_id:
-            return "User authentication required to create support ticket."
 
         user = await user_service.get_user_by_id(user_id)
 
@@ -80,7 +75,7 @@ async def create_support_ticket(
         }
 
         # Stream the support ticket data to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"progress": "Creating support ticket..."})
         writer({"support_ticket_data": [support_ticket_data]})
 
@@ -90,11 +85,14 @@ async def create_support_ticket(
         ticket_type_display = (
             "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
         )
-        return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
+        return (
+            f"Drafted a {ticket_type_display} for you. Check it over and hit "
+            "Submit Ticket when it looks right."
+        )
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error preparing support ticket", error_type=e.__class__.__name__)
-        return f"Sorry, I encountered an error while preparing your support ticket: {e!s}"
+        return f"Could not prepare your support ticket: {e!s}"
 
 
 # Export tools list for registry

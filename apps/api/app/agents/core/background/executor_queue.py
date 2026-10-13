@@ -1,42 +1,46 @@
-"""Per-conversation executor queue and busy-lock mechanics.
+"""Per-conversation executor busy-lock mechanics and detached-run materialization.
 
 One executor runs per conversation at a time, guarded by the
-executor:busy:{conversation_id} Redis lock. While the lock is held,
-call_executor enqueues additional tasks onto
-executor:queue:{conversation_id}; when a run finishes, its finalize step
-pops the next task here and spawns it.
+executor:busy:{conversation_id} Redis lock. Work that arrives while the lock is
+held is not deferred — it goes to the conversation's inbox and the live run
+absorbs it (see executor_channel). There is no queue of pending runs.
 
-This module owns the Redis mechanics only — enqueue, pop/prepare, and lock
-value handling. pop_next_queued_run PREPARES the next run (lock overwrite,
-session registration, stream start, executor.stream_started WS event) and
-returns it; the runner spawns it. That one-way dependency (runner → queue)
-keeps the import graph acyclic.
+What remains here is the lock itself and prepare_run_from_item, which
+materializes a DETACHED run that owns its own stream rather than sharing a comms
+turn's. HIL approval resume and deliver_to_executor are its consumers.
+Preparing is this module's job, spawning the runner's — the one-way dependency (runner -> queue) that keeps the import graph acyclic.
 """
 
+import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
-import json
+import time
 from typing import Any, TypedDict, cast
 from uuid import uuid4
+
+from redis.exceptions import WatchError
 
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
+    StreamSession,
     create_session,
+    teardown_session,
 )
 from app.constants.cache import (
+    EXECUTOR_ALIVE_BEAT_SECONDS,
+    EXECUTOR_ALIVE_GIVE_UP_SECONDS,
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_ALIVE_TASK_NAME,
+    EXECUTOR_ALIVE_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
-    EXECUTOR_QUEUE_PREFIX,
-    EXECUTOR_QUEUE_TTL,
-)
-from app.constants.executor import (
-    EXECUTOR_COLLECT_MARKER_PREFIX,
-    EXECUTOR_COLLECT_MARKER_TTL,
-    EXECUTOR_COLLECTION_TASK,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.streaming import WS_EVENT_EXECUTOR_STREAM_STARTED, DetachedStreamKind
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
@@ -45,6 +49,7 @@ from app.models.agent_models import (
     CONFIGURABLE_RUN_SCOPED_KEYS,
     AgentConfigurable,
 )
+from app.utils.background_tasks import spawn_background_task
 from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -56,12 +61,12 @@ QUEUED_STREAM_ID_PREFIX = "queued_"
 class ExecutorRunItem(TypedDict, total=False):
     """The serialized run context stored between an executor turn and its re-dispatch.
 
-    Written by :func:build_run_item into the Redis queue and into
-    HILApprovalRecord.resume_item; read back by :func:prepare_run_from_item.
+    Written by build_run_item into the Redis queue and into
+    HILApprovalRecord.resume_item; read back by prepare_run_from_item.
 
-    total=False is the honest shape, not a shortcut: the HIL resume path
-    re-dispatches from record.resume_item or {}, so an absent or empty item
-    is a real, handled input — every read below supplies a default.
+    total=False is the honest shape: the HIL resume path re-dispatches from
+    record.resume_item or {}, so an absent or empty item is a real, handled
+    input — every read below supplies a default.
     """
 
     task: str
@@ -69,18 +74,15 @@ class ExecutorRunItem(TypedDict, total=False):
     configurable: AgentConfigurable
     conversation_id: str
     user_message_id: str | None
-    #: The original live turn's bot message id, set only when this item was
-    #: written by a HIL pause (``_record_pause``) — a plain queue enqueue never
-    #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
+    # Original live turn's bot message id, set only by a HIL pause (_record_pause);
+    # a plain queue enqueue never sets it. Read back into ExecutorRun.
     bot_message_id: str | None
-    #: The workflow execution the run belongs to. It exists only on the workflow
-    #: task's wide event, so a queue pop or HIL resume — rebuilt in some other
-    #: context — needs this item to carry it across. Read back into ExecutorRun.
+    # Workflow execution the run belongs to. It lives only on the workflow task's
+    # wide event, and a queue pop or HIL resume rebuilds the run elsewhere, so the
+    # item is the only carrier across; read into ExecutorRun for attribution.
     workflow_execution_id: str | None
-    #: Dispatch stamp from ``RunIdentity``; absent on pre-stamp items.
-    t_dispatch_perf: float | None
-    #: Busy-lock queue origin from ``RunIdentity``; absent on pre-stamp items.
-    queued: bool
+    # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
+    dispatched_at: str
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,23 @@ class PreparedQueuedTask:
 
 
 # ── Busy lock ────────────────────────────────────────────────────────
+
+
+class LockClaim(StrEnum):
+    """How a new run takes the per-conversation busy lock.
+
+    SEIZE   — take it from whoever holds it. Only a HIL approval resume, whose
+              paused run deliberately holds the lock while it waits and whose
+              process is long gone.
+    ACQUIRE — start only on a conversation nobody holds, atomically (SET NX).
+              Everything else: an unconditional SET let two detached runs start
+              on one LangGraph thread, and the second one's write made the
+              first's ownership-checked release a no-op, leaking the lock for
+              its full TTL.
+    """
+
+    SEIZE = "seize"
+    ACQUIRE = "acquire"
 
 
 class LockState(StrEnum):
@@ -134,12 +153,60 @@ async def try_acquire_lock(lock_key: str, lock_value: str) -> bool:
     )
 
 
-async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | None) -> LockState:
-    """Classify the busy lock relative to this run.
+async def adopt_lock(conversation_id: str, reserved_value: str, lock_value: str) -> bool:
+    """Take over a lock this run's own reservation holds; return whether it did.
 
-    OURS: still carries this run's value. FREE: no lock; a stranded queue may
-    need NX reclaiming, never trampling a concurrent acquirer. FOREIGN: a newer
-    run owns it — a stale finalize leaves it alone. Redis-down degrades to OURS.
+    Compare-and-set under WATCH, not a plain SET: a reservation can lapse on TTL
+    and be re-taken by a different run, and overwriting that would put two
+    executors on one conversation. Falls back to True (allow execution) when
+    Redis is unavailable, like try_acquire_lock.
+    """
+    if not redis_cache.client:
+        return True
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    async with redis_cache.client.pipeline() as pipe:
+        await pipe.watch(lock_key)
+        if await pipe.get(lock_key) != reserved_value:
+            return False
+        pipe.multi()
+        pipe.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
+        try:
+            await pipe.execute()
+        except WatchError:
+            # Someone wrote the key between the read and the set; they own it now.
+            return False
+    return True
+
+
+async def break_holder_lock(conversation_id: str, expected_value: str) -> bool:
+    """Delete the busy lock only while it still carries expected_value.
+
+    Compare-and-delete under WATCH: a live run that re-acquired between the read
+    and the delete changes the value, so the delete aborts instead of stranding
+    it. Returns whether the lock is gone; falls back to False when Redis is down.
+    """
+    if not redis_cache.client:
+        return False
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    async with redis_cache.client.pipeline() as pipe:
+        await pipe.watch(lock_key)
+        if await pipe.get(lock_key) != expected_value:
+            return False
+        pipe.multi()
+        pipe.delete(lock_key)
+        try:
+            await pipe.execute()
+        except WatchError:
+            return False
+    return True
+
+
+async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | None) -> LockState:
+    """Classify the busy lock relative to this run: OURS, FREE, or FOREIGN.
+
+    OURS carries this run's value; FREE has no lock (reclaim only via NX);
+    FOREIGN means a newer run owns it and a stale finalize must not touch it.
+    Redis-unavailable degrades to OURS, the pre-ownership-check behavior.
     """
     if not redis_cache.client:
         return LockState.OURS
@@ -159,24 +226,90 @@ async def get_lock_holder(conversation_id: str) -> str | None:
     return None if raw is None else decode_raw_item(raw)
 
 
-async def is_executor_busy(conversation_id: str) -> bool:
-    """Whether ANY executor run (running or parked) holds this conversation's lock.
+def _alive_key(conversation_id: str, lock_value: str) -> str:
+    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{lock_value}"
 
-    Redis-unavailable degrades to False: the caller (HIL early-decision) must
-    treat "cannot tell" as "no collector is alive" and fail closed — recording a
-    decision nobody will act on is a false promise to the user.
+
+async def hold_run_alive(
+    conversation_id: str, lock_value: str, ttl_seconds: int = EXECUTOR_ALIVE_TTL
+) -> None:
+    """Say the holder named lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
+    await redis_cache.client.set(
+        _alive_key(conversation_id, lock_value), lock_value, ex=ttl_seconds
+    )
+
+
+async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
+    """Hold lock_value's liveness now and renew it until the returned task is cancelled.
+
+    The one liveness contract: whatever holds the busy lock keeps this running for
+    as long as it holds it, so a holder whose process died stops renewing. The
+    calling task is the holder: if its liveness cannot be written in time, it is
+    cancelled before the key can lapse and another run take the conversation.
     """
-    if not redis_cache.client:
+    # Always set: a coroutine awaited on the loop runs inside a task.
+    holder = cast("asyncio.Task[object]", asyncio.current_task())
+    await hold_run_alive(conversation_id, lock_value)
+    return spawn_background_task(
+        _renew_alive(conversation_id, lock_value, holder), name=EXECUTOR_ALIVE_TASK_NAME
+    )
+
+
+async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Task[object]) -> None:
+    proven_at = time.monotonic()
+    while True:
+        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
+        try:
+            await hold_run_alive(conversation_id, lock_value)
+            proven_at = time.monotonic()
+        except Exception as e:  # one failed write must not end the renewal of a live holder
+            unproven = time.monotonic() - proven_at
+            # Its key could lapse before the next write lands: stop rather than run beside
+            # whoever reclaims the lock.
+            stopping = unproven >= EXECUTOR_ALIVE_GIVE_UP_SECONDS
+            log.error(
+                f"{LogTag.AGENT} Could not renew an executor lock holder's liveness",
+                conversation_id=conversation_id,
+                holder=lock_value,
+                unproven_seconds=round(unproven, 1),
+                stopping_holder=stopping,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            if stopping:
+                holder.cancel("executor liveness lost")
+                return
+
+
+async def reclaim_dead_lock(conversation_id: str) -> bool:
+    """Free a busy lock whose holder died with its process; return whether no run holds the lock now.
+
+    Dead takes evidence: the holder's liveness lapsed, and the lock is older than
+    a holder takes to start renewing it. Compare-and-delete, so a live re-acquire stands.
+    """
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return True
+    if await redis_cache.client.exists(_alive_key(conversation_id, holder)):
         return False
-    return await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}") is not None
+    remaining = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+    # Every lock this code takes expires: one without a TTL has no age to judge it by.
+    if remaining < 0 or EXECUTOR_BUSY_TTL - remaining < EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS:
+        return False
+    log.warning(
+        f"{LogTag.AGENT} Reclaimed the busy lock of an executor run that died",
+        conversation_id=conversation_id,
+        holder=holder,
+    )
+    return await break_holder_lock(conversation_id, holder)
 
 
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
     """Delete the busy lock only while this run still owns it.
 
-    Unconditional deletion let a stale (cancelled-then-replaced) run free a lock
-    a NEWER run had acquired, enabling concurrent executors. get→compare→delete
-    isn't atomic; the residual race window is microseconds between the two.
+    Unconditional deletion let a stale run's finalize free a lock a NEWER run
+    had acquired, enabling concurrent executors in one conversation. The
+    get-compare-delete here is not atomic but closes the deterministic case.
     """
     if await get_lock_state(conversation_id, stream_id, task_id) is LockState.OURS:
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
@@ -185,11 +318,11 @@ async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: s
 async def extend_lock_if_owned(
     conversation_id: str, stream_id: str, task_id: str | None, ttl_seconds: int
 ) -> bool:
-    """Re-arm the busy lock's TTL while this run still owns it.
+    """Re-arm the busy lock's TTL while this run still owns it; return whether it did.
 
-    A run parked on a HIL approval keeps counting down a TTL that started at run
-    start; a lapsed lock under a checkpointed interrupt lets a new run take the
-    thread. Ownership-checked like release_lock_if_owned. Returns whether re-armed.
+    A run parked on a HIL approval may outlive its lock's TTL, and a lapse under
+    a checkpointed interrupt lets a new run take the thread. Ownership-checked
+    like release_lock_if_owned so a stale run never extends a newer one's lock.
     """
     if not redis_cache.client:
         return False
@@ -198,92 +331,6 @@ async def extend_lock_if_owned(
     return bool(
         await redis_cache.client.expire(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", ttl_seconds)
     )
-
-
-async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | None:
-    """Claim a free lock and pop a task that would otherwise strand.
-
-    Two causes: call_executor enqueuing in the race window between finalize's
-    empty pop and lock release, or cancel_executor freeing the lock with tasks
-    still queued. NX-claims with a sentinel first so a concurrent call_executor
-    always wins cleanly; the sentinel is a harmless no-op for cancel_executor.
-    """
-    if not redis_cache.client:
-        return None
-    if await redis_cache.client.llen(f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}") == 0:
-        return None
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    if not await try_acquire_lock(lock_key, build_lock_value("reclaim", str(uuid4()))):
-        return None
-    prepared = await pop_next_queued_run(conversation_id)
-    if prepared is None:
-        # We hold only the sentinel — free it so call_executor isn't blocked.
-        await redis_cache.delete(lock_key)
-    return prepared
-
-
-# ── Enqueue ──────────────────────────────────────────────────────────
-
-
-async def enqueue_task(queue_key: str, item: ExecutorRunItem) -> None:
-    """Push a run item (see :func:build_run_item) to the executor queue.
-
-    Takes the built item rather than its fields: the item is the one shape a
-    queued run is rebuilt from, so the fields it carries belong in one place.
-    """
-    queue_item = json.dumps(item)
-    if redis_cache.client:
-        await redis_cache.client.rpush(queue_key, queue_item)
-        await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
-
-
-async def enqueue_collection_run(
-    conversation_id: str,
-    base_configurable: AgentConfigurable,
-    workflow_execution_id: str | None = None,
-) -> bool:
-    """Queue a wake-up turn to collect landed background-subagent work.
-
-    An executor may end its turn while subagents keep running; when work lands
-    with none alive to collect it, this queues a join/report turn (SETNX limits
-    one queued collection). thread_id is forced to the conversation id, not the subagent's own.
-    """
-    if not redis_cache.client:
-        return False
-    marker = f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}"
-    claimed = await redis_cache.client.set(marker, "1", nx=True, ex=EXECUTOR_COLLECT_MARKER_TTL)
-    if not claimed:
-        return False
-    configurable: AgentConfigurable = {
-        **safe_configurable(base_configurable),
-        "thread_id": conversation_id,
-        "execution_mode": "interactive",
-    }
-    configurable.pop("subagent_id", None)
-    await enqueue_task(
-        f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
-        build_run_item(
-            task=EXECUTOR_COLLECTION_TASK,
-            configurable=configurable,
-            identity=RunIdentity(
-                conversation_id=conversation_id,
-                task_id=str(uuid4()),
-                user_message_id=None,
-            ),
-            workflow_execution_id=workflow_execution_id,
-        ),
-    )
-    log.info(
-        f"{LogTag.AGENT} Queued background-subagent collection turn",
-        conversation_id=conversation_id,
-    )
-    return True
-
-
-async def clear_collection_marker(conversation_id: str) -> None:
-    """Clear the collection marker so a future landing can queue a fresh collection turn."""
-    if redis_cache.client:
-        await redis_cache.client.delete(f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}")
 
 
 def decode_raw_item(raw: bytes | memoryview | str) -> str:
@@ -296,35 +343,6 @@ def decode_raw_item(raw: bytes | memoryview | str) -> str:
 # ── Pop + prepare ────────────────────────────────────────────────────
 
 
-async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None:
-    """Pop the next queued task for this conversation and prepare it for spawning.
-
-    Overwrites the busy lock with the next task's value (no intervening delete),
-    so the queued run inherits it atomically and a concurrent call_executor can't
-    sneak in via SET NX. Also registers the QUEUED session, starts stream tracking,
-    and broadcasts executor.stream_started; spawning is the caller's job.
-    """
-    if not redis_cache.client:
-        return None
-
-    queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-    raw = await redis_cache.client.lpop(queue_key)
-    if not raw:
-        return None
-
-    try:
-        item: ExecutorRunItem = json.loads(raw)
-    except (json.JSONDecodeError, ValueError) as e:
-        log.error(
-            f"{LogTag.AGENT} Failed to parse queued executor task",
-            conversation_id=conversation_id,
-            error=str(e),
-        )
-        return None
-
-    return await prepare_run_from_item(conversation_id, item)
-
-
 def build_run_item(
     *,
     task: str,
@@ -332,11 +350,11 @@ def build_run_item(
     identity: RunIdentity,
     workflow_execution_id: str | None = None,
 ) -> ExecutorRunItem:
-    """Build the one serialized run-context shape, read back by prepare_run_from_item.
+    """Build the one serialized run-context shape the queue and HIL resume store write.
 
-    Add fields here, not at the write sites, or a resumed run silently drops what
-    a queued run keeps. workflow_execution_id defaults to the in-flight execution
-    on the caller's wide event, since a pause is recorded inside the run's boundary.
+    Read back by prepare_run_from_item; add fields here, not at the write sites,
+    or a resumed run silently drops what a queued run keeps. workflow_execution_id
+    defaults to the execution in flight on the caller's wide event.
     """
     return {
         "task": task,
@@ -346,17 +364,16 @@ def build_run_item(
         "user_message_id": identity.user_message_id,
         "bot_message_id": identity.bot_message_id,
         "workflow_execution_id": workflow_execution_id or current_workflow_execution_id(),
-        "t_dispatch_perf": identity.t_dispatch_perf,
-        "queued": identity.queued,
+        "dispatched_at": identity.dispatched_at.isoformat(),
     }
 
 
 def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
-    """Keep the serializable, GAIA-owned, non-run-scoped subset of a configurable.
+    """Return the serializable subset of a configurable, safe to persist and rebuild from.
 
-    Every surviving key is an AgentConfigurable key by construction (Type Safety
-    item 12). An unserializable value is dropped with a WARNING — silent dropping
-    is how a queued run quietly stopped being the run the user started.
+    The GAIA-owned keys minus the run-scoped ones. A declared key holding an
+    unserializable value is dropped with a WARNING, never silently — silent
+    dropping is how a queued run quietly stopped being the run the user started.
     """
     kept: dict[str, Any] = {}
     for key, value in configurable.items():
@@ -373,14 +390,63 @@ def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     return cast(AgentConfigurable, kept)
 
 
-async def prepare_run_from_item(
-    conversation_id: str, item: ExecutorRunItem
-) -> PreparedQueuedTask | None:
-    """Take over the busy lock and prepare a fresh run+stream from a stored item.
+async def open_detached_stream(
+    stream_id: str,
+    *,
+    conversation_id: str,
+    user_id: str,
+    task_id: str | None,
+    bot_message_id: str | None,
+    kind: DetachedStreamKind,
+) -> StreamSession:
+    """Mint a stream a detached run owns and announce it with executor.stream_started.
 
-    Shared by the queue pop and the HIL approval resume: both re-dispatch a run
-    whose original owner is gone, so both must seize the lock rather than acquire
-    it, and both need their own stream for the frontend to subscribe to.
+    The one way a run with no comms turn reaches the client: a session collects its
+    frames for persistence, and the client folds the stream into bot_message_id's
+    message when given, else into a placeholder keyed by task_id.
+    """
+    # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
+    session = create_session(stream_id, RunKind.QUEUED)  # pragma: no mutate
+    await StreamManager.start_stream(
+        stream_id=stream_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+    if user_id:
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": WS_EVENT_EXECUTOR_STREAM_STARTED,
+                "stream_id": stream_id,
+                "conversation_id": conversation_id,
+                "task_id": task_id,
+                "bot_message_id": bot_message_id,
+                "kind": kind.value,
+            },
+        )
+    return session
+
+
+async def close_detached_stream(stream_id: str, *, cancelled: bool) -> None:
+    """Drop a detached run's session and end the stream it owns.
+
+    A cancelled stream closes silently — the cancel already told the client — so
+    no [DONE] and no complete_stream.
+    """
+    teardown_session(stream_id)
+    if not cancelled:
+        await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
+        await StreamManager.complete_stream(stream_id)
+
+
+async def prepare_run_from_item(
+    conversation_id: str, item: ExecutorRunItem, *, claim: LockClaim
+) -> PreparedQueuedTask | None:
+    """Claim the busy lock and prepare a fresh run+stream from a stored item.
+
+    Every detached run starts here, so this is the single place the conversation
+    is claimed and the frontend's stream is minted. claim picks which claim
+    applies (see LockClaim); None means the conversation is already taken.
     """
     if not redis_cache.client:
         return None
@@ -395,38 +461,32 @@ async def prepare_run_from_item(
     user_id: str = configurable.get("user_id", "")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    # Overwrite the busy lock with the RAW client, matching try_acquire_lock /
-    # get_lock_state — redis_cache.set() JSON-encodes the string (adds quotes),
-    # which would make the queued run see its own lock as FOREIGN and strand the queue.
-    await redis_cache.client.set(
-        lock_key,
-        build_lock_value(queued_stream_id, task_id or ""),
-        ex=EXECUTOR_BUSY_TTL,
-    )
+    lock_value = build_lock_value(queued_stream_id, task_id or "")
+    if claim is LockClaim.ACQUIRE:
+        if not await try_acquire_lock(lock_key, lock_value):
+            log.info(
+                f"{LogTag.AGENT} Conversation already has a running executor; no run started",
+                conversation_id=conversation_id,
+            )
+            return None
+    else:
+        # Seize with the RAW client: redis_cache.set() JSON-encodes (quotes) the
+        # value, which get_lock_state's raw read never matches, so the resumed run
+        # would see its own lock as FOREIGN and wedge it until TTL.
+        await redis_cache.client.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
 
-    session = create_session(queued_stream_id, RunKind.QUEUED)
-    session.executor_spawned = True
-
-    await StreamManager.start_stream(
-        stream_id=queued_stream_id,
+    session = await open_detached_stream(
+        queued_stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
+        task_id=task_id,
+        # A HIL resume continues the ORIGINAL turn's message: the client folds
+        # this stream into it instead of opening a second placeholder (which
+        # would render its own tool accordion).
+        bot_message_id=queued_bot_message_id,
+        kind=DetachedStreamKind.EXECUTOR,
     )
-
-    if user_id:
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {
-                "type": "executor.stream_started",
-                "stream_id": queued_stream_id,
-                "conversation_id": conversation_id,
-                "task_id": task_id,
-                # A HIL resume continues the ORIGINAL turn's message: the client
-                # folds this stream into it instead of opening a second
-                # placeholder (which would render its own tool accordion).
-                "bot_message_id": item.get("bot_message_id"),
-            },
-        )
+    session.executor_spawned = True
 
     configurable = {**configurable, "stream_id": queued_stream_id}
     run = ExecutorRun.from_configurable(
@@ -438,8 +498,12 @@ async def prepare_run_from_item(
             task_id=task_id,
             user_message_id=queued_user_message_id,
             bot_message_id=queued_bot_message_id,
-            t_dispatch_perf=item.get("t_dispatch_perf"),
-            queued=bool(item.get("queued")),
+            # An item stored before dispatch times were kept is dispatched now.
+            dispatched_at=(
+                datetime.fromisoformat(stored_dispatch)
+                if (stored_dispatch := item.get("dispatched_at"))
+                else datetime.now(UTC)
+            ),
         ),
         workflow_execution_id=item.get("workflow_execution_id"),
     )

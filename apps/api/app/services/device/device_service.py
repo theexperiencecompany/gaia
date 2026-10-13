@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import hashlib
 import secrets
+from typing import TypedDict, cast
 from urllib.parse import quote
 import uuid
 
@@ -76,6 +77,36 @@ class PairingError(Exception):
     """Raised when a pairing action can't proceed (unknown/expired/denied code)."""
 
 
+class PairingRecord(TypedDict, total=False):
+    """The pairing start_pairing stores under the device code; approval fills the device fields."""
+
+    status: str
+    name: str
+    platform: str | None
+    daemon_version: str | None
+    user_code: str
+    device_id: str | None
+    refresh_token: str | None
+
+
+class PendingPairing(PairingRecord):
+    """A pending pairing resolved from its user code, carrying the device code it is keyed by."""
+
+    device_code: str
+
+
+class _UserCodeMapping(TypedDict, total=False):
+    device_code: str
+
+
+class _RefreshRetryRecord(TypedDict, total=False):
+    """The replacement rotate_refresh_token hands a lost-response retry of the same token."""
+
+    device_id: str
+    user_id: str
+    new_token: str
+
+
 def _pairing_key(device_code: str) -> str:
     return f"{DEVICE_PAIRING_PREFIX}{device_code}"
 
@@ -100,7 +131,7 @@ async def start_pairing(
     device_code = secrets.token_urlsafe(DEVICE_CODE_BYTES)
     user_code = _generate_user_code()
 
-    record = {
+    record: PairingRecord = {
         "status": "pending",
         "name": name,
         "platform": platform,
@@ -112,9 +143,8 @@ async def start_pairing(
         "refresh_token": None,  # nosec B105
     }
     stored = await set_cache(_pairing_key(device_code), record, ttl=PAIRING_TTL_SECONDS)
-    code_stored = await set_cache(
-        _user_code_key(user_code), {"device_code": device_code}, ttl=PAIRING_TTL_SECONDS
-    )
+    code_mapping: _UserCodeMapping = {"device_code": device_code}
+    code_stored = await set_cache(_user_code_key(user_code), code_mapping, ttl=PAIRING_TTL_SECONDS)
     if not (stored and code_stored):
         raise PairingError("Could not start pairing (Redis unavailable)")
 
@@ -142,16 +172,20 @@ def build_device_approve_url(user_code: str) -> str:
     return f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code.strip().upper())}"
 
 
-async def lookup_pending_by_user_code(user_code: str) -> dict | None:
+async def lookup_pending_by_user_code(user_code: str) -> PendingPairing | None:
     """Resolve a browser-typed user_code to its pending pairing record."""
-    mapping = await get_cache(_user_code_key(user_code.strip().upper()))
-    if not isinstance(mapping, dict):
+    raw_mapping = await get_cache(_user_code_key(user_code.strip().upper()))
+    if not isinstance(raw_mapping, dict):
         return None
+    mapping: _UserCodeMapping = cast(_UserCodeMapping, raw_mapping)
     device_code = mapping.get("device_code")
     if not device_code:
         return None
-    record = await get_cache(_pairing_key(device_code))
-    if not isinstance(record, dict) or record.get("status") != "pending":
+    raw_record = await get_cache(_pairing_key(device_code))
+    if not isinstance(raw_record, dict):
+        return None
+    record: PairingRecord = cast(PairingRecord, raw_record)
+    if record.get("status") != "pending":
         return None
     return {"device_code": device_code, **record}
 
@@ -211,7 +245,7 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
     expires every mapped attribute, so accessing it raises DetachedInstanceError).
     """
     normalized = user_code.strip().upper()
-    pending = await lookup_pending_by_user_code(normalized)
+    pending: PendingPairing | None = await lookup_pending_by_user_code(normalized)
     if not pending:
         raise PairingError("Pairing code is invalid or expired")
 
@@ -223,7 +257,7 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
         user_id, name, pending.get("platform"), pending.get("daemon_version"), client=None
     )
 
-    record = {**pending}
+    record: dict[str, object] = {**pending}
     record.pop("device_code", None)
     record["status"] = "approved"
     record["device_id"] = device_id
@@ -259,10 +293,11 @@ async def self_pair_device(
 
 async def poll_pairing(device_code: str) -> PollPairingResponse:
     """Daemon poll. On approved the pairing is consumed and won't poll again."""
-    record = await get_cache(_pairing_key(device_code))
-    if not isinstance(record, dict):
+    raw_record = await get_cache(_pairing_key(device_code))
+    if not isinstance(raw_record, dict):
         return PollPairingResponse(status="expired")
 
+    record: PairingRecord = cast(PairingRecord, raw_record)
     status = record.get("status")
     if status != "approved":
         return PollPairingResponse(status="pending")
@@ -289,13 +324,16 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
     # Lost-response retry, keyed by the consumed token's hash; expires after the
     # grace window, after which a match below is treated as genuine reuse.
     cached = await get_cache(_refresh_retry_key(token_hash))
-    if isinstance(cached, dict) and cached.get("new_token"):
-        device_id = str(cached["device_id"])
+    retry: _RefreshRetryRecord = (
+        cast(_RefreshRetryRecord, cached) if isinstance(cached, dict) else {}
+    )
+    if retry.get("new_token"):
+        device_id = str(retry["device_id"])
         # Enforce revocation on the retry path too: a device revoked inside the
         # grace window must be rejected here, not handed the idempotent replay.
         if await get_active_device(device_id) is None:
             raise PairingError("Device has been revoked")
-        return device_id, str(cached["user_id"]), str(cached["new_token"])
+        return device_id, str(retry["user_id"]), str(retry["new_token"])
 
     async with get_db_session() as session:
         current = (
@@ -350,10 +388,13 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
         device_id, user_id = current.id, current.user_id
         await session.commit()
 
+    retry_record: _RefreshRetryRecord = {
+        "device_id": device_id,
+        "user_id": user_id,
+        "new_token": new_token,
+    }
     await set_cache(
-        _refresh_retry_key(token_hash),
-        {"device_id": device_id, "user_id": user_id, "new_token": new_token},
-        ttl=REFRESH_TOKEN_RETRY_GRACE_SECONDS,
+        _refresh_retry_key(token_hash), retry_record, ttl=REFRESH_TOKEN_RETRY_GRACE_SECONDS
     )
     return device_id, user_id, new_token
 
@@ -448,7 +489,7 @@ async def _create_server_integration(
         # learns the server is on the user's machine, reached via these tools
         # (not run_on_device). Names the device to match the manifest.
         description=(
-            f'MCP server hosted on your device "{device_name}" — its tools run '
+            f'MCP server hosted on your device "{device_name}". Its tools run '
             f"locally on that machine, not the cloud sandbox."
         ),
         category=DEVICE_CATEGORY,

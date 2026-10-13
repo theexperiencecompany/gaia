@@ -22,7 +22,7 @@ import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrint
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 type PaymentStatus = "verifying" | "success" | "error";
 
@@ -30,7 +30,7 @@ type PaymentStatus = "verifying" | "success" | "error";
 type VerificationFailureReason = "confirmation_timeout" | "verification_error";
 
 const trackFailure = (reason: VerificationFailureReason): void => {
-  trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
+  track("subscription:failed", {
     source: "payment_success_page",
     reason,
   });

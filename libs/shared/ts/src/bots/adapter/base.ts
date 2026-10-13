@@ -33,10 +33,19 @@
  * @module
  */
 
-import { Analytics, type AnalyticsContext, BOT_EVENTS } from "../../analytics";
+import {
+  Analytics,
+  type AnalyticsContext,
+  type AnalyticsId,
+  parseUserId,
+  platformIdentity,
+} from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
-import type { OutboundAttachment } from "../consumer/envelope";
+import type {
+  OutboundAttachment,
+  OutboundReaction,
+} from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   AuthStatus,
@@ -46,11 +55,13 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
+import { BOT_FAILURE_REASON, recordBotFailure } from "../utils/failure-reasons";
 import { formatBotError, renderForPlatform } from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
   hashLogIdentifier,
+  sanitizeErrorForLog,
 } from "../utils/logger";
 import {
   type IncomingMedia,
@@ -58,8 +69,23 @@ import {
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
+
+/** An outbound artifact, fetched and within the platform's cap, ready to upload. */
+export interface OutboundFile {
+  data: Buffer;
+  /** The envelope's declared type, else what the server sent. */
+  mime: string;
+  filename: string;
+  caption: string | undefined;
+}
 
 /**
  * Abstract base class all platform bot adapters extend, providing shared command dispatch,
@@ -79,6 +105,13 @@ export abstract class BaseBotAdapter {
    */
   protected abstract readonly defaultServerPort: number;
 
+  /**
+   * Whether this process consumes the platform's outbound queue. Every bot does;
+   * the harness sending a second message as the same user mid-run must not, or
+   * it takes a share of the deliveries meant for the process already consuming.
+   */
+  protected readonly consumesOutbound: boolean = true;
+
   /** GAIA API client shared across all command handlers. */
   protected gaia!: GaiaClient;
 
@@ -88,7 +121,7 @@ export abstract class BaseBotAdapter {
   /** Map of registered unified commands, keyed by command name. */
   protected commands: Map<string, BotCommand> = new Map();
 
-  /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
+  /** Server-side PostHog analytics. No-op when POSTHOG_PROJECT_TOKEN is absent. */
   protected analytics: Analytics = new Analytics(undefined);
 
   /**
@@ -99,7 +132,7 @@ export abstract class BaseBotAdapter {
    * HTTP round trip per capture would put the analytics path in the latency
    * budget of every message.
    */
-  private readonly distinctIdCache = new Map<string, string>();
+  private readonly distinctIdCache = new Map<string, AnalyticsId>();
 
   /** Shared structured logger for adapter lifecycle and command execution. */
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
@@ -132,6 +165,7 @@ export abstract class BaseBotAdapter {
    * Emits one canonical `bot_boot` wide event covering the whole sequence, so a bot that dies
    * during startup says why — with a duration and an outcome — instead of silence.
    */
+  // evlog-map-disable-next-line audit -- "token" is the PostHog project token read from config; boot authenticates nobody
   async boot(commands: BotCommand[]): Promise<void> {
     this.logger = createBotLogger(this.platform, "base-adapter");
 
@@ -149,7 +183,7 @@ export abstract class BaseBotAdapter {
           this.config.gaiaApiKey,
           this.config.gaiaFrontendUrl,
         );
-        this.analytics = new Analytics(this.config.posthogApiKey);
+        this.analytics = new Analytics(this.config.posthogProjectToken);
 
         for (const cmd of commands) {
           this.commands.set(cmd.name, cmd);
@@ -232,12 +266,16 @@ export abstract class BaseBotAdapter {
     const url = this.config.rabbitmqUrl;
     // loadConfig() already warned (config_optional_missing / RABBITMQ_URL) on
     // this same boot event — saying it twice does not make it truer.
-    if (!url) return;
+    if (!url || !this.consumesOutbound) return;
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
       (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
-      (id, attachment) => this.deliverOutboundFile(id, attachment),
+      (id, attachment, isChannel) =>
+        this.deliverOutboundFile(id, attachment, isChannel),
+      this.config.gaiaApiUrl,
+      (id, reaction, isChannel) =>
+        this.deliverOutboundReaction(id, reaction, isChannel),
     );
     void this._outboundConsumer.start();
   }
@@ -301,23 +339,62 @@ export abstract class BaseBotAdapter {
   ): Promise<void>;
 
   /**
+   * Delivers a file artifact to `destinationId`, addressed by `isChannel` like
+   * {@link deliverOutbound}: fetches the bytes under this platform's size cap,
+   * then hands them to the platform's {@link sendOutboundFile}. A browser run's
+   * step photos always go to the requester's DM: its live link and screenshots
+   * are private.
+   */
+  protected async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+    isChannel: boolean,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+      isChannel,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    await this.sendOutboundFile(
+      destinationId,
+      {
+        data: artifact.data,
+        mime: attachment.content_type ?? artifact.contentType,
+        filename: attachment.filename,
+        caption: attachment.caption ?? undefined,
+      },
+      isChannel,
+    );
+  }
+
+  /** Uploads one fetched artifact through the platform's SDK. */
+  protected abstract sendOutboundFile(
+    destinationId: string,
+    file: OutboundFile,
+    isChannel: boolean,
+  ): Promise<void>;
+
+  /**
    * Fetches an outbound artifact's bytes, enforcing this platform's file-size
    * cap. Returns the bytes, or `null` after sending a short "too large" note via
    * {@link deliverOutbound} when the artifact exceeds the limit — so an oversized
    * file tells the user instead of silently dead-lettering on a rejected upload.
-   *
-   * Adapter `deliverOutboundFile` overrides should fetch through this helper
-   * rather than calling `gaia.downloadArtifact` directly.
    */
-  protected async fetchOutboundArtifact(
+  private async fetchOutboundArtifact(
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<{ data: Buffer; contentType: string } | null> {
-    const artifact = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      { platform: this.platform, platformUserId: destinationId },
-    );
+    const ctx = { platform: this.platform, platformUserId: destinationId };
+    const artifact =
+      attachment.url != null
+        ? await this.gaia.downloadAttachmentUrl(attachment.url, ctx)
+        : await this.gaia.downloadArtifact(
+            attachment.conversation_id,
+            attachment.path,
+            ctx,
+          );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
       // `platform` is already on every line's envelope — repeating it as a
@@ -327,12 +404,13 @@ export abstract class BaseBotAdapter {
         bytes: artifact.data.length,
         limit,
       });
+      wideLog.fail(BOT_FAILURE_REASON.FILE_TOO_LARGE);
       // A generated artifact the user never receives. Captured, not just
       // logged: this is a product failure with a per-platform size cause, and
       // its rate is the signal for raising a limit or chunking the output.
       this.analytics.capture(
         await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.FILE_DELIVERED,
+        "bot:file_delivered",
         {
           success: false,
           reason: "too_large",
@@ -346,7 +424,7 @@ export abstract class BaseBotAdapter {
           `I generated *${attachment.filename}*, but it's too large to send on ${this.platform} (max ${Math.floor(limit / (1024 * 1024))} MB).`,
           this.platform,
         ),
-        false, // the file path only ever targets a DM
+        isChannel,
       );
       return null;
     }
@@ -354,30 +432,45 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Delivers a file artifact to `destinationId`. Called by the outbound consumer
-   * when an envelope carries an `attachment`. The default sends a short text note
-   * via {@link deliverOutbound}; platforms that support attachments (e.g.
-   * WhatsApp) override this to fetch the artifact bytes and upload them.
+   * Attaches `emoji` natively to an existing platform message — the one reaction
+   * primitive, used by live turns and the outbound consumer alike. This default
+   * is for platforms with no reaction API.
    */
-  protected async deliverOutboundFile(
+  protected reactToMessage(
+    _destinationId: string,
+    _platformMessageId: string,
+    _emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
+  }
+
+  /**
+   * Delivers an outbound envelope's `reaction`: attached natively when the
+   * platform allows it, otherwise sent as a text bubble so the ack is never lost.
+   */
+  private async deliverOutboundReaction(
     destinationId: string,
-    attachment: OutboundAttachment,
+    reaction: OutboundReaction,
+    isChannel: boolean,
   ): Promise<void> {
-    wideLog.warning("outbound_file_fallback_text", {
-      attachment_filename: attachment.filename,
-    });
-    // The base implementation IS the "this platform can't send files" path — platforms that
-    // can (WhatsApp) override the whole method and capture their own success. Reaching here
-    // always means the user got text instead of the artifact they asked for.
+    const outcome = await this.reactToMessage(
+      destinationId,
+      reaction.target_platform_message_id,
+      reaction.emoji,
+      isChannel,
+    );
+    if (outcome !== REACTION_OUTCOME.ATTACHED) {
+      wideLog.warning("outbound_reaction_fallback_text", {
+        target_platform_message_id: reaction.target_platform_message_id,
+        reason: outcome,
+      });
+      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
+    }
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.FILE_DELIVERED,
-      { success: false, reason: "platform_unsupported" },
-    );
-    await this.deliverOutbound(
-      destinationId,
-      `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
-      false, // the file path only ever targets a DM
+      "bot:reaction_delivered",
+      reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
     );
   }
 
@@ -418,7 +511,7 @@ export abstract class BaseBotAdapter {
         // intentionally not shipped to PostHog. Profiles are auto-created from
         // the first capture using the distinctId.
 
-        this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+        this.analytics.capture(distinctId, "bot:message_received", {
           interaction_type: "command",
           command: name,
           has_args: Object.keys(args).length > 0,
@@ -427,7 +520,7 @@ export abstract class BaseBotAdapter {
 
         if (name === "auth") {
           wideLog.audit("auth_link_requested", { user_hash: userHash });
-          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {});
+          this.analytics.capture(distinctId, "bot:auth_initiated", {});
         }
 
         const command = this.commands.get(name);
@@ -453,7 +546,7 @@ export abstract class BaseBotAdapter {
             args,
             rawText,
           });
-          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+          this.analytics.capture(distinctId, "bot:command_executed", {
             command: name,
             duration_ms: Date.now() - startMs,
             success: true,
@@ -461,35 +554,31 @@ export abstract class BaseBotAdapter {
         } catch (error) {
           const durationMs = Date.now() - startMs;
           const errorType = error instanceof Error ? error.name : "Unknown";
-          wideLog.error(
-            "command_dispatch_failed",
-            {
-              command: name,
-              user_hash: userHash,
-              channel_hash: channelHash,
-              duration_ms: durationMs,
-              error_type: errorType,
-            },
-            error,
-          );
+          recordBotFailure("command_dispatch_failed", error, {
+            command: name,
+            duration_ms: durationMs,
+          });
           // Capture only the error class name. Raw messages can contain file
           // paths, request IDs, or upstream-echoed tokens — never ship them.
-          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+          this.analytics.capture(distinctId, "bot:command_executed", {
             command: name,
             duration_ms: durationMs,
             success: false,
             error_type: errorType,
           });
-          this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+          this.analytics.capture(distinctId, "bot:error", {
             context: `command:${name}`,
             error_type: errorType,
           });
-          const errMsg = formatBotError(error);
+          const errMsg = formatBotError(error, this.platform);
           try {
             await target.sendEphemeral(errMsg);
-          } catch {
+          } catch (sendError) {
             // Target may be expired (e.g. Discord interaction timeout).
-            wideLog.warning("error_notice_send_failed", { command: name });
+            wideLog.warning("error_notice_send_failed", {
+              command: name,
+              ...sanitizeErrorForLog(sendError),
+            });
           }
         }
       },
@@ -531,11 +620,13 @@ export abstract class BaseBotAdapter {
    * later folds an unlinked user's history in. A failed lookup degrades to the platform id
    * (recoverable) rather than dropping the event.
    */
-  protected async resolveDistinctId(platformUserId: string): Promise<string> {
+  protected async resolveDistinctId(
+    platformUserId: string,
+  ): Promise<AnalyticsId> {
     const cached = this.distinctIdCache.get(platformUserId);
     if (cached) return cached;
 
-    const platformDistinctId = `${this.platform}:${platformUserId}`;
+    const platformDistinctId = platformIdentity(this.platform, platformUserId);
     let status: AuthStatus;
     try {
       status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
@@ -553,9 +644,10 @@ export abstract class BaseBotAdapter {
     // First resolution for this user in this process: stitch whatever they did
     // before linking onto the GAIA profile. Cached below, so it fires once per
     // process rather than per message.
-    this.analytics.alias(platformDistinctId, status.user_id);
-    this.distinctIdCache.set(platformUserId, status.user_id);
-    return status.user_id;
+    const userId = parseUserId(status.user_id);
+    this.analytics.alias(platformDistinctId, userId);
+    this.distinctIdCache.set(platformUserId, userId);
+    return userId;
   }
 
   /**
@@ -662,7 +754,7 @@ export abstract class BaseBotAdapter {
         );
         this.analytics.capture(
           await this.resolveDistinctId(userId),
-          BOT_EVENTS.FILE_UPLOADED,
+          "bot:file_uploaded",
           {
             media_kind: media.kind,
             is_voice_note: Boolean(media.isVoiceNote),

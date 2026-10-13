@@ -20,7 +20,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.storage import (
     ArtifactInfo,
     JuiceFSUnavailable,
@@ -29,6 +29,8 @@ from app.services.storage import (
     pin_session_artifact,
     resolve_session_path,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import SessionArtifactPinned
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -229,5 +231,5 @@ async def pin_artifact(
         raise HTTPException(status_code=404, detail="Artifact not found") from e
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
-    capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
+    capture(UserId(user_id), SessionArtifactPinned())
     return PinResponse(pinned_path=pinned_path)

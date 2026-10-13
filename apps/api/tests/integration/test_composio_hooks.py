@@ -9,11 +9,12 @@ Run with:
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
@@ -415,7 +416,7 @@ class TestGmailBeforeHooks:
             }
         )
 
-        with patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer") as mock_writer:
+        with patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer") as mock_writer:
             mock_writer.return_value = MagicMock()
             result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
 
@@ -448,7 +449,7 @@ class TestGmailBeforeHooks:
         )
 
         with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
+            "app.utils.composio_hooks.gmail_hooks.current_stream_writer",
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
@@ -566,10 +567,30 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
+        record = UserIntegrationDocument(
+            user_id="user_abc123",
+            integration_id="gmail",
+            status="connected",
+            accounts=[
+                IntegrationAccount(
+                    id="ca_work", connected_account_id="ca_work", label="work@acme.com"
+                ),
+                IntegrationAccount(
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+            ],
+            primary_account_id="ca_home",
+        )
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=record),
+        ):
+            result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert result["user_id"] == "user_abc123"
         assert result["entity_id"] == "user_abc123"
+        # Composio never picks among several accounts: the call names the primary.
+        assert result["connected_account_id"] == "ca_home"
         # __runnable_config__ should be popped from arguments
         assert "__runnable_config__" not in result["arguments"]
 
@@ -828,7 +849,7 @@ class TestTwitterHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.twitter_hooks.get_stream_writer",
+            "app.utils.composio_hooks.twitter_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "twitter", raw_response)
@@ -876,7 +897,7 @@ class TestRedditHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.reddit_hooks.get_stream_writer",
+            "app.utils.composio_hooks.reddit_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = reddit_search_after_hook(

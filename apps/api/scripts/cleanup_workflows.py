@@ -12,6 +12,7 @@ sys.path.insert(0, str(backend_dir))
 
 
 from app.db.mongodb.collections import get_async_collection
+from scripts._prompt import ainput
 from shared.py.wide_events import log as logger
 
 workflows_collection = get_async_collection("workflows")
@@ -70,7 +71,9 @@ async def cleanup_old_workflow_steps():
 
         # Ask for confirmation in interactive mode
         if sys.stdin.isatty():
-            response = input(f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): ")
+            response = await ainput(
+                f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): "
+            )
             if response.lower() != "y":
                 logger.info("Cleanup cancelled by user.")
                 return False

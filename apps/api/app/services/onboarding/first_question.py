@@ -17,12 +17,7 @@ import time
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import (
-    LLMInvokeOptions,
-    ainvoke_llm,
-    background_structured_runnable,
-    metered_config,
-)
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.constants.cache import (
     FIRST_QUESTION_CACHE_PREFIX,
@@ -50,7 +45,7 @@ QUESTION_TEMPERATURE = 0.4
 #: The voice section of the comms prompt, read out of the prompt itself so the
 #: seeded question and the agent the user talks to next cannot drift apart.
 _VOICE_SECTION_START = "## Voice"
-_VOICE_SECTION_END = "## Length Modes"
+_VOICE_SECTION_END = "## Reply, react, or stay silent"
 
 
 class FirstQuestion(BaseModel):
@@ -166,18 +161,17 @@ async def compose_first_question(
     )
 
     try:
-        draft: _QuestionDraft = await ainvoke_llm(
-            background_structured_runnable(
-                _QuestionDraft, temperature=QUESTION_TEMPERATURE, config=config
-            ),
+        draft = await ainvoke_structured(
+            _QuestionDraft,
             prompt,
             label="onboarding_first_question",
             config=config,
             # Live at completion (2s) gets one attempt (a retry can't fit); the
             # prewarm (8s, nobody waiting) may retry once for a bad draft.
-            options=LLMInvokeOptions(
-                max_attempts=2 if timeout_seconds >= QUESTION_TIMEOUT_SECONDS else 1,
+            options=StructuredCallOptions(
+                temperature=QUESTION_TEMPERATURE,
                 timeout=timeout_seconds,
+                max_attempts=2 if timeout_seconds >= QUESTION_TIMEOUT_SECONDS else 1,
             ),
         )
     except Exception as e:

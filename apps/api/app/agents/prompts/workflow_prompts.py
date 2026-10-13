@@ -109,8 +109,8 @@ CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
 2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
-4. The execution agent will use `handoff` to delegate to subagents based on category
-5. Categories like gmail, notion, github, slack, googlecalendar route to specialized subagents
+4. The execution agent will use `activate_integration` to load each step's integration in-context, then run its tools itself via `execute`
+5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor acts on them directly, never via subagents
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
@@ -249,6 +249,12 @@ announce that the workflow finished or to deliver its result: that would notify 
 Only call send_notification if the workflow instructions above explicitly ask for an immediate
 or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
 """
+
+# Appended when the triggering event names which of the user's accounts received it.
+TRIGGERED_ACCOUNT_SECTION = """
+
+This run was triggered by an event on the user's account {accounts}. Act on that same
+account: pass it as `account` to execute for that integration's tools."""
 
 WORKFLOW_SILENT_NOTIFY_SECTION = """
 NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT send an automatic

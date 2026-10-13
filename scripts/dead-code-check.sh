@@ -122,11 +122,17 @@ print_health_bar() {
 run_vulture() {
   print_section "Python (vulture)"
 
+  # A skipped scan is not a clean one: silently skipping let a local run pass
+  # over findings the CI lane (which installs vulture) then failed on.
   if ! command -v vulture &>/dev/null; then
-    echo -e "  ${DIM}vulture not installed, skipping Python dead code check.${RESET}"
-    echo -e "  Install: ${CYAN}uv tool install vulture${RESET}"
-    echo ""
-    return
+    local missing="vulture is not installed, so the Python dead-code scan cannot run"
+    echo -e "  ${RED}${missing}.${RESET}" >&2
+    echo -e "  Install it the way CI does: ${CYAN}uv tool install vulture${RESET}" >&2
+    if $STRICT; then
+      ci_verdict --lane dead-code --status fail --summary "$missing" \
+        --advice "uv tool install vulture"
+    fi
+    exit 1
   fi
 
   # vulture config lives in [tool.vulture] in the repo-root pyproject.toml, which

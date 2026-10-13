@@ -14,7 +14,12 @@ import { GmailTriggerSettings } from "./GmailTriggerSettings";
 // =============================================================================
 
 export const gmailTriggerHandler: RegisteredHandler = {
-  triggerSlugs: ["gmail_new_message", "email", "gmail_poll_inbox"],
+  triggerSlugs: [
+    "gmail_new_message",
+    "email",
+    "gmail_poll_inbox",
+    "gmail_email_sent",
+  ],
 
   createDefaultConfig: (slug: string): TriggerConfigDraft => {
     if (slug === "gmail_poll_inbox") {
@@ -40,8 +45,11 @@ export const gmailTriggerHandler: RegisteredHandler = {
 
   SettingsComponent: GmailTriggerSettings,
 
-  getDisplayInfo: () => ({
-    label: "on new emails",
+  getDisplayInfo: (config) => ({
+    label:
+      config.trigger_name === "gmail_email_sent"
+        ? "on sent emails"
+        : "on new emails",
     integrationId: "gmail",
   }),
 };

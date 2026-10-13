@@ -26,6 +26,7 @@ import {
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { APPROVAL_CHIP_META } from "@/features/chat/utils/approval-status";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { colors, typography } from "@/lib/design-tokens";
@@ -217,11 +218,7 @@ function WaitingForApprovalPill() {
 const APPROVAL_CHIP: Partial<
   Record<ApprovalStatus, { label: string; color: string }>
 > = {
-  approved: { label: "Approved", color: colors.success },
-  auto_approved: { label: "Auto-approved", color: colors.success },
-  denied: { label: "Denied", color: colors.error },
-  timeout: { label: "Expired", color: colors.zinc500 },
-  abandoned: { label: "Expired", color: colors.zinc500 },
+  ...APPROVAL_CHIP_META,
 };
 
 /** A settled HIL decision rides its tool's own row as a small chip. */

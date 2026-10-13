@@ -16,8 +16,10 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   readBodyBytesBounded,
@@ -33,7 +35,13 @@ import {
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
+import {
+  attachment,
+  type Message,
+  reaction,
+  type Space,
+  Spectrum,
+} from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import {
   IMESSAGE_SERVER_PORT,
@@ -220,12 +228,13 @@ export class ImessageAdapter extends BaseBotAdapter {
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
       this.enqueueForUser(handle, () =>
-        this.handleIncomingMessage(handle, space, text).catch((err) =>
-          this.adapterLogger.error("incoming_message_processing_failed", {
-            user_hash: handleHash,
-            message_id: message.id,
-            ...sanitizeErrorForLog(err),
-          }),
+        this.handleIncomingMessage(handle, space, text, message.id).catch(
+          (err) =>
+            this.adapterLogger.error("incoming_message_processing_failed", {
+              user_hash: handleHash,
+              message_id: message.id,
+              ...sanitizeErrorForLog(err),
+            }),
         ),
       );
       return;
@@ -295,6 +304,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     handle: string,
     space: Space,
     text: string,
+    messageId?: string,
   ): Promise<void> {
     const handleHash = hashLogIdentifier(handle);
     this.adapterLogger.info("incoming_message_started", {
@@ -345,7 +355,7 @@ export class ImessageAdapter extends BaseBotAdapter {
             await this.sendImessageText(space, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(handle, space, rest);
+          await this.handleStreamingMessage(handle, space, rest, messageId);
           return;
         }
 
@@ -359,7 +369,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(handle, space, chatText);
+      await this.handleStreamingMessage(handle, space, chatText, messageId);
     } finally {
       await space.stopTyping().catch(() => undefined);
     }
@@ -369,6 +379,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     handle: string,
     space: Space,
     text: string,
+    messageId?: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     if (!text.trim() && attachments.length === 0) {
@@ -392,6 +403,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           channelId: space.id,
           // iMessage handles DMs only; group spaces are ignored upstream.
           isDm: true,
+          platformMessageId: messageId,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -425,6 +437,11 @@ export class ImessageAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.imessage,
         await this.analyticsFor(handle),
+        async (emoji: string) => {
+          // Media turns carry no inbound message id, so there is nothing to react to.
+          if (!messageId) return REACTION_OUTCOME.NO_TARGET;
+          return this.reactToMessage(handle, messageId, emoji, false);
+        },
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -489,9 +506,9 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async sendWelcome(space: Space, handle: string): Promise<void> {
     const text =
       "Hey, I'm GAIA 👋\n\n" +
-      "Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n" +
+      "Your personal AI. I think ahead, remember what matters, and help you actually get things done.\n\n" +
       "Here's what I can do right here on iMessage:\n\n" +
-      "Chat\nJust type anything — ask questions, brainstorm, think out loud.\n\n" +
+      "Chat\nJust type anything: ask questions, brainstorm, think out loud.\n\n" +
       "Todos\nCapture tasks with /todo add.\n\n" +
       "Workflows\nRun automations with /workflow and delegate whole projects.\n\n" +
       "Link your account\nRun /auth to connect GAIA so I remember you and your context.\n\n" +
@@ -623,7 +640,15 @@ export class ImessageAdapter extends BaseBotAdapter {
       const text =
         transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
       if (uploaded.length > 0 || text) {
-        await this.handleStreamingMessage(handle, space, text, uploaded);
+        // Media turns carry no inbound message id (the media pipeline drops
+        // it), so a later reaction to one falls back to a text bubble.
+        await this.handleStreamingMessage(
+          handle,
+          space,
+          text,
+          undefined,
+          uploaded,
+        );
       }
     } catch (err) {
       this.adapterLogger.error("media_message_failed", {
@@ -710,30 +735,49 @@ export class ImessageAdapter extends BaseBotAdapter {
     await space.send(text);
   }
 
-  protected override async deliverOutboundFile(
+  protected override async reactToMessage(
     destinationId: string,
-    outboundAttachment: OutboundAttachment,
-  ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      outboundAttachment,
-    );
-    if (!artifact) return;
-    const { data, contentType } = artifact;
-    const mime =
-      outboundAttachment.content_type ??
-      contentType ??
-      "application/octet-stream";
+    platformMessageId: string,
+    emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // The SDK maps the six classic tapbacks to native kinds and sends any other
+    // emoji as an emoji reaction, so no emoji is refused here.
+    try {
+      const space = await this.im.space.create(destinationId);
+      const target = await space.getMessage(platformMessageId);
+      if (!target) {
+        this.adapterLogger.warn("outbound_reaction_target_not_found", {
+          target_platform_message_id: platformMessageId,
+        });
+        return REACTION_OUTCOME.ATTACH_FAILED;
+      }
+      const sent = await space.send(reaction(emoji, target));
+      if (!sent) {
+        this.adapterLogger.warn("outbound_reaction_unsupported_by_platform", {
+          target_platform_message_id: platformMessageId,
+        });
+        return REACTION_OUTCOME.ATTACH_FAILED;
+      }
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...sanitizeErrorForLog(err),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
+    }
+  }
 
+  protected override async sendOutboundFile(
+    destinationId: string,
+    { data, mime, filename, caption }: OutboundFile,
+  ): Promise<void> {
     const space = await this.im.space.create(destinationId);
     await space.send(
-      attachment(Buffer.from(data), {
-        name: outboundAttachment.filename,
-        mimeType: mime,
-      }),
+      attachment(Buffer.from(data), { name: filename, mimeType: mime }),
     );
-    if (outboundAttachment.caption) {
-      await space.send(outboundAttachment.caption);
+    if (caption) {
+      await space.send(caption);
     }
   }
 }

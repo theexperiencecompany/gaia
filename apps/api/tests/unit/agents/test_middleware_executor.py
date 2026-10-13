@@ -5,7 +5,7 @@ and wrap_tool_call middleware hooks.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
@@ -22,17 +22,24 @@ from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
 from app.agents.middleware.executor import (
+    MIDDLEWARE_FAILURE_TEMPLATE,
     MiddlewareExecutor,
+    _apply_state_update,
     _has_override,
 )
+from app.agents.middleware.hil_approval import HILApprovalMiddleware
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.override.langgraph_bigtool.utils import State
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """TOOL_USED events are asserted through this mock and never reach a real PostHog client."""
-    with patch("app.agents.middleware.executor.capture_event") as mock_capture:
+    with patch("app.agents.middleware.executor.capture") as mock_capture:
         yield mock_capture
 
 
@@ -54,7 +61,7 @@ def _make_state(**overrides: Any) -> State:
 def _make_config(**overrides: Any) -> RunnableConfig:
     cfg: dict[str, Any] = {
         "configurable": {
-            "user_id": "user_123",
+            "user_id": USER_ID,
             "thread_id": "thread_abc",
         },
     }
@@ -236,6 +243,14 @@ class TestMiddlewareExecutorInit:
     def test_none_middleware(self) -> None:
         executor = MiddlewareExecutor(None)
         assert executor.middleware == []
+
+    def test_the_stacks_loop_guard_is_exposed_for_select_tools(self) -> None:
+        guard = LoopGuardMiddleware()
+        executor = MiddlewareExecutor([_NoOpMiddleware(), guard, _BeforeModelMiddleware()])
+        assert executor.loop_guard is guard
+
+    def test_a_stack_without_a_loop_guard_exposes_none(self) -> None:
+        assert MiddlewareExecutor([_NoOpMiddleware()]).loop_guard is None
 
 
 # ---------------------------------------------------------------------------
@@ -725,9 +740,10 @@ class TestWrapToolInvocation:
 
         assert result.content == "tool result"
         _no_real_analytics.assert_called_once()
-        assert _no_real_analytics.call_args.args[0] == "user_123"
-        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
-        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool"}
+        assert _no_real_analytics.call_args.args == (
+            UserId(USER_ID),
+            ToolUsed(tool_name="test_tool", via="bound"),
+        )
 
     async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
@@ -839,35 +855,6 @@ class TestWrapToolInvocation:
         "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
         return_value=MagicMock(),
     )
-    async def test_tool_chain_failure_falls_back(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
-        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
-        expected = ToolMessage(content="fallback", tool_call_id="call_1")
-        invoke_fn = AsyncMock(return_value=expected)
-
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
-
-        class _FailingWrapTool(AgentMiddleware):
-            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
-                raise RuntimeError("tool middleware failed")
-
-        executor = MiddlewareExecutor([_FailingWrapTool()])
-        state = _make_state()
-        result = await executor.wrap_tool_invocation(
-            tool_call, None, state, _make_config(), None, invoke_fn
-        )
-        assert result.content == "fallback"
-
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
     async def test_tool_cancelled_error_propagates(
         self, mock_rt: MagicMock, mock_create_req: MagicMock
     ) -> None:
@@ -890,9 +877,199 @@ class TestWrapToolInvocation:
             )
 
 
+class _PreToolBreak(AgentMiddleware):
+    """Raise before handing the call on, as a broken pre-tool check would."""
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+        raise RuntimeError("pre-tool check broke")
+
+
+def _gated_run_config() -> RunnableConfig:
+    """Build a live run config the HIL gate can identify, so it reaches its policy branch."""
+    return _make_config(
+        configurable={
+            "user_id": "user_123",
+            "thread_id": "thread_abc",
+            "stream_id": "stream_1",
+            "conversation_id": "conv_1",
+        }
+    )
+
+
+class TestToolChainFailsClosed:
+    async def test_a_raising_hil_gate_refuses_the_call_instead_of_running_it(self) -> None:
+        tool_call = {"name": "send_email", "args": {"to": "bob"}, "id": "call_1"}
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="sent", tool_call_id="call_1"))
+
+        with (
+            patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
+            patch(
+                "app.services.hil.gate.is_hil_ledger_enabled",
+                AsyncMock(side_effect=RuntimeError("flag store down")),
+            ),
+            patch("app.agents.middleware.executor.log") as mock_log,
+        ):
+            result = await MiddlewareExecutor([HILApprovalMiddleware()]).wrap_tool_invocation(
+                tool_call, None, _make_state(), _gated_run_config(), None, invoke_fn
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage)
+        assert result.status == "error"
+        assert result.tool_call_id == "call_1"
+        assert result.name == "send_email"
+        assert result.content == MIDDLEWARE_FAILURE_TEMPLATE.format(tool="send_email")
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["middleware"] == "HILApprovalMiddleware"
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+
+    async def test_the_failure_is_blamed_on_the_middleware_that_raised(self) -> None:
+        """An outer pass-through sees the inner one's exception second; the log names the inner one."""
+        invoke_fn = AsyncMock()
+
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor(
+                [_WrapToolMiddleware(), _PreToolBreak()]
+            ).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage) and result.status == "error"
+        assert mock_log.error.call_args.kwargs["middleware"] == "_PreToolBreak"
+
+    async def test_a_raising_sync_hook_also_refuses_the_call(self) -> None:
+        class _SyncPreToolBreak(AgentMiddleware):
+            def wrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+                raise RuntimeError("sync pre-tool check broke")
+
+        invoke_fn = AsyncMock()
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor([_SyncPreToolBreak()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage) and result.status == "error"
+        assert mock_log.error.call_args.kwargs["middleware"] == "_SyncPreToolBreak"
+
+    async def test_a_refusal_for_a_call_without_an_id_carries_an_empty_id(self) -> None:
+        result = await MiddlewareExecutor([_PreToolBreak()]).wrap_tool_invocation(
+            {"name": "t", "args": {}, "id": None},
+            None,
+            _make_state(),
+            _make_config(),
+            None,
+            AsyncMock(),
+        )
+
+        assert isinstance(result, ToolMessage)
+        assert result.tool_call_id == ""
+
+    async def test_a_tool_that_raises_is_not_blamed_on_a_middleware(self) -> None:
+        invoke_fn = AsyncMock(side_effect=RuntimeError("tool broke"))
+
+        with (
+            patch("app.agents.middleware.executor.log") as mock_log,
+            pytest.raises(RuntimeError, match="tool broke"),
+        ):
+            await MiddlewareExecutor([_WrapToolMiddleware()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_awaited_once()
+        assert mock_log.error.call_args.kwargs["middleware"] is None
+
+    async def test_a_post_tool_break_ships_the_result_and_blames_its_middleware(self) -> None:
+        class _PostToolBreak(AgentMiddleware):
+            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+                await handler(request)
+                raise RuntimeError("post-tool transform broke")
+
+        tool_output = ToolMessage(content="sent", tool_call_id="c1")
+        invoke_fn = AsyncMock(return_value=tool_output)
+
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor([_PostToolBreak()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_awaited_once()
+        assert result is tool_output
+        assert mock_log.error.call_args.kwargs["middleware"] == "_PostToolBreak"
+
+
 # ---------------------------------------------------------------------------
 # has_wrap_model_call / has_wrap_tool_call
 # ---------------------------------------------------------------------------
+
+
+class _RecordingWrapToolMiddleware(AgentMiddleware):
+    """Record the request each tool call hands the middleware chain."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[ToolCallRequest] = []
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+        self.requests.append(request)
+        return await handler(request)
+
+
+class TestTheRequestTheChainSees:
+    async def test_carries_this_calls_tool_state_and_runtime(self) -> None:
+        """Compaction and HIL read the request, not the raw arguments; a blanked field is a tool they never see."""
+        tool_call = {"name": "test_tool", "args": {"q": 1}, "id": "call_1"}
+        tool = MagicMock(name="tool")
+        runtime = MagicMock(name="runtime")
+        state = _make_state()
+        recorder = _RecordingWrapToolMiddleware()
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="call_1"))
+
+        with patch(
+            "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+            return_value=runtime,
+        ):
+            await MiddlewareExecutor([recorder]).wrap_tool_invocation(
+                tool_call, tool, state, _make_config(), None, invoke_fn
+            )
+
+        (request,) = recorder.requests
+        assert request.tool_call == tool_call
+        assert request.tool is tool
+        assert request.state is state
+        assert request.runtime is runtime
+        invoke_fn.assert_awaited_once_with(tool_call)
+
+
+class TestApplyStateUpdate:
+    def test_messages_into_a_state_without_any_start_the_channel(self) -> None:
+        state = cast(State, {})
+        message = HumanMessage(id="m1", content="hi")
+
+        _apply_state_update(state, {"messages": [message]})
+
+        assert state["messages"] == [message]
 
 
 class TestHasWrapMethods:

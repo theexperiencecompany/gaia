@@ -1,26 +1,22 @@
 // @vitest-environment jsdom
 /**
- * The onboarding funnel is only as good as the order its events arrive in.
- *
- * `onboarding:started` fired pre-hydration, always claiming
- * `has_saved_state: false`; payment-cleared reported only after receipt ack
- * (reaching the receipt itself went unreported); and a restart replayed
- * once-per-stage guards already shut, emitting no stage steps at all.
+ * `onboarding:started` is the only client-owned onboarding event — step and
+ * completion analytics live server-side (POST /onboarding/phase emits
+ * onboarding:step_completed; the worker emits onboarding:completed), so the
+ * hook must not re-emit them. It also fires post-hydration, so a resumed
+ * session reports has_saved_state:true instead of always false.
  */
 
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const trackEvent = vi.fn();
-const trackOnboardingStep = vi.fn();
+const track = vi.fn();
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { ONBOARDING_STARTED: "onboarding:started" },
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
-  trackOnboardingStep: (...args: unknown[]) => trackOnboardingStep(...args),
+  track: (...args: unknown[]) => track(...args),
 }));
 
-import { FIELD_NAMES, questions } from "@/features/onboarding/constants";
+import { FIELD_NAMES } from "@/features/onboarding/constants";
 import { useOnboardingAnalytics } from "@/features/onboarding/effects/useOnboardingAnalytics";
 import { getStage } from "@/features/onboarding/state/derive";
 import { initialState } from "@/features/onboarding/state/initial";
@@ -36,89 +32,11 @@ function apply(state: OnboardingState, ...actions: Action[]): OnboardingState {
   return actions.reduce(reducer, state);
 }
 
-/** Drives the hook the way the flow does: one render per state transition. */
-function renderFunnel(hydrated = true) {
-  const { rerender } = renderHook(
-    ({ state }: { state: OnboardingState }) =>
-      useOnboardingAnalytics(state, getStage(state, PAID), hydrated),
-    { initialProps: { state: initialState } },
-  );
-  return {
-    advance: (state: OnboardingState) => {
-      rerender({ state });
-      return state;
-    },
-  };
-}
-
 beforeEach(() => {
-  trackEvent.mockClear();
-  trackOnboardingStep.mockClear();
+  track.mockClear();
 });
 
 describe("onboarding analytics", () => {
-  it("reports Q1 then Q2 in order, each with its question id", () => {
-    const { advance } = renderFunnel();
-
-    let state = advance(
-      apply(initialState, {
-        type: "answer",
-        field: FIELD_NAMES.PROFESSION,
-        value: "founder",
-      }),
-    );
-    expect(trackOnboardingStep.mock.calls).toEqual([
-      [1, FIELD_NAMES.PROFESSION, { question_id: questions[0].id }],
-    ]);
-
-    state = advance(
-      apply(
-        state,
-        { type: "toggleNeed", value: "inbox" },
-        { type: "submitNeeds" },
-      ),
-    );
-    expect(trackOnboardingStep.mock.calls[1]).toEqual([
-      2,
-      FIELD_NAMES.NEEDS,
-      { question_id: questions[1].id },
-    ]);
-    // Clearing Q2 lands a paid user on the receipt: the payment stage is done.
-    expect(trackOnboardingStep.mock.calls[2]).toEqual([
-      3,
-      "payment",
-      undefined,
-    ]);
-    expect(trackOnboardingStep).toHaveBeenCalledTimes(3);
-
-    advance(apply(state, { type: "ackPaidReveal" }));
-    expect(trackOnboardingStep.mock.calls[3]).toEqual([
-      4,
-      "paid_reveal",
-      undefined,
-    ]);
-  });
-
-  it("says which way the platform pick was cleared", () => {
-    const { advance } = renderFunnel();
-    const atPlatforms = apply(
-      initialState,
-      { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
-      { type: "toggleNeed", value: "inbox" },
-      { type: "submitNeeds" },
-      { type: "ackPaidReveal" },
-    );
-    advance(atPlatforms);
-    trackOnboardingStep.mockClear();
-
-    advance(
-      apply(atPlatforms, { type: "platformConnected", platform: "telegram" }),
-    );
-    expect(trackOnboardingStep.mock.calls).toEqual([
-      [5, "platform_pick", { connected: true, platform: "telegram" }],
-    ]);
-  });
-
   it("fires onboarding:started once, and only with the restored state", () => {
     const resumed = apply(initialState, {
       type: "answer",
@@ -131,43 +49,14 @@ describe("onboarding analytics", () => {
         useOnboardingAnalytics(state, getStage(state, PAID), hydrated),
       { initialProps: { state: initialState, hydrated: false } },
     );
-    expect(trackEvent).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
 
     rerender({ state: resumed, hydrated: true });
-    expect(trackEvent.mock.calls).toEqual([
+    expect(track.mock.calls).toEqual([
       ["onboarding:started", { has_saved_state: true }],
     ]);
 
     rerender({ state: resumed, hydrated: true });
-    expect(trackEvent).toHaveBeenCalledTimes(1);
-  });
-
-  it("re-reports the stages after a restart", () => {
-    const { advance } = renderFunnel();
-    const finished = apply(
-      initialState,
-      { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
-      { type: "toggleNeed", value: "inbox" },
-      { type: "submitNeeds" },
-      { type: "ackPaidReveal" },
-      { type: "skipPlatforms" },
-    );
-    advance(finished);
-
-    const restarted = advance(
-      apply(finished, { type: "restartStart" }, { type: "restartDone" }),
-    );
-    trackOnboardingStep.mockClear();
-
-    advance(
-      apply(restarted, {
-        type: "answer",
-        field: FIELD_NAMES.PROFESSION,
-        value: "student",
-      }),
-    );
-    expect(trackOnboardingStep.mock.calls).toEqual([
-      [1, FIELD_NAMES.PROFESSION, { question_id: questions[0].id }],
-    ]);
+    expect(track).toHaveBeenCalledTimes(1);
   });
 });

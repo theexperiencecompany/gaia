@@ -2,9 +2,15 @@
 # pytest.sh — everything about RUNNING the Python suite in CI.
 #
 # Subcommands:
+#   slices                   Print the test-python slice matrices (lib/test-slices.json)
+#                            as GITHUB_OUTPUT lines: `python_slices=<json>` for the
+#                            slices that need no browser engine, `engine_slices=<json>`
+#                            for those that do (they wait on the obscura-bin build).
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
+#   shared-suite             Run libs/shared/py/tests (the unit-b slice's "after").
+#   contract-fuzz            Run the schemathesis API fuzz (integration's "after").
 #   flake-gate <cmd...>      Run a pytest command; on failure rerun ONLY the
 #                            failures once and fail the build if they pass on
 #                            rerun (CPython's --fail-rerun lesson).
@@ -27,6 +33,35 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# ── slices ────────────────────────────────────────────────────────────────
+# lib/test-slices.json is the ONE definition of the slices: main.yml's
+# test-python matrices read it through this subcommand and the Dagger module
+# (.dagger, `test-python --slice`) reads the file directly, so a local run
+# cannot drift from CI. Why the shares look the way they do:
+#   * workers sum to the box (16 threads): the lanes start together, so a
+#     runtime probe sees zero neighbours and each took 16 (measured 2026-08-28).
+#   * integration's wall is flat from 6 to 16 workers (it waits on services);
+#     its share went to unit-b (~30 s fixed + ~270 CPU-s / n).
+#   * unit is two slices because xdist re-collects the whole slice per worker
+#     (20 s for 13.2k tests); services/agents/storage is ~5.2k of it.
+#   * bridge is serial (workers 0): the device-bridge e2e TRUNCATEs a shared
+#     Postgres table, which another xdist worker's fixture would wipe mid-test.
+#   * node: only bridge drives the real `gaia bridge` CLI via tsx.
+#   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
+#     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
+#     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
+#     flake-gate rerun. Building Obscura is not in it: main.yml's obscura-bin job
+#     builds it (cold: tens of minutes) and the engine slices wait on that job.
+SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
+
+cmd_slices() {
+  python3 -c 'import json, sys
+slices = json.load(open(sys.argv[1]))["slices"]
+for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
+    chosen = [s for s in slices if s["engines"] == engines]
+    print(key + "=" + json.dumps(chosen, separators=(",", ":")))' "$SLICES_FILE"
+}
 
 # ── slice ─────────────────────────────────────────────────────────────────
 # Node ids can contain spaces and brackets (parametrised tests), so the
@@ -117,13 +152,15 @@ cmd_slice() {
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
     --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
-    | cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
+    | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
   set -e
   # cut: the Actions runner handles step output line by line (regex matchers,
   # console upload); a single multi-MB line — a parametrize id carrying a 2 MB
   # string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
   # CPU until the job timeout. 20k chars keeps every real traceback intact.
+  # stdbuf -oL: writing to a pipe, cut holds 4 KB before passing anything on, so a
+  # lane cancelled at its cap lost everything it had said (the browser slice, 19 min, blank).
   cpu_slots_release "$N_SLOTS"
 
   # The verdict, from the JUnit the run already wrote: every failed test at its
@@ -144,6 +181,33 @@ cmd_slice() {
 # ── flake-gate ────────────────────────────────────────────────────────────
 # Exit codes: 0 all green; whatever pytest returns on a genuine/coverage
 # failure (1 for both); 1 flaky.
+# ── shared-suite ──────────────────────────────────────────────────────────
+# Its OWN pytest invocation, never a slice path. gaia-shared lives under
+# libs/, and handing pytest paths from two trees at once moves rootdir to the
+# repo root — apps/api/pytest.ini stops being the inifile, so asyncio_mode=auto
+# and the marker registrations vanish and the entire slice dies (measured: 2145
+# failed, 891 errors, run 33301137881). A separate run keeps each invocation's
+# rootdir and ini intact.
+cmd_shared_suite() {
+  cd "$REPO_ROOT/apps/api"
+  uv run --frozen pytest ../../libs/shared/py/tests \
+    --tb=short -q --override-ini=addopts=--strict-markers
+  ci_ok "gaia-shared tests: OK"
+}
+
+# ── contract-fuzz ─────────────────────────────────────────────────────────
+# Its own run, not a slice member: it boots a REAL server and must run serially
+# and isolated, and the slice runs exclude `-m schemathesis` (the plugin costs
+# ~2 s of import per xdist worker on lanes that never use it). It rides the
+# integration slice because that is the lane with the services up.
+cmd_contract_fuzz() {
+  cd "$REPO_ROOT/apps/api"
+  USE_REAL_SERVICES=1 bash "$SCRIPT_DIR/pytest.sh" flake-gate \
+    uv run --frozen pytest tests/integration/real/test_schemathesis.py -q --tb=short \
+    -m schemathesis -p schemathesis --override-ini=addopts=--strict-markers --timeout=600
+  ci_ok "Schemathesis: OK"
+}
+
 cmd_flake_gate() {
   [ "$#" -gt 0 ] || { echo "usage: pytest.sh flake-gate <pytest-command...>" >&2; exit 2; }
 
@@ -430,14 +494,17 @@ cmd_regression_proof() {
 }
 
 usage() {
-  sed -n '2,20p' "$0" >&2
+  sed -n '2,24p' "$0" >&2
 }
 
 main() {
   local sub="${1:-}"
   shift || true
   case "$sub" in
+    slices)           cmd_slices "$@" ;;
     slice)            cmd_slice "$@" ;;
+    shared-suite)     cmd_shared_suite "$@" ;;
+    contract-fuzz)    cmd_contract_fuzz "$@" ;;
     flake-gate)       cmd_flake_gate "$@" ;;
     regression-proof) cmd_regression_proof "$@" ;;
     *)

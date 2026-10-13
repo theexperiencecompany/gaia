@@ -582,8 +582,7 @@ class TestSingleEventInput:
     def test_valid_minimal(self):
         m = SingleEventInput(summary="Test", start_datetime="2025-06-01T10:00:00")
         assert m.summary == "Test"
-        assert m.duration_hours == 0
-        assert m.duration_minutes == 30
+        assert m.end_datetime is None
         assert m.calendar_id == "primary"
         assert m.is_all_day is False
         assert m.create_meeting_room is False
@@ -592,8 +591,7 @@ class TestSingleEventInput:
         m = SingleEventInput(
             summary="Full Event",
             start_datetime="2025-06-01T10:00:00",
-            duration_hours=2,
-            duration_minutes=15,
+            end_datetime="2025-06-01T12:15:00",
             calendar_id="work",
             description="Description",
             location="Office",
@@ -601,26 +599,8 @@ class TestSingleEventInput:
             is_all_day=False,
             create_meeting_room=True,
         )
-        assert m.duration_hours == 2
+        assert m.end_datetime == "2025-06-01T12:15:00"
         assert m.location == "Office"
-
-    @pytest.mark.parametrize("hours", [-1, 24])
-    def test_duration_hours_out_of_range(self, hours):
-        with pytest.raises(ValidationError):
-            SingleEventInput(
-                summary="Bad",
-                start_datetime="2025-06-01T10:00:00",
-                duration_hours=hours,
-            )
-
-    @pytest.mark.parametrize("minutes", [-1, 60])
-    def test_duration_minutes_out_of_range(self, minutes):
-        with pytest.raises(ValidationError):
-            SingleEventInput(
-                summary="Bad",
-                start_datetime="2025-06-01T10:00:00",
-                duration_minutes=minutes,
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -633,12 +613,6 @@ class TestCreateEventInput:
         event = SingleEventInput(summary="A", start_datetime="2025-06-01T10:00:00")
         m = CreateEventInput(events=[event])
         assert len(m.events) == 1
-        assert m.confirm_immediately is False
-
-    def test_confirm_immediately_true(self):
-        event = SingleEventInput(summary="A", start_datetime="2025-06-01T10:00:00")
-        m = CreateEventInput(events=[event], confirm_immediately=True)
-        assert m.confirm_immediately is True
 
     def test_missing_events(self):
         with pytest.raises(ValidationError):

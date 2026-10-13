@@ -17,7 +17,6 @@ def _make_config() -> SubAgentConfig:
         has_subagent=True,
         agent_name="test_agent",
         tool_space="test_space",
-        handoff_tool_name="call_test",
         domain="test domain",
         capabilities="test capabilities",
         use_cases="test use cases",

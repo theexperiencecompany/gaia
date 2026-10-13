@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from collections.abc import Iterator
 import os
 from types import SimpleNamespace
 from typing import Any
@@ -32,7 +32,6 @@ from app.agents.core.subagents.handoff_tools import (
     CustomMcpSubagent,
     _resolve_subagent,
     handoff,
-    resume_parked_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
@@ -43,9 +42,9 @@ from app.agents.core.subagents.subagent_runner import (
     build_initial_messages,
     execute_subagent_stream,
     interrupt_payload,
+    subagent_row_id,
 )
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
-from app.models.hil_models import HILApprovalRecord
 from tests.helpers import PassthroughFakeLLM, create_fake_llm
 
 HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
@@ -387,14 +386,16 @@ async def real_subagent_seams():
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),
         ),
         # handoff() is invoked directly here (no parent graph node), so there is
         # no active LangGraph runnable context for get_stream_writer() to hook.
-        patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
+        patch(
+            "app.agents.core.subagents.delegation.current_stream_writer", return_value=MagicMock()
+        ),
         patch(
             "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
@@ -820,8 +821,14 @@ async def _async_iter(items):
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("fake_redis")
 class TestHandoffFunctionDirectly:
     """Call the handoff() coroutine directly and verify it returns and passes state correctly."""
+
+    @pytest.fixture(autouse=True)
+    def _no_accounts_on_record(self) -> Iterator[None]:
+        with patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)):
+            yield
 
     async def test_handoff_function_directly(self):
         """Calling handoff() directly must return the subagent's response via execute_subagent_stream."""
@@ -840,7 +847,6 @@ class TestHandoffFunctionDirectly:
             "configurable": {
                 "user_id": user_id,
                 "thread_id": thread_id,
-                "stream_id": "stream-abc",
             }
         }
 
@@ -873,11 +879,11 @@ class TestHandoffFunctionDirectly:
                 return_value=fake_subagent_config,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="direct handoff result")),
             ) as mock_execute,
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -939,11 +945,11 @@ class TestHandoffFunctionDirectly:
                 return_value=fake_subagent_config,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=capture_execute,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -971,6 +977,7 @@ class TestHandoffFunctionDirectly:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("fake_redis")
 class TestCustomMCPPath:
     """A dict integration (MongoDB custom MCP) must route through create_subagent_for_user."""
 
@@ -1065,11 +1072,11 @@ class TestCustomMCPPath:
                 return_value=fake_subagent_config,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="custom mcp result")),
             ) as mock_execute,
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1172,6 +1179,7 @@ class TestCustomMCPPath:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("fake_redis")
 class TestHandoffThreadIsolation:
     """Verify handoffs to different subagents produce different thread IDs, with no state bleeding."""
 
@@ -1198,11 +1206,11 @@ class TestHandoffThreadIsolation:
 
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value="done"),
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
@@ -1299,11 +1307,11 @@ class TestHandoffThreadIsolation:
                 side_effect=capture_build,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value="done"),
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1330,8 +1338,14 @@ class TestHandoffThreadIsolation:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("fake_redis")
 class TestHandoffWithToolCallArgs:
     """Verify subagent_id and task from the tool call are correctly forwarded through handoff."""
+
+    @pytest.fixture(autouse=True)
+    def _no_accounts_on_record(self) -> Iterator[None]:
+        with patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)):
+            yield
 
     async def test_handoff_with_tool_call_args(self):
         """subagent_id and task must reach _resolve_subagent and build_initial_messages unchanged."""
@@ -1378,11 +1392,11 @@ class TestHandoffWithToolCallArgs:
                 return_value=fake_subagent_config,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="args test result")),
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1446,11 +1460,11 @@ class TestHandoffWithToolCallArgs:
                 return_value=fake_subagent_config,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                "app.agents.core.subagents.delegation.execute_subagent_stream",
                 new=AsyncMock(return_value="ok"),
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1584,7 +1598,7 @@ def handoff_seams(gated_subagent):
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),
@@ -1620,9 +1634,10 @@ def _interrupt_payloads(events: list) -> list[dict[str, Any]]:
 class _ExecutorDriver:
     """Calls the real handoff tool from inside a parent node, as the executor does.
 
-    A handoff drives its subagent imperatively, so the subagent's GraphInterrupt
-    only becomes a pause if _run_blocking_handoff re-raises it into a parent
-    runtime — which needs a real checkpointed parent graph around the call.
+    A blocking handoff drives its subagent imperatively, so the subagent's
+    GraphInterrupt only becomes a pause if the delegation runner re-raises it into
+    a parent runtime — which needs a real checkpointed parent graph around the call.
+    No stream_id here, so the handoff runs blocking.
     """
 
     def __init__(self) -> None:
@@ -1675,21 +1690,8 @@ class _ExecutorDriver:
         ]
 
 
-def _approval_record(conversation_id: str, thread_id: str) -> HILApprovalRecord:
-    return HILApprovalRecord(
-        approval_id=HANDOFF_APPROVAL_ID,
-        user_id="user-hil-1",
-        conversation_id=conversation_id,
-        stream_id="stream-hil-1",
-        tool_name="post_release_note",
-        status="approved",
-        subagent_thread_id=thread_id,
-        subagent_agent_name="gmail",
-        expires_at=datetime.now(UTC) + timedelta(hours=1),
-    )
-
-
 @pytest.mark.integration
+@pytest.mark.usefixtures("fake_redis")
 class TestHandoffHILPauseResume:
     """A gated tool inside a handed-off subagent must pause the executor and resume from checkpoint."""
 
@@ -1727,35 +1729,6 @@ class TestHandoffHILPauseResume:
             "the replay resumes the parked thread — it must not re-drive the model "
             "from the first turn"
         )
-
-    async def test_resume_parked_subagent_continues_the_parked_thread(
-        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
-    ) -> None:
-        """The background-park path rebuilds from the approval record and resumes at the interrupt."""
-        driver = _ExecutorDriver()
-        await driver.run()
-        calls_at_park = gated_subagent.llm.invocations
-        record = _approval_record(driver.conversation_id, driver.subagent_thread_id)
-
-        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
-
-        assert not outcome.paused
-        assert outcome.text == GATED_ANSWER
-        assert gated_effects["post"] == 1, "the approved action runs exactly once"
-        assert gated_subagent.llm.invocations == calls_at_park + 1, (
-            "resumed from the checkpoint, not restarted from an empty initial state"
-        )
-
-    async def test_resume_parked_subagent_refuses_when_the_checkpoint_is_gone(
-        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
-    ) -> None:
-        """A record pointing at a thread with no checkpoint must fail loudly, not restart fresh."""
-        record = _approval_record("handoff-hil-missing", "gmail_executor_handoff-hil-missing")
-
-        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
-
-        assert "checkpoint is missing" in outcome.text
-        assert gated_effects["post"] == 0, "nothing may run when there is nothing to resume"
 
 
 # ---------------------------------------------------------------------------
@@ -1797,7 +1770,7 @@ async def background_dispatch_seams():
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),
@@ -1817,7 +1790,7 @@ async def background_dispatch_seams():
             "app.utils.agent_utils.get_tool_registry",
             AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
         ),
-        patch(f"{HANDOFF_MODULE}.run_subagent_background", run_bg),
+        patch("app.agents.core.subagents.delegation._run_background", run_bg),
         patch("app.utils.background_tasks.asyncio.create_task", side_effect=_tracking_create_task),
     ):
         yield run_bg
@@ -1855,8 +1828,8 @@ class TestBackgroundSubagentDispatch:
             tool_call_id="tc-bg-1",
         )
 
-        assert "started in background" in result
-        assert "gmail_agent" in result
+        assert "started in the background" in result
+        assert subagent_row_id("tc-bg-1") in result
         background_dispatch_seams.assert_called_once()
 
     async def test_duplicate_dispatch_same_tool_call_id_is_deduplicated(
@@ -1890,8 +1863,8 @@ class TestBackgroundSubagentDispatch:
             tool_call_id="tc-bg-dup-1",
         )
 
-        assert "started in background" in first
-        assert "started in background" in second
+        assert "started in the background" in first
+        assert "started in the background" in second
         assert background_dispatch_seams.call_count == 1, (
             "the second dispatch with the same tool_call_id must not re-spawn the subagent"
         )

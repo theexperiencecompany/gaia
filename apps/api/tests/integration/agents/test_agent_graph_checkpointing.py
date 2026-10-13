@@ -35,6 +35,7 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.constants.general import FINISH_TASK_NAME
+from app.models.integration_models import UserIntegrationCapabilities
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
     HookConfig,
@@ -110,10 +111,10 @@ def _follow_up_io_patches() -> list:
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
             new_callable=AsyncMock,
-            return_value={"tool_names": []},
+            return_value=UserIntegrationCapabilities(tool_names=[]),
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=lambda _: None,
         ),
     ]

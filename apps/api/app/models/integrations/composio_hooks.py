@@ -12,11 +12,14 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     PrivateAttr,
     SerializerFunctionWrapHandler,
     model_serializer,
     model_validator,
 )
+
+from app.models.agent_config import RunMetadata
 
 
 class ComposioToolCall(BaseModel):
@@ -51,12 +54,12 @@ class ComposioToolResponse(BaseModel):
     successful: bool = True
 
 
-class RunMetadata(BaseModel):
-    """The LangGraph run ``metadata`` the tool wrapper forwards; ``user_id`` names the caller."""
+class ComposioDataError(BaseModel):
+    """The error a provider reports inside a call's data, which Composio can still mark successful."""
 
     model_config = ConfigDict(extra="ignore")
 
-    user_id: str | None = None
+    error: JsonValue = None
 
 
 class RunnableConfigTransport(BaseModel):

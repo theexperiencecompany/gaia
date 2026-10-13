@@ -1,6 +1,7 @@
 """Tests for TriggerHandler.unregister in app.services.triggers.base."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +11,7 @@ import pytest
 
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.triggers.base import TriggerHandler
+from app.services.triggers.base import TriggerHandler, _log_event_timing
 from tests.helpers import captured_wide_event
 
 
@@ -390,3 +391,40 @@ class TestTodoDispatchHandoff:
 
         (error,) = event["errors"]
         assert error["event_type"] == "TEST_EVENT"
+
+
+@pytest.mark.unit
+class TestEventTimingInstrumentation:
+    """The webhook-lag fields a calendar payload puts on the wide event."""
+
+    _NOW = datetime(2026, 1, 1, 9, 50, 30, tzinfo=UTC)
+    _START = "2026-01-01T10:00:00+00:00"
+
+    async def test_a_countdown_event_records_its_start_and_webhook_lag(self) -> None:
+        payload = {"start_time": self._START, "countdown_window_minutes": 10}
+
+        async with captured_wide_event() as event:
+            _log_event_timing(payload, self._NOW)
+
+        assert event["event_start_time_utc"] == self._START
+        assert event["event_start_time_raw"] == self._START
+        assert event["seconds_until_event"] == 570
+        assert event["countdown_window_minutes"] == 10
+        assert event["webhook_lag_seconds"] == 30
+
+    async def test_a_camel_case_naive_start_is_read_as_utc_without_a_lag(self) -> None:
+        async with captured_wide_event() as event:
+            _log_event_timing({"startTime": "2026-01-01T10:00:00"}, self._NOW)
+
+        assert event["event_start_time_utc"] == self._START
+        assert event["event_start_time_raw"] == "2026-01-01T10:00:00"
+        assert "webhook_lag_seconds" not in event
+
+    async def test_a_non_integer_countdown_records_nothing(self) -> None:
+        payload = {"start_time": self._START, "countdown_window_minutes": "10"}
+
+        async with captured_wide_event() as event:
+            _log_event_timing(payload, self._NOW)
+
+        assert "event_start_time_utc" not in event
+        assert "webhook_lag_seconds" not in event

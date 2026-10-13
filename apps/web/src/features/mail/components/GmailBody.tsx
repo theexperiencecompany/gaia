@@ -1,6 +1,6 @@
-import DOMPurify from "dompurify";
 import { useLayoutEffect, useMemo, useRef } from "react";
 
+import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 
 const decodeBase64 = (str: string): string => {
@@ -29,12 +29,7 @@ export default function GmailBody({ email }: { email: EmailData | null }) {
   }, [email]);
 
   const sanitizedHtml = useMemo(() => {
-    return decodedHtml
-      ? DOMPurify.sanitize(decodedHtml, {
-          ADD_ATTR: ["target"],
-          ADD_TAGS: ["iframe"],
-        })
-      : null;
+    return decodedHtml ? sanitizeEmailHtml(decodedHtml) : null;
   }, [decodedHtml]);
 
   // Injected in a layout effect so the shadow root is populated before the

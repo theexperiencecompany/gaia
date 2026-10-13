@@ -69,7 +69,7 @@ export function AsanaSettings({
     <TriggerSettingsCard>
       <TriggerSettingRow
         label="Project GID"
-        hint="Required — Asana GID of the project to monitor"
+        hint="Required: Asana GID of the project to monitor"
       >
         <Input
           aria-label="Project GID"

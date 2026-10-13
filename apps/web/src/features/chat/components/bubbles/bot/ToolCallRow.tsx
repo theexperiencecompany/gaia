@@ -28,6 +28,13 @@ export function WaitingForApprovalPill() {
 }
 
 // A settled decision rides its tool's own row — one place tells the whole story.
+// The receipt (execution outcome, denial reason) travels as feedback so the row
+// shows not just "Approved" but what the approval did.
+export interface ApprovalOutcome {
+  status: ApprovalStatus;
+  feedback: string | null;
+}
+
 const APPROVAL_CHIP: Record<
   string,
   { label: string; color: "success" | "danger" | "warning" }
@@ -35,22 +42,35 @@ const APPROVAL_CHIP: Record<
   approved: { label: "Approved", color: "success" },
   auto_approved: { label: "Auto-approved", color: "success" },
   denied: { label: "Denied", color: "danger" },
+  revoked: { label: "Withdrawn", color: "warning" },
   timeout: { label: "Expired", color: "warning" },
   abandoned: { label: "Expired", color: "warning" },
+  executed: { label: "Executed", color: "success" },
+  failed: { label: "Failed", color: "danger" },
+  unknown: { label: "Unknown", color: "warning" },
 };
 
-function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
-  const chip = APPROVAL_CHIP[status];
+function ApprovalOutcomeChip({
+  outcome,
+}: Readonly<{ outcome: ApprovalOutcome }>) {
+  const chip = APPROVAL_CHIP[outcome.status];
   if (!chip) return null;
   return (
-    <Chip
-      size="sm"
-      variant="flat"
-      color={chip.color}
-      className="ml-2 h-5 text-xs"
-    >
-      {chip.label}
-    </Chip>
+    <span className="ml-2 inline-flex min-w-0 items-center gap-1.5">
+      <Chip
+        size="sm"
+        variant="flat"
+        color={chip.color}
+        className="h-5 shrink-0 text-xs"
+      >
+        {chip.label}
+      </Chip>
+      {outcome.feedback && (
+        <span className="truncate text-xs text-zinc-500">
+          {outcome.feedback}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -89,13 +109,13 @@ function ToolCallHeader({
   expanded,
   onToggle,
   awaitingApproval,
-  approvalStatus,
+  approvalOutcome,
 }: Readonly<{
   display: ToolCallDisplay;
   expanded: boolean;
   onToggle: () => void;
   awaitingApproval: boolean;
-  approvalStatus?: ApprovalStatus;
+  approvalOutcome?: ApprovalOutcome;
 }>) {
   const { hasCategoryText, hasDetails } = display;
   return (
@@ -122,7 +142,7 @@ function ToolCallHeader({
             <WaitingForApprovalPill />
           </span>
         )}
-        {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
+        {approvalOutcome && <ApprovalOutcomeChip outcome={approvalOutcome} />}
       </div>
       {hasCategoryText && (
         <p className="text-xs text-zinc-600 leading-tight">
@@ -179,14 +199,14 @@ export function ToolCallRow({
   getIconUrl,
   getIntegrationName,
   awaitingApproval,
-  approvalStatus,
+  approvalOutcome,
 }: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
   awaitingApproval: boolean;
-  approvalStatus?: ApprovalStatus;
+  approvalOutcome?: ApprovalOutcome;
 }>) {
   const [expanded, setExpanded] = useState(false);
   const display = deriveToolCallDisplay(call, getIntegrationName);
@@ -210,7 +230,7 @@ export function ToolCallRow({
           expanded={expanded}
           onToggle={() => setExpanded(!expanded)}
           awaitingApproval={awaitingApproval}
-          approvalStatus={approvalStatus}
+          approvalOutcome={approvalOutcome}
         />
         <ToolCallDetails call={call} display={display} expanded={expanded} />
       </div>

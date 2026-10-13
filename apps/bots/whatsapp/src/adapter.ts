@@ -15,7 +15,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
@@ -32,8 +31,10 @@ import {
   type IncomingMedia,
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   readBodyBounded,
@@ -573,7 +574,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(waId, rest);
+          await this.handleStreamingMessage(waId, rest, messageId);
           return;
         }
 
@@ -588,7 +589,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, chatText);
+      await this.handleStreamingMessage(waId, chatText, messageId);
     } finally {
       typing.stop();
     }
@@ -604,6 +605,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async handleStreamingMessage(
     waId: string,
     text: string,
+    messageId: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     if (!text.trim() && attachments.length === 0) {
@@ -626,6 +628,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           platformUserId: waId,
           channelId: waId,
           isDm: true,
+          platformMessageId: messageId,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -669,6 +672,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.whatsapp,
         await this.analyticsFor(waId),
+        (emoji: string) => this.reactToMessage(waId, messageId, emoji, false),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -703,9 +707,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Your personal AI. I think ahead, remember what matters, and help you actually get things done.\n\n` +
       `Here's what I can do right here on WhatsApp:\n\n` +
-      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Chat*\nJust type anything: ask questions, brainstorm, think out loud.\n\n` +
       `*Todos*\nCapture tasks with /todo add.\n\n` +
       `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
       `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
@@ -775,6 +779,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         await this.handleStreamingMessage(
           waId,
           outcome.text,
+          messageId,
           outcome.attachments,
         );
       }
@@ -922,12 +927,35 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     } catch (err) {
       // Free-form send failed — usually the 24-hour window is closed. Fall back to
       // the approved template (sendable any time); a template failure rethrows so
-      // the consumer dead-letters it. Original error logged for visibility.
-      this.adapterLogger.info("outbound_template_fallback", {
+      // the consumer dead-letters it. A warning, because a 401/5xx lands here too.
+      wideLog.warning("outbound_template_fallback", {
         user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),
       });
       await this.sendNotificationTemplate(destinationId, text);
+    }
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
+    // always a wa_id, same addressing as deliverOutbound.
+    try {
+      await this.whatsAppClient.messages.sendReaction({
+        phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+        to: `+${destinationId}`,
+        reaction: { messageId: platformMessageId, emoji },
+      });
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...sanitizeErrorForLog(err),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -964,37 +992,29 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact to a WhatsApp user. Fetches the
-   * bytes from GAIA (bot-authenticated), uploads them to WhatsApp via the Kapso
-   * media API, then sends an image or document message referencing the media id.
+   * Uploads an agent-generated file artifact to WhatsApp via the Kapso media
+   * API, then sends an image or document message referencing the media id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const { data, contentType } = artifact;
-    const mime =
-      attachment.content_type ?? contentType ?? "application/octet-stream";
     const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
 
     const uploaded = (await this.whatsAppClient.media.upload({
       phoneNumberId,
       type: mime,
       file: new Blob([new Uint8Array(data)], { type: mime }),
-      fileName: attachment.filename,
+      fileName: filename,
     })) as { id?: string };
     if (!uploaded.id) throw new Error("Kapso media upload returned no id");
 
     const to = `+${destinationId}`;
-    const caption = attachment.caption ?? undefined;
     // WhatsApp image messages cap around 5 MB; deliver larger images as a
     // document so they still arrive instead of being rejected.
-    if (mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES) {
+    const asImage =
+      mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES;
+    if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,
         to,
@@ -1004,21 +1024,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       await this.whatsAppClient.messages.sendDocument({
         phoneNumberId,
         to,
-        document: { id: uploaded.id, filename: attachment.filename, caption },
+        document: { id: uploaded.id, filename, caption },
       });
     }
-    // The one platform that can actually deliver an artifact — captured after
-    // the send resolves, so a Kapso failure throws before it and is never
-    // recorded as a success. The base class captures the failure paths.
+    // Captured after the send resolves, so a Kapso failure throws before it
+    // and is never recorded as a success. The base class captures the failure paths.
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.FILE_DELIVERED,
+      "bot:file_delivered",
       {
         success: true,
-        delivery_kind:
-          mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES
-            ? "image"
-            : "document",
+        delivery_kind: asImage ? "image" : "document",
         bytes: data.length,
       },
     );

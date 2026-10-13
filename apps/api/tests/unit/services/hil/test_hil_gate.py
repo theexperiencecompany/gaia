@@ -15,17 +15,33 @@ from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 import pytest
 
-from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.hil import HIL_STATUS_KWARG, SUBAGENT_RESUME_CONFIG_KEY
+from app.models.agent_config import SubagentKind, SubagentResumeItem
 from app.models.hil_models import HILApprovalStatus
+from app.services.hil.approvals_store import approval_id_for
 from app.services.hil.bridge import ApprovalOutcome
-from app.services.hil.gate import GateContext, _judge, _outcome_from_record, read_gate_context
+from app.services.hil.gate import (
+    GateContext,
+    _judge,
+    _outcome_from_record,
+    decide_tool_call,
+    read_gate_context,
+)
 from app.services.hil.intent import IntentDecision, JudgedCall
+from app.services.hil.prompts import AUTO_REJECT_TEMPLATE
 from app.services.hil.utils import GatedCall
 
 from .conftest import (
     CONVERSATION_ID,
+    GATED_ACCOUNT,
+    GATED_ACCOUNT_SUMMARY,
+    GATED_ARGS,
+    GATED_TOOL,
     STREAM_ID,
     USER_ID,
+    GateSeams,
+    account_gated_request,
+    gated_request,
     make_record,
     make_request,
     make_tool,
@@ -33,6 +49,8 @@ from .conftest import (
 )
 
 MODULE = "app.services.hil.gate"
+
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
 
 
 @pytest.fixture(autouse=True)
@@ -172,6 +190,49 @@ class TestGateContext:
         context = read_gate_context(request)
         assert context is not None
         assert context.conversation_id == CONVERSATION_ID
+
+    def test_a_background_subagent_run_carries_its_thread_and_recipe(self) -> None:
+        # The approval it raises is what a decision rebuilds the parked subagent from.
+        recipe = SubagentResumeItem(
+            kind=SubagentKind.SPAWN,
+            tool_call_id="handoff-1",
+            task="triage the inbox",
+            context="",
+            integration_id="",
+            inherited_tool_names=[],
+            parent_configurable={"user_id": USER_ID},
+        )
+        request = make_request(
+            configurable={
+                "stream_id": STREAM_ID,
+                "user_id": USER_ID,
+                "conversation_id": CONVERSATION_ID,
+                "thread_id": f"spawn_{CONVERSATION_ID}_handoff-1",
+                SUBAGENT_RESUME_CONFIG_KEY: recipe,
+            }
+        )
+
+        context = read_gate_context(request)
+
+        assert context is not None
+        assert context.subagent_thread_id == f"spawn_{CONVERSATION_ID}_handoff-1"
+        assert context.subagent_resume == recipe
+
+    def test_a_run_without_a_recipe_is_not_a_parked_subagent(self) -> None:
+        # thread_id here is the executor's own; stamping it would park the executor as a subagent.
+        request = make_request(
+            configurable={
+                "stream_id": STREAM_ID,
+                "user_id": USER_ID,
+                "conversation_id": CONVERSATION_ID,
+                "thread_id": f"executor_{CONVERSATION_ID}",
+            }
+        )
+
+        context = read_gate_context(request)
+
+        assert context is not None
+        assert (context.subagent_thread_id, context.subagent_resume) == (None, None)
 
     @pytest.mark.parametrize("raw", ["not a list", None, 42, {"a": 1}])
     def test_malformed_user_messages_degrade_to_no_turns(self, raw: Any) -> None:
@@ -322,7 +383,7 @@ class TestWhatTheIntentJudgeIsAskedAbout:
             pausable=True,
         )
         call = GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"})
-        allowed = IntentDecision(True, "You asked me to send Bob the deck.")
+        allowed = IntentDecision(outcome="accept", reason="You asked me to send Bob the deck.")
 
         with (
             patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
@@ -339,3 +400,132 @@ class TestWhatTheIntentJudgeIsAskedAbout:
             args={"to": "bob@example.com"},
             summary="Send email — to: bob@example.com",
         )
+
+
+class TestGateValidatesArgsBeforeAsking:
+    async def test_malformed_args_fail_without_a_card_or_a_pause(self) -> None:
+        # The user must never approve a call the model will have to retry.
+        # Invalid args fail fast with the schema error on the barrier path too:
+        # no card, no pause, tool never runs.
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel
+
+        class _StrictArgs(BaseModel):
+            to: str
+            subject: str
+
+        strict = StructuredTool.from_function(
+            func=lambda: None, name="send_email", description="Send.", args_schema=_StrictArgs
+        )
+        handler = _Handler()
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=strict)),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)),
+            patch(f"{MODULE}.publish_approval_request", new=AsyncMock()) as pub,
+            patch(f"{MODULE}.interrupt") as intr,
+        ):
+            result = await run_through_gate(make_request(args={"to": "bob"}), handler)
+
+        assert handler.ran is False
+        pub.assert_not_awaited()
+        intr.assert_not_called()
+        assert isinstance(result, ToolMessage)
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
+        assert "subject" in str(result.content)
+        assert "no approval was requested" in str(result.content)
+
+
+@pytest.fixture
+def barrier(gate_seams: GateSeams) -> GateSeams:
+    """Take the interrupt-barrier path: the run's user is not on the ledger."""
+    gate_seams.ledger_enabled.clear()
+    return gate_seams
+
+
+class TestBarrierAutoMode:
+    async def test_an_auto_refusal_without_words_is_repeated_as_auto(
+        self, barrier: GateSeams
+    ) -> None:
+        barrier.recall.return_value = ApprovalOutcome(
+            status=HILApprovalStatus.DENIED, feedback=None, auto=True
+        )
+
+        result = await decide_tool_call(gated_request())
+
+        assert result is not None
+        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="")
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        barrier.publish_request.assert_not_awaited()
+
+    async def test_a_rejected_call_is_refused_and_remembered_as_auto(
+        self, barrier: GateSeams
+    ) -> None:
+        barrier.policy.return_value = "auto"
+        barrier.judge.return_value = IntentDecision("reject", "you said never email b@x")
+
+        result = await decide_tool_call(gated_request())
+
+        assert result is not None
+        assert result.content == AUTO_REJECT_TEMPLATE.format(
+            tool=GATED_TOOL, reason="you said never email b@x"
+        )
+        barrier.remember.assert_awaited_once_with(
+            STREAM_ID, GATED_TOOL, GATED_ARGS, "you said never email b@x", auto=True
+        )
+        barrier.publish_request.assert_not_awaited()
+        barrier.interrupt.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("reason", "card_reason"),
+        [("the recipient is new", "Auto mode wasn't sure: the recipient is new"), ("", None)],
+        ids=["explained", "unexplained"],
+    )
+    async def test_an_unsure_judge_explains_itself_on_the_card_only_when_it_can(
+        self, barrier: GateSeams, reason: str, card_reason: str | None
+    ) -> None:
+        barrier.policy.return_value = "auto"
+        barrier.judge.return_value = IntentDecision("ask", reason)
+
+        await decide_tool_call(gated_request())
+
+        assert barrier.publish_request.await_args_list[0].kwargs["auto_reason"] == card_reason
+        barrier.interrupt.assert_called_once()
+
+
+class TestBarrierNamesTheAccount:
+    async def test_the_card_names_the_account_the_call_acts_as(self, barrier: GateSeams) -> None:
+        await decide_tool_call(account_gated_request())
+
+        approval = barrier.publish_request.await_args.args[0]
+        assert approval.summary == GATED_ACCOUNT_SUMMARY
+        assert approval.tool_call.account == GATED_ACCOUNT
+
+
+class TestBarrierValidatesArgsAgainstTheRealTool:
+    async def test_malformed_args_answer_with_the_schema_error(self, barrier: GateSeams) -> None:
+        result = await decide_tool_call(gated_request(args={}))
+
+        assert result is not None
+        assert str(result.content).startswith(f"Invalid arguments for {GATED_TOOL}: ")
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
+        barrier.publish_request.assert_not_awaited()
+        barrier.interrupt.assert_not_called()
+
+
+class TestAResumeWithNoDecision:
+    async def test_the_stall_is_reported_as_a_system_error_not_a_denial(
+        self, barrier: GateSeams
+    ) -> None:
+        approval_id = approval_id_for(CONVERSATION_ID, "call-1")
+
+        result = await decide_tool_call(gated_request())
+
+        barrier.interrupt.assert_called_once()
+        assert result is not None
+        assert result.content == (
+            f"{GATED_TOOL} woke with no decision on its record ({approval_id}) — a system "
+            "error, not a denial. The action was NOT performed. Report the stall and "
+            "continue without it."
+        )
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"

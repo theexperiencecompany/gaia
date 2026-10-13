@@ -67,7 +67,7 @@ MEMORY_SETTINGS_URL = "/settings/memory"
 # with a "View Results" button, so bodies never claim a place like "in your chat".
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
     ("sorted {title} for you", "it's all ready whenever you are 🙌"),
-    ("{title} is done", "had a proper look — everything's ready for you"),
+    ("{title} is done", "had a proper look, everything's ready for you"),
     ("just wrapped up {title}", "pulled it all together, take a peek"),
     ("handled {title} for you", "all done end to end, give it a look"),
     ("finished {title}", "got everything ready for you to check out"),

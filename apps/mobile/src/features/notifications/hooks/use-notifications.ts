@@ -5,8 +5,8 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { chatApi } from "@/features/chat/api/chat-api";
 import { notificationsApi } from "@/features/notifications/api/notifications-api";
+import { relayApprovalDecision } from "@/features/notifications/utils/approval-relay";
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === "expo";
@@ -248,27 +248,21 @@ export function useNotifications(): UseNotificationsReturn {
           const approvalId =
             typeof data.approval_id === "string" ? data.approval_id : null;
 
-          // Approve/Deny action: relay the decision without opening the app. A 410
-          // (already resolved) is swallowed by postApprovalDecision; false means
-          // the submit genuinely failed — tell the user, or they'll think it worked.
+          // Approve/Deny action: relay the decision without opening the app, and
+          // say so when it did not commit — silence would read as success.
           if (
             data.type === "hil_approval" &&
             approvalId &&
             (action === "approve" || action === "deny")
           ) {
-            void chatApi
-              .postApprovalDecision(approvalId, { decision: action })
-              .then((ok) => {
-                if (!ok) {
-                  void Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: "Approval not sent",
-                      body: "Your decision didn't go through — open GAIA to retry.",
-                    },
-                    trigger: null,
-                  });
-                }
-              });
+            void relayApprovalDecision(approvalId, action).then((notice) => {
+              if (notice) {
+                void Notifications.scheduleNotificationAsync({
+                  content: notice,
+                  trigger: null,
+                });
+              }
+            });
             return;
           }
 

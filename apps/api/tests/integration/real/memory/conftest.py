@@ -36,12 +36,14 @@ from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
     CONSOLIDATION_PENDING_KEY,
+    EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
 )
 from app.db.chroma.chromadb import ChromaClient
 import app.db.postgresql as postgresql_module
 from app.db.redis import redis_cache
 from app.memory import chroma_store, consolidation, management
+import app.memory.embeddings as embeddings_module
 from app.memory.embeddings import _embed_sync, _rerank_sync
 import app.memory.extraction as extraction_module
 from tests.integration.real.memory.llm import FakeMemoryLLM
@@ -138,6 +140,21 @@ async def real_redis(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Redis, N
     monkeypatch.setattr(redis_cache, "redis", client)
     yield client
     await client.aclose()
+
+
+@pytest.fixture(autouse=True)
+def patient_recall_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give recall's sidecar calls ingestion's 30 s budget, not the 5 s fail-fast one.
+
+    These tests judge what recall finds. Under the fail-fast budget a CI sidecar
+    shared by every xdist worker can queue a query embed past 5 s; recall then
+    drops its vector half, and a paraphrased query finds nothing.
+    """
+    monkeypatch.setattr(
+        embeddings_module,
+        "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS",
+        EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    )
 
 
 @pytest.fixture(autouse=True)

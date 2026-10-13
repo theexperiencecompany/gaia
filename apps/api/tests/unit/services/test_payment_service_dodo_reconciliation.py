@@ -28,6 +28,9 @@ from tests.unit.services.conftest import SAMPLE_USER_DOC, _set_user
 SERVICE_MODULE = "app.services.payments.payment_service"
 ACTIVATION_MODULE = "app.services.payments.subscription_events"
 
+# Activation queues the Inbox desk; keep that off the real Redis.
+pytestmark = pytest.mark.usefixtures("mock_queue_inbox_desk")
+
 USER_ID = "507f1f77bcf86cd799439011"
 OTHER_USER_ID = "507f1f77bcf86cd799439012"
 DODO_SUBSCRIPTION_ID = "sub_reconciled"

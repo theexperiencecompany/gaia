@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
+from app.models.stream_events import EmojiAckPayload
 from app.schemas.common import ResponseModel
 from app.services.platform_link_service import Platform
 
@@ -42,6 +43,14 @@ class BotChatRequest(BaseModel):
         description=(
             "Full metadata for attached files. Mirrors the web chat payload so "
             "the agent can resolve URL/filename without an extra DB lookup."
+        ),
+    )
+    platform_message_id: str | None = Field(
+        None,
+        description=(
+            "Platform-native id of the user's message (WhatsApp wamid, Telegram "
+            "message_id, Discord id, Slack ts). Persisted on the saved user "
+            "message so a later background reaction can anchor to it."
         ),
     )
 
@@ -143,7 +152,7 @@ class RedeemLinkCodeResponse(BaseModel):
         default_factory=list,
         description=(
             "Ordered bubbles the bot must send itself because delivery failed. "
-            "Empty whenever delivered is true — sending them then would say "
+            "Empty whenever delivered is true, because sending them then would say "
             "everything twice."
         ),
     )
@@ -312,6 +321,7 @@ class BotWebStreamPayload(BaseModel):
     message_boundary: JsonValue = None
     response: str | None = None
     error: str | None = None
+    emoji_ack: EmojiAckPayload | None = None
     conversation_description: JsonValue = None
     user_message_id: JsonValue = None
     bot_message_id: JsonValue = None

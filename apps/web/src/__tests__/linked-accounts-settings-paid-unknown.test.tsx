@@ -25,11 +25,7 @@ vi.mock("@/stores/upgradeModalStore", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    BOT_CONNECTED: "bot:connected",
-    BOT_DISCONNECTED: "bot:disconnected",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 // The component reads its platform links through the path-typed client; a

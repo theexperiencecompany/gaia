@@ -1,5 +1,6 @@
 "use client";
 
+import { useChatStore } from "@/stores/chatStore";
 import { useActiveComposerLocked } from "@/stores/streamStore";
 
 export type ComposerSendMode = "send" | "stop" | "queue";
@@ -13,8 +14,13 @@ export type ComposerSendMode = "send" | "stop" | "queue";
  */
 export function useComposerSendMode(hasContent: boolean) {
   const isStreaming = useActiveComposerLocked();
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
 
-  const showQueue = isStreaming && hasContent;
+  const canSteer =
+    activeConversationId != null && activeConversationId !== "new";
+  const showQueue = isStreaming && hasContent && !canSteer;
   const showStop = isStreaming && !hasContent;
   let mode: ComposerSendMode = "send";
   if (showStop) mode = "stop";

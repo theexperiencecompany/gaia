@@ -12,6 +12,14 @@ import {
   NotificationSwipeRightActions,
 } from "./notification-card-swipe-actions";
 
+/** Multi-select state and handlers, which always travel together. */
+export interface NotificationSelection {
+  mode: boolean;
+  selected: boolean;
+  onToggle?: (notificationId: string) => void;
+  onLongPress?: (notificationId: string) => void;
+}
+
 interface NotificationCardProps {
   notification: InAppNotification;
   onMarkAsRead: (notificationId: string) => void;
@@ -24,10 +32,7 @@ interface NotificationCardProps {
   ) => void;
   isMarkingAsRead?: boolean;
   isActionLoading?: (actionId: string) => boolean;
-  isSelectMode?: boolean;
-  isSelected?: boolean;
-  onLongPress?: (notificationId: string) => void;
-  onSelectToggle?: (notificationId: string) => void;
+  selection?: NotificationSelection;
 }
 
 export function NotificationCard({
@@ -39,11 +44,14 @@ export function NotificationCard({
   onActionPress,
   isMarkingAsRead = false,
   isActionLoading,
-  isSelectMode = false,
-  isSelected = false,
-  onLongPress,
-  onSelectToggle,
+  selection,
 }: NotificationCardProps) {
+  const {
+    mode: isSelectMode = false,
+    selected: isSelected = false,
+    onToggle: onSelectToggle,
+    onLongPress,
+  } = selection ?? {};
   const isUnread = notification.status !== "read";
   // Redirect actions are handled by tapping the whole card — they shouldn't
   // also render as an explicit chip. Only non-redirect actions (api_call,
@@ -133,9 +141,8 @@ export function NotificationCard({
           <NotificationCardHeader
             notification={notification}
             isUnread={isUnread}
-            isSelectMode={isSelectMode}
-            isSelected={isSelected}
             isMarkingAsRead={isMarkingAsRead}
+            selection={{ mode: isSelectMode, selected: isSelected }}
             onMarkAsRead={handleMarkAsRead}
           />
 
