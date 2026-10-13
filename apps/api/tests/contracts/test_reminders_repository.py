@@ -348,6 +348,16 @@ class TestReminderCreationIsIdempotent:
         assert result.created
         assert await raw_collection.count_documents({"user_id": owner}) == 2
 
+    async def test_a_one_time_reminder_is_not_the_twin_of_a_recurring_one(
+        self, scheduler, raw_collection
+    ):
+        owner = _uid("owner")
+        await scheduler.create_reminder(_create_request(repeat="0 9 * * *"), user_id=owner)
+        result = await scheduler.create_reminder(_create_request(), user_id=owner)
+
+        assert result.created
+        assert await raw_collection.count_documents({"user_id": owner}) == 2
+
     async def test_another_users_identical_reminder_is_not_theirs(self, scheduler, raw_collection):
         await scheduler.create_reminder(_create_request(), user_id=_uid("a"))
         result = await scheduler.create_reminder(_create_request(), user_id=_uid("b"))

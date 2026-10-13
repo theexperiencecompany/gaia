@@ -14,7 +14,7 @@ mocked so tests exercise service logic only.
 
 from collections.abc import AsyncGenerator, Iterator
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import time
 from typing import Any
@@ -362,9 +362,12 @@ async def _saved_user_message(body: MessageRequestWithHistory, user: Authenticat
     mock_update = AsyncMock()
     with patch("app.services.chat.persistence.update_messages", new=mock_update):
         await save_user_message(body, user, "conv_x", "umsg_specific")
+    assert mock_update.call_args.kwargs == {"user": user}
     request_arg = mock_update.call_args.args[0]
     assert request_arg.conversation_id == "conv_x"
     (user_msg,) = request_arg.messages
+    # Stamped in UTC so it sorts against replies saved by other processes.
+    assert datetime.fromisoformat(user_msg.date).utcoffset() == timedelta(0)
     return user_msg
 
 
@@ -382,9 +385,11 @@ async def _saved_bot_reply(user: AuthenticatedUser, body: MessageRequestWithHist
     }
     with patch("app.services.chat.persistence.update_messages", new=mock_update):
         await save_bot_reply(**kwargs)
+    assert mock_update.call_args.kwargs == {"user": user}
     request_arg = mock_update.call_args.args[0]
     assert request_arg.conversation_id == kwargs["conversation_id"]
     (bot_msg,) = request_arg.messages
+    assert datetime.fromisoformat(bot_msg.date).utcoffset() == timedelta(0)
     return bot_msg
 
 
@@ -506,6 +511,7 @@ class TestRunChatStreamBackground:
     async def test_the_user_message_is_saved_before_the_agent_runs(
         self, test_user, existing_conv_body, saved_user_message
     ):
+        body = existing_conv_body.model_copy(update={"turn_id": "turn-1"})
         saved_before_agent: list[bool] = []
 
         async def agent() -> AsyncGenerator[str, None]:
@@ -520,19 +526,20 @@ class TestRunChatStreamBackground:
         ):
             await run_chat_stream_background(
                 stream_id="stream_um",
-                body=existing_conv_body,
+                body=body,
                 user=test_user,
                 conversation_id="conv_existing_123",
             )
 
         assert saved_before_agent == [True]
-        assert saved_user_message.await_args.args[2] == "conv_existing_123"
+        # The client's turn_id is the user message id, so its optimistic bubble and the row agree.
+        saved_user_message.assert_awaited_once_with(body, test_user, "conv_existing_123", "turn-1")
 
     async def test_a_reply_that_cannot_be_saved_is_replaced_by_a_visible_error(
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        mock_save = AsyncMock(side_effect=[RuntimeError("document too large"), None])
+        update = AsyncMock(side_effect=[RuntimeError("document too large"), None])
 
         with (
             _patch_stream_manager(sm),
@@ -540,7 +547,8 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_text_then_nostream("Reminder set.", "Reminder set.")),
             ),
-            patch("app.services.chat.stream.save_bot_reply", new=mock_save),
+            patch("app.services.chat.persistence.update_messages", new=update),
+            patch("app.services.chat.stream.log.error") as log_error,
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
@@ -550,17 +558,33 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        assert mock_save.await_count == 2
-        replacement = mock_save.await_args_list[1].kwargs
-        assert replacement["error"] == TURN_REPLY_NOT_SAVED
-        assert replacement["complete_message"] == ""
-        assert (
-            replacement["bot_message_id"] == mock_save.await_args_list[0].kwargs["bot_message_id"]
+        lost, replacement = (c.args[0] for c in update.await_args_list)
+        assert all(c.kwargs == {"user": test_user} for c in update.await_args_list)
+        assert replacement.conversation_id == "conv_existing_123"
+        (lost_reply,) = lost.messages
+        (error_reply,) = replacement.messages
+        assert (error_reply.type, error_reply.response, error_reply.error) == (
+            "bot",
+            "",
+            TURN_REPLY_NOT_SAVED,
         )
-        published = [c.args[1] for c in sm.publish_chunk.await_args_list]
-        assert any(TURN_REPLY_NOT_SAVED in chunk for chunk in published)
+        assert (error_reply.tool_data, error_reply.metadata) == (None, {})
+        assert (error_reply.message_id, error_reply.date) == (
+            lost_reply.message_id,
+            lost_reply.date,
+        )
+        log_error.assert_any_call(
+            "[CHAT] Reply could not be saved; saving its error instead",
+            stream_id="stream_rs",
+            conversation_id="conv_existing_123",
+            error="document too large",
+            error_type="RuntimeError",
+        )
+        sm.publish_chunk.assert_any_await(
+            "stream_rs", f"data: {json.dumps({'error': TURN_REPLY_NOT_SAVED})}\n\n"
+        )
         # Saved, not failed: the turn still closes normally for the client.
-        assert "data: [DONE]\n\n" in published
+        sm.publish_chunk.assert_any_await("stream_rs", "data: [DONE]\n\n")
         sm.set_error.assert_not_awaited()
 
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):

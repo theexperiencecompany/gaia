@@ -83,7 +83,9 @@ class TestCreateReminderTool:
             scheduled_at="2026-03-21 08:00:00",
         )
         assert result == "Reminder created successfully"
-        mock_scheduler.create_reminder.assert_awaited_once()
+        mock_scheduler.create_reminder.assert_awaited_once_with(
+            mock_instance.to_create_reminder_request.return_value, user_id=FAKE_USER_ID
+        )
 
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_an_existing_identical_reminder_is_reported_not_claimed_as_new(

@@ -9,6 +9,11 @@ from bson import ObjectId
 import pytest
 import time_machine
 
+from app.constants.reminders import (
+    REMINDER_CREATE_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    REMINDER_CREATE_LOCK_LEASE_SECONDS,
+    REMINDER_CREATE_LOCK_PREFIX,
+)
 from app.models.reminder_models import (
     AgentType,
     CreateReminderRequest,
@@ -30,6 +35,7 @@ from app.models.scheduler_models import (
 from app.services.reminder_service import ReminderScheduler
 from app.utils import redis_lock
 from app.utils.schedule import InvalidScheduleError
+from app.utils.timezone import Timezone
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -286,7 +292,9 @@ class TestCreateReminder:
             "repeat": None,
         }
 
-        with pytest.raises(ValueError, match="scheduled_at must be provided"):
+        with pytest.raises(
+            ValueError, match="^scheduled_at must be provided or repeat must be specified$"
+        ):
             await scheduler.create_reminder(request, FAKE_USER_ID)
         mock_repo.create.assert_not_awaited()
 
@@ -313,42 +321,85 @@ class TestCreateReminder:
 
 
 class TestCreateReminderIsIdempotent:
-    @pytest.fixture(autouse=True)
-    def creation_lease(self) -> Iterator[MagicMock]:
+    @pytest.fixture
+    def redis_client(self) -> Iterator[MagicMock]:
         lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
         client = MagicMock()
         client.lock.return_value = lock
         with patch.object(redis_lock.redis_cache, "redis", client):
-            yield lock
+            yield client
+
+    @staticmethod
+    def _recurring(payload: StaticReminderPayload) -> CreateReminderRequest:
+        return CreateReminderRequest(
+            agent=AgentType.STATIC, payload=payload, repeat="0 9 * * *", timezone="Asia/Kolkata"
+        )
 
     async def test_an_active_twin_is_returned_and_nothing_new_is_scheduled(
-        self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
+        self, scheduler, mock_repo, mock_scheduler_base, redis_client, sample_payload
     ):
         m_schedule, _ = mock_scheduler_base
+        first_run = datetime(2099, 1, 1, 3, 30, tzinfo=UTC)
         twin = _reminder_document()
         mock_repo.find_active_twin.return_value = twin
-        request = CreateReminderRequest(
-            agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
-        )
 
-        creation = await scheduler.create_reminder(request, FAKE_USER_ID)
+        with (
+            patch(
+                "app.services.reminder_service.get_next_run_time", return_value=first_run
+            ) as next_run,
+            patch("app.services.reminder_service.log.set_ns") as set_ns,
+        ):
+            creation = await scheduler.create_reminder(
+                self._recurring(sample_payload), FAKE_USER_ID
+            )
 
         assert creation == ReminderCreation(reminder_id=twin.id, created=False)
+        next_run.assert_called_once_with("0 9 * * *", tz=Timezone.parse("Asia/Kolkata"))
         mock_repo.find_active_twin.assert_awaited_once_with(
-            FAKE_USER_ID, sample_payload, None, future_time
+            FAKE_USER_ID, sample_payload, "0 9 * * *", first_run
         )
+        set_ns.assert_called_once_with("reminder", deduplicated=True, reminder_id=twin.id)
         mock_repo.create.assert_not_awaited()
         m_schedule.assert_not_called()
 
-    async def test_no_lease_fails_loud_instead_of_risking_a_twin(
-        self, scheduler, mock_repo, mock_scheduler_base, creation_lease, future_time, sample_payload
+    async def test_the_lease_is_bounded_and_named_by_user_text_and_schedule(
+        self, scheduler, mock_repo, mock_scheduler_base, redis_client, future_time, sample_payload
     ):
-        creation_lease.acquire.return_value = False
+        mock_repo.create.return_value = _reminder_document()
+
+        async def lease_name(user_id: str, title: str) -> str:
+            redis_client.lock.reset_mock()
+            payload = StaticReminderPayload(title=title, body=sample_payload.body)
+            request = CreateReminderRequest(
+                agent=AgentType.STATIC, payload=payload, scheduled_at=future_time
+            )
+            await scheduler.create_reminder(request, user_id)
+            (name,), kwargs = redis_client.lock.call_args
+            assert kwargs == {
+                "timeout": REMINDER_CREATE_LOCK_LEASE_SECONDS,
+                "blocking_timeout": REMINDER_CREATE_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+                "thread_local": False,
+            }
+            return name
+
+        same = await lease_name(FAKE_USER_ID, "Water")
+        assert same.startswith(REMINDER_CREATE_LOCK_PREFIX)
+        assert await lease_name(FAKE_USER_ID, "Water") == same
+        assert await lease_name(FAKE_USER_ID, "Stretch") != same
+        assert await lease_name("another-user", "Water") != same
+
+    async def test_no_lease_fails_loud_instead_of_risking_a_twin(
+        self, scheduler, mock_repo, mock_scheduler_base, redis_client, future_time, sample_payload
+    ):
+        redis_client.lock.return_value.acquire.return_value = False
         request = CreateReminderRequest(
             agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
         )
 
-        with pytest.raises(RuntimeError, match="reminder-creation lease"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^could not take the reminder-creation lease \(Redis unavailable or contended\)$",
+        ):
             await scheduler.create_reminder(request, FAKE_USER_ID)
 
         mock_repo.create.assert_not_awaited()

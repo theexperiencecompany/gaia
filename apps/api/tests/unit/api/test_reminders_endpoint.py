@@ -178,13 +178,14 @@ class TestReminderAnalytics:
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
                 new_callable=AsyncMock,
                 return_value=_reminder_model("rem_old"),
-            ),
+            ) as get_reminder,
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.post(API, json=_create_payload())
 
         assert resp.status_code == 201
         assert resp.json()["id"] == "rem_old"
+        get_reminder.assert_awaited_once_with("rem_old", user_id=USER_ID)
         mock_capture.assert_not_called()
 
     async def test_create_recurring_reminder_captures_is_recurring(

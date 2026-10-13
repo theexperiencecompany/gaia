@@ -1002,7 +1002,6 @@ async def _persist_turn(
             error=str(e),
             error_type=type(e).__name__,
         )
-        state.error = TURN_REPLY_NOT_SAVED
         await stream_manager.publish_chunk(
             stream_id, format_sse_data(ErrorFrame(error=TURN_REPLY_NOT_SAVED).model_dump())
         )
