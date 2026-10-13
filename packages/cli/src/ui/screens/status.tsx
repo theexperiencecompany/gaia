@@ -82,48 +82,53 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
               )}
             </Box>
             <Text color="gray">Installation: {state.data.install}</Text>
-            <Box marginTop={1} flexDirection="column">
-              <Box>
-                <Box width={22}>
-                  <Text bold>Service</Text>
-                </Box>
-                <Box width={10}>
-                  <Text bold>Status</Text>
-                </Box>
-                <Box width={10}>
-                  <Text bold>Latency</Text>
-                </Box>
-              </Box>
-              <Text color="gray">{"─".repeat(42)}</Text>
-              {[...state.data.services]
-                .sort((a: ServiceStatus, b: ServiceStatus) => {
-                  if (a.status === "down" && b.status !== "down") return -1;
-                  if (a.status !== "down" && b.status === "down") return 1;
-                  return a.name.localeCompare(b.name);
-                })
-                .map((service: ServiceStatus) => (
-                  <Box key={service.name}>
-                    <Box width={22}>
-                      <Text>
-                        {service.name} (:{service.port})
-                      </Text>
-                    </Box>
-                    <Box width={10}>
-                      <Text
-                        color={service.status === "up" ? "green" : "red"}
-                        bold
-                      >
-                        {service.status === "up" ? "\u2713 UP" : "\u2717 DOWN"}
-                      </Text>
-                    </Box>
-                    <Box width={10}>
-                      <Text color="gray">
-                        {service.latency ? `${service.latency}ms` : "--"}
-                      </Text>
-                    </Box>
+            <Text color="gray">{state.status}</Text>
+            {state.data.services.length > 0 && (
+              <Box marginTop={1} flexDirection="column">
+                <Box>
+                  <Box width={22}>
+                    <Text bold>Service</Text>
                   </Box>
-                ))}
-            </Box>
+                  <Box width={10}>
+                    <Text bold>Status</Text>
+                  </Box>
+                  <Box width={10}>
+                    <Text bold>Latency</Text>
+                  </Box>
+                </Box>
+                <Text color="gray">{"─".repeat(42)}</Text>
+                {[...state.data.services]
+                  .sort((a: ServiceStatus, b: ServiceStatus) => {
+                    if (a.status === "down" && b.status !== "down") return -1;
+                    if (a.status !== "down" && b.status === "down") return 1;
+                    return a.name.localeCompare(b.name);
+                  })
+                  .map((service: ServiceStatus) => (
+                    <Box key={service.name}>
+                      <Box width={22}>
+                        <Text>
+                          {service.name} (:{service.port})
+                        </Text>
+                      </Box>
+                      <Box width={10}>
+                        <Text
+                          color={service.status === "up" ? "green" : "red"}
+                          bold
+                        >
+                          {service.status === "up"
+                            ? "\u2713 UP"
+                            : "\u2717 DOWN"}
+                        </Text>
+                      </Box>
+                      <Box width={10}>
+                        <Text color="gray">
+                          {service.latency ? `${service.latency}ms` : "--"}
+                        </Text>
+                      </Box>
+                    </Box>
+                  ))}
+              </Box>
+            )}
           </Box>
 
           {readiness && (

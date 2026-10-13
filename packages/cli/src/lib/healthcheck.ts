@@ -3,7 +3,6 @@ import {
   getContainerStatuses,
   isDockerRunning,
 } from "./docker.js";
-import { DEFAULT_WEB_PORT } from "./endpoints.js";
 import type { SetupMode } from "./env-parser.js";
 
 export interface ServiceStatus {
@@ -14,7 +13,7 @@ export interface ServiceStatus {
   details?: string;
 }
 
-// Developer mode publishes every service on the host.
+/** Every service developer mode publishes on the host. */
 const DEVELOPER_SERVICES = [
   { name: "API", port: 8000, type: "http" as const, path: "/health" },
   { name: "Web", port: 3000, type: "http" as const, path: "/" },
@@ -25,35 +24,18 @@ const DEVELOPER_SERVICES = [
   { name: "ChromaDB", port: 8080, type: "tcp" as const },
 ];
 
-// Self-host publishes only the proxy; the API answers behind it at /api/v1
-// and the infra services are reported by container state instead.
-const SELFHOST_SERVICES = [
-  {
-    name: "API",
-    port: DEFAULT_WEB_PORT,
-    type: "http" as const,
-    path: "/api/v1/ping",
-  },
-  { name: "Web", port: DEFAULT_WEB_PORT, type: "http" as const, path: "/" },
-];
-
-export async function checkAllServices(
-  mode: SetupMode,
-  portOverrides?: Record<number, number>,
+/** Probe the developer stack's host ports (after infra/docker/.env overrides). */
+export async function checkDeveloperServices(
+  portOverrides: Record<number, number>,
 ): Promise<ServiceStatus[]> {
-  const catalog = mode === "selfhost" ? SELFHOST_SERVICES : DEVELOPER_SERVICES;
-  const services = catalog.map((service) => ({
-    ...service,
-    port: portOverrides?.[service.port] ?? service.port,
-  }));
-
-  const promises = services.map((service) =>
-    service.type === "http"
-      ? checkHttpService(service.name, service.port, service.path)
-      : checkTcpService(service.name, service.port),
+  return Promise.all(
+    DEVELOPER_SERVICES.map((service) => {
+      const port = portOverrides[service.port] ?? service.port;
+      return service.type === "http"
+        ? checkHttpService(service.name, port, service.path)
+        : checkTcpService(service.name, port);
+    }),
   );
-
-  return Promise.all(promises);
 }
 
 async function checkHttpService(
