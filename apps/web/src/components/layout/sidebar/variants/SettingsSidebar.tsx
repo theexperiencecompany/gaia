@@ -9,17 +9,16 @@ import {
   DESKTOP_ONLY_SETTINGS_KEYS,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
 import { useElectron } from "@/hooks/useElectron";
 
 export default function SettingsSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { isElectron } = useElectron();
-  const { data: setupStatus } = useSetupStatus();
 
   // Self-host instances have no billing — the entries make no sense there.
-  const billingHidden = setupStatus?.billing_enabled === false;
+  const billingHidden = !useBillingEnabled();
 
   const visibleItems = settingsPageItems.filter(
     (item) =>

@@ -48,14 +48,14 @@ export function UpgradeRequiredBody({
 
 interface DailyLimitBodyProps {
   featureName: string;
-  isPro: boolean;
+  showUpgradeNudge: boolean;
   resetInfo: { label: string; detail: string } | null;
 }
 
 /** Daily cap: say when it lifts, and nudge only when there is a tier above. */
 export function DailyLimitBody({
   featureName,
-  isPro,
+  showUpgradeNudge,
   resetInfo,
 }: DailyLimitBodyProps) {
   return (
@@ -82,8 +82,7 @@ export function DailyLimitBody({
         </div>
       )}
 
-      {/* Upgrade nudge — hidden for users already on the top tier */}
-      {!isPro && (
+      {showUpgradeNudge && (
         <div className="flex items-start gap-2 px-3">
           <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
           <p className="text-xs text-zinc-400">

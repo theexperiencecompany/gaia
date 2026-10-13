@@ -23,6 +23,15 @@ export function useSetupStatus() {
   });
 }
 
+/**
+ * Whether this instance bills. Hosted production never serves /setup/status,
+ * so anything but an explicit `billing_enabled: false` counts as billing.
+ */
+export function useBillingEnabled(): boolean {
+  const { data } = useSetupStatus();
+  return data?.billing_enabled !== false;
+}
+
 export function isProviderConfigured(
   status: SetupStatus | undefined,
   key: CredentialProvider,
