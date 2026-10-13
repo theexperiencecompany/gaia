@@ -37,7 +37,6 @@ from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundAttachment
 from app.services.artifact_events import artifact_channel
 from app.services.chat.artifacts_registry import (
     get_conversation_artifacts,
@@ -309,12 +308,10 @@ class ArtifactForwarder:
             publish_outbound_file(
                 platform=self.bot_platform,
                 user_id=self.user_id,
-                attachment=OutboundAttachment(
-                    conversation_id=self.conversation_id,
-                    path=path,
-                    filename=path.rsplit("/", 1)[-1],
-                    content_type=payload.get("content_type"),
-                ),
+                conversation_id=self.conversation_id,
+                path=path,
+                filename=path.rsplit("/", 1)[-1],
+                content_type=payload.get("content_type"),
             )
         )
 

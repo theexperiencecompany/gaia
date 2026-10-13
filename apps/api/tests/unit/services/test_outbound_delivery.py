@@ -12,7 +12,7 @@ from app.constants.outbound import (
     OUTBOUND_TTL_SECONDS_GREETING,
 )
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
+from app.schemas.outbound import OutboundMessageEnvelope
 from app.services import outbound_delivery as od
 from app.utils.log_identifiers import hash_platform_user_id
 from tests.helpers import captured_wide_event
@@ -276,18 +276,6 @@ class TestPublishOutboundMessageBrutalEdges:
         assert publisher.publish_outbound.await_count == 1
 
 
-def _attachment(**overrides: str | None) -> OutboundAttachment:
-    """Build the artifact reference a publish_outbound_file call carries."""
-    return OutboundAttachment(
-        **{
-            "conversation_id": "conv-1",
-            "path": "artifacts/r.pdf",
-            "filename": "r.pdf",
-            **overrides,
-        }
-    )
-
-
 class TestPublishOutboundFile:
     """publish_outbound_file enqueues an attachment envelope and is best-effort — every can't-deliver path returns False, never raises."""
 
@@ -296,7 +284,9 @@ class TestPublishOutboundFile:
         with patch.object(
             od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
-            ok = await od.publish_outbound_file(ConversationSource.WEB, "u1", _attachment())
+            ok = await od.publish_outbound_file(
+                ConversationSource.WEB, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+            )
         assert ok is False
         linked.assert_not_awaited()
 
@@ -307,7 +297,9 @@ class TestPublishOutboundFile:
             new_callable=AsyncMock,
             return_value={},
         ):
-            ok = await od.publish_outbound_file(ConversationSource.WHATSAPP, "u1", _attachment())
+            ok = await od.publish_outbound_file(
+                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+            )
         assert ok is False
 
     async def test_broker_unavailable_returns_false(self) -> None:
@@ -325,7 +317,9 @@ class TestPublishOutboundFile:
                 side_effect=RuntimeError("down"),
             ),
         ):
-            ok = await od.publish_outbound_file(ConversationSource.WHATSAPP, "u1", _attachment())
+            ok = await od.publish_outbound_file(
+                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+            )
         assert ok is False
 
     async def test_publish_error_returns_false(self) -> None:
@@ -342,7 +336,9 @@ class TestPublishOutboundFile:
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
         ):
-            ok = await od.publish_outbound_file(ConversationSource.WHATSAPP, "u1", _attachment())
+            ok = await od.publish_outbound_file(
+                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+            )
         assert ok is False
 
     async def test_success_enqueues_attachment_envelope(self) -> None:
@@ -361,12 +357,11 @@ class TestPublishOutboundFile:
             ok = await od.publish_outbound_file(
                 ConversationSource.WHATSAPP,
                 "u1",
-                _attachment(
-                    path="artifacts/report.pdf",
-                    filename="report.pdf",
-                    content_type="application/pdf",
-                    caption="here you go",
-                ),
+                "conv-1",
+                "artifacts/report.pdf",
+                "report.pdf",
+                content_type="application/pdf",
+                caption="here you go",
             )
         assert ok is True
         queue, body = publisher.publish_outbound.await_args.args
@@ -915,7 +910,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         ):
             async with captured_wide_event() as event:
                 ok = await od.publish_outbound_file(
-                    ConversationSource.WHATSAPP, "u1", _attachment()
+                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
                 )
 
         assert ok is False
