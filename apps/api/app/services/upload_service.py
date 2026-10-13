@@ -5,6 +5,7 @@ import cloudinary.uploader
 from fastapi import HTTPException
 
 from app.config.cloudinary import require_cloudinary
+from app.models.integrations.cloudinary import CloudinaryUploadResult
 from shared.py.wide_events import log
 
 
@@ -54,7 +55,7 @@ def upload_file_to_cloudinary(
             overwrite=True,
         )
 
-        file_url: str | None = upload_result.get("secure_url")
+        file_url = CloudinaryUploadResult.model_validate(upload_result).secure_url
         if not file_url:
             log.error("Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from file upload service")

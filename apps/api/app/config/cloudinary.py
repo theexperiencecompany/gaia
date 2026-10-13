@@ -16,9 +16,12 @@ from app.services.providers.provider_credentials_service import (
 )
 from app.utils.errors import AppError
 
+# The provider registry name; the credential-store provider id is a separate key.
+CLOUDINARY_PROVIDER = "cloudinary"
+
 
 @lazy_provider(
-    name="cloudinary",
+    name=CLOUDINARY_PROVIDER,
     required_keys=[],
     auto_initialize=True,
     is_global_context=True,
@@ -51,7 +54,7 @@ def init_cloudinary() -> None:
 
 def require_cloudinary() -> None:
     """Raise a 503 naming the fix when uploads have no blob store to land in."""
-    if providers.get("cloudinary"):
+    if providers.get(CLOUDINARY_PROVIDER):
         return
     raise AppError(
         message=(

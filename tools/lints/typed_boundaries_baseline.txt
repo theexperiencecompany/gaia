@@ -144,7 +144,6 @@ apps/api/app/services/triggers/handlers/linear.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
-apps/api/app/services/upload_service.py	TB002
 apps/api/app/services/workflow/playbook/check.py	TB002
 apps/api/app/services/workflow/playbook/evaluator.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB001
