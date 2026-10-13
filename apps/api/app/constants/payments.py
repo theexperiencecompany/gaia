@@ -73,6 +73,8 @@ DODO_TEST_MODE_PHONE_NUMBER = "+14155550123"
 #: ISO 4217 minor-unit exponents that are not 2: a Dodo amount is in the
 #: currency's smallest unit, so 1000 is ¥1000 but 10.00 USD and 1.000 KWD.
 ISO_4217_DEFAULT_EXPONENT = 2
+#: Prefix symbols for currencies whose copy reads better with one; others print the ISO code.
+CURRENCY_SYMBOLS: dict[str, str] = {"USD": "$", "EUR": "€", "GBP": "£", "INR": "₹"}
 ISO_4217_EXPONENTS: dict[str, int] = {
     **dict.fromkeys(
         (

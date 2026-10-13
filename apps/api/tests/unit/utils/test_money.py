@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.utils.money import currency_exponent, format_money, to_major_units
+from app.utils.money import currency_exponent, format_money, format_price, to_major_units
 
 
 @pytest.mark.parametrize(
@@ -30,3 +30,17 @@ def test_major_units_are_exact() -> None:
 
 def test_currency_code_case_does_not_change_the_exponent() -> None:
     assert currency_exponent("jpy") == currency_exponent("JPY") == 0
+
+
+@pytest.mark.parametrize(
+    ("amount_minor", "currency", "rendered"),
+    [
+        (1500, "USD", "$15"),
+        (1550, "usd", "$15.50"),
+        (240000, "INR", "₹2,400"),
+        (1500, "JPY", "1,500 JPY"),
+        (1999, "ZAR", "19.99 ZAR"),
+    ],
+)
+def test_format_price_reads_like_copy(amount_minor: int, currency: str, rendered: str) -> None:
+    assert format_price(amount_minor, currency) == rendered
