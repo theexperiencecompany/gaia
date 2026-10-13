@@ -101,6 +101,10 @@ LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
     LLMProviderName.CUSTOM,
 )
 
+# Production runs these on comms' own lane only, selected by name and on the
+# catalog model: never a default lane, a fallback, or a stored model choice.
+HOSTED_COMMS_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
+
 # Production's one-shot routing, never walked past. Memory sits on a different
 # provider from the graph so concurrent calls don't wipe each other's prompt cache.
 HOSTED_ONE_SHOT_PROVIDERS: dict[ModelUse, LLMProviderName] = {
@@ -253,6 +257,7 @@ FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=12
 __all__ = [
     "CREDENTIAL_PROVIDERS",
     "FAVICON_URL_TEMPLATE",
+    "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",

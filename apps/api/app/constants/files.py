@@ -52,3 +52,8 @@ SUMMARY_LLM_MAX_CONCURRENCY = 8
 SHARE_GRANT_TTL_SECONDS = 300
 SHARE_GRANT_MAX_TTL_SECONDS = 3600
 SHARE_GRANT_MAX_BYTES = 25 * 1024 * 1024
+
+# Summary for an uploaded image when no configured provider can read images.
+IMAGE_SUMMARY_NO_VISION_PROVIDER = (
+    "Image not described: no configured AI provider on this instance can read images."
+)
