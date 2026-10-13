@@ -35,7 +35,7 @@ from app.schemas.browser import (
     ImportTokenResponse,
     LiveViewTokenResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
+from app.services.analytics_service import capture
 from app.services.browser import registry
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff_buttons import decide_handoff_by_button
@@ -44,6 +44,8 @@ from app.services.browser.profiles import forget_saved_login, list_saved_logins
 from app.services.browser.storage_persistence import import_browser_profile
 from app.services.browser.takeover_token import TAKEOVER_TOKEN_TTL_SECONDS, create_takeover_token
 from app.services.browser.tasks import delete_browser_task, list_browser_tasks
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserImportTokenMinted, BrowserLoginsImported
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/browser", tags=["Browser"])
@@ -172,7 +174,7 @@ async def mint_browser_import_token(
     log.set(user={"id": user_id}, browser={"operation": "mint_import_token"})
     token = await mint_import_token(user_id)
     log.info(f"{LogTag.BROWSER} Minted browser import token", user={"id": user_id})
-    capture_context_event(AnalyticsEvents.BROWSER_IMPORT_TOKEN_MINTED, {})
+    capture(UserId(user_id), BrowserImportTokenMinted())
     return ImportTokenResponse(token=token, expires_in_seconds=BROWSER_IMPORT_TOKEN_TTL_SECONDS)
 
 
@@ -221,14 +223,13 @@ async def import_browser_sessions(
     )
     # Explicit id: the CLI authenticates with the single-use code, so this route
     # is excluded from the session auth that sets the PostHog request context.
-    capture_event(
-        user_id,
-        AnalyticsEvents.BROWSER_LOGINS_IMPORTED,
-        {
-            "host_count": len(imported),
-            "cookie_count": len(payload.cookies),
-            "source_browser": payload.source_browser,
-        },
+    capture(
+        UserId(user_id),
+        BrowserLoginsImported(
+            host_count=len(imported),
+            cookie_count=len(payload.cookies),
+            source_browser=payload.source_browser,
+        ),
     )
     return BrowserImportResponse(
         imported=[

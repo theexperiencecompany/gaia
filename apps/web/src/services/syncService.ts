@@ -10,6 +10,7 @@ import {
   apiRowHasLiveApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
+import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -277,7 +278,9 @@ const warnOnMessageContentLoss = (
   }
 };
 
-export const batchSyncConversations = async (): Promise<void> => {
+export const batchSyncConversations = async (
+  origin: RequestOrigin = {},
+): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
   // conservative whole-batch gate.
@@ -290,7 +293,7 @@ export const batchSyncConversations = async (): Promise<void> => {
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
-        .fetchConversations(1, MAX_SYNC_CONVERSATIONS)
+        .fetchConversations(1, MAX_SYNC_CONVERSATIONS, origin)
         .then((res) => res.conversations),
       db.getAllConversations(),
     ]);
@@ -320,7 +323,7 @@ export const batchSyncConversations = async (): Promise<void> => {
     }
 
     const { conversations: freshConversations } =
-      await chatApi.batchSyncConversations(staleItems);
+      await chatApi.batchSyncConversations(staleItems, origin);
 
     if (freshConversations.length === 0) {
       return;

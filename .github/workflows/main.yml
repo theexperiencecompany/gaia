@@ -1111,6 +1111,43 @@ jobs:
   # failed gate still fires the publish-without-deploy orphan alert instead of
   # silently skipping everything. build.yml owns its own runners
   # (GitHub-hosted) and is deliberately not routed through select-runner.
+  # A deploy parked on an environment gate nothing can release (run 37507260357
+  # sat 3 days with no reviewers configured) holds build.yml's master
+  # concurrency group, and every later push's docker phase queues behind it
+  # until the next push cancels it. No needs: it must clear the slot before
+  # this run's build-images reaches the same group.
+  deploy-unwedge:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # Above unwedge's 15 min limit: it waits out a gate still inside it.
+    timeout-minutes: 20
+    permissions:
+      actions: write # force-cancel the wedged run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Force-cancel runs wedged on a deployment gate
+        id: unwedge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/deploy.sh unwedge
+      # !cancelled(): a reap done before a later request failed still alerts.
+      # continue-on-error on the send only, as in build.yml's orphan alert.
+      - name: Notify Discord — wedged deploy cancelled
+        if: ${{ !cancelled() && steps.unwedge.outputs.reaped != '' }}
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ffa94d"
+          MESSAGE: |
+            ⚠️ **Wedged Backend Deploy Cancelled**
+            **Run(s):** `${{ steps.unwedge.outputs.reaped }}`
+            Their production deploy sat on an environment gate with no reviewers or wait timer, so nothing could release it, and it was blocking every later deploy. They never reached a runner, so production was not touched.
+            This run (`${{ github.sha }}`) deploys everything they carried. If this keeps happening, raise it with GitHub support.
+        run: bash scripts/ci/deploy.sh notify
+
   build-images:
     needs: [detect]
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}

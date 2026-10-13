@@ -13,7 +13,7 @@ from app.config.feature_flags import FEATURE_FLAGS, KILL_SWITCH_REASON, FeatureF
 from app.constants.feature_flags import FEATURE_NOT_FOUND_MESSAGE
 from app.models.user_models import UserDocument
 from app.schemas.feature_flags import UpdateUserFeatureFlagRequest
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics.catalog.settings import FeatureToggled
 
 URL = "/api/v1/features"
 USER_ID = FAKE_USER.user_id
@@ -68,7 +68,7 @@ def _toggled_captures(client: MagicMock) -> list[dict[str, object]]:
     return [
         call.kwargs
         for call in client.capture.call_args_list
-        if call.kwargs["event"] == AnalyticsEvents.FEATURE_TOGGLED
+        if call.kwargs["event"] == FeatureToggled.event
     ]
 
 

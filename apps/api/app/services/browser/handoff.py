@@ -20,11 +20,13 @@ from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.schemas.browser import HandoffOutcome, HandoffRecord, NewHandoff
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from app.services.browser.jobs import if_held
 from app.services.browser.live_code import revoke_handoff_live_code
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from shared.py.wide_events import log
 
 
@@ -152,10 +154,9 @@ async def resolve_handoff(
     )
     # Explicit id: chat-message resolution runs in the stream's background task
     # where no request context exists to attribute the event.
-    capture_event(
-        user_id,
-        AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-        {"decision": decision.value, "with_note": note is not None},
+    capture(
+        UserId(user_id),
+        BrowserHandoffResolved(decision=decision.value, with_note=note is not None),
     )
     return new_status
 

@@ -4,10 +4,12 @@ import { Button } from "@heroui/button";
 import { Delete02Icon } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 import type React from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
+import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import {
@@ -66,9 +68,28 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             onSave={handleDescriptionSave}
           />
 
+          {todo.parent_todo_id && (
+            <p className="text-xs text-zinc-500">
+              Sub-todo of{" "}
+              <Link
+                href={`/todos?todoId=${todo.parent_todo_id}`}
+                className="font-mono text-zinc-300 hover:underline"
+              >
+                {todo.parent_todo_id}
+              </Link>
+            </p>
+          )}
+
           {/* Canvas working memory — only for gaia-tracked todos */}
           {isTrackedTodo(todo) && (
             <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+          )}
+
+          {isTrackedTodo(todo) && !todo.parent_todo_id && (
+            <SubTodosSection
+              parentTodoId={todo.id}
+              openCount={todo.sub_todo_count}
+            />
           )}
 
           {/* Editable Fields */}

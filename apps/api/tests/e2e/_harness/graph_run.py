@@ -31,6 +31,7 @@ from langgraph.store.memory import InMemoryStore
 from pydantic import PrivateAttr
 
 from app.agents.core.graph_builder import build_graph as _build_graph
+from app.models import integration_models
 from tests.helpers import BindableToolsFakeModel
 
 #: The node that runs the LLM. Only its updates carry the model's own decisions.
@@ -428,9 +429,11 @@ async def comms_graph(
         ),
         patch(
             f"{node_module}.get_user_integration_capabilities",
-            new=AsyncMock(return_value={"tool_names": []}),
+            new=AsyncMock(
+                return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+            ),
         ),
-        patch(f"{node_module}.get_stream_writer", return_value=lambda _: None),
+        patch(f"{node_module}.current_stream_writer", return_value=lambda _: None),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch(
             "app.agents.core.background.executor_runner.prepare_executor_execution",

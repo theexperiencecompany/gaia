@@ -98,6 +98,21 @@ class TestUnpackUnwrapsExecute:
         assert call.name == "send_email"
         assert call.args == {"to": "a@b.c"}
 
+    def test_the_account_an_execute_call_names_is_carried_to_the_gate(self) -> None:
+        args = {"tool_name": "GMAIL_SEND_EMAIL", "data": {}, "account": "work@acme.com"}
+        call = unpack_tool_call(make_request(name=EXECUTE_TOOL_NAME, args=args))
+        assert call.account == "work@acme.com"
+
+    @pytest.mark.parametrize("account", ["", 7, None], ids=["blank", "not_a_string", "absent"])
+    def test_an_unusable_account_means_the_primary(self, account: object) -> None:
+        args = {"tool_name": "GMAIL_SEND_EMAIL", "data": {}, "account": account}
+        call = unpack_tool_call(make_request(name=EXECUTE_TOOL_NAME, args=args))
+        assert call.account is None
+
+    def test_a_direct_call_names_no_account_even_with_an_account_arg(self) -> None:
+        call = unpack_tool_call(make_request(name="send_email", args={"account": "work@acme.com"}))
+        assert call.account is None
+
     def test_execute_is_never_hil_exempt(self) -> None:
         assert EXECUTE_TOOL_NAME not in HIL_EXEMPT_TOOLS
 

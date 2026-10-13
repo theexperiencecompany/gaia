@@ -19,7 +19,7 @@ import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import { searchApi } from "../api/searchApi";
 import {
@@ -56,7 +56,7 @@ function ConversationResults({
           key={`conversation-${conversation.conversation_id}`}
           value={conversation.description || "Conversation"}
           onSelect={() => {
-            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+            track("search:result_clicked", {
               result_type: "conversation",
               conversation_id: conversation.conversation_id,
             });
@@ -95,10 +95,10 @@ function MessageResults({
           key={`message-${message.message.message_id}`}
           value={message.snippet}
           onSelect={() => {
-            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+            track("search:result_clicked", {
               result_type: "message",
               conversation_id: message.conversation_id,
-              message_id: message.message.message_id,
+              message_id: message.message.message_id ?? undefined,
             });
             onOpen(message.conversation_id);
           }}
@@ -191,7 +191,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       setSearchResults({ conversations: [], messages: [], notes: [] });
       return;
     }
-    trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
+    track("search:global_opened", {});
     const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(focusTimer);
   }, [open]);

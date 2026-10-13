@@ -25,6 +25,7 @@ from app.agents.core.subagents.subagent_runner import SubagentOutcome, subagent_
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models import agent_models
 from app.models.agent_models import SubagentKind
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
@@ -93,7 +94,7 @@ def _ui_graph_run(writer: MagicMock, *, expired: bool = False) -> Iterator[None]
             "app.utils.integration_checker.get_config",
             return_value={"configurable": {"source_category": "ui"}},
         ),
-        patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        patch("app.utils.integration_checker.current_stream_writer", return_value=writer),
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
     ):
         yield
@@ -689,7 +690,7 @@ def _bot_graph_run() -> Iterator[None]:
             "app.utils.integration_checker.get_config",
             return_value={"configurable": {"source_category": "bot"}},
         ),
-        patch("app.utils.integration_checker.get_stream_writer", return_value=MagicMock()),
+        patch("app.utils.integration_checker.current_stream_writer", return_value=MagicMock()),
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
     ):
         yield
@@ -764,8 +765,8 @@ class TestConnectionChecksUseTheirArguments:
         """On a text-only client, minting the login-free link for the wrong user hands one person another's connect flow."""
         subagent = _make_subagent("gmail")
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == ("user1", "gmail"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == ("user1", "gmail", None):
                 return "https://gaia.test/connect/abc"
             return None
 
@@ -813,8 +814,8 @@ class TestConnectionChecksUseTheirArguments:
             "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
         )
 
-        async def _link(user_id: str, integration_id: str) -> str | None:
-            if (user_id, integration_id) == ("user1", "posthog"):
+        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
+            if (user_id, integration_id, account_id) == ("user1", "posthog", None):
                 return "https://gaia.test/connect/xyz"
             return None
 
@@ -970,6 +971,20 @@ class TestHandoffRunsOnTheSharedRunner:
         assert result == "stop here"
         assert prepare.call_args.kwargs["configurable"]["user_id"] == "u-meta"
 
+    @pytest.mark.regression
+    async def test_a_run_naming_no_user_is_refused_before_anything_is_prepared(self) -> None:
+        """Regression: a config with no user went on to prepare a subagent for nobody."""
+        with patch(f"{HANDOFF}.prepare_subagent_execution", new_callable=AsyncMock) as prepare:
+            with pytest.raises(agent_models.RunUserMissingError):
+                await handoff.coroutine(
+                    subagent_id="gmail",
+                    task="Fetch the unread messages.",
+                    config={"configurable": {"thread_id": "t1"}, "metadata": {}},
+                    tool_call_id="tc1",
+                )
+
+        prepare.assert_not_awaited()
+
 
 @pytest.mark.unit
 class TestHandoffBuildsItsDelegation:
@@ -1094,7 +1109,7 @@ class TestWorkflowHandoffCarriesTheSubagentsCallRecord:
             ),
             patch(f"{HANDOFF}._has_parked_subagent", new_callable=AsyncMock, return_value=False),
             patch(f"{DELEGATION}.RunningSubagents", return_value=registry),
-            patch(f"{DELEGATION}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{DELEGATION}.current_stream_writer", return_value=MagicMock()),
             patch(
                 f"{DELEGATION}.execute_subagent_stream",
                 new_callable=AsyncMock,

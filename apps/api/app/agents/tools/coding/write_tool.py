@@ -67,10 +67,7 @@ async def _maybe_write_task_file(
         task_ref = await gaia_task_files.resolve(rel, user_id)
         if task_ref is None:
             if rel == GAIA_TASKS_DIRNAME or rel.startswith(GAIA_TASKS_DIRNAME + "/"):
-                return (
-                    f"Error: {rel} is not an editable notes file. Only canvas.md and "
-                    "activity.md under /workspace/gaia-tasks/<todo>/ can be edited."
-                )
+                return gaia_task_files.NOT_A_NOTES_FILE.format(rel=rel)
             return None
         return await _write_task_file(task_ref, user_id, content, abs_path, size, session_id)
     except gaia_task_files.GaiaTaskPathError as e:
@@ -109,7 +106,7 @@ async def write(
     if len(encoded) > MAX_CONTENT_BYTES:
         return f"Error: content exceeds {MAX_CONTENT_BYTES} bytes"
 
-    # Tracked-todo files (canvas.md / activity.md) are stored on the todo
+    # Tracked-todo notes files (canvas.md, activity.md, ...) are stored on the todo
     # document; the on-disk copy is a read-only projection repainted by the
     # sync, so the write goes to Mongo and never touches the sandbox.
     if (

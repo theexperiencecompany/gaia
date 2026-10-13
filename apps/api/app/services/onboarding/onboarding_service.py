@@ -18,7 +18,7 @@ from app.models.user_models import (
     OnboardingSubdocument,
     UserDocument,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event, identify_user
+from app.services.analytics_service import capture, identify_user
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
@@ -36,6 +36,8 @@ from app.services.workflow.service import WorkflowService
 from app.utils.auth_utils import with_local_onboarding_completed
 from app.utils.background_tasks import spawn_background_task
 from app.utils.seeding_utils import seed_first_conversation
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import OnboardingCompleted
 from shared.py.wide_events import log
 
 
@@ -95,20 +97,19 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # `dedupe_key` prevents a retried POST from re-counting the milestone.
+        # Once per user: the atomic gate above returned early on a retried POST.
         # The typed need is free text (only presence travels); profession goes
         # onto the person profile so cohorts can cut by it.
-        capture_event(
-            user_id,
-            AnalyticsEvents.ONBOARDING_COMPLETED,
-            {
-                "needs": sorted(need.value for need in onboarding_data.needs),
-                "has_other_need": bool(onboarding_data.other_need),
-            },
-            dedupe_key=user_id,
+        analytics_user = UserId(user_id)
+        capture(
+            analytics_user,
+            OnboardingCompleted(
+                needs=sorted(need.value for need in onboarding_data.needs),
+                has_other_need=bool(onboarding_data.other_need),
+            ),
         )
         identify_user(
-            user_id,
+            analytics_user,
             {"profession": onboarding_data.profession, "onboarding_completed": True},
         )
 

@@ -31,7 +31,7 @@ from app.models.user_models import (
     UserUpdateResponse,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event, track_logout
+from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
     get_chat_channel_priority,
     set_chat_channel_priority,
@@ -40,6 +40,9 @@ from app.services.onboarding.onboarding_service import get_user_onboarding_statu
 from app.services.user_service import update_user_profile
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.auth import UserLoggedOut
+from shared.py.analytics.catalog.settings import ProfileUpdated
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -153,12 +156,12 @@ async def update_me(
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
-    capture_context_event(
-        AnalyticsEvents.PROFILE_UPDATED,
-        {
-            "changed_field_count": len(changed_fields),
-            "has_picture_upload": picture_data is not None,
-        },
+    capture(
+        UserId(user_id),
+        ProfileUpdated(
+            changed_field_count=len(changed_fields),
+            has_picture_upload=picture_data is not None,
+        ),
     )
     log.set(outcome="success")
     return updated_user
@@ -181,7 +184,7 @@ async def update_user_name(
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
         log.audit("profile updated", actor=user_id, changed_fields=["name"])
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=1))
         log.set(outcome="success")
         return updated_user
     except HTTPException:
@@ -229,7 +232,7 @@ async def update_user_timezone(
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=1))
         log.set(outcome="success")
         return UpdateTimezoneResponse(
             success=True,
@@ -351,7 +354,7 @@ async def update_holo_card_colors(
             actor=user_id,
             changed_fields=["overlay_color", "overlay_opacity"],
         )
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 2})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=2))
         log.set(outcome="success")
         return UpdateHoloCardColorsResponse(
             success=True,
@@ -423,15 +426,7 @@ async def logout(
         # guard is behaviorally unreachable (the mutation gate would never see
         # it red). pragma: no mutate
         if user_email and user_id:  # pragma: no mutate
-            try:
-                track_logout(user_id=user_id)
-            except Exception as analytics_error:
-                log.warning(
-                    f"{LogTag.API} Failed to track logout analytics",
-                    user_email=user_email,
-                    error_type=type(analytics_error).__name__,
-                    error=str(analytics_error),
-                )
+            capture(UserId(user_id), UserLoggedOut())
 
         logout_url = session.get_logout_url()
 

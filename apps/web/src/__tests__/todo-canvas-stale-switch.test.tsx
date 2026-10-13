@@ -29,6 +29,9 @@ vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
 vi.mock("@/features/todo/components/WorkflowSection", () => ({
   default: () => <div data-testid="workflow-section" />,
 }));
+vi.mock("@/features/todo/components/SubTodosSection", () => ({
+  SubTodosSection: () => null,
+}));
 vi.mock("@/features/todo/components/shared/SubtaskManager", () => ({
   default: () => null,
 }));

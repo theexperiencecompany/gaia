@@ -38,8 +38,10 @@ from app.constants.llm import (
     TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS,
     TOOL_TIMEOUT_EXEMPT_TOOLS,
 )
+from app.models.agent_models import agent_configurable, run_analytics_context
 from app.override.langgraph_bigtool.utils import State
 from app.services.hil.gate import decide_tool_call
+from shared.py.analytics.context import analytics_context
 
 
 def format_tool_error(exc: Exception) -> str:
@@ -214,7 +216,8 @@ class DynamicToolNode(ToolNode):
         results, or a Command).
         """
         self._sync_registry()
-        return super()._func(tool_input, config, runtime)
+        with analytics_context(run_analytics_context(agent_configurable(config))):
+            return super()._func(tool_input, config, runtime)
 
     async def _afunc(
         self,
@@ -229,11 +232,13 @@ class DynamicToolNode(ToolNode):
         """
         self._sync_registry()
 
-        # If we have middleware with wrap_tool_call, use custom handling
-        if self._middleware_executor and self._middleware_executor.has_wrap_tool_call():
-            return await self._afunc_with_middleware(tool_input, config, runtime)
+        # Every tool call is the agent's action, whoever started the run.
+        with analytics_context(run_analytics_context(agent_configurable(config))):
+            # If we have middleware with wrap_tool_call, use custom handling
+            if self._middleware_executor and self._middleware_executor.has_wrap_tool_call():
+                return await self._afunc_with_middleware(tool_input, config, runtime)
 
-        return await super()._afunc(tool_input, config, runtime)
+            return await super()._afunc(tool_input, config, runtime)
 
     def _needs_parent_routing(self, tool_name: str) -> bool:
         """Check if a tool needs parent ToolNode execution path.

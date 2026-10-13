@@ -17,10 +17,8 @@ from app.constants.payments import (
     SubscriptionWorkflowSync,
 )
 from app.services.workflow.subscription_pause import SYNC_ACTIONS
-from app.workers.task_envelope import ArqJobContext
+from app.workers.task_envelope import RETRY_BACKOFF_BASE, ArqJobContext
 from shared.py.wide_events import log
-
-RETRY_BACKOFF_BASE = 2
 
 
 async def sync_workflows_for_subscription_state(ctx: ArqJobContext, user_id: str, sync: str) -> str:

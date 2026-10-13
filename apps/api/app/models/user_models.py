@@ -529,7 +529,6 @@ class UserDocument(MongoDocument):
     onboarding: OnboardingSubdocument | None = None
     # These nested subdocuments are schemaless-ish and read via chained `.get`
     # across many callers; typed as Any (not a sub-model) per this wave's scope.
-    provider_metadata: dict[str, Any] | None = None
     hil_preferences: dict[str, Any] | None = None
     notification_channel_prefs: dict[str, Any] | None = None
     platform_links: dict[str, Any] | None = None
@@ -607,7 +606,6 @@ class AuthenticatedUser(BaseModel):
     # Typed exactly as ``UserDocument`` types them (loose there, per that
     # class's note); nothing in ``app/`` reads them off the auth context, they
     # are carried only so ``GET /me`` keeps serving them.
-    provider_metadata: dict[str, Any] | None = None
     hil_preferences: dict[str, Any] | None = None
     notification_channel_prefs: dict[str, Any] | None = None
     platform_links: dict[str, Any] | None = None
@@ -698,7 +696,6 @@ class AuthenticatedUserResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_active_at: datetime | None = None
-    provider_metadata: dict[str, Any] | None = None
     hil_preferences: dict[str, Any] | None = None
     notification_channel_prefs: dict[str, Any] | None = None
     platform_links: dict[str, Any] | None = None

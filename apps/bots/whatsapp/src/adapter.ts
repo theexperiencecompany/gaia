@@ -15,7 +15,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
@@ -1032,7 +1031,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     // and is never recorded as a success. The base class captures the failure paths.
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.FILE_DELIVERED,
+      "bot:file_delivered",
       {
         success: true,
         delivery_kind: asImage ? "image" : "document",

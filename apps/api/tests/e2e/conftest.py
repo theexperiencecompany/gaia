@@ -18,6 +18,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from bson import ObjectId
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -185,7 +186,7 @@ def thread_config() -> dict[str, Any]:
     return {
         "configurable": {
             "thread_id": str(uuid4()),
-            "user_id": str(uuid4()),
+            "user_id": str(ObjectId()),
         }
     }
 

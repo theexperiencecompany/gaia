@@ -26,19 +26,24 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdateRequest,
 )
-from app.services.analytics_service import AnalyticsEvents
-from app.services.todos.errors import TrackedTodoWorkflowError
+from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
+from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosToggled, TodosUpdated
+from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
-ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
+
+pytestmark = pytest.mark.usefixtures("todo_response_reads")
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -135,7 +140,7 @@ class TestListTodos:
             todo={
                 "operation": "list",
                 "search_mode": "semantic",
-                "query": "launch",
+                "query": user_text_shape("launch"),
                 "page": 2,
                 "per_page": 10,
                 "filters_applied": ["query", "project"],
@@ -172,7 +177,7 @@ class TestTodoAnalytics:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "bulk_complete", "bulk_count": 2},
         )
-        mock_capture.assert_called_once_with(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": 2})
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosToggled(bulk_count=2))
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -180,6 +185,25 @@ class TestTodoAnalytics:
             ),
             "507f1f77bcf86cd799439011",
         )
+
+    async def test_bulk_update_captures_todos_updated_on_the_caller(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
+                new_callable=AsyncMock,
+                return_value=BulkOperationResponse(total=2, message="ok"),
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["todo-1", "todo-2"], "updates": {"priority": "high"}},
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosUpdated(bulk_count=2))
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
@@ -215,8 +239,8 @@ class TestTodoAnalytics:
             todo={"operation": "toggle_subtask", "id": "todo-1"},
         )
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.TODO_TOGGLED,
-            {"is_subtask": True, "completed": True},
+            UserId(FAKE_USER.user_id),
+            TodosToggled(is_subtask=True, completed=True),
         )
 
 
@@ -294,6 +318,54 @@ class TestTodoWideEventContext:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "delete_project", "project_id": "p1"},
         )
+
+    async def test_a_new_checklist_item_answers_with_the_todos_open_sub_todos(
+        self, client: AsyncClient, todo_response_reads: AsyncMock
+    ) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Inbox desk",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        todo_response_reads.return_value = {"todo-1": 2}
+        with patch(
+            f"{TODOS_ENDPOINT}.todo_repository.add_subtask",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "Buy milk"})
+
+        assert resp.json()["sub_todo_count"] == 2
+        todo_response_reads.assert_awaited_once_with("507f1f77bcf86cd799439011", ["todo-1"])
+
+    async def test_a_ticked_checklist_item_answers_with_the_todos_open_sub_todos(
+        self, client: AsyncClient, todo_response_reads: AsyncMock
+    ) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Inbox desk",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+            subtasks=[SubTask(id="sub-1", title="Buy milk", completed=False)],
+        )
+        todo_response_reads.return_value = {"todo-1": 2}
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.get", new_callable=AsyncMock, return_value=doc
+            ),
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                return_value=doc,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
+
+        assert resp.json()["sub_todo_count"] == 2
+        todo_response_reads.assert_awaited_once_with("507f1f77bcf86cd799439011", ["todo-1"])
 
     async def test_create_subtask_stamps_the_parent_todo(self, client: AsyncClient) -> None:
         doc = TodoDocument(
@@ -504,6 +576,43 @@ class TestUpdateTodoReschedule:
         schedule.assert_awaited_once_with("todo-1", when)
 
 
+class TestUpdateTodoRecurrence:
+    async def test_a_mobile_rrule_round_trips_unchanged(self, client: AsyncClient) -> None:
+        """The mobile detail sheet sends an RRULE as display-only recurrence on a plain todo."""
+        rrule = "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"
+        stored = _todo_response().model_copy(update={"recurrence": rrule})
+        update = AsyncMock(return_value=stored)
+        with patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=update):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": rrule})
+
+        assert resp.status_code == 200
+        assert update.await_args.args[1].recurrence == rrule
+        assert resp.json()["recurrence"] == rrule
+
+    async def test_a_refused_tracked_schedule_is_a_422_with_the_reason(
+        self, client: AsyncClient
+    ) -> None:
+        tracked = TodoDocument.model_validate(
+            {
+                "id": "todo-1",
+                "user_id": "u1",
+                "title": "Check inbox",
+                "labels": [GAIA_TRACKED_LABEL],
+            }
+        )
+        with (
+            patch(
+                "app.services.todos.todo_service.todo_repository.get",
+                new=AsyncMock(return_value=tracked),
+            ),
+            patch("app.services.todos.todo_service.todo_repository.update", new=AsyncMock()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"recurrence": "* * * * *"})
+
+        assert resp.status_code == 422
+        assert "Schedules can repeat at most once an hour." in resp.text
+
+
 class TestUpdateTodoTimeline:
     """A user's change to a tracked todo's schedule lands on its timeline, attributed to them."""
 
@@ -587,3 +696,38 @@ class TestTodoCanvas:
         assert resp.status_code == 404
         assert resp.json()["message"] == "Todo not found"
         get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")
+
+
+class TestReopenOfATakenThread:
+    """The 409 body names the open todo, so the client can send the user to it."""
+
+    @staticmethod
+    def _taken() -> ExternalRefTakenError:
+        holder = TodoDocument(id="held-1", user_id="u1", title="Reply to Sam")
+        return ExternalRefTakenError(holder)
+
+    async def test_single_update_is_409_naming_the_open_todo(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.update_todo",
+            new=AsyncMock(side_effect=self._taken()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"completed": False})
+
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["code"] == "external_ref_taken"
+        assert body["todo_id"] == "held-1"
+        assert "Reply to Sam" in body["message"]
+
+    async def test_bulk_update_is_409_naming_the_open_todo(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
+            new=AsyncMock(side_effect=self._taken()),
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["a", "b"], "updates": {"completed": False}},
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["todo_id"] == "held-1"

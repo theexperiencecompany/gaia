@@ -16,13 +16,14 @@ from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
 from app.tasks.reminder_tasks import (
     _deliver_reminder_to_platforms,
     _execute_static_reminder,
     _reminder_result_text,
     execute_reminder_by_agent,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
 
@@ -32,13 +33,15 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 
 MODULE = "app.tasks.reminder_tasks"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+REMINDER_ID = "6812f0b3c9a14e2b7d5a91dd"
 
 
 def _reminder(**overrides) -> ReminderModel:
     payload = overrides.pop("payload", StaticReminderPayload(title="Water the plants", body="Now"))
     return ReminderModel(
-        id="rem-1",
-        user_id="user-1",
+        id=REMINDER_ID,
+        user_id=USER_ID,
         agent="static",
         payload=payload,
         **overrides,
@@ -75,7 +78,7 @@ async def test_static_reminder_sends_notification() -> None:
 
     create.assert_awaited_once()
     notification = create.await_args.args[0]
-    assert notification.user_id == "user-1"
+    assert notification.user_id == USER_ID
     assert notification.content.title == "Water the plants"
     # The in-app badge must NOT auto-inject the external platforms: the chat-platform
     # copy is delivered (and recorded) by _deliver_reminder_to_platforms instead.
@@ -92,15 +95,16 @@ async def test_reminder_execution_captures_completed() -> None:
             new_callable=AsyncMock,
         ),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch("app.tasks.reminder_tasks.capture_event") as mock_capture,
+        patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
         await execute_reminder_by_agent(reminder)
 
     mock_capture.assert_called_once()
-    assert mock_capture.call_args.args[0] == "user-1"
-    assert mock_capture.call_args.args[1] == AnalyticsEvents.REMINDER_COMPLETED
-    assert mock_capture.call_args.args[2] == {"reminder_id": "rem-1", "agent": "static"}
+    assert mock_capture.call_args.args == (
+        UserId(USER_ID),
+        ReminderCompleted(reminder_id=REMINDER_ID, agent="static"),
+    )
 
 
 async def test_reminder_failure_does_not_capture() -> None:
@@ -113,7 +117,7 @@ async def test_reminder_failure_does_not_capture() -> None:
             side_effect=RuntimeError("notify down"),
         ),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch("app.tasks.reminder_tasks.capture_event") as mock_capture,
+        patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
         with pytest.raises(RuntimeError, match="notify down"):
@@ -132,7 +136,7 @@ async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
             side_effect=RuntimeError("notify down"),
         ),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         with pytest.raises(RuntimeError, match="notify down"):
             await execute_reminder_by_agent(_reminder())
@@ -140,8 +144,8 @@ async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
     assert log.get()["errors"] == [
         {
             "msg": "Failed to execute reminder",
-            "reminder_id": "rem-1",
-            "user_id": "user-1",
+            "reminder_id": REMINDER_ID,
+            "user_id": USER_ID,
             "error_type": "RuntimeError",
             "error": "notify down",
         }
@@ -161,7 +165,7 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
             new_callable=AsyncMock,
         ) as create,
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event") as mock_capture,
+        patch(f"{MODULE}.capture") as mock_capture,
     ):
         with pytest.raises(ValueError, match="has no ID, skipping execution"):
             await execute_reminder_by_agent(reminder)
@@ -170,7 +174,7 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
         {
             "msg": "Reminder has no ID, skipping execution",
             "agent": AgentType.STATIC,
-            "user_id": "user-1",
+            "user_id": USER_ID,
         }
     ]
     is_active.assert_not_awaited()
@@ -210,10 +214,10 @@ class TestReminderReachesChatPlatforms:
 
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user_id"] == "user-1"
+        assert kwargs["user_id"] == USER_ID
         # The origin names the reminder (title + machine id) so the langgraph
         # record it produces can be backtracked to this reminder.
-        assert kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
+        assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
         # The delivered text carries the reminder content GAIA would voice.
         assert "Water the plants" in kwargs["notification_text"]
         assert "Now" in kwargs["notification_text"]
@@ -250,7 +254,7 @@ class TestReminderReachesChatPlatforms:
                 new_callable=AsyncMock,
                 side_effect=HTTPException(status_code=404, detail="User not found"),
             ),
-            patch(f"{MODULE}.capture_event") as mock_capture,
+            patch(f"{MODULE}.capture") as mock_capture,
             patch("app.tasks.reminder_tasks.log.info"),
         ):
             # Must not raise despite the lookup blowing up.
@@ -260,7 +264,7 @@ class TestReminderReachesChatPlatforms:
         # The reminder is treated as successfully executed — the side channel's
         # failure did not mark it failed or skip the completion capture.
         mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.REMINDER_COMPLETED
+        assert isinstance(mock_capture.call_args.args[1], ReminderCompleted)
 
 
 class TestReminderResultText:
@@ -301,12 +305,12 @@ class TestDeliverReminderToPlatforms:
             await _deliver_reminder_to_platforms(reminder)
 
         # The owner is resolved for THIS reminder's user, not some other id.
-        get_user.assert_awaited_once_with("user-1")
+        get_user.assert_awaited_once_with(USER_ID)
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user"].user_id == "user-1"
-        assert kwargs["user_id"] == "user-1"
-        assert kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
+        assert kwargs["user"].user_id == USER_ID
+        assert kwargs["user_id"] == USER_ID
+        assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
 
     async def test_source_conversation_delivered_and_excluded_from_fanout(self) -> None:
@@ -332,9 +336,12 @@ class TestDeliverReminderToPlatforms:
         assert deliver_conv.await_args.kwargs["conversation_id"] == "conv-42"
         # The resolved owner is delivered to the source conversation, not some
         # other id — the stamped user_id keys the langgraph record to this user.
-        assert deliver_conv.await_args.kwargs["user"].user_id == "user-1"
+        assert deliver_conv.await_args.kwargs["user"].user_id == USER_ID
         assert deliver_conv.await_args.kwargs["text"] == "**Water the plants**\nNow"
-        assert deliver_conv.await_args.kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
+        assert (
+            deliver_conv.await_args.kwargs["origin"]
+            == f'reminder "Water the plants" (id {REMINDER_ID})'
+        )
         assert deliver.await_args.kwargs["exclude_source"] == ConversationSource.TELEGRAM
 
     async def test_no_source_conversation_delivers_only_to_channels(self) -> None:
@@ -367,7 +374,7 @@ class TestDeliverReminderToPlatforms:
         ):
             await _deliver_reminder_to_platforms(reminder)
 
-        assert deliver.await_args.kwargs["origin"] == "reminder (id rem-1)"
+        assert deliver.await_args.kwargs["origin"] == f"reminder (id {REMINDER_ID})"
         assert deliver.await_args.kwargs["notification_text"] == "Now"
 
     async def test_missing_user_skips_delivery_and_warns(self) -> None:
@@ -384,7 +391,7 @@ class TestDeliverReminderToPlatforms:
         assert mock_log.warning.call_args.args[0] == (
             "Reminder platform delivery skipped: user not found"
         )
-        assert mock_log.warning.call_args.kwargs == {"reminder_id": "rem-1", "user_id": "user-1"}
+        assert mock_log.warning.call_args.kwargs == {"reminder_id": REMINDER_ID, "user_id": USER_ID}
 
     async def test_lookup_failure_is_swallowed_and_logged(self) -> None:
         reminder = _reminder()
@@ -403,8 +410,8 @@ class TestDeliverReminderToPlatforms:
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.args[0] == "Reminder platform delivery failed"
         assert mock_log.error.call_args.kwargs == {
-            "reminder_id": "rem-1",
-            "user_id": "user-1",
+            "reminder_id": REMINDER_ID,
+            "user_id": USER_ID,
             "error": "db down",
             "error_type": "RuntimeError",
         }

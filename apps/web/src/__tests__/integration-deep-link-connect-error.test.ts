@@ -45,3 +45,33 @@ describe("useIntegrationDeepLink connect_error", () => {
     expect(h.onConnectRequested).not.toHaveBeenCalled();
   });
 });
+
+describe("useIntegrationDeepLink connect", () => {
+  beforeEach(() => {
+    replace.mockClear();
+  });
+
+  it("starts a reconnect of the account a notification names, once", () => {
+    search = "connect=gmail&account=ca_work";
+    window.history.replaceState(null, "", `/integrations?${search}`);
+    const h = handlers();
+
+    renderHook(() => useIntegrationDeepLink(h));
+
+    expect(h.onConnectRequested).toHaveBeenCalledExactlyOnceWith(
+      "gmail",
+      "ca_work",
+    );
+    expect(replace).toHaveBeenCalledWith("/integrations", { scroll: false });
+  });
+
+  it("starts a plain connect when no account is named", () => {
+    search = "connect=gmail";
+    window.history.replaceState(null, "", `/integrations?${search}`);
+    const h = handlers();
+
+    renderHook(() => useIntegrationDeepLink(h));
+
+    expect(h.onConnectRequested).toHaveBeenCalledExactlyOnceWith("gmail", null);
+  });
+});

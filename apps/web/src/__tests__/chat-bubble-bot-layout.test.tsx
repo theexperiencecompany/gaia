@@ -8,7 +8,7 @@ import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 
 /**
  * ChatBubbleBot decides whether a bot turn renders at all and which chrome it
- * gets (avatar, memory indicator, reactions, footer). The bubble content
+ * gets (avatar, memory indicator, footer). The bubble content
  * itself is TextBubble's job, so it is stubbed to a marker here.
  */
 
@@ -129,12 +129,12 @@ describe("ChatBubbleBot attachments", () => {
     expect(screen.getByText("memory stored")).toBeDefined();
   });
 
-  it("renders reactions below the bubble", () => {
+  it("shows no reaction badge on GAIA's own bubble", () => {
     renderBubble({
       text: "hi",
       reactions: [{ emoji: "👍" }] as ChatBubbleBotProps["reactions"],
     });
-    expect(screen.getByText("👍")).toBeDefined();
+    expect(screen.queryByText("👍")).toBeNull();
   });
 
   it("renders children after the bubble", () => {

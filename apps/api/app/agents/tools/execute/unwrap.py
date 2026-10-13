@@ -16,6 +16,7 @@ class ExecuteCallArgs(TypedDict, total=False):
     task_description: object
     tool_name: object
     data: object
+    account: object
 
 
 def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[str, object]]:
@@ -34,3 +35,12 @@ def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[s
         return name, args
     data = execute_args.get("data")
     return real_name, data if isinstance(data, dict) else {}
+
+
+def execute_call_account(name: str, args: dict[str, object]) -> str | None:
+    """The connected account an execute call names, or None for the primary / a non-execute call."""
+    if name != EXECUTE_TOOL_NAME:
+        return None
+    execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, args)
+    account = execute_args.get("account")
+    return account if isinstance(account, str) and account else None

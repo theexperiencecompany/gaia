@@ -11,7 +11,6 @@ from uuid import uuid4
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, BaseMessage, ToolMessage
 from langsmith import traceable
-from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
@@ -23,7 +22,6 @@ from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lan
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
@@ -34,7 +32,6 @@ from app.constants.llm import (
     DevModelOption,
 )
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
@@ -47,6 +44,7 @@ from app.models.agent_models import (
     LlmCallMetadata,
     StreamChunkMetadata,
     read_agent_configurable,
+    run_analytics_context,
 )
 from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
@@ -59,7 +57,6 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from app.services.latency_metrics import observe_comms_graph, span
-from app.services.llm_usage_analytics import graph_call_properties
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     HandoffCallArgs,
@@ -317,34 +314,14 @@ async def get_handoff_metadata(subagent_id: str) -> IntegrationDisplayMetadata:
 
 
 def _build_agent_callbacks(
-    conversation_id: str,
-    user_id: str | None,
-    agent_name: str,
-    source: str | None,
-    workflow_id: str | None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
-    """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
-    callbacks: list[BaseCallbackHandler] = []
+    """Assemble the LangChain callback list for an agent run (tracing, usage, TTFT).
 
-    posthog_client = (
-        providers.get(POSTHOG_PROVIDER_KEY)
-        if providers.is_available(POSTHOG_PROVIDER_KEY)
-        else None
-    )
-    if posthog_client is not None:
-        callbacks.append(
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user_id,
-                properties={
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                    **graph_call_properties(agent_name, source, workflow_id),
-                },
-                privacy_mode=False,
-            ),
-        )
+    No PostHog handler: every model call reaches PostHog once, from its
+    llm_calls ledger row (see llm_usage_analytics).
+    """
+    callbacks: list[BaseCallbackHandler] = []
 
     langfuse_callback = build_langfuse_callback()
     if langfuse_callback is not None:
@@ -684,18 +661,7 @@ async def build_agent_config(
         else None
     )
 
-    # Child runs omit both, and `workflow_id` is stamped onto the configurable
-    # only after this returns, so each falls back to the parent's.
-    run_source = source or (parent.conversation_source if parent else None)
-    run_workflow_id = turn.workflow_id or (parent.workflow_id if parent else None)
-    callbacks = _build_agent_callbacks(
-        conversation_id,
-        acting_user.user_id,
-        agent_name,
-        run_source,
-        run_workflow_id,
-        tracing.usage_metadata_callback,
-    )
+    callbacks = _build_agent_callbacks(tracing.usage_metadata_callback)
 
     # The one seam every execution path crosses: a child inherits its parent's lane
     # whole (except comms' own lane), a top-level run resolves one here. An explicit
@@ -783,6 +749,7 @@ async def build_agent_config(
         "user_name": acting_user.name,
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
+        "analytics_context": run_analytics_context(base_configurable or {}).model_dump(mode="json"),
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.

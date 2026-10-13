@@ -18,10 +18,12 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffRecord
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, get_handoff, resolve_handoff
 from app.services.browser.job_stop import stop_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from shared.py.wide_events import log
 
 _ACKS = {
@@ -78,9 +80,8 @@ async def _stop_from_card(
     # Stopped first, so the run cannot end on its own and tell a result the user declined.
     await stop_job(pending.job_id)
     resolved = await cancel_handoff(handoff_id)
-    capture_event(
-        user_id,
-        AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-        {"decision": HandoffDecision.CANCEL.value, "with_note": False},
+    capture(
+        UserId(user_id),
+        BrowserHandoffResolved(decision=HandoffDecision.CANCEL.value, with_note=False),
     )
     return resolved

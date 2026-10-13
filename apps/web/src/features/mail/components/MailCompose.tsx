@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/button";
@@ -97,7 +97,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
 
   useEffect(() => {
     if (open) {
-      trackEvent(ANALYTICS_EVENTS.EMAIL_COMPOSE_OPENED);
+      track("email:compose_opened", {});
     }
   }, [open]);
   const { formState, uiState, actions, editor, options } =

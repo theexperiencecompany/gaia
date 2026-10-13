@@ -13,12 +13,30 @@ the model, and how the run terminates.
 from __future__ import annotations
 
 from itertools import takewhile
-from typing import Any
+import logging
+from typing import Any, cast
+from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import HumanMessage, SystemMessage
+import fakeredis.aioredis
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langgraph.errors import GraphRecursionError
 import pytest
 
-from app.constants.llm import COMPLETION_NUDGE_MESSAGE
+from app.agents.core.background import executor_runner
+from app.agents.core.background.executor_runner import _ExecutorResult
+from app.agents.core.background.session import ExecutorRun, RunKind
+from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
+from app.agents.tools import manual_tool
+from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
+from app.constants.general import EXECUTOR_INTEGRATION_ID
+from app.constants.llm import (
+    COMPLETION_NUDGE_MESSAGE,
+    EXECUTOR_RECURSION_LIMIT,
+    LOOP_GUARD_STOP_REPEAT,
+)
+from app.db.redis import redis_cache
+from app.models.user_models import AuthenticatedUser
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,
     FINISH_NODE,
@@ -29,6 +47,7 @@ from tests.e2e._harness.graph_run import (
     executor_graph,
     run_graph,
 )
+from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 
 pytestmark = pytest.mark.e2e
 
@@ -306,6 +325,175 @@ class TestRecursionWrapup:
         shown = " ".join(str(m.content) for m in run.last_prompt())
 
         assert "almost out of steps" not in shown.lower()
+
+    async def test_a_model_slow_to_wrap_up_still_ends_with_its_report(self):
+        """The live desk run: warned only ~3 turns from the limit, it died with no report delivered."""
+        model = _SlowToWrapUp(responses=[AIMessage(content="unused")])
+        async with executor_graph([], model=model) as graph:
+            run = await run_graph(graph, "a long job", recursion_limit=EXECUTOR_RECURSION_LIMIT)
+            snapshot = await graph.aget_state({"configurable": {"thread_id": "t-1"}})
+
+        assert run.error is None, f"the run hit its step limit: {run.error}"
+        assert run.final_text() == WRAPUP_REPORT
+        assert all(_wrapup_notices(prompt) <= 1 for prompt in run.prompts), (
+            "the notice piled up instead of riding once at the tail of each prompt"
+        )
+        assert not any(_is_wrapup_notice(m) for m in snapshot.values["messages"]), (
+            "the notice was persisted, so the thread's next delegation would inherit it"
+        )
+
+    async def test_a_model_that_ignores_the_notice_still_stops_at_the_limit(self):
+        """The notice is advice, not a stop: a run that never answers still ends in GraphRecursionError."""
+        async with executor_graph(
+            [call("read_manual", {"topic": _TOPICS[i % 2]}, call_id=f"c{i}") for i in range(40)]
+        ) as graph:
+            run = await run_graph(graph, "a long job", recursion_limit=20)
+
+        assert isinstance(run.error, GraphRecursionError)
+        assert any(_wrapup_notices(prompt) for prompt in run.prompts)
+
+    async def test_the_model_node_writes_only_real_channels(self, caplog):
+        """remaining_steps is a managed value: echoing it back was dropped with a warning every step."""
+        caplog.set_level(logging.WARNING, logger="langgraph")
+        async with executor_graph(
+            [call("read_manual", {"topic": "goals"}, call_id="c1"), "Read it."]
+        ) as graph:
+            await run_graph(graph, "read the goals manual")
+
+        unknown = [r.getMessage() for r in caplog.records if "unknown channel" in r.getMessage()]
+        assert unknown == []
+
+
+#: Two topics alternated so consecutive calls differ and the repeat guard stays out of it.
+_TOPICS = ("goals", "memory")
+WRAPUP_REPORT = "Report: checked everything, nothing left to do."
+_WRAPUP_MARKER = "almost out of steps"
+#: Tool turns a slow model still takes after it is first warned, before it answers.
+_TURNS_TO_WRAP_UP = 3
+
+
+def _is_wrapup_notice(message: BaseMessage) -> bool:
+    return isinstance(message, HumanMessage) and _WRAPUP_MARKER in str(message.content)
+
+
+def _wrapup_notices(prompt: list[BaseMessage]) -> int:
+    return sum(1 for message in prompt if _is_wrapup_notice(message))
+
+
+class _SlowToWrapUp(StreamingScriptedModel):
+    """Works until warned, then takes _TURNS_TO_WRAP_UP more tool turns before its report.
+
+    Streams like a real provider, so the executor runner reads its report as it would in production.
+    """
+
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
+        self._prompts.append(list(messages))
+        warned_turns = sum(1 for prompt in self._prompts if _wrapup_notices(prompt))
+        turn = len(self._prompts)
+        if warned_turns > _TURNS_TO_WRAP_UP:
+            message = AIMessage(content=WRAPUP_REPORT)
+        else:
+            topic = _TOPICS[turn % len(_TOPICS)]
+            message = AIMessage(
+                content="",
+                tool_calls=[call("read_manual", {"topic": topic}, call_id=f"w{turn}")],
+            )
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
+async def _run_through_the_runner(model: StreamingScriptedModel) -> _ExecutorResult:
+    """Run the real executor runner and stream driver over the real graph; only its preparation is doubled."""
+    configurable = {"thread_id": "desk-run", "user_id": "u-1"}
+    run = ExecutorRun(
+        stream_id="desk-stream",
+        conversation_id="desk-run",
+        user=AuthenticatedUser(user_id="u-1", email="u@test.local"),
+        kind=RunKind.LIVE,
+        task_id="desk-task",
+        user_message_id=None,
+    )
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    async with executor_graph([], model=model) as graph:
+        ctx = SubagentExecutionContext(
+            subagent_graph=graph,
+            agent_name="executor_agent",
+            config=cast(
+                Any,
+                {
+                    "configurable": configurable,
+                    "metadata": {"user_id": "u-1"},
+                    "recursion_limit": EXECUTOR_RECURSION_LIMIT,
+                },
+            ),
+            configurable=cast(Any, configurable),
+            integration_id=EXECUTOR_INTEGRATION_ID,
+            initial_state=cast(Any, {"messages": [HumanMessage("run the desk")], "todos": []}),
+            stream_id=run.stream_id,
+        )
+        with (
+            patch.object(redis_cache, "redis", redis),
+            patch.object(
+                executor_runner, "prepare_executor_execution", AsyncMock(return_value=(ctx, None))
+            ),
+        ):
+            return await executor_runner._execute_executor(
+                "run the desk", cast(Any, configurable), run
+            )
+
+
+class TestAStepLimitedRunThroughTheRunner:
+    """What a tracked todo's delivery receives: the runner's result, not the graph's."""
+
+    async def test_a_run_that_wraps_up_hands_its_report_on_as_the_final_result(self):
+        result = await _run_through_the_runner(
+            _SlowToWrapUp(responses=[AIMessage(content="unused")])
+        )
+
+        assert (result.text, result.type) == (WRAPUP_REPORT, "final")
+
+    async def test_a_run_that_never_answers_still_ends_in_the_step_limit_error(self):
+        script = [
+            call("read_manual", {"topic": _TOPICS[i % 2]}, call_id=f"c{i}") for i in range(60)
+        ]
+
+        result = await _run_through_the_runner(streaming_model(script))
+
+        assert (result.text, result.type) == (EXECUTOR_STEP_LIMIT_MESSAGE, "error")
+
+
+class TestARepeatedCallIsNotRerun:
+    """The live desk run re-issued one identical edit 28 times; each ran, so the run spun to its limit."""
+
+    async def test_the_call_past_the_repeat_limit_never_reaches_the_tool(self):
+        repeats = LOOP_GUARD_STOP_REPEAT + 2
+        script: list[Any] = [
+            call("read_manual", {"topic": "goals"}, call_id=f"r{i}") for i in range(repeats)
+        ]
+        with patch.object(manual_tool, "get_manual", wraps=manual_tool.get_manual) as reads:
+            async with executor_graph([*script, "Read it."]) as graph:
+                # Refusal is background-only by contract; real runs carry that mode.
+                run = await run_graph(
+                    graph, "read the goals manual", recursion_limit=50, execution_mode="background"
+                )
+
+        assert reads.call_count == LOOP_GUARD_STOP_REPEAT - 1
+        refused = run.results_from(TOOLS_NODE)[LOOP_GUARD_STOP_REPEAT - 1 :]
+        assert len(refused) == repeats - (LOOP_GUARD_STOP_REPEAT - 1)
+        assert all("Blocked without executing" in text for text in refused), refused
+        assert run.final_text() == "Read it."
+
+    async def test_the_same_call_once_per_delegation_is_never_refused(self):
+        """The executor thread spans delegations: a streak counted per thread would refuse a fresh request."""
+        delegations = LOOP_GUARD_STOP_REPEAT + 1
+        script: list[Any] = []
+        for i in range(delegations):
+            script += [call("read_manual", {"topic": "goals"}, call_id=f"d{i}"), "Read it."]
+        with patch.object(manual_tool, "get_manual", wraps=manual_tool.get_manual) as reads:
+            async with executor_graph(script) as graph:
+                for i in range(delegations):
+                    await run_graph(graph, f"read the goals manual ({i})", thread_id="one-thread")
+
+        assert reads.call_count == delegations
 
 
 class TestTheCompletionGuardIsPerDelegation:

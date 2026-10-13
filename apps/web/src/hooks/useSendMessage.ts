@@ -26,6 +26,8 @@ type SendMessageOverrides = {
   /** Explicit conversation ID to use. Pass null to force a new conversation.
    *  When omitted, falls back to the active conversation ID from the store. */
   conversationId?: string | null;
+  /** The user resent an earlier message from its retry action. */
+  isRetry?: boolean;
 };
 
 interface ResolvedSendContext {
@@ -211,6 +213,7 @@ export const useSendMessage = () => {
         replyToMessage: ctx.replyToMessage,
         conversationId: ctx.conversationId,
         isOnboardingDemo: false,
+        isRetry: overrides?.isRetry ?? false,
       };
 
       turnManager.send({ inputText: ctx.content, userMessage, options });

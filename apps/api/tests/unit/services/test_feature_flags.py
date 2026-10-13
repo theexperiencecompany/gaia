@@ -1,12 +1,15 @@
 """Unit tests for app/services/feature_flags.py."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import ServerSelectionTimeoutError
 import pytest
+import time_machine
 
 from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
 from app.config.settings import CommonSettings, ProductionSettings, settings as app_settings
+from app.constants.analytics import ANALYTICS_DAY_TIMEZONE
 from app.constants.error_codes import FEATURE_KILLED
 from app.constants.feature_flags import (
     FEATURE_KILLED_FIX,
@@ -19,7 +22,6 @@ from app.constants.feature_flags import (
     FEATURE_USER_NOT_FOUND_WHY,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.feature_flags import (
     _get_posthog_client,
     is_code_mode_enabled,
@@ -28,7 +30,12 @@ from app.services.feature_flags import (
     set_user_flag,
 )
 from app.utils.errors import AppError
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.settings import FeatureFlagEvaluated
+from shared.py.analytics.context import MissingAnalyticsContextError
 from tests.helpers import captured_wide_event
+
+USER_ID = "64abc123def4567890abcdef"
 
 
 @pytest.fixture
@@ -46,7 +53,7 @@ def no_client() -> None:
 
 @pytest.fixture
 def evaluated() -> MagicMock:
-    with patch("app.services.feature_flags.capture_event") as mocked:
+    with patch("app.services.feature_flags.capture") as mocked:
         yield mocked
 
 
@@ -68,28 +75,28 @@ class TestLiveEvaluation:
     ) -> None:
         """No cache: consecutive evaluations each hit PostHog so a dashboard flip applies on the very next turn."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
         assert mock_client.get_feature_flag.call_count == 2
-        mock_client.get_feature_flag.assert_called_with("HIL_LEDGER", "u1")
+        mock_client.get_feature_flag.assert_called_with("HIL_LEDGER", USER_ID)
 
     async def test_false_disables(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is False
 
     async def test_none_falls_back_to_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
 
     async def test_exception_fails_open(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
 
     async def test_no_client_falls_back(self, no_client: None) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
 
 
 class TestEvaluationEvent:
@@ -98,41 +105,42 @@ class TestEvaluationEvent:
     ) -> None:
         """The SDK auto-emits $feature_flag_called on success; our event covers only the paths it cannot see, so this must stay silent."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
         evaluated.assert_not_called()
 
     async def test_disabled_value_emits_nothing(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is False
         evaluated.assert_not_called()
 
     async def test_unevaluated_flag_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
         call = evaluated.call_args
-        assert call.args[0] == "u1"
-        assert call.args[1] == AnalyticsEvents.FEATURE_FLAG_EVALUATED
-        assert call.args[2]["flag"] == "HIL_LEDGER"
-        assert call.args[2]["enabled"] is True
-        assert call.args[2]["fallback_reason"] == "flag_unevaluated"
-        assert call.kwargs["dedupe_key"].startswith("feature-flag-evaluated:HIL_LEDGER:u1:")
+        assert call.args == (
+            UserId(USER_ID),
+            FeatureFlagEvaluated(
+                flag="HIL_LEDGER", enabled=True, fallback_reason="flag_unevaluated"
+            ),
+        )
+        assert call.kwargs["dedupe"].key.startswith("HIL_LEDGER:flag_unevaluated:")
 
     async def test_fail_open_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-        assert evaluated.call_args.args[2]["fallback_reason"] == "evaluation_error"
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
 
     async def test_unconfigured_posthog_still_counts_fallback(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-        assert evaluated.call_args.args[2]["fallback_reason"] == "posthog_unconfigured"
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert evaluated.call_args.args[1].fallback_reason == "posthog_unconfigured"
 
 
 class TestBooleansOnly:
@@ -143,8 +151,8 @@ class TestBooleansOnly:
         mock_client.get_feature_flag.return_value = variant
 
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
-        assert evaluated.call_args.args[2]["fallback_reason"] == "flag_unevaluated"
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
+        assert evaluated.call_args.args[1].fallback_reason == "flag_unevaluated"
         mock_log.warning.assert_called_once_with(
             "Feature flag answered a variant, not a boolean; ignoring it",
             flag="HIL_LEDGER",
@@ -160,7 +168,7 @@ class TestBooleansOnly:
             patch("app.services.feature_flags.log") as mock_log,
             patch("app.services.feature_flags._stored_choice", AsyncMock(return_value=True)),
         ):
-            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, "u1") is True
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
         assert mock_log.warning.call_args.kwargs["flag"] == "BROWSER_OBSCURA_KILL"
 
 
@@ -169,30 +177,30 @@ class TestFlags:
         self, monkeypatch: pytest.MonkeyPatch, no_client: None
     ) -> None:
         monkeypatch.setattr(app_settings, "ENABLE_CODE_MODE", False)
-        assert await is_code_mode_enabled("u1") is False
+        assert await is_code_mode_enabled(USER_ID) is False
 
     async def test_is_code_mode_enabled_live(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = True
-        assert await is_code_mode_enabled("u1") is True
-        mock_client.get_feature_flag.assert_called_once_with("CODE_MODE", "u1")
+        assert await is_code_mode_enabled(USER_ID) is True
+        mock_client.get_feature_flag.assert_called_once_with("CODE_MODE", USER_ID)
 
     async def test_is_hil_ledger_enabled_on_when_setting_on(
         self, monkeypatch: pytest.MonkeyPatch, no_client: None
     ) -> None:
         monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", True)
-        assert await is_hil_ledger_enabled("u1") is True
+        assert await is_hil_ledger_enabled(USER_ID) is True
 
     async def test_is_hil_ledger_enabled_live(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = True
-        assert await is_hil_ledger_enabled("u1") is True
-        mock_client.get_feature_flag.assert_called_once_with("HIL_LEDGER", "u1")
+        assert await is_hil_ledger_enabled(USER_ID) is True
+        mock_client.get_feature_flag.assert_called_once_with("HIL_LEDGER", USER_ID)
 
     def test_feature_flag_evaluated_event_name(self) -> None:
-        assert AnalyticsEvents.FEATURE_FLAG_EVALUATED == "feature_flag:evaluated"
+        assert FeatureFlagEvaluated.event == "feature_flag:evaluated"
 
     def test_flag_keys_match_dashboard(self) -> None:
         assert FeatureFlag.HIL_LEDGER == "HIL_LEDGER"
@@ -206,21 +214,21 @@ class TestExplicitDefaultIsFallbackOnly:
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is True
 
     async def test_live_false_beats_explicit_true(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=True) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=True) is False
 
     async def test_exception_uses_explicit_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
-        assert evaluated.call_args.args[2]["enabled"] is False
-        assert evaluated.call_args.args[2]["fallback_reason"] == "evaluation_error"
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
+        assert evaluated.call_args.args[1].enabled is False
+        assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
 
 
 class TestFalsyUserId:
@@ -251,22 +259,6 @@ class TestClientLookup:
             assert _get_posthog_client() is None
 
 
-class TestTrackingNeverBreaksEvaluation:
-    async def test_capture_failure_still_returns_live_value(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.return_value = True
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-
-    async def test_capture_failure_still_returns_fallback(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-
-
 class TestHelpersWithoutUser:
     async def test_code_mode_none_user_is_default(self, evaluated: MagicMock) -> None:
         assert await is_code_mode_enabled(None) is False
@@ -281,15 +273,18 @@ class TestRegistry:
     def test_flag_keys_unique(self) -> None:
         assert len({f.value for f in FeatureFlag}) == len(list(FeatureFlag))
 
-    async def test_dedupe_key_carries_today(
+    async def test_the_once_a_day_gate_is_keyed_and_stamped_on_the_ist_day(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        from datetime import UTC, datetime
-
         mock_client.get_feature_flag.return_value = None
-        await is_enabled(FeatureFlag.HIL_LEDGER, "u9")
-        key = evaluated.call_args.kwargs["dedupe_key"]
-        assert key.endswith(datetime.now(UTC).date().isoformat())
+        with time_machine.travel(datetime(2026, 10, 8, 20, 0, tzinfo=UTC), tick=False):
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
+
+        # 20:00 UTC is already Oct 9 in IST, the project's day.
+        day_start = datetime(2026, 10, 9, tzinfo=ANALYTICS_DAY_TIMEZONE)
+        assert evaluated.call_args.kwargs["dedupe"] == Dedupe(
+            key="HIL_LEDGER:flag_unevaluated:2026-10-09", occurred_at=day_start
+        )
 
 
 class TestClientPassthrough:
@@ -320,7 +315,7 @@ class TestCodeModeDefaultFollowsSettings:
         from app.config.settings import settings
 
         monkeypatch.setattr(settings, "ENABLE_CODE_MODE", True)
-        assert await is_code_mode_enabled("u1") is True
+        assert await is_code_mode_enabled(USER_ID) is True
 
 
 FLAG_KILL_SWITCHES = {
@@ -357,24 +352,24 @@ class TestEveryFlagFailsOpenToItsOwnSetting:
             monkeypatch.setattr(app_settings, other, not env_value)
         monkeypatch.setattr(app_settings, FLAG_KILL_SWITCHES[flag], env_value)
 
-        assert await is_enabled(flag, "u1") is env_value
+        assert await is_enabled(flag, USER_ID) is env_value
 
 
 class TestTrackingIdentity:
     async def test_unconfigured_tracks_user_and_enabled(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
         call = evaluated.call_args
-        assert call.args[0] == "u1"
-        assert call.args[2]["enabled"] is True
+        assert call.args[0] == UserId(USER_ID)
+        assert call.args[1].enabled is True
 
     async def test_error_path_tracks_user(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-        assert evaluated.call_args.args[0] == "u1"
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert evaluated.call_args.args[0] == UserId(USER_ID)
 
 
 class TestLogContract:
@@ -411,7 +406,7 @@ class TestLogContract:
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
             mock_log.warning.assert_called_once_with(
                 "Feature flag evaluation failed, falling back to default",
                 flag="HIL_LEDGER",
@@ -419,19 +414,13 @@ class TestLogContract:
                 error_type="TimeoutError",
             )
 
-    async def test_tracking_failure_logs_debug_with_cause(
+    async def test_an_evaluation_outside_a_bound_context_fails_loud(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        evaluated.side_effect = RuntimeError("telemetry down")
-        with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
-            mock_log.debug.assert_called_once_with(
-                "Feature flag evaluation event skipped",
-                flag="HIL_LEDGER",
-                error="telemetry down",
-                error_type="RuntimeError",
-            )
+        evaluated.side_effect = MissingAnalyticsContextError("no entry point bound a context")
+        with pytest.raises(MissingAnalyticsContextError, match="no entry point bound a context"):
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
 
     async def test_dedupe_clock_is_utc(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         from datetime import UTC, datetime as real_datetime
@@ -439,11 +428,8 @@ class TestLogContract:
         mock_client.get_feature_flag.return_value = None
         with patch("app.services.feature_flags.datetime") as mock_dt:
             mock_dt.now.return_value = real_datetime.now(UTC)
-            await is_enabled(FeatureFlag.HIL_LEDGER, "u1")
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
             mock_dt.now.assert_called_once_with(UTC)
-
-
-USER_ID = "64abc123def4567890abcdef"
 
 
 def _user_with_choices(choices: dict[str, bool] | None) -> UserDocument:
@@ -510,12 +496,12 @@ class TestEvaluationOrder:
 
         await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
 
-        assert evaluated.call_args.args[0] == USER_ID
-        assert evaluated.call_args.args[2] == {
-            "flag": "BROWSER_OBSCURA",
-            "enabled": True,
-            "fallback_reason": "user_choice",
-        }
+        assert evaluated.call_args.args == (
+            UserId(USER_ID),
+            FeatureFlagEvaluated(
+                flag="BROWSER_OBSCURA", enabled=True, fallback_reason="user_choice"
+            ),
+        )
 
     @pytest.mark.parametrize("choices", [None, {}], ids=["never_chose", "chose_other_flags"])
     async def test_without_a_choice_posthog_decides(
@@ -588,12 +574,10 @@ class TestKillSwitch:
         _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True, "BROWSER_OBSCURA": True})
 
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is False
-        assert evaluated.call_args.args[0] == USER_ID
-        assert evaluated.call_args.args[2] == {
-            "flag": "BROWSER_OBSCURA",
-            "enabled": False,
-            "fallback_reason": "killed",
-        }
+        assert evaluated.call_args.args == (
+            UserId(USER_ID),
+            FeatureFlagEvaluated(flag="BROWSER_OBSCURA", enabled=False, fallback_reason="killed"),
+        )
 
     async def test_kill_switch_beats_a_rollout(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
@@ -619,7 +603,7 @@ class TestKillSwitch:
             error="posthog down",
             error_type="TimeoutError",
         )
-        assert evaluated.call_args.args[2]["fallback_reason"] == "user_choice"
+        assert evaluated.call_args.args[1].fallback_reason == "user_choice"
 
     async def test_a_kill_switch_never_created_is_off_and_warns_nothing(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
@@ -672,7 +656,7 @@ class TestKillSwitch:
         _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True})
         await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
 
-        choice_key, killed_key = (call.kwargs["dedupe_key"] for call in evaluated.call_args_list)
+        choice_key, killed_key = (call.kwargs["dedupe"].key for call in evaluated.call_args_list)
         assert choice_key != killed_key
 
 
@@ -690,14 +674,14 @@ class TestWideEventCarriesTheValueInEffect:
     ) -> None:
         mock_client.get_feature_flag.return_value = False
         async with captured_wide_event() as event:
-            await is_enabled(FeatureFlag.HIL_LEDGER, "u1")
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
         assert event["flags"] == {"HIL_LEDGER": False}
 
     async def test_the_default_when_posthog_is_unconfigured(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
         async with captured_wide_event() as event:
-            await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=True)
+            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=True)
         assert event["flags"] == {"HIL_LEDGER": True}
 
     async def test_a_kill(
@@ -787,7 +771,7 @@ class TestSetUserFlagRefusals:
         stored_choice.return_value = True
 
         with (
-            patch("app.services.feature_flags.capture_event"),
+            patch("app.services.feature_flags.capture"),
             patch("app.services.feature_flags.identify_user"),
         ):
             answer = await set_user_flag(USER_ID, "BROWSER_OBSCURA", False)

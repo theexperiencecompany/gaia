@@ -11,7 +11,6 @@ import {
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import { MessageReactions } from "../MessageReactions";
 import { BotBubbleAvatar, BotBubbleFooter } from "./BotBubbleChrome";
 import { describeBotBubbleContent } from "./botBubbleContent";
 import ImageBubble from "./ImageBubble";
@@ -42,7 +41,6 @@ export default function ChatBubbleBot(
     systemPurpose,
     follow_up_actions,
     error,
-    reactions,
     disableActions = false,
     hideAvatar = false,
     isGroupedWithNext = false,
@@ -135,9 +133,6 @@ export default function ChatBubbleBot(
               />
             )}
             <div className="chat_bubble_container">{renderedComponent}</div>
-            {reactions && (
-              <MessageReactions reactions={reactions} align="start" />
-            )}
           </div>
         </div>
       </div>

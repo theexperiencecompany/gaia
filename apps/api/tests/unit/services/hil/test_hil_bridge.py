@@ -28,7 +28,6 @@ from app.constants.hil import (
 )
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
-from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.bridge import (
     ApprovalOutcome,
     GatedApproval,
@@ -44,6 +43,8 @@ from app.services.hil.bridge import (
 )
 from app.services.hil.utils import GatedCall
 from app.utils.general_utils import ELLIPSIS
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilCardShown
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
 
@@ -499,6 +500,12 @@ class TestSummary:
     def test_the_integration_name_is_parenthesized_after_the_label(self) -> None:
         assert build_summary("send_email", {}, "Gmail") == "Send email (Gmail)"
 
+    def test_a_named_account_is_parenthesized_beside_the_integration(self) -> None:
+        assert (
+            build_summary("send_email", {}, "Gmail", "work@acme.com")
+            == "Send email (Gmail, work@acme.com)"
+        )
+
     def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
         assert build_summary("send_email", {}, None) == "Send email"
 
@@ -629,7 +636,7 @@ class TestBrowserTaskSummary:
 class TestCardShownEvent:
     async def test_register_emits_card_shown_with_user_id(self, bridge: dict) -> None:
         """The funnel's first event must attribute to the row's user — the bridge carries no request context, so an inferred id is unavailable and an anonymous capture would strand it."""
-        with patch(f"{MODULE}.capture_event") as capture:
+        with patch(f"{MODULE}.capture") as capture:
             await publish_ledger_request(
                 GatedApproval(
                     approval_id="ap_1",
@@ -643,18 +650,14 @@ class TestCardShownEvent:
             )
 
         capture.assert_called_once_with(
-            USER_ID,
-            AnalyticsEvents.HIL_CARD_SHOWN,
-            {
-                "approval_id": "ap_1",
-                "tool_name": "send_email",
-                "ledger_version": 0,
-                "background": False,
-            },
+            UserId(USER_ID),
+            HilCardShown(
+                approval_id="ap_1", tool_name="send_email", ledger_version=0, background=False
+            ),
         )
 
     async def test_background_register_marks_background(self, bridge: dict) -> None:
-        with patch(f"{MODULE}.capture_event") as capture:
+        with patch(f"{MODULE}.capture") as capture:
             await publish_ledger_request(
                 GatedApproval(
                     approval_id="ap_1",
@@ -668,13 +671,13 @@ class TestCardShownEvent:
                 live=False,
             )
 
-        assert capture.call_args.args[2]["background"] is True
+        assert capture.call_args.args[1].background is True
 
 
 class TestBackgroundFlagSync:
     async def test_publish_with_owner_marks_the_conversation(self, bridge: dict) -> None:
         with (
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(
                 f"{MODULE}.conversation_repository.mark_background_with_live_approval",
                 new=AsyncMock(return_value=True),
@@ -698,7 +701,7 @@ class TestBackgroundFlagSync:
 
     async def test_publish_without_owner_touches_no_flag(self, bridge: dict) -> None:
         with (
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(
                 f"{MODULE}.conversation_repository.mark_background_with_live_approval",
                 new=AsyncMock(),
@@ -808,7 +811,7 @@ async def publish_ledger(**overrides: Any) -> None:
         integration_name="Gmail",
     )
     kwargs: dict[str, Any] = {"live": False}
-    with patch(f"{MODULE}.capture_event"):
+    with patch(f"{MODULE}.capture"):
         await publish_ledger_request(approval, **{**kwargs, **overrides})
     await asyncio.sleep(0)  # let the fire-and-forget notify task start
 

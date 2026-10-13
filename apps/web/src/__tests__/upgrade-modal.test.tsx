@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const openCheckoutOverlay = vi.fn();
@@ -16,11 +18,7 @@ vi.mock("@/i18n/navigation", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
-    PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useLogout", () => ({
@@ -49,6 +47,7 @@ const PRO_PLAN = {
   id: "plan_pro",
   dodo_product_id: "dodo_pro_monthly",
   name: "Pro",
+  plan_type: "pro",
   amount: 2000,
   currency: "USD",
   duration: "monthly" as const,
@@ -76,8 +75,17 @@ vi.mock("@/features/pricing/components/PricingCards", () => ({
 }));
 
 import { UpgradeModal } from "@/features/pricing/components/UpgradeModal";
-import { trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+// The wall's paid-status poll reads the query cache the app shell provides.
+function withQueryClient({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  );
+}
 
 describe("UpgradeModal", () => {
   beforeEach(() => {
@@ -99,7 +107,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).not.toBeNull();
@@ -118,7 +126,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { dismissible: true, source: "sidebar" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).not.toBeNull();
@@ -133,7 +141,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { dismissible: true, source: "sidebar" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
@@ -148,7 +156,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: "LAUNCH20" }, { source: "api_402" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText("LAUNCH20")).not.toBeNull();
@@ -158,7 +166,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.queryByText(/at checkout/i)).toBeNull();
@@ -168,7 +176,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: "LAUNCH20" }, { source: "api_402" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     fireEvent.click(
@@ -188,7 +196,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText("GAIA is paid only")).not.toBeNull();
@@ -200,7 +208,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText("Your subscription ended")).not.toBeNull();
@@ -215,7 +223,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText("GAIA is paid only")).not.toBeNull();
@@ -225,7 +233,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.queryByText(/Cancel within/)).toBeNull();
@@ -236,7 +244,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.queryByText("Pro")).toBeNull();
@@ -248,7 +256,7 @@ describe("UpgradeModal", () => {
       useUpgradeModalStore
         .getState()
         .openModal(undefined, { source: "composer_submit" });
-      render(<UpgradeModal />);
+      render(<UpgradeModal />, { wrapper: withQueryClient });
       expect(screen.queryByRole("dialog")).toBeNull();
     } finally {
       pathname = "/c";
@@ -260,7 +268,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText(/confirming your payment/i)).not.toBeNull();
@@ -275,7 +283,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     expect(screen.getByText(/taking longer than expected/i)).not.toBeNull();
@@ -288,13 +296,13 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     fireEvent.click(
       screen.getByRole("button", { name: /subscribe to gaia pro/i }),
     );
 
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "subscription:checkout_started",
       expect.anything(),
     );
@@ -308,11 +316,11 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: "LAUNCH20" }, { source: "api_402" });
-    const { rerender } = render(<UpgradeModal />);
+    const { rerender } = render(<UpgradeModal />, { wrapper: withQueryClient });
     rerender(<UpgradeModal />);
 
     const impressions = vi
-      .mocked(trackEvent)
+      .mocked(track)
       .mock.calls.filter(([event]) => event === "paywall:modal_viewed");
 
     expect(impressions).toHaveLength(1);
@@ -329,18 +337,18 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "workflow_activation" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
-    expect(trackEvent).toHaveBeenCalledWith(
+    expect(track).toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.objectContaining({ source: "workflow_activation" }),
     );
   });
 
   it("captures no impression while the paywall is closed", () => {
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.anything(),
     );
@@ -355,10 +363,12 @@ describe("UpgradeModal", () => {
       .getState()
       .openModal({ discountCode: "LAUNCH20" }, { source: "api_402" });
 
-    const { container } = render(<UpgradeModal />);
+    const { container } = render(<UpgradeModal />, {
+      wrapper: withQueryClient,
+    });
 
     expect(container.firstChild).toBeNull();
-    expect(trackEvent).not.toHaveBeenCalledWith(
+    expect(track).not.toHaveBeenCalledWith(
       "paywall:modal_viewed",
       expect.anything(),
     );
@@ -368,7 +378,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    render(<UpgradeModal />);
+    render(<UpgradeModal />, { wrapper: withQueryClient });
 
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: /log out/i }));
@@ -380,7 +390,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    const { rerender } = render(<UpgradeModal />);
+    const { rerender } = render(<UpgradeModal />, { wrapper: withQueryClient });
     await screen.findByRole("dialog");
 
     // Subscription-status query resolves to paid — nothing else in the app
@@ -399,7 +409,7 @@ describe("UpgradeModal", () => {
     useUpgradeModalStore
       .getState()
       .openModal(undefined, { source: "composer_submit" });
-    const { rerender } = render(<UpgradeModal />);
+    const { rerender } = render(<UpgradeModal />, { wrapper: withQueryClient });
     await screen.findByRole("dialog");
 
     // isPaid flips true, but isUnknown is still true this render — the

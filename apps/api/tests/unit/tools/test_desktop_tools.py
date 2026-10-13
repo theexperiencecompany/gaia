@@ -211,7 +211,7 @@ class TestTakeScreenshot:
     async def test_happy_path_returns_text_and_image_blocks(self) -> None:
         writer = MagicMock()
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock(return_value=writer)),
+            patch(f"{MODULE}.current_stream_writer", MagicMock(return_value=writer)),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(
@@ -244,16 +244,21 @@ class TestTakeScreenshot:
         codec.assert_awaited_once_with("cG5n")
         save.assert_awaited_once()
         # The thumbnail card was streamed for the UI.
-        streamed = [c.args[0] for c in writer.call_args_list]
-        assert any(
-            "screenshot_data" in e.get("tool_data", {}).get("tool_name", "") for e in streamed
-        )
+        streamed = [
+            c.args[0]["tool_data"] for c in writer.call_args_list if "tool_data" in c.args[0]
+        ]
+        assert [(e["tool_name"], e["data"]) for e in streamed] == [
+            (
+                "screenshot_data",
+                {"thumbnail": "data:image/jpeg;base64,dGh1bWI=", "width": 800, "height": 600},
+            )
+        ]
 
     async def test_a_screenshot_that_could_not_be_saved_says_answer_from_it_now(self) -> None:
         """A screenshot that never reached the workspace can't be re-read, so the note must tell the model to answer from the pixels in front of it."""
         writer = MagicMock()
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock(return_value=writer)),
+            patch(f"{MODULE}.current_stream_writer", MagicMock(return_value=writer)),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(
@@ -277,7 +282,7 @@ class TestTakeScreenshot:
 
     async def test_failed_bridge_returns_an_error_string(self) -> None:
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", MagicMock()),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=False, error="no permission")),
@@ -289,7 +294,7 @@ class TestTakeScreenshot:
 
     async def test_missing_image_data_is_reported(self) -> None:
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", MagicMock()),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"image_b64": None})),
@@ -301,7 +306,7 @@ class TestTakeScreenshot:
 
     async def test_empty_outcome_data_is_an_unknown_error(self) -> None:
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", MagicMock()),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={})),
@@ -315,7 +320,7 @@ class TestTakeScreenshot:
         from app.utils.image_codec import InvalidImageError
 
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", MagicMock()),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"image_b64": "garbage"})),
@@ -330,7 +335,7 @@ class TestTakeScreenshot:
 
     async def test_workspace_save_failure_still_returns_the_pixels(self) -> None:
         with (
-            patch(f"{MODULE}.get_stream_writer", MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", MagicMock()),
             patch(
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"image_b64": "cG5n"})),

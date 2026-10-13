@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import current_stream_writer
 from app.models.integrations.composio_hooks import (
     ComposioToolCall,
     ComposioToolResponse,
@@ -297,10 +297,7 @@ def twitter_create_post_before_hook(
 ) -> ToolExecuteParams:
     """Stream post creation data to frontend for preview."""
     try:
-        writer = get_stream_writer()
-        if writer is None:
-            return params
-
+        writer = current_stream_writer()
         arguments = TwitterCreatePostArguments.model_validate(
             ComposioToolCall.model_validate(params).arguments
         )
@@ -335,10 +332,7 @@ def twitter_search_before_hook(
 ) -> ToolExecuteParams:
     """Send search progress to frontend."""
     try:
-        writer = get_stream_writer()
-        if writer is None:
-            return params
-
+        writer = current_stream_writer()
         arguments = TwitterSearchArguments.model_validate(
             ComposioToolCall.model_validate(params).arguments
         )
@@ -364,7 +358,7 @@ def twitter_search_after_hook(
     log.set(twitter_tool=tool, toolkit=toolkit)
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -373,7 +367,7 @@ def twitter_search_after_hook(
         tweets = _with_authors(page)
 
         # Send to frontend
-        if writer is not None and tweets:
+        if tweets:
             payload = {
                 "twitter_search_data": {
                     "tweets": [_search_tweet_card(item) for item in tweets],
@@ -421,7 +415,7 @@ def twitter_user_lookup_after_hook(
     """Process user lookup and stream profile data to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -436,7 +430,7 @@ def twitter_user_lookup_after_hook(
             users = user_data if isinstance(user_data, list) else [user_data] if user_data else []
 
         # Send to frontend
-        if writer is not None and users:
+        if users:
             payload = {
                 "twitter_user_data": [_profile_card(user) for user in users],
             }
@@ -474,7 +468,7 @@ def twitter_timeline_after_hook(
     """Process timeline and stream tweets to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -482,7 +476,7 @@ def twitter_timeline_after_hook(
         tweets = _with_authors(TwitterTweetPage.model_validate(raw))
 
         # Send to frontend
-        if writer is not None and tweets:
+        if tweets:
             payload = {
                 "twitter_timeline_data": {
                     "tweets": [_timeline_tweet_card(item) for item in tweets],
@@ -521,7 +515,7 @@ def twitter_followers_after_hook(
     """Process followers/following list and stream to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -530,7 +524,7 @@ def twitter_followers_after_hook(
         users = page.data
 
         # Send to frontend
-        if writer is not None and users:
+        if users:
             action = "followers" if "FOLLOWERS" in tool else "following"
             payload = {
                 f"twitter_{action}_data": [_follow_card(user) for user in users],
@@ -569,7 +563,7 @@ def twitter_post_created_after_hook(
     """Send created post data to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         if isinstance(raw, dict) and "error" in raw:
             return raw
@@ -577,15 +571,14 @@ def twitter_post_created_after_hook(
         post = TwitterCreateTweetResponse.model_validate(raw).data
         url = f"https://twitter.com/i/status/{post.id}"
 
-        if writer is not None:
-            payload = {
-                "twitter_post_created": {
-                    "id": post.id,
-                    "text": post.text,
-                    "url": url,
-                },
-            }
-            writer(payload)
+        payload = {
+            "twitter_post_created": {
+                "id": post.id,
+                "text": post.text,
+                "url": url,
+            },
+        }
+        writer(payload)
 
         summary: PostCreatedSummary = {
             "success": True,

@@ -1,18 +1,16 @@
-"""MongoDB-backed canvas/activity/log storage for tracked todos.
+"""MongoDB-backed canvas/activity/observations/log storage for tracked todos.
 
-Canvas (canvas.md), activity (activity.md) and log (log.md) content live
-as fields on the todo document itself: canvas_content, activity_content
-and log_content. Reading, writing, and appending go through the todos
-repository — no FUSE mount or JuiceFS required, so tracked todos work in every
-dev mode.
+Canvas (canvas.md), activity (activity.md), observations (observations.md) and
+log (log.md) content live as fields on the todo document itself. Reading,
+writing, and appending go through the todos repository — no FUSE mount or
+JuiceFS required, so tracked todos work in every dev mode.
 
 Every successful canvas/activity write re-embeds the todo in ChromaDB here, so
 all writers (agent file tools, code-written run markers) keep search fresh.
+Observations are counts rewritten every run, nothing to search for: never embedded.
 
-The legacy vfs_path field on the todo doc is retained as a stable
-display label (/workspace/gaia-tasks/{todo_id}) but is no longer a
-real filesystem path. It never carries the host-side /users/<uid>
-prefix — the LLM only ever sees the sandbox-visible workspace path.
+The legacy vfs_path field is a display label (/workspace/gaia-tasks/{todo_id}),
+no longer a filesystem path, and never carries the host-side /users/<uid> prefix.
 """
 
 from datetime import datetime
@@ -80,34 +78,36 @@ async def write_canvas(
     return False
 
 
-async def write_canvas_and_activity(
-    todo_id: str,
-    user_id: str,
-    *,
-    canvas: str,
-    activity: str,
-    expected_updated_at: datetime | None = None,
+async def repair_notes(
+    todo_id: str, user_id: str, notes: TodoUpdate, *, expected_updated_at: datetime | None
+) -> TodoDocument | None:
+    """Replace note bodies as a system repair of their shape; None when the revision moved.
+
+    updated_at stays put (dormancy and recency read it), and nothing is re-embedded:
+    a repair only moves text between the bodies and adds empty headings.
+    """
+    repaired = await todo_repository.replace_note_fields(
+        todo_id, user_id, update=notes, expected_updated_at=expected_updated_at, touch=False
+    )
+    if repaired is not None:
+        schedule_gaia_tasks_sync(user_id)
+    return repaired
+
+
+async def write_observations(
+    todo_id: str, user_id: str, content: str, *, expected_updated_at: datetime | None = None
 ) -> bool:
-    """Replace both bodies in one update (the legacy-canvas migration path)."""
+    """Replace the observations body; schedules VFS sync on success."""
     updated = await todo_repository.replace_note_fields(
         todo_id,
         user_id,
-        update=TodoUpdate(canvas_content=canvas, activity_content=activity),
+        update=TodoUpdate(observations_content=content),
         expected_updated_at=expected_updated_at,
     )
-    if updated is not None:
-        schedule_gaia_tasks_sync(user_id)
-        _schedule_reindex(updated)
-        return True
-    return False
-
-
-async def read_activity(todo_id: str, user_id: str) -> str | None:
-    """Return the todo's activity body, or None when the todo does not exist."""
-    doc = await todo_repository.get(todo_id, user_id=user_id)
-    if not doc:
-        return None
-    return doc.activity_content or ""
+    if updated is None:
+        return False
+    schedule_gaia_tasks_sync(user_id)
+    return True
 
 
 async def write_activity(

@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
@@ -100,6 +101,7 @@ from app.constants.llm import (
 )
 from app.core.lazy_loader import ProviderRegistry
 from app.services.llm_metering import LLMCallContext
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
 
@@ -111,6 +113,7 @@ from tests.helpers import create_fake_llm
 # about what gets BOOKED, not about the ledger row, so they share one minimal
 # context; the row it produces is covered in test_llm_metering_ledger.py.
 _CLIENT = "app.agents.llm.client"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
@@ -924,7 +927,7 @@ class TestAinvokeLlm:
         primary = self._runnable(result=AIMessage(content="ok"))
         config = RunnableConfig(
             configurable={
-                "user_id": "u1",
+                "user_id": USER_ID,
                 "conversation_id": "conv-1",
                 "thread_id": "executor_conv-1",
                 "workflow_id": "wf-1",
@@ -1016,7 +1019,7 @@ class TestOneInvocationPerCall:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(
-                configurable={"user_id": "u1", "provider": "openrouter", "root_request_id": "r1"}
+                configurable={"user_id": USER_ID, "provider": "openrouter", "root_request_id": "r1"}
             ),
             label="comms_agent",
             options=LLMInvokeOptions(meter_auxiliary=False),
@@ -1051,7 +1054,7 @@ class TestFallbackHandover:
         """The sticky key must be bound on the runnable, not left in config — a config-carried session_id is dropped before the wire."""
         primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
         fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
-        config = RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"})
         messages = [HumanMessage(content="hi")]
 
         result = await ainvoke_llm(primary, messages, config=config, fallback=fallback)
@@ -1186,7 +1189,7 @@ class TestMemoryLaneProviderSelection:
         mock_aux_runnable: MagicMock,
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-aux")
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         options = StructuredCallOptions(temperature=0.4, timeout=9.0, max_attempts=1)
 
@@ -1245,7 +1248,7 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
         structured = mock_memory_llm.return_value.with_structured_output.return_value
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1280,7 +1283,7 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         """Delegates to ainvoke_structured, whose LLMNotConfiguredError names the fix; extraction's callers catch exactly that type."""
         mock_structured.return_value = _Extracted(fact="delegated")
-        config = RunnableConfig(configurable={"user_id": "u1"})
+        config = RunnableConfig(configurable={"user_id": USER_ID})
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1561,36 +1564,11 @@ class TestRecordAuxiliaryUsage:
         handler.usage_metadata = dict(usage_by_model)
         return handler
 
-    async def test_the_analytics_event_gets_this_call_s_user_model_and_cost(self) -> None:
-        """The only PostHog record of background spend; a null field still leaves the ledger valid."""
-        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
-
-        with (
-            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.25)),
-            patch("app.agents.llm.client.capture_auxiliary_llm_call") as capture,
-        ):
-            await _record_auxiliary_usage(
-                handler,
-                "memory:extract",
-                "u-1",
-                context=_AUX_CONTEXT,
-                facts=ResponseFacts(),
-            )
-
-        kwargs = capture.call_args.kwargs
-        assert kwargs["user_id"] == "u-1"
-        assert kwargs["label"] == "memory:extract"
-        assert kwargs["model_name"] == "gemini"
-        assert kwargs["cost_usd"] == 0.25
-        assert kwargs["usage"] == {
-            "input_tokens": 100,
-            "output_tokens": 20,
-            "cached_tokens": 0,
-            "reasoning_tokens": 0,
-        }
-
-    async def test_the_analytics_event_carries_the_cached_and_reasoning_split(self) -> None:
-        """Cached input is discounted and reasoning is hidden output: dropping either hides cost."""
+    @pytest.mark.regression
+    async def test_a_one_shot_call_emits_exactly_one_completed_event_mirroring_its_ledger_row(
+        self,
+    ) -> None:
+        """The one-shot emitter used to build its own event beside the ledger, without the row's cost_source or generation_id."""
         handler = self._handler(
             gemini={
                 "input_tokens": 100,
@@ -1599,18 +1577,37 @@ class TestRecordAuxiliaryUsage:
                 "output_token_details": {"reasoning": 7},
             }
         )
+        posthog = MagicMock()
+        ledger = AsyncMock(side_effect=lambda doc: doc.model_copy(update={"id": "row-1"}))
 
         with (
-            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)),
-            patch("app.agents.llm.client.capture_auxiliary_llm_call") as capture,
+            patch("app.services.analytics_service._get_posthog_client", return_value=posthog),
+            patch("app.services.llm_metering.record_model_call_usage", new=AsyncMock()),
+            patch("app.services.llm_metering.llm_calls_repository.create", new=ledger),
         ):
             await _record_auxiliary_usage(
-                handler, "memory:extract", "u-1", context=_AUX_CONTEXT, facts=ResponseFacts()
+                handler,
+                "memory:extract",
+                str(ObjectId()),
+                context=replace(_AUX_CONTEXT, agent_name="memory:extract"),
+                facts=ResponseFacts(cost=0.0042, generation_id="gen-aux-1"),
+            )
+            await asyncio.gather(
+                *(t for t in asyncio.all_tasks() if t.get_name() == "llm_calls_ledger_insert")
             )
 
-        usage = capture.call_args.kwargs["usage"]
-        assert usage["cached_tokens"] == 40
-        assert usage["reasoning_tokens"] == 7
+        row = ledger.await_args.args[0]
+        completed = [
+            c.kwargs
+            for c in posthog.capture.call_args_list
+            if c.kwargs["event"] == AiLlmCallCompleted.event
+        ]
+        assert len(completed) == 1
+        props = completed[0]["properties"]
+        assert props["cost_usd"] == row.cost_usd == 0.0042
+        assert props["cost_source"] == row.cost_source == "provider"
+        assert props["generation_id"] == row.generation_id == "gen-aux-1"
+        assert (props["cached_tokens"], props["reasoning_tokens"]) == (40, 7)
 
     async def test_the_llm_call_event_carries_the_generation_id(self) -> None:
         """Structured calls used to lose the generation id (every follow-up/memory event read MISSING); the aux metering path must put it on the wide event."""
@@ -1623,7 +1620,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "follow_up_actions",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-abc123"),
             )
@@ -1712,7 +1709,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1727,7 +1724,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1740,7 +1737,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1756,7 +1753,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1776,7 +1773,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1798,13 +1795,13 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
 
         assert rec.call_args.kwargs == {
-            "user_id": "user-1",
+            "user_id": USER_ID,
             "model_name": "gemini",
             "usage": {
                 "input_tokens": 100,
@@ -1827,7 +1824,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1849,7 +1846,7 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "user-1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(),
             )
@@ -1898,11 +1895,11 @@ class TestAuxiliaryMeteringWiring:
             await ainvoke_llm(
                 primary,
                 [HumanMessage(content="hi")],
-                config=RunnableConfig(configurable={"user_id": "user-9"}),
+                config=RunnableConfig(configurable={"user_id": USER_ID}),
                 label="memory_extraction",
             )
 
-        assert rec.call_args.kwargs["user_id"] == "user-9"
+        assert rec.call_args.kwargs["user_id"] == USER_ID
 
     async def test_unattributed_spend_is_warned_about_with_its_label(self) -> None:
         """The warning is the only trail to which helper leaked its user_id, so the label must be on the recorded event, not just the message."""
@@ -1927,12 +1924,12 @@ class TestAuxiliaryMeteringWiring:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=RunnableConfig(configurable={"user_id": "user-9"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         forwarded = primary.ainvoke.call_args.kwargs["config"]
-        assert forwarded["configurable"] == {"user_id": "user-9"}
+        assert forwarded["configurable"] == {"user_id": USER_ID}
 
 
 class TestAinvokeStructured:
@@ -2312,18 +2309,34 @@ class TestStampFallback:
     def test_a_fallback_message_is_marked_with_the_model_that_produced_it(self) -> None:
         message = AIMessage(content="hi")
 
-        stamped = _stamp_fallback(message)
+        stamped = _stamp_fallback(message, "gemini-x")
 
         assert stamped is message
         assert message.response_metadata["gaia_fell_back"] is True
-        assert message.response_metadata["gaia_fallback_model"] == DEFAULT_MODEL_NAME
+        assert message.response_metadata["gaia_fallback_model"] == "gemini-x"
+
+    @pytest.mark.regression
+    async def test_a_graph_fallback_reply_names_the_fallback_lanes_model(self) -> None:
+        """The stamp said DEFAULT_MODEL_NAME whoever served, so accounting could not price the real one."""
+
+        def _boom(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            raise ConnectionError("primary down")
+
+        result = await ainvoke_llm(
+            RunnableLambda(_boom),
+            "hi",
+            fallback=RunnableLambda(lambda _input: AIMessage(content="from-fallback")),
+            options=LLMInvokeOptions(max_attempts=1, fallback_model="gemini-x"),
+        )
+
+        assert result.response_metadata["gaia_fallback_model"] == "gemini-x"
 
     def test_existing_response_metadata_is_kept(self) -> None:
         # The provider's own metadata rides along; stamping must add to it, not
         # replace it, or the model/usage the provider reported is lost.
         message = AIMessage(content="hi", response_metadata={"finish_reason": "stop"})
 
-        _stamp_fallback(message)
+        _stamp_fallback(message, "gemini-x")
 
         assert message.response_metadata["finish_reason"] == "stop"
         assert message.response_metadata["gaia_fell_back"] is True
@@ -2333,7 +2346,7 @@ class TestStampFallback:
         # model with no response_metadata at all.
         result = object()
 
-        assert _stamp_fallback(result) is result
+        assert _stamp_fallback(result, "gemini-x") is result
 
 
 # ---------------------------------------------------------------------------
@@ -2476,7 +2489,7 @@ class TestFallbackRunCarriesTheCallLabel:
             RunnableLambda(_primary),
             "hi",
             fallback=RunnableLambda(_fallback),
-            config=cast(RunnableConfig, {"configurable": {"user_id": "u1"}}),
+            config=cast(RunnableConfig, {"configurable": {"user_id": USER_ID}}),
             options=LLMInvokeOptions(
                 max_attempts=1,
                 fallback_config=cast(RunnableConfig, {"configurable": {"provider": "gemini"}}),
@@ -2486,7 +2499,7 @@ class TestFallbackRunCarriesTheCallLabel:
 
         assert result.content == "from-fallback"
         assert primary_seen.get("metadata", {}).get("llm_label") == "memory_extraction"
-        assert primary_seen["configurable"] == {"user_id": "u1"}
+        assert primary_seen["configurable"] == {"user_id": USER_ID}
         assert fallback_seen.get("metadata", {}).get("llm_label") == "memory_extraction"
         assert fallback_seen["configurable"] == {"provider": "gemini"}
 
@@ -2510,7 +2523,7 @@ class TestFallbackKeepsItsLanesStickySession:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
@@ -2525,11 +2538,74 @@ class TestFallbackKeepsItsLanesStickySession:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         fallback.bind.assert_not_called()
+
+
+class TestTheSyncFallback:
+    """invoke_llm's fallback branch: same session, label, error and served-model stamp as the async path."""
+
+    @staticmethod
+    def _failing_primary() -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.invoke = MagicMock(side_effect=ConnectionError("provider down"))
+        return runnable
+
+    @staticmethod
+    def _fallback() -> NonCallableMagicMock:
+        runnable = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
+        runnable.model_name = "fallback-model"
+        runnable.invoke = MagicMock(side_effect=lambda *_a, **_k: AIMessage(content="ok"))
+        return runnable
+
+    @patch("app.agents.llm.client.log")
+    def test_the_fallback_binds_the_conversation_session_and_names_itself(
+        self, mock_log: MagicMock
+    ) -> None:
+        fallback = self._fallback()
+
+        result = invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            label="memory_extraction",
+            options=LLMInvokeOptions(max_attempts=1),
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+        assert result.response_metadata["gaia_fallback_model"] == "fallback-model"
+        assert mock_log.warning.call_args.kwargs["llm"] == {
+            "label": "memory_extraction",
+            "error_type": "ConnectionError",
+            "fell_back": True,
+        }
+
+    def test_an_explicit_sticky_session_outranks_the_runs(self) -> None:
+        fallback = self._fallback()
+
+        invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            options=LLMInvokeOptions(max_attempts=1, sticky_session_id="explicit"),
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "explicit"}
+
+    def test_no_fallback_available_re_raises_the_primarys_error(self) -> None:
+        with pytest.raises(ConnectionError, match="provider down"):
+            invoke_llm(
+                self._failing_primary(),
+                "hi",
+                fallback=lambda: None,
+                options=LLMInvokeOptions(max_attempts=1),
+            )
 
 
 class TestTheInvokeTimeoutIsEnforced:
@@ -2665,7 +2741,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "memory-u1"}),
             fallback=fallback,
         )
 
@@ -2681,7 +2757,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
             primary,
             [HumanMessage(content="hi")],
             fallback=fallback,
-            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            config=RunnableConfig(configurable={"user_id": USER_ID, "session_id": "conv-1"}),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
@@ -2810,7 +2886,7 @@ class TestAuxiliaryCostSource:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(cost=0.008),
             )
@@ -2832,7 +2908,7 @@ class TestAuxiliaryCostSource:
             await _record_auxiliary_usage(
                 handler,
                 "memory_extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(cost=0.008),
             )
@@ -2848,7 +2924,7 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.log") as mock_log,
         ):
             await _record_auxiliary_usage(
-                handler, "memory_extraction", "u1", context=_AUX_CONTEXT, facts=ResponseFacts()
+                handler, "memory_extraction", USER_ID, context=_AUX_CONTEXT, facts=ResponseFacts()
             )
 
         assert rec.call_args.kwargs["provider_cost"] is None
@@ -2892,7 +2968,7 @@ class TestAuxiliaryGenerationIdAttribution:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-its-own"),
             )
@@ -2912,7 +2988,7 @@ class TestAuxiliaryGenerationIdAttribution:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-one-of-them"),
             )
@@ -2935,14 +3011,14 @@ class TestAuxiliaryGenerationIdAttribution:
                 _record_auxiliary_usage(
                     self._handler(gemini={"input_tokens": 10, "output_tokens": 2}),
                     "memory:extraction",
-                    "u1",
+                    USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="memory:extraction"),
                     facts=ResponseFacts(generation_id="gen-extraction"),
                 ),
                 _record_auxiliary_usage(
                     self._handler(gemini={"input_tokens": 7, "output_tokens": 3}),
                     "follow_up_actions",
-                    "u1",
+                    USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="follow_up_actions"),
                     facts=ResponseFacts(generation_id="gen-followup"),
                 ),
@@ -2989,7 +3065,9 @@ class TestFailedCallsReachTheLedger:
         """A failed call has no reply, so the row names only the intended model — and needs the surface to tell an outage from one broken client."""
         primary = self._runnable(TimeoutError("no answer"))
         primary.model_name = "deepseek/deepseek-v4-flash"
-        config = RunnableConfig(configurable={"user_id": "u1", "conversation_source": "telegram"})
+        config = RunnableConfig(
+            configurable={"user_id": USER_ID, "conversation_source": "telegram"}
+        )
 
         with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
             with pytest.raises(TimeoutError):
@@ -3169,7 +3247,7 @@ class TestAuxiliaryResponseFacts:
             await _record_auxiliary_usage(
                 handler,
                 "memory:extraction",
-                "u1",
+                USER_ID,
                 context=_AUX_CONTEXT,
                 facts=ResponseFacts(generation_id="gen-1", provider="Baidu", finish_reason="stop"),
             )
@@ -3236,6 +3314,31 @@ class TestWithUsageHandler:
 
 
 @pytest.mark.unit
+class TestIsOpenAIWire:
+    """_is_openai_wire decides whether prompt_cache_key may be bound; only OpenAI's own API takes it."""
+
+    def test_default_base_is_openai(self) -> None:
+        assert client_module._is_openai_wire(ChatOpenAI(model="m", api_key=SecretStr("k")))
+
+    def test_an_explicit_openai_base_is_openai(self) -> None:
+        node = ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="https://api.openai.com/v1")
+        assert client_module._is_openai_wire(node) is True
+
+    def test_another_openai_compatible_base_is_not_openai(self) -> None:
+        node = ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="http://127.0.0.1:8787/v1")
+        assert client_module._is_openai_wire(node) is False
+
+    def test_a_proxy_path_naming_openai_is_not_openai(self) -> None:
+        node = ChatOpenAI(
+            model="m", api_key=SecretStr("k"), base_url="https://proxy.example/api.openai.com/v1"
+        )
+        assert client_module._is_openai_wire(node) is False
+
+    def test_a_non_openai_client_is_not_openai(self) -> None:
+        assert client_module._is_openai_wire(ChatOpenRouter(model="m", api_key="k")) is False
+
+
+@pytest.mark.unit
 class TestIsOpenrouterWire:
     """_is_openrouter_wire decides whether the sticky session_id may be bound.
 
@@ -3262,6 +3365,12 @@ class TestIsOpenrouterWire:
         # OpenRouter — kills the getattr-name and base-is-None-only mutants.
         node = ChatOpenRouter(
             model="m", api_key="k", openrouter_api_base="https://api.openai.com/v1"
+        )
+        assert client_module._is_openrouter_wire(node) is False
+
+    def test_a_proxy_path_naming_openrouter_is_not_openrouter(self) -> None:
+        node = ChatOpenRouter(
+            model="m", api_key="k", openrouter_api_base="https://proxy.example/openrouter.ai/v1"
         )
         assert client_module._is_openrouter_wire(node) is False
 

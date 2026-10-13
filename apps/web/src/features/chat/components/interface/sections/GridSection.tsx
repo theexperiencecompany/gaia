@@ -8,7 +8,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import InboxTodosView from "@/features/todo/components/InboxTodosView";
 import WorkflowListView from "@/features/workflows/components/WorkflowListView";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import type { EmailData } from "@/types/features/mailTypes";
@@ -56,7 +56,7 @@ export const GridSection = ({
 
   const handleConnect = async (integrationId: string) => {
     try {
-      trackEvent(ANALYTICS_EVENTS.CHAT_GRID_INTEGRATION_CONNECT_CLICKED, {
+      track("chat:grid_integration_connect_clicked", {
         integration_id: integrationId,
         source: "new_chat_grid",
       });

@@ -12,20 +12,24 @@ import pytest
 
 from app.api.v1.endpoints.memory import _require_user_id
 from app.constants.general import MAX_PAGE_NUMBER
-from app.models.memory_models import MemoryListResponse
+from app.models.memory_models import MemoryListResponse, MemorySearchResult
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
+from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import MemoryCleared, MemoryItemDeleted
+from shared.py.wide_events import MemoryContext, UserContext
+from tests.conftest import FAKE_USER
 
 MEMORY_ENDPOINT = "app.api.v1.endpoints.memory"
-ANALYTICS_PATCH = "app.api.v1.endpoints.memory.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.memory.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -72,6 +76,35 @@ class TestListMemories:
         )
 
 
+class TestSearchMemories:
+    """GET /api/v1/memory/search."""
+
+    async def test_search_logs_the_query_shape_and_never_its_words(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{MEMORY_ENDPOINT}.memory_engine.recall",
+                new_callable=AsyncMock,
+                return_value=MemorySearchResult(),
+            ) as recall,
+            patch(f"{MEMORY_ENDPOINT}.log") as log,
+        ):
+            resp = await client.get("/api/v1/memory/search?q=my%20divorce%20papers&limit=7")
+
+        assert resp.status_code == 200
+        recall.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011",
+            "my divorce papers",
+            limit=7,
+            include_graph_expansion=False,
+        )
+        log.set.assert_any_call(
+            user=UserContext(id="507f1f77bcf86cd799439011"),
+            memory=MemoryContext(operation="recall", query=user_text_shape("my divorce papers")),
+        )
+
+
 class TestMemoryAnalytics:
     """Analytics captures on memory mutation endpoints."""
 
@@ -88,8 +121,8 @@ class TestMemoryAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.MEMORY_ITEM_DELETED,
-            {"memory_id": "507f1f77-bcf8-6cd7-9943-9011aaaaaaaa"},
+            UserId(FAKE_USER.user_id),
+            MemoryItemDeleted(memory_id="507f1f77-bcf8-6cd7-9943-9011aaaaaaaa"),
         )
 
     async def test_clear_all_captures_memory_cleared(self, client: AsyncClient) -> None:
@@ -104,4 +137,6 @@ class TestMemoryAnalytics:
             resp = await client.delete("/api/v1/memory")
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.MEMORY_CLEARED, {"deleted_count": 12})
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id), MemoryCleared(deleted_count=12)
+        )

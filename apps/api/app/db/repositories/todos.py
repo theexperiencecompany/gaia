@@ -20,9 +20,12 @@ from app.constants.cache import TODO_CACHE_PREFIX
 from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
+    ExternalRef,
     SearchMode,
     SubTask,
+    SubTodoCount,
     TodoCounts,
     TodoDocument,
     TodoLabelCount,
@@ -31,7 +34,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
-from app.models.trigger_subscription_models import TriggerSubscriptionStatus
+from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
 
 # Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
 _STATS_LABEL_LIMIT = 50
@@ -69,6 +72,14 @@ class _CountsFacet(BaseModel):
     completed: list[_FacetCount] = Field(default_factory=list)
 
 
+def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
+    # $type keeps the query inside the partial filter; a bare equality is not, and scans.
+    return {
+        "external_ref.source": ref.source.value,
+        "external_ref.id": {"$eq": ref.id, "$type": "string"},
+    }
+
+
 def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
@@ -83,10 +94,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     cache_policy = CachePolicy(prefix=TODO_CACHE_PREFIX)
 
     # ------------------------------------------------------------------ reads
-
-    def is_valid_id(self, todo_id: str) -> bool:
-        """Whether todo_id is a well-formed Mongo identity for this collection."""
-        return ObjectId.is_valid(todo_id)
 
     async def get_by_id(self, todo_id: str) -> TodoDocument | None:
         """Fetch a todo by id with no user scoping, for the system executor which has only the id.
@@ -139,7 +146,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         if params.project_id is not None:
             query["project_id"] = params.project_id
         elif inbox_project_id is not None and not (
-            params.q or params.completed is not None or params.priority or params.labels
+            params.q
+            or params.completed is not None
+            or params.priority
+            or params.labels
+            or params.parent_todo_id
         ):
             query["project_id"] = inbox_project_id
 
@@ -149,6 +160,8 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             query["priority"] = params.priority.value
         if params.labels:
             query["labels"] = {"$in": params.labels}
+        if params.parent_todo_id:
+            query["parent_todo_id"] = params.parent_todo_id
 
         if params.has_due_date is True:
             query["due_date"] = {"$ne": None}
@@ -302,17 +315,57 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._aggregate(pipeline, TodoLabelCount)
 
     @cached_query(list[TodoDocument])
-    async def list_active_tracked(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """Return a user's active (incomplete) tracked todos, most-recently-updated first.
+    async def list_active_tracked(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        labels: list[str] | None = None,
+        external_ref: ExternalRef | None = None,
+        parent_todo_id: str | None = None,
+        top_level: bool = False,
+    ) -> list[TodoDocument]:
+        """Return a user's open tracked todos, most-recently-updated first.
 
-        Cached under the user's generation, so context assembly reads Mongo once
-        per write rather than once per turn.
+        labels keeps todos carrying all of them; external_ref keeps the one owning that object;
+        parent_todo_id keeps that todo's sub-todos; top_level drops every sub-todo.
+        Cached under the user's generation, so context assembly reads Mongo once per write.
         """
-        return await self._find(
-            {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "completed": False},
-            sort=[("updated_at", -1)],
-            limit=limit,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            # Mongo bounds the (user_id, labels) index scan on the first $all element only.
+            "labels": {"$all": [*(labels or []), GAIA_TRACKED_LABEL]},
+            "completed": False,
+        }
+        if external_ref is not None:
+            query.update(_external_ref_filter(external_ref))
+        if parent_todo_id is not None:
+            query["parent_todo_id"] = parent_todo_id
+        elif top_level:
+            query["parent_todo_id"] = None
+        return await self._find(query, sort=[("updated_at", -1)], limit=limit)
+
+    async def find_sub_todos(self, user_id: str, parent_ids: list[str]) -> list[TodoDocument]:
+        """Every sub-todo, open or completed, of the given parents; uncached, for cascades."""
+        return await self._find({"user_id": user_id, "parent_todo_id": {"$in": parent_ids}})
+
+    @cached_query(dict[str, int])
+    async def count_open_sub_todos(self, user_id: str, parent_ids: list[str]) -> dict[str, int]:
+        """Open sub-todos per parent, for the parents that have any."""
+        if not parent_ids:
+            return {}
+        pipeline: list[dict[str, object]] = [
+            {
+                "$match": {
+                    "user_id": user_id,
+                    "parent_todo_id": {"$in": parent_ids},
+                    "completed": False,
+                }
+            },
+            {"$group": {"_id": "$parent_todo_id", "count": {"$sum": 1}}},
+        ]
+        counts = await self._aggregate(pipeline, SubTodoCount)
+        return {row.parent_todo_id: row.count for row in counts}
 
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
@@ -362,6 +415,22 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                     }
                 },
             }
+        )
+
+    async def find_open_by_external_ref(
+        self, user_id: str, ref: ExternalRef
+    ) -> TodoDocument | None:
+        """Return the user's open todo about ref; uncached, as a losing insert reads the winner here."""
+        return await self._find_one(
+            {"user_id": user_id, **_external_ref_filter(ref), "completed": False}
+        )
+
+    async def find_latest_by_external_ref(
+        self, user_id: str, ref: ExternalRef
+    ) -> TodoDocument | None:
+        """Return the user's newest todo about ref, open or completed; uncached."""
+        return await self._find_one(
+            {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
         )
 
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
@@ -463,8 +532,17 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 "completed": False,
                 "labels": GAIA_TRACKED_LABEL,
                 "gaia_retry_count": {"$lt": max_retries},
+                "pause_reason": None,
             },
             limit=limit,
+        )
+
+    async def find_paused_for_reason(
+        self, user_id: str, reason: DeactivationReason
+    ) -> list[TodoDocument]:
+        """Return the user's tracked todos the system paused for reason."""
+        return await self._find(
+            {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "pause_reason": reason.value}
         )
 
     # ----------------------------------------------------------------- writes
@@ -593,15 +671,38 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         *,
         update: TodoUpdate,
         expected_updated_at: datetime | None,
+        touch: bool = True,
     ) -> TodoDocument | None:
         """Replace note bodies, optionally gated by expected_updated_at (compare-and-set).
 
-        Returns None on mismatch.
+        Returns None on mismatch. touch=False keeps updated_at, for a system repair
+        that is not activity on the todo.
         """
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
-        return await self._apply_update(todo_id, user_id, extra, update)
+        return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
+
+    async def set_trigger_subscriptions(
+        self,
+        todo_id: str,
+        user_id: str,
+        *,
+        subscriptions: list[TriggerSubscription],
+        expected_updated_at: datetime,
+    ) -> TodoDocument | None:
+        """Store the todo's whole watch list, only while updated_at still matches.
+
+        Compare-and-set: a watch list is read, extended in Python and written back,
+        so two writers reading the same snapshot would otherwise overwrite each
+        other. Returns None on mismatch, so the caller re-reads and retries.
+        """
+        return await self._apply_update(
+            todo_id,
+            user_id,
+            {"user_id": user_id, "updated_at": expected_updated_at},
+            TodoUpdate(trigger_subscriptions=subscriptions),
+        )
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate

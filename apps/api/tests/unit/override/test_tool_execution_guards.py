@@ -132,6 +132,11 @@ class TestTimeoutGuard:
         monkeypatch.setattr(f"{DISPATCH}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.3)
+        # No accounts on record: the account lookup is Mongo, not this guard.
+        monkeypatch.setattr(
+            "app.agents.tools.execute.account_choice.get_account_record",
+            AsyncMock(return_value=None),
+        )
 
         hung = MagicMock()
         hung.name = "GMAIL_SEND_EMAIL"
@@ -152,14 +157,14 @@ class TestTimeoutGuard:
                     "tool_name": "GMAIL_SEND_EMAIL",
                     "data": {},
                 },
-                config={"configurable": {"user_id": "u1"}},
+                config={"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}},
             )
             return ToolMessage(content=content, tool_call_id="c1")
 
         resolved = ResolvedTool("GMAIL_SEND_EMAIL", hung, is_integration=True)
         with (
             patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
-            patch(f"{DISPATCH}.capture_event"),
+            patch(f"{DISPATCH}.capture"),
         ):
             result = await timeout_guarded_tool_call(request, run_the_proxy)
 

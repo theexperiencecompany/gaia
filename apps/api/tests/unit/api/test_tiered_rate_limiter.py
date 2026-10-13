@@ -21,8 +21,11 @@ from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
 from app.services.limit_upsell import LimitHitOrigin
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import RateLimitHit
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _noop_create_task(coro, **kwargs):
@@ -119,9 +122,9 @@ class TestTieredRateLimiterHelpers:
         return_value="20260320",
     )
     def test_get_redis_key(self, mock_twk: MagicMock) -> None:
-        key = self.limiter._get_redis_key("user1", "chat_messages", RateLimitPeriod.DAY)
+        key = self.limiter._get_redis_key(USER_ID, "chat_messages", RateLimitPeriod.DAY)
         # The key embeds the enum repr, not .value
-        assert "rate_limit:user1:chat_messages:" in key
+        assert f"rate_limit:{USER_ID}:chat_messages:" in key
         assert "20260320" in key
         mock_twk.assert_called_once_with(RateLimitPeriod.DAY)
 
@@ -182,7 +185,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
+            result = await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.PRO)
 
         assert "day" in result or "month" in result
 
@@ -206,7 +209,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.get = AsyncMock(return_value="10")
 
         with pytest.raises(RateLimitExceededException) as exc_info:
-            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         # A spent budget, not a paywall: the reset time tells the user when they
         # get more, and no upgrade prompt is offered.
@@ -234,11 +237,11 @@ class TestCheckAndIncrement:
         self.limiter.redis.get = AsyncMock(return_value="10")
 
         with pytest.raises(RateLimitExceededException):
-            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         # Raises on the first exhausted window, so exactly the day key is read.
         self.limiter.redis.get.assert_awaited_once_with(
-            f"rate_limit:user1:chat_messages:{RateLimitPeriod.DAY}:20260320", int
+            f"rate_limit:{USER_ID}:chat_messages:{RateLimitPeriod.DAY}:20260320", int
         )
         mock_twk.assert_called_once_with(RateLimitPeriod.DAY)
         mock_reset.assert_called_once_with(RateLimitPeriod.DAY)
@@ -280,7 +283,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            result = await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         assert result[period].limit == 1
         assert result[period].used == 0
@@ -297,7 +300,7 @@ class TestCheckAndIncrement:
         )
 
         with pytest.raises(RateLimitExceededException) as exc_info:
-            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         detail = exc_info.value.detail
         assert detail["feature"] == "chat_messages"
@@ -344,7 +347,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
+            result = await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.PRO)
 
         # day period (limit=0) must be absent from enforcement info but still counted.
         assert "day" not in result
@@ -371,7 +374,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.redis = None
 
         with pytest.raises(Exception, match="Redis connection not available"):
-            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -420,7 +423,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
-            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         assert call_count == 2  # First attempt fails, second succeeds
 
@@ -459,13 +462,13 @@ class TestCheckAndIncrement:
             side_effect=_noop_create_task,
         ):
             with pytest.raises(RateLimitExceededException) as exc_info:
-                await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+                await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         # Losing the race still owes the caller the truth about which window
         # they hit and when it reopens — the reset has to come from THIS period.
         pipe_mock.unwatch.assert_awaited_once()
         # The in-transaction re-read must be of the very key WATCH guards.
-        day_key = f"rate_limit:user1:chat_messages:{RateLimitPeriod.DAY}:20260320"
+        day_key = f"rate_limit:{USER_ID}:chat_messages:{RateLimitPeriod.DAY}:20260320"
         pipe_mock.watch.assert_awaited_once_with(day_key)
         assert self.limiter.redis.get.await_args_list == [call(day_key, int), call(day_key, int)]
         mock_reset.assert_called_with(RateLimitPeriod.DAY)
@@ -506,7 +509,7 @@ class TestSyncUsageRealTime:
         )
         self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
-        await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
+        await self.limiter._sync_usage_real_time(USER_ID, "chat_messages", PlanType.PRO)
 
         mock_save.assert_called_once()
         snapshot = mock_save.call_args[0][0]
@@ -520,7 +523,7 @@ class TestSyncUsageRealTime:
     async def test_no_usage_means_no_snapshot(self, mock_save: AsyncMock) -> None:
         self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
-        await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
+        await self.limiter._sync_usage_real_time(USER_ID, "chat_messages", PlanType.PRO)
 
         mock_save.assert_not_called()
 
@@ -531,7 +534,7 @@ class TestSyncUsageRealTime:
         )
 
         # Should not raise
-        await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
+        await self.limiter._sync_usage_real_time(USER_ID, "chat_messages", PlanType.PRO)
 
         mock_log.error.assert_called_once()
 
@@ -574,7 +577,7 @@ class TestCollectFeatureUsage:
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
 
-        result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
+        result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         # Both periods are collected — the zero-limit month is counted too so
         # usage charts have data where no cap applies (limit stays 0).
         assert len(result) == 2
@@ -602,7 +605,7 @@ class TestCollectFeatureUsage:
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
         self.limiter.redis.get = AsyncMock(side_effect=RuntimeError("redis down"))
 
-        result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
+        result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         # Exceptions are skipped, so result is empty
         assert result == []
 
@@ -625,7 +628,7 @@ class TestCollectFeatureUsage:
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
         self.limiter.redis.get = AsyncMock(return_value="0")
 
-        result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
+        result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         assert result == []
 
     @patch(
@@ -647,7 +650,7 @@ class TestCollectFeatureUsage:
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
         self.limiter.redis.get = AsyncMock(return_value="not_a_number")
 
-        result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
+        result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         assert result == []
 
 
@@ -759,13 +762,13 @@ class TestUpsellOnExceed:
                 "app.services.limit_upsell.spawn_background_task",
                 side_effect=spawned.append,
             ),
-            patch("app.services.limit_upsell.capture_event") as capture,
+            patch("app.services.limit_upsell.capture") as capture,
             patch("app.services.limit_upsell.send_limit_reached_email") as upsell_email,
             patch("app.services.limit_upsell.send_workflows_paused_email") as paused_email,
         ):
             with pytest.raises(RateLimitExceededException):
                 await self.limiter.check_and_increment(
-                    "user1", "chat_messages", PlanType.FREE, **kwargs
+                    USER_ID, "chat_messages", PlanType.FREE, **kwargs
                 )
             for coro in spawned:
                 await coro
@@ -775,20 +778,17 @@ class TestUpsellOnExceed:
         capture, upsell_email, paused_email = await self._exceed()
 
         capture.assert_called_once_with(
-            "user1",
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": "chat_messages", "origin": "interactive", "plan": "free"},
+            UserId(USER_ID),
+            RateLimitHit(feature="chat_messages", origin="interactive", plan="free"),
         )
-        upsell_email.assert_awaited_once_with("user1", "chat_messages")
+        upsell_email.assert_awaited_once_with(USER_ID, "chat_messages")
         paused_email.assert_not_awaited()
 
     async def test_background_exceed_sends_workflows_paused_note(self) -> None:
         capture, upsell_email, paused_email = await self._exceed(origin=LimitHitOrigin.BACKGROUND)
 
         capture.assert_called_once_with(
-            "user1",
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": "chat_messages", "origin": "background", "plan": "free"},
+            UserId(USER_ID), RateLimitHit(feature="chat_messages", origin="background", plan="free")
         )
-        paused_email.assert_awaited_once_with("user1")
+        paused_email.assert_awaited_once_with(USER_ID)
         upsell_email.assert_not_awaited()

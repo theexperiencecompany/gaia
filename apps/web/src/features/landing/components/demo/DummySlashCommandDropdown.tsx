@@ -225,17 +225,17 @@ const dummyTools = {
       required_integration: null,
     },
     {
-      name: "add_subtask",
+      name: "add_checklist_item",
       category: "productivity",
       required_integration: null,
     },
     {
-      name: "update_subtask",
+      name: "update_checklist_item",
       category: "productivity",
       required_integration: null,
     },
     {
-      name: "delete_subtask",
+      name: "delete_checklist_item",
       category: "productivity",
       required_integration: null,
     },

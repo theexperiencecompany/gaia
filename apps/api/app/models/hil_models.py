@@ -218,6 +218,8 @@ class ApprovalProposal(BaseModel):
     fingerprint: str
     tool_name: str
     args: dict[str, Any] = Field(default_factory=dict)
+    # The connected account the call acts as; None is the integration's primary.
+    account: str | None = None
     summary: str = ""
     rationale: str = ""
     preview: str = ""

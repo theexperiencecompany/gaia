@@ -31,11 +31,13 @@ from app.models.mail_models import (
     GmailToolResult,
 )
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
-from app.services.analytics_service import AnalyticsEvents
 from app.utils.embedding_utils import SimilarityMatch
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.mail import EmailDraftComposed, EmailReplied, EmailSent
+from tests.conftest import FAKE_USER
 
 MAIL_BASE = "/api/v1"
-ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture"
 # The client fixture's DI override is not the WorkOSAuthMiddleware-set
 # request context the entitlement gate reads first, so a gate test must set
 # the context directly.
@@ -44,10 +46,10 @@ _GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -293,7 +295,9 @@ class TestMailAnalytics:
             )
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT, {"recipient_count": 1})
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id), EmailSent(recipient_count=1)
+        )
 
     @patch(
         "app.api.v1.endpoints.mail.send_email",
@@ -318,8 +322,36 @@ class TestMailAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.EMAIL_REPLIED,
-            {"has_attachments": False, "attachment_count": 0},
+            UserId(FAKE_USER.user_id),
+            EmailReplied(has_attachments=False, attachment_count=0),
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_a_reply_with_an_attachment_reports_it(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-005"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                    "thread_id": "thread-1",
+                },
+                files={"attachments": ("note.txt", b"hello", "text/plain")},
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id),
+            EmailReplied(has_attachments=True, attachment_count=1),
         )
 
     @patch(
@@ -345,8 +377,8 @@ class TestMailAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.EMAIL_SENT,
-            {"has_attachments": False, "attachment_count": 0},
+            UserId(FAKE_USER.user_id),
+            EmailSent(has_attachments=False, attachment_count=0),
         )
 
     @patch("app.api.v1.endpoints.mail.log")
@@ -380,8 +412,8 @@ class TestMailAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.EMAIL_SENT,
-            {"has_attachments": True, "attachment_count": 1},
+            UserId(FAKE_USER.user_id),
+            EmailSent(has_attachments=True, attachment_count=1),
         )
         final_set = mock_log.set.call_args_list[-1]
         assert final_set.kwargs == {
@@ -414,7 +446,7 @@ class TestMailAnalytics:
             )
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_COMPOSED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), EmailDraftComposed())
 
 
 class TestAiCompose:
@@ -1063,7 +1095,7 @@ class TestSendDraft:
         )
         with patch(ANALYTICS_PATCH) as mock_capture:
             response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
-        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), EmailSent())
         assert response.status_code == 200
         data = response.json()
         assert data["successful"] is True

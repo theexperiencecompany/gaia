@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.workflow_models import DeactivationReason
+from app.models.scheduler_models import DeactivationReason
 from app.services.workflow.dormancy import (
     DORMANCY_THRESHOLD,
     resume_dormancy_paused_workflows,

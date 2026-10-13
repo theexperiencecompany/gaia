@@ -10,7 +10,7 @@ InjectedState and Command(update=...). No middleware, no markers,
 no class — just pure functions with closures over `source`.
 
 Streaming: Each mutation emits a `todo_progress` event via
-get_stream_writer() so the frontend renders progress in real-time.
+current_stream_writer() so the frontend renders progress in real-time.
 
 Pre-model hook: `create_todo_pre_model_hook()` injects current task
 context into the latest non-memory SystemMessage before each LLM call.
@@ -25,7 +25,6 @@ from langchain.tools import InjectedToolCallId
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
-from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -37,9 +36,8 @@ from app.agents.prompts.todo_prompts import (
     TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
-from app.constants.log_tags import LogTag
+from app.models.agent_models import current_stream_writer
 from app.override.langgraph_bigtool.utils import State
-from shared.py.wide_events import log
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -84,15 +82,7 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
     }
     if source_label:
         snapshot["integration_name"] = source_label
-    payload = {"todo_progress": snapshot}
-    try:
-        writer = get_stream_writer()
-        writer(payload)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.TOOL} Stream writer not available for todo_progress",
-            error_type=type(e).__name__,
-        )
+    current_stream_writer()({"todo_progress": snapshot})
 
 
 def _format_todos(todos: list[Todo]) -> str:
@@ -101,6 +91,7 @@ def _format_todos(todos: list[Todo]) -> str:
         return ""
 
     lines = ["## Current Tasks"]
+    todo: Todo
     for i, todo in enumerate(todos, 1):
         icon = {
             "completed": "\u2713",
@@ -137,11 +128,12 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def plan_tasks(
         tasks: list[TaskInput],
         tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Create a task plan for multi-step work."""
         now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
 
+        task: TaskInput
         for i, task in enumerate(tasks):
             new_todos.append(
                 Todo(
@@ -154,7 +146,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
 
         _emit_todo_progress(new_todos, source, source_label)
 
-        first_task = new_todos[0]["content"] if new_todos else "none"
+        first_task = next((todo["content"] for todo in new_todos), "none")
         return Command(
             update={
                 "todos": new_todos,
@@ -174,11 +166,11 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list[Todo], InjectedState("todos")],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Update task statuses and/or add new tasks in a single call."""
         now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [t.copy() for t in todos]
-        todo_map = {t["id"]: t for t in updated_todos}
+        todo_map: dict[str, Todo] = {t["id"]: t for t in updated_todos}
 
         summary_parts: list[str] = []
         added: list[str] = []
@@ -233,7 +225,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                     summary_parts.append(f"{task_id}→{status}")
             elif content:
                 # Add new task
-                new_todo = Todo(
+                new_todo: Todo = Todo(
                     id=str(uuid4())[:8],
                     content=content,
                     status="pending",

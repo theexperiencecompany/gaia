@@ -187,7 +187,10 @@
         "!apps/web/src/**/__tests__/**",
         "!apps/web/src/**/*.test.ts",
         "!apps/web/src/**/*.test.tsx",
-        "!apps/web/src/features/team/api/teamApi.ts"
+        "!apps/web/src/features/team/api/teamApi.ts",
+        "!apps/web/src/lib/analytics.ts",
+        "!apps/web/src/lib/observability/**",
+        "!apps/web/src/app/global-error.tsx"
       ],
       "linter": {
         "rules": {
@@ -211,7 +214,37 @@
                       "isAxiosError"
                     ],
                     "message": "Only apps/web/src/lib/api may build an axios client. Use `api` from \"@/lib/api/typed\"; the error helpers stay importable for narrowing."
-                  }
+                  },
+                  "posthog-js": "Only apps/web/src/lib/analytics.ts (and the PostHog init/exception wiring in lib/observability and global-error) talks to posthog-js. Use `track` from \"@/lib/analytics\": its event names and properties are generated from the catalog in libs/shared/py/analytics/catalog.",
+                  "posthog-node": "posthog-node is the bots' server SDK, reached only through `Analytics` in libs/shared/ts/src/analytics. Capture through that client so events stay typed by the catalog."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "libs/**",
+        "apps/bots/**",
+        "apps/desktop/**",
+        "packages/**",
+        "apps/web/src/lib/api/**",
+        "!libs/shared/ts/src/analytics/index.ts",
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "posthog-js": "Only apps/web/src/lib/analytics.ts (and the PostHog init/exception wiring in lib/observability and global-error) talks to posthog-js. Use `track` from \"@/lib/analytics\": its event names and properties are generated from the catalog in libs/shared/py/analytics/catalog.",
+                  "posthog-node": "posthog-node is the bots' server SDK, reached only through `Analytics` in libs/shared/ts/src/analytics. Capture through that client so events stay typed by the catalog."
                 }
               }
             }

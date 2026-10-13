@@ -62,9 +62,9 @@ def writer() -> Iterator[MagicMock]:
     """Capture the frontend stream every hook module writes its cards to."""
     stream = MagicMock()
     with (
-        patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer", return_value=stream),
-        patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer", return_value=stream),
-        patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer", return_value=stream),
+        patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer", return_value=stream),
+        patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer", return_value=stream),
+        patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer", return_value=stream),
     ):
         yield stream
 

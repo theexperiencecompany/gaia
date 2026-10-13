@@ -19,8 +19,9 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from fakeredis.aioredis import FakeRedis
 from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
 import pytest
@@ -29,11 +30,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.decorators.entitlements import PAYWALL_MESSAGE
 from app.models.payment_models import PlanType
+from shared.py.analytics.catalog.billing import PaywallBlocked
 from tests.conftest import FAKE_USER, _create_test_app
+from tests.helpers import drain_at_most_once_sends
 
 pytestmark = pytest.mark.e2e
 
 ENT = "app.decorators.entitlements"
+ANALYTICS = "app.services.analytics_service"
 PAID_PROBE = "/e2e-paid-probe"
 
 
@@ -112,7 +116,9 @@ class TestPaidUserPassesTheRealGate:
 
 
 class TestLapsedUserSeesThePaywallContract:
-    async def test_free_user_gets_402_with_the_parsed_body(self, gated_client: AsyncClient) -> None:
+    async def test_free_user_gets_402_with_the_parsed_body(
+        self, gated_client: AsyncClient, fake_redis: FakeRedis
+    ) -> None:
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
@@ -124,9 +130,10 @@ class TestLapsedUserSeesThePaywallContract:
                 new_callable=AsyncMock,
                 return_value=_free_status(),
             ),
-            patch(f"{ENT}.capture_event") as capture,
+            patch(f"{ANALYTICS}._get_posthog_client", return_value=MagicMock()) as posthog,
         ):
             response = await gated_client.get("/api/v1/todos")
+            await drain_at_most_once_sends()
 
         assert response.status_code == 402
         body = response.json()
@@ -134,7 +141,34 @@ class TestLapsedUserSeesThePaywallContract:
         assert body["message"] == PAYWALL_MESSAGE
         # Minted on intent, never on refusal — clients already handle null.
         assert body["checkout_url"] is None
-        capture.assert_called_once()
+        posthog.return_value.capture.assert_called_once()
+
+    async def test_the_paywall_records_the_route_template_not_the_raw_path(
+        self, gated_client: AsyncClient, fake_redis: FakeRedis
+    ) -> None:
+        """A raw path can carry an email or an id; the 402 must not become a 503 over its analytics."""
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new_callable=AsyncMock,
+                return_value=PlanType.FREE,
+            ),
+            patch(
+                f"{ENT}.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_free_status(),
+            ),
+            patch(f"{ANALYTICS}._get_posthog_client", return_value=MagicMock()) as posthog,
+        ):
+            response = await gated_client.get("/api/v1/todos/someone@example.com")
+            await drain_at_most_once_sends()
+
+        assert response.status_code == 402
+        sent = posthog.return_value.capture.call_args.kwargs
+        assert (sent["event"], sent["properties"]["feature"]) == (
+            PaywallBlocked.event,
+            "/api/v1/todos/{todo_id}",
+        )
 
     async def test_free_paths_stay_open(self, gated_client: AsyncClient) -> None:
         """The way out of the paywall cannot itself be paywalled."""

@@ -20,6 +20,7 @@ from app.models.reminder_models import (
     ReminderUpdate,
     StaticReminderPayload,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.services.reminder_service import ReminderScheduler
 from app.utils.occurrence import parse_occurrence_stamp
 
@@ -110,6 +111,37 @@ class TestRemindersScheduler:
         assert await repo.set_status(rem.id, ReminderStatus.COMPLETED, user_id="x") is False
         assert await repo.set_status(rem.id, ReminderStatus.COMPLETED) is True
         assert (await repo.get(rem.id)).status == ReminderStatus.COMPLETED
+
+    async def test_a_system_pause_is_found_by_its_reason_and_a_resume_clears_it(self, repo):
+        owner = _uid("owner")
+        lapsed = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        by_user = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        await repo.set_status(
+            lapsed.id, ReminderStatus.PAUSED, pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        await repo.set_status(by_user.id, ReminderStatus.PAUSED)
+
+        found = await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED)
+        assert [r.id for r in found] == [lapsed.id]
+        assert found[0].pause_reason is DeactivationReason.SUBSCRIPTION_LAPSED
+
+        await repo.update_for_user(
+            lapsed.id, owner, ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
+        )
+        assert (await repo.get(lapsed.id)).pause_reason is None
+        assert (
+            await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED) == []
+        )
+
+    async def test_a_legacy_row_that_breaks_the_schedule_rule_still_loads(
+        self, repo, raw_collection
+    ):
+        rem = await repo.create(_reminder(repeat="0 9 * * *"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(rem.id)}, {"$set": {"repeat": "* * * * *"}}
+        )
+
+        assert (await repo.get(rem.id)).repeat == "* * * * *"
 
     async def test_set_status_missing_returns_false(self, repo):
         assert await repo.set_status(_MISSING_OBJECT_ID, ReminderStatus.COMPLETED) is False

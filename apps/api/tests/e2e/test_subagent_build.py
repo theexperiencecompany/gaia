@@ -78,7 +78,7 @@ class TestScopedToolDict:
                 config={"configurable": {"user_id": "u1"}},
             )
 
-        passed = dispatch.await_args.kwargs["scoped_tool_names"]
+        passed = dispatch.await_args.kwargs["space"].tool_names
         assert "SLACK_SEND_MESSAGE" not in passed
         assert {"read", "bash", "a_tool_added_later"} <= passed
 

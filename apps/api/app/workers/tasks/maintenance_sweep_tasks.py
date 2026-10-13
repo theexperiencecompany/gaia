@@ -5,16 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Literal
-from uuid import uuid4
+from typing import Literal, cast
 
 from arq.connections import ArqRedis
+from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
-from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -22,14 +21,12 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument, TodoUpdate
-from app.models.user_models import AuthenticatedUser
 from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.utils.auth_utils import load_user_context
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log
@@ -379,7 +376,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         "NOTIFY: <message to send to the user>"
     )
 
-    response = await _call_health_check_agent(todo_id, user_id, prompt)
+    response = await _health_check_verdict(user_id, prompt)
 
     if response.startswith("ARCHIVE:"):
         reason = response[len("ARCHIVE:") :].strip()
@@ -437,7 +434,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         "NEEDS_ATTENTION: <brief summary of why this needs human review>"
     )
 
-    response = await _call_health_check_agent(todo_id, user_id, prompt)
+    response = await _health_check_verdict(user_id, prompt)
 
     if response.startswith("EXECUTE:"):
         jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245: non-crypto scheduling jitter
@@ -601,50 +598,20 @@ async def _read_canvas(todo: TodoDocument) -> str:
         return ""
 
 
-async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:
+async def _health_check_verdict(user_id: str, prompt: str) -> str:
+    """Ask a bare model, with no tools bound, for the health-check verdict and return it stripped.
+
+    The sweep acts on the verdict itself, so the check must have no way to act:
+    not the comms agent, no tool. A model failure propagates to the per-todo
+    containment, which logs it and retries the todo next sweep.
     """
-    Call call_agent_silent with a health-check prompt.
-
-    Returns the agent's response string, or "NEEDS_ATTENTION: Health check failed"
-    if the agent call errors.
-    """
-
-    try:
-        user_data = await load_user_context(user_id) or AuthenticatedUser(
-            user_id=user_id, name="User"
-        )
-    except Exception as exc:
-        log.warning("maintenance_sweep.user_fetch_failed", user_id=user_id, error=str(exc))
-        user_data = AuthenticatedUser(user_id=user_id, name="User")
-
-    conversation_id = str(uuid4())
-
-    request = MessageRequestWithHistory(
-        message=prompt,
-        messages=[],
+    response = await ainvoke_llm(
+        resolve_model(),
+        [HumanMessage(content=prompt)],
+        label="todo_health_check",
+        config=metered_config(user_id),
     )
-
-    try:
-        run = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            options=AgentRunOptions(
-                trigger_context={
-                    "trigger_type": "maintenance_health_check",
-                    "todo_id": todo_id,
-                }
-            ),
-        )
-    except Exception as exc:
-        log.warning(
-            "maintenance_sweep.health_check_agent_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-        return "NEEDS_ATTENTION: Health check failed"
-
-    return (run.message or "").strip()
+    return cast(BaseMessage, response).text.strip()
 
 
 async def _send_individual_notification(

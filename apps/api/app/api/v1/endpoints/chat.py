@@ -21,21 +21,24 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_id,
     get_user_timezone_from_preferences,
 )
+from app.api.v1.middleware.client_type import request_client_source
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
-from app.models.chat_models import CancelStreamResponse, ConversationSource
+from app.models.chat_models import CancelStreamResponse
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 # ``stream_manager.get_progress`` returns the Redis JSON blob; routes validate it
@@ -46,21 +49,8 @@ _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _DELIVERY_FAILED = "The connection to the server was lost before this response finished."
-_CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
-
-
-def _resolve_source(request: Request) -> str:
-    """Map the client-type header to a conversation source.
-
-    Only the desktop app is trusted to claim a non-web source — it unlocks
-    desktop-executed tools, which are useless (harmless) anywhere else.
-    """
-    client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
-    if client_type == ConversationSource.DESKTOP.value:
-        return ConversationSource.DESKTOP.value
-    return ConversationSource.WEB.value
 
 
 def _build_chat_context(
@@ -202,22 +192,24 @@ async def chat_stream_endpoint(
     # The ONE event for a chat message: fires for every surface, no ad blocker
     # can drop it, and lands only once rate limit + cost budget pass. A
     # duplicate client-side `chat:message_sent` emitter has been removed.
-    capture_context_event(
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "is_new_conversation": body.conversation_id is None,
-            "message_count": len(body.messages) if body.messages else 0,
-            "has_files": bool(body.fileIds or body.fileData),
-            "file_count": len(body.fileIds or []) + len(body.fileData or []),
-            "has_selected_tool": bool(body.selectedTool),
-            "tool_name": body.selectedTool,
-            "tool_category": body.toolCategory,
-            "has_selected_workflow": bool(body.selectedWorkflow),
-            "workflow_id": body.selectedWorkflow.id if body.selectedWorkflow else None,
-            "has_selected_calendar_event": bool(body.selectedCalendarEvent),
-            "is_reply": bool(body.replyToMessage),
-            "source": _resolve_source(request),
-        },
+    capture(
+        UserId(user_id),
+        ChatMessageSubmitted(
+            is_new_conversation=body.conversation_id is None,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            has_selected_tool=bool(body.selectedTool),
+            tool_name=body.selectedTool,
+            tool_category=body.toolCategory,
+            has_selected_workflow=bool(body.selectedWorkflow),
+            workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+            has_selected_calendar_event=bool(body.selectedCalendarEvent),
+            is_reply=bool(body.replyToMessage),
+            source=request_client_source(request).value,
+            stream_id=stream_id,
+            is_retry=body.is_retry,
+        ),
     )
 
     spawn_background_task(
@@ -226,7 +218,7 @@ async def chat_stream_endpoint(
             body=body,
             user=user,
             conversation_id=conversation_id,
-            source=_resolve_source(request),
+            source=request_client_source(request).value,
             t0_perf=t0_perf,
         )
     )

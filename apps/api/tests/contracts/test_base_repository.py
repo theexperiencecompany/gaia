@@ -13,6 +13,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+from pymongo.errors import BulkWriteError
 import pytest
 
 from app.constants.cache import REPO_ENTITY_TTL, REPO_QUERY_TTL
@@ -132,6 +133,26 @@ class TestBasePrimitives:
         after_b = await repo.get(b.id, user_id="u")
         assert after_a is not None and after_a.title == "A"
         assert after_b is not None and after_b.title == "B"
+
+    async def test_a_bulk_set_that_fails_partway_leaves_no_stale_cache(
+        self, repo, make_doc, raw_collection
+    ):
+        """An ordered bulk stops at its first failure with the earlier writes already applied."""
+        await raw_collection.create_index("title", unique=True)
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.get(a.id, user_id="u")  # populate entity cache
+        assert await repo.list_titles(user_id="u") == ["a", "b"]  # populate query cache
+
+        with pytest.raises(BulkWriteError):
+            await repo._bulk_set(
+                [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="A"))],
+                scope="u",
+            )
+
+        after_a = await repo.get(a.id, user_id="u")
+        assert after_a is not None and after_a.title == "A"
+        assert sorted(await repo.list_titles(user_id="u")) == ["A", "b"]
 
     async def test_update_fields_no_invalidate_leaves_cache_and_generation(
         self, repo, make_doc, redis

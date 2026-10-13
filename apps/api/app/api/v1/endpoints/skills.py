@@ -46,8 +46,16 @@ from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    SkillDisabled,
+    SkillEnabled,
+    SkillInstalled,
+    SkillUninstalled,
+    SkillUpdated,
+)
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/skills")
@@ -244,13 +252,13 @@ async def install_skill_with_auto_discover(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {
-                "skill_id": installed.id if hasattr(installed, "id") else None,
-                "target": installed.target,
-                "source": "github",
-            },
+        capture(
+            UserId(user_id),
+            SkillInstalled(
+                skill_id=installed.id if hasattr(installed, "id") else None,
+                target=installed.target,
+                source="github",
+            ),
         )
         return installed
     except HTTPException:
@@ -297,13 +305,13 @@ async def create_inline_skill_endpoint(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {
-                "skill_id": installed.id if hasattr(installed, "id") else None,
-                "target": installed.target,
-                "source": "inline",
-            },
+        capture(
+            UserId(user_id),
+            SkillInstalled(
+                skill_id=installed.id if hasattr(installed, "id") else None,
+                target=installed.target,
+                source="inline",
+            ),
         )
         return installed
     except HTTPException:
@@ -356,7 +364,7 @@ async def update_skill_endpoint(
                 detail=f"Skill {skill_id} not found",
             )
         log.set(skill_name=updated.name, outcome="success")
-        capture_context_event(AnalyticsEvents.SKILL_UPDATED)
+        capture(UserId(user_id), SkillUpdated())
         return updated
     except HTTPException:
         raise
@@ -455,7 +463,7 @@ async def enable_skill_endpoint(
         success = await enable_skill(user_id, skill_id)
         log.set(outcome="success")
         if success:
-            capture_context_event(AnalyticsEvents.SKILL_ENABLED)
+            capture(UserId(user_id), SkillEnabled())
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=True)
     except Exception as e:
         log.error(
@@ -482,7 +490,7 @@ async def disable_skill_endpoint(
         success = await disable_skill(user_id, skill_id)
         log.set(outcome="success")
         if success:
-            capture_context_event(AnalyticsEvents.SKILL_DISABLED)
+            capture(UserId(user_id), SkillDisabled())
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=False)
     except Exception as e:
         log.error(
@@ -513,10 +521,7 @@ async def uninstall_skill_endpoint(
                 detail=f"Skill {skill_id} not found",
             )
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_UNINSTALLED,
-            {"skill_id": skill_id, "target": uninstalled.target},
-        )
+        capture(UserId(user_id), SkillUninstalled(skill_id=skill_id, target=uninstalled.target))
     except HTTPException:
         raise
     except Exception as e:

@@ -41,3 +41,15 @@ class TestApprovalFingerprint:
     def test_non_json_args_fingerprint_by_their_string_form(self) -> None:
         fp = approval_fingerprint("T", {"at": datetime(2026, 1, 1)})
         assert fp == "d34efa5d905c69678f77567655015228"
+
+    def test_each_named_account_is_its_own_call(self) -> None:
+        primary = approval_fingerprint("GMAIL_SEND_EMAIL", {"to": "b@x"})
+        work = approval_fingerprint("GMAIL_SEND_EMAIL", {"to": "b@x"}, "work@acme.com")
+        personal = approval_fingerprint("GMAIL_SEND_EMAIL", {"to": "b@x"}, "me@gmail.com")
+        assert len({primary, work, personal}) == 3
+
+    def test_a_named_account_fingerprint_bytes_are_pinned(self) -> None:
+        """Rows proposed on a named account are matched by this value too."""
+        assert approval_fingerprint("GMAIL_SEND_EMAIL", {"to": "b@x"}, "work@acme.com") == (
+            "07371097c12999ecec6e9ff510fd1465"
+        )

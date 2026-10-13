@@ -4,7 +4,7 @@ These are the proxy's two load-bearing behaviors.
 """
 
 import asyncio
-from collections.abc import Container
+from collections.abc import Container, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
@@ -15,17 +15,23 @@ from pydantic import BaseModel, Field, field_validator
 import pytest
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
-    DispatchErrorKind,
     ToolExecutionResult,
+    ToolSpace,
+    dispatch_config_for,
     dispatch_tool,
 )
 from app.agents.tools.execute.resolver import ResolvedTool
-from app.services.analytics_service import AnalyticsEvents
+from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import ConnectMode
+from app.models.execute_models import DispatchError, DispatchErrorKind
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.dispatch"
-CONFIG = {"configurable": {"user_id": "u1"}}
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+CONFIG = {"configurable": {"user_id": USER_ID}}
 
 
 class _SendEmailArgs(BaseModel):
@@ -42,24 +48,311 @@ def _tool(name: str = "GMAIL_SEND_EMAIL", schema: object = _SendEmailArgs) -> Ma
     return tool
 
 
+@pytest.fixture(autouse=True)
+def account_record() -> Iterator[AsyncMock]:
+    """Pin the user's accounts on the tool's integration; none on record by default."""
+    with patch(
+        "app.agents.tools.execute.account_choice.get_account_record", AsyncMock(return_value=None)
+    ) as lookup:
+        yield lookup
+
+
+RECONNECT_PROMPT = "A reconnect button has been shown to the user."
+
+
+@pytest.fixture(autouse=True)
+def reconnect_prompt() -> Iterator[AsyncMock]:
+    """Stand in for the reconnect card; its copy is pinned in test_integration_checker."""
+    with patch(
+        "app.agents.tools.execute.account_choice.request_integration_connection",
+        AsyncMock(return_value=RECONNECT_PROMPT),
+    ) as prompt:
+        yield prompt
+
+
+def _gmail_accounts(
+    *accounts: IntegrationAccount, primary: str = "ca_work"
+) -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id=USER_ID,
+        integration_id="gmail",
+        status="connected",
+        accounts=list(accounts),
+        primary_account_id=primary,
+    )
+
+
+WORK = IntegrationAccount(
+    id="ca_work",
+    connected_account_id="ca_work",
+    label="work@acme.com",
+    identity={"email": "work@acme.com"},
+)
+PERSONAL = IntegrationAccount(
+    id="ca_personal", connected_account_id="ca_personal", label="me@gmail.com", nickname="Personal"
+)
+
+
+async def _dispatch_send(account: str | None, tool: MagicMock) -> ToolExecutionResult:
+    with (
+        patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+        ),
+        patch(f"{MODULE}.capture"),
+    ):
+        return await dispatch_tool(
+            user_id=USER_ID,
+            tool_name="GMAIL_SEND_EMAIL",
+            data={"recipient": "a@b.c", "subject": "hi"},
+            config=CONFIG,
+            account=account,
+        )
+
+
+def _invoked_account(tool: MagicMock) -> object:
+    return tool.ainvoke.await_args.kwargs["config"]["metadata"]["composio_account"]
+
+
+@pytest.mark.unit
+class TestAccountChoice:
+    async def test_no_account_named_runs_as_the_primary(self, account_record: AsyncMock) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        result = await _dispatch_send(None, tool)
+
+        assert result.ok is True
+        assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
+        account_record.assert_awaited_once_with(USER_ID, "gmail")
+
+    @pytest.mark.parametrize(
+        ("name", "account"), [(None, "work@acme.com"), ("me@gmail.com", "Personal")]
+    )
+    async def test_with_several_accounts_the_result_names_the_one_it_ran_as(
+        self, account_record: AsyncMock, name: str | None, account: str
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        result = await _dispatch_send(name, _tool())
+
+        assert (result.output, result.account) == ({"status": "sent"}, account)
+
+    async def test_with_one_account_the_result_names_none(self, account_record: AsyncMock) -> None:
+        account_record.return_value = _gmail_accounts(WORK)
+
+        result = await _dispatch_send(None, _tool())
+
+        assert result.account is None
+
+    @pytest.mark.parametrize(
+        ("name", "connected_account_id", "is_primary"),
+        [(None, "ca_work", True), ("Personal", "ca_personal", False)],
+    )
+    async def test_the_wide_event_names_the_account_the_call_ran_as(
+        self,
+        account_record: AsyncMock,
+        name: str | None,
+        connected_account_id: str,
+        is_primary: bool,
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+
+        async with captured_wide_event() as event:
+            await _dispatch_send(name, _tool())
+
+        assert event["execute"] == {
+            "tool": "GMAIL_SEND_EMAIL",
+            "connected_account_id": connected_account_id,
+            "account_is_primary": is_primary,
+            "outcome": "ok",
+        }
+
+    @pytest.mark.parametrize("name", ["Personal", "me@gmail.com", " ME@GMAIL.COM "])
+    async def test_a_named_account_runs_as_that_account(
+        self, account_record: AsyncMock, name: str
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        await _dispatch_send(name, tool)
+
+        assert _invoked_account(tool) == {
+            "toolkit": "GMAIL",
+            "connected_account_id": "ca_personal",
+        }
+
+    async def test_an_unknown_account_lists_the_real_ones_and_never_runs(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+
+        result = await _dispatch_send("boss@acme.com", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        assert '"work@acme.com" (connected)' in result.error.hint
+        assert '"Personal" (connected)' in result.error.hint
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_an_expired_account_is_refused_and_offered_back_while_another_works(
+        self, account_record: AsyncMock, reconnect_prompt: AsyncMock
+    ) -> None:
+        dead = PERSONAL.model_copy(update={"status": "expired"})
+        account_record.return_value = _gmail_accounts(WORK, dead)
+        tool = _tool()
+
+        result = await _dispatch_send("Personal", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.ACCOUNT_EXPIRED
+        assert result.error.hint == RECONNECT_PROMPT
+        reconnect_prompt.assert_awaited_once_with(
+            "gmail", "Gmail", USER_ID, mode=ConnectMode.RECONNECT, account=dead
+        )
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_with_every_account_dead_the_call_runs_into_the_reconnect_path(
+        self, account_record: AsyncMock
+    ) -> None:
+        """No alternative exists, so the tool's own dead-account handling shows the connect card."""
+        dead = WORK.model_copy(update={"status": "expired"})
+        account_record.return_value = _gmail_accounts(dead)
+        tool = _tool()
+
+        await _dispatch_send(None, tool)
+
+        assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
+
+    async def test_an_account_on_a_tool_without_accounts_is_refused(self) -> None:
+        tool = _tool(name="todo_create")
+        with patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
+        ):
+            result = await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="todo_create",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="work",
+            )
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_a_personless_run_cannot_choose_an_account(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with patch(
+            f"{MODULE}.resolve_tool",
+            new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+        ):
+            result = await dispatch_tool(
+                user_id=None,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="Personal",
+            )
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_an_integration_without_composio_has_no_accounts_to_choose(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with patch(
+            "app.agents.tools.execute.account_choice.get_integration_by_tool_slug",
+            return_value=get_integration_by_id("perplexity"),
+        ):
+            result = await _dispatch_send("Personal", tool)
+
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_the_chosen_account_joins_the_callers_metadata(
+        self, account_record: AsyncMock
+    ) -> None:
+        """Composio wrappers read the user from metadata, so pinning an account must not drop it."""
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture"),
+        ):
+            await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=dispatch_config_for(USER_ID),
+                account="Personal",
+            )
+
+        assert tool.ainvoke.await_args.kwargs["config"]["metadata"] == {
+            "user_id": USER_ID,
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_personal"},
+        }
+
+    async def test_the_usage_event_says_how_many_accounts_and_whether_primary(
+        self, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = _gmail_accounts(WORK, PERSONAL)
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await dispatch_tool(
+                user_id=USER_ID,
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                account="Personal",
+            )
+
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            ToolUsed(
+                tool_name="GMAIL_SEND_EMAIL",
+                via="execute",
+                account_count=2,
+                account_is_primary=False,
+            ),
+        )
+
+
 @pytest.mark.unit
 class TestDispatchTool:
     async def test_unknown_tool_is_structured_and_never_invokes(self) -> None:
         with (
             patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=None)),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
-                user_id="u1", tool_name="NOPE_TOOL", data={}, config=CONFIG
+                user_id=USER_ID, tool_name="NOPE_TOOL", data={}, config=CONFIG
             )
         assert result.ok is False
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.UNKNOWN_TOOL
         # Failure is its own event, attributed to the user, with the reason.
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": "NOPE_TOOL", "reason": "unknown_tool"},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name="NOPE_TOOL", reason="unknown_tool"),
         )
 
     async def test_invalid_args_fail_loud_with_pydantic_detail_and_never_invoke(self) -> None:
@@ -69,10 +362,10 @@ class TestDispatchTool:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c"},  # subject missing
                 config=CONFIG,
@@ -84,9 +377,8 @@ class TestDispatchTool:
         tool.ainvoke.assert_not_awaited()
         # The retry-ratio numerator: every validation failure is captured.
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": "GMAIL_SEND_EMAIL", "reason": "invalid_args"},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name="GMAIL_SEND_EMAIL", reason="invalid_args"),
         )
 
     async def test_valid_args_invoke_with_coerced_supplied_fields_only(self) -> None:
@@ -96,10 +388,10 @@ class TestDispatchTool:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
@@ -111,9 +403,8 @@ class TestDispatchTool:
             {"recipient": "a@b.c", "subject": "hi"}, config=CONFIG
         )
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": "GMAIL_SEND_EMAIL", "via": "execute"},
+            UserId(USER_ID),
+            ToolUsed(tool_name="GMAIL_SEND_EMAIL", via="execute"),
         )
 
     async def test_dict_schema_tool_invokes_with_raw_data(self) -> None:
@@ -123,10 +414,10 @@ class TestDispatchTool:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             result = await dispatch_tool(
-                user_id="u1", tool_name="MCP_DICT_TOOL", data={"q": 1}, config=CONFIG
+                user_id=USER_ID, tool_name="MCP_DICT_TOOL", data={"q": 1}, config=CONFIG
             )
         assert result.ok is True
         tool.ainvoke.assert_awaited_once_with({"q": 1}, config=CONFIG)
@@ -138,7 +429,7 @@ class TestDispatchTool:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
                 user_id=None,
@@ -159,12 +450,12 @@ class TestObservedShapeRecording:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.record_observed_shape") as record,
             patch(f"{MODULE}.spawn_logged_task") as spawn,
         ):
             await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
@@ -179,17 +470,17 @@ class TestObservedShapeRecording:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.spawn_logged_task") as spawn,
         ):
             await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="create_todo",
                 data={"recipient": "x", "subject": "y"},
                 config=CONFIG,
             )
             await dispatch_tool(  # invalid args: never invoked, never recorded
-                user_id="u1", tool_name="create_todo", data={}, config=CONFIG
+                user_id=USER_ID, tool_name="create_todo", data={}, config=CONFIG
             )
         spawn.assert_not_called()
 
@@ -203,14 +494,14 @@ class TestIntegrationOnlySurface:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="create_todo",
                 data={"recipient": "x", "subject": "y"},
                 config=CONFIG,
-                integration_only=True,
+                space=ToolSpace(integration_only=True),
             )
         assert result.ok is False
         assert result.error is not None
@@ -224,10 +515,10 @@ class TestIntegrationOnlySurface:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="create_todo",
                 data={"recipient": "x", "subject": "y"},
                 config=CONFIG,
@@ -253,23 +544,22 @@ class TestSubagentToolSpace:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="SLACK_SEND_MESSAGE",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL", "read"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL", "read"}),
             )
         assert result.ok is False
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.OUT_OF_SCOPE
         tool.ainvoke.assert_not_awaited()
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": "SLACK_SEND_MESSAGE", "reason": "out_of_scope"},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name="SLACK_SEND_MESSAGE", reason="out_of_scope"),
         )
 
     async def test_a_tool_inside_the_space_still_runs(self) -> None:
@@ -279,15 +569,15 @@ class TestSubagentToolSpace:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.spawn_logged_task"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
             )
         assert result.ok is True
 
@@ -299,23 +589,22 @@ class TestSubagentToolSpace:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="notion_mcp_search",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
             )
         assert result.ok is False
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.OUT_OF_SCOPE
         tool.ainvoke.assert_not_awaited()
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": "notion_mcp_search", "reason": "out_of_scope"},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name="notion_mcp_search", reason="out_of_scope"),
         )
 
     async def test_a_subagents_own_on_demand_tool_in_scope_still_runs(self) -> None:
@@ -326,15 +615,15 @@ class TestSubagentToolSpace:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.spawn_logged_task"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="notion_mcp_search",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
-                scoped_tool_names={"notion_mcp_search"},
+                space=ToolSpace(tool_names={"notion_mcp_search"}),
             )
         assert result.ok is True
 
@@ -345,11 +634,11 @@ class TestSubagentToolSpace:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.spawn_logged_task"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="SLACK_SEND_MESSAGE",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
@@ -369,13 +658,13 @@ class TestDispatchOutcomeReporting:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.log") as log,
         ):
             log.set_ns.side_effect = lambda _ns, **kw: stamped.update(kw)
             with pytest.raises(ConnectionError):
                 await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name="GMAIL_SEND_EMAIL",
                     data={"recipient": "a@b.c", "subject": "hi"},
                     config=CONFIG,
@@ -399,11 +688,11 @@ class TestDispatchOutcomeReporting:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
             patch(f"{MODULE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.01),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="GMAIL_SEND_EMAIL",
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
@@ -414,9 +703,8 @@ class TestDispatchOutcomeReporting:
         # The model must not read this as "it did not happen".
         assert "may or may not have completed" in result.error.hint
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": "GMAIL_SEND_EMAIL", "reason": "timeout"},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name="GMAIL_SEND_EMAIL", reason="timeout"),
         )
 
     async def test_an_exempt_tool_is_not_bounded(self) -> None:
@@ -429,11 +717,11 @@ class TestDispatchOutcomeReporting:
                     return_value=ResolvedTool("deep_research", tool, is_integration=False)
                 ),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.01),
         ):
             result = await dispatch_tool(
-                user_id="u1", tool_name="deep_research", data={}, config=CONFIG
+                user_id=USER_ID, tool_name="deep_research", data={}, config=CONFIG
             )
         assert result.ok is True
 
@@ -451,6 +739,8 @@ class _Refusal:
     integration_only: bool = False
     scoped_tool_names: Container[str] | None = None
     data: dict[str, object] = field(default_factory=dict)
+    account: str | None = None
+    accounts: UserIntegrationDocument | None = None
 
 
 _INTERNAL = _tool(name="create_todo")
@@ -537,6 +827,47 @@ REFUSALS = {
         warning="execute: args failed schema validation",
         data={"recipient": "a@b.c"},
     ),
+    "account_on_an_accountless_tool": _Refusal(
+        tool_name="create_todo",
+        resolved=ResolvedTool("create_todo", _INTERNAL, is_integration=False),
+        error=DispatchError(
+            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+            detail="'create_todo' has no connected accounts to choose between.",
+            hint="Retry without `account`.",
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="work",
+    ),
+    "unknown_account": _Refusal(
+        tool_name="GMAIL_SEND_EMAIL",
+        resolved=ResolvedTool("GMAIL_SEND_EMAIL", _GMAIL, is_integration=True),
+        error=DispatchError(
+            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+            detail="No connected Gmail account is called 'boss@acme.com'.",
+            hint=(
+                'If the user meant one of these, pass it as `account`: "work@acme.com" '
+                '(connected), "Personal" (expired). Otherwise ask them which account they meant.'
+            ),
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="boss@acme.com",
+        accounts=_gmail_accounts(WORK, PERSONAL.model_copy(update={"status": "expired"})),
+    ),
+    "expired_account": _Refusal(
+        tool_name="GMAIL_SEND_EMAIL",
+        resolved=ResolvedTool("GMAIL_SEND_EMAIL", _GMAIL, is_integration=True),
+        error=DispatchError(
+            kind=DispatchErrorKind.ACCOUNT_EXPIRED,
+            detail="The Gmail account Personal needs reconnecting.",
+            hint=RECONNECT_PROMPT,
+        ),
+        warning="execute: account not usable",
+        data={"recipient": "a@b.c", "subject": "hi"},
+        account="Personal",
+        accounts=_gmail_accounts(WORK, PERSONAL.model_copy(update={"status": "expired"})),
+    ),
 }
 
 
@@ -545,21 +876,27 @@ class TestPredictableFailuresAreFullyReported:
     """Each refusal: the exact correction the model reads, one warning, metric tick, outcome and analytics event."""
 
     @pytest.mark.parametrize("case", REFUSALS.values(), ids=REFUSALS.keys())
-    async def test_a_refusal_is_reported_on_every_channel(self, case: _Refusal) -> None:
+    async def test_a_refusal_is_reported_on_every_channel(
+        self, case: _Refusal, account_record: AsyncMock
+    ) -> None:
+        account_record.return_value = case.accounts
         resolver = AsyncMock(return_value=case.resolved)
         before = _dispatched(str(case.error.kind))
         with (
             patch(f"{MODULE}.resolve_tool", new=resolver),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture") as capture,
         ):
             async with captured_wide_event() as event:
                 result = await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name=case.tool_name,
                     data=case.data,
                     config=CONFIG,
-                    integration_only=case.integration_only,
-                    scoped_tool_names=case.scoped_tool_names,
+                    account=case.account,
+                    space=ToolSpace(
+                        integration_only=case.integration_only,
+                        tool_names=case.scoped_tool_names,
+                    ),
                 )
         assert result == ToolExecutionResult(
             ok=False, resolved_name=case.tool_name, error=case.error
@@ -570,16 +907,15 @@ class TestPredictableFailuresAreFullyReported:
         assert event["execute"] == {"tool": case.tool_name, "outcome": str(case.error.kind)}
         assert _dispatched(str(case.error.kind)) == before + 1
         capture.assert_called_once_with(
-            "u1",
-            AnalyticsEvents.EXECUTE_TOOL_FAILED,
-            {"tool_name": case.tool_name, "reason": str(case.error.kind)},
+            UserId(USER_ID),
+            ToolExecuteFailed(tool_name=case.tool_name, reason=str(case.error.kind)),
         )
 
     async def test_the_tool_is_resolved_for_the_calling_user(self) -> None:
         resolver = AsyncMock(return_value=None)
-        with patch(f"{MODULE}.resolve_tool", new=resolver), patch(f"{MODULE}.capture_event"):
-            await dispatch_tool(user_id="u1", tool_name="NOPE_TOOL", data={}, config=CONFIG)
-        resolver.assert_awaited_once_with("u1", "NOPE_TOOL")
+        with patch(f"{MODULE}.resolve_tool", new=resolver), patch(f"{MODULE}.capture"):
+            await dispatch_tool(user_id=USER_ID, tool_name="NOPE_TOOL", data={}, config=CONFIG)
+        resolver.assert_awaited_once_with(USER_ID, "NOPE_TOOL")
 
     async def test_a_timeout_is_counted_and_stamped_as_its_own_outcome(self) -> None:
         tool = _tool()
@@ -590,11 +926,11 @@ class TestPredictableFailuresAreFullyReported:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             async with captured_wide_event() as event:
                 result = await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name="GMAIL_SEND_EMAIL",
                     data={"recipient": "a@b.c", "subject": "hi"},
                     config=CONFIG,
@@ -618,12 +954,12 @@ class TestSuccessReporting:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
             patch(f"{MODULE}.spawn_logged_task") as spawn,
         ):
             async with captured_wide_event() as event:
                 await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name="GMAIL_SEND_EMAIL",
                     data={"recipient": "a@b.c", "subject": "hi"},
                     config=CONFIG,
@@ -642,7 +978,7 @@ class TestSuccessReporting:
             new=AsyncMock(return_value="Revoked 'ap_1'."),
         ):
             await dispatch_tool(
-                user_id="u1", tool_name="revoke", data={"id": "ap_1"}, config=CONFIG
+                user_id=USER_ID, tool_name="revoke", data={"id": "ap_1"}, config=CONFIG
             )
         assert _dispatched("ok") == before + 1
 
@@ -668,10 +1004,10 @@ class TestArgsValidation:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="CAL_CREATE",
                 data={"when": "2026-01-02T03:04:05", "title": "sync"},
                 config=CONFIG,
@@ -687,10 +1023,10 @@ class TestArgsValidation:
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
             ),
-            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.capture"),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="CAL_CREATE",
                 data={"when": "2026-01-02T03:04:05", "title": " "},
                 config=CONFIG,

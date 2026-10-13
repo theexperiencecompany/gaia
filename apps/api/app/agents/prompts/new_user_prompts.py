@@ -21,8 +21,8 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: (
         "inbox out of control (Gmail). Offer: hand the connect to the executor (call_executor: "
         "connect 'gmail'); every "
-        "morning the inbox sorted into needs-them / can-wait / noise; drafts waiting on the "
-        "replies they always end up writing."
+        "morning one briefing of what needs their reply, what they are waiting on and today's "
+        "events; reply drafts saved in Gmail, never sent; every open thread followed up."
     ),
     OnboardingNeed.CALENDAR: (
         "walking into meetings cold (Calendar, Gmail for context). Offer: "

@@ -1,18 +1,47 @@
 """
 Gmail trigger handler.
 
-Handles Gmail new message trigger processing.
+Handles the account-level Gmail triggers: new inbox messages and mail the user sent.
 """
 
-from typing import Any, ClassVar
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import ClassVar, NamedTuple
+
+from pydantic import BaseModel, ValidationError
 
 from app.constants.log_tags import LogTag
+from app.constants.triggers import (
+    GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+    GMAIL_EMAIL_SENT_TRIGGER_NAME,
+    GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+)
 from app.db.repositories.workflows import workflow_repository
-from app.models.composio_schemas import GmailNewMessagePayload
-from app.models.trigger_configs import GmailNewMessageConfig
+from app.models.composio_schemas import GmailEmailSentPayload, GmailNewMessagePayload
+from app.models.webhook_models import ComposioTriggerEventIds
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
+from app.services.triggers.scope_catalog import TRIGGER_CONFIG_CLASSES
 from shared.py.wide_events import log
+
+
+class _GmailEvent(NamedTuple):
+    trigger_name: str
+    payload_model: type[BaseModel]
+
+
+# One Composio event per GAIA trigger: both are account-level, so the event type is
+# the only thing that keeps a sent-mail watch from waking on inbound mail.
+_EVENTS: Mapping[str, _GmailEvent] = MappingProxyType(
+    {
+        "GMAIL_NEW_GMAIL_MESSAGE": _GmailEvent(
+            GMAIL_NEW_MESSAGE_TRIGGER_NAME, GmailNewMessagePayload
+        ),
+        GMAIL_EMAIL_SENT_COMPOSIO_SLUG: _GmailEvent(
+            GMAIL_EMAIL_SENT_TRIGGER_NAME, GmailEmailSentPayload
+        ),
+    }
+)
 
 
 class GmailTriggerHandler(TriggerHandler):
@@ -23,9 +52,9 @@ class GmailTriggerHandler(TriggerHandler):
     via Composio (no per-resource registration like calendars).
     """
 
-    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["gmail_new_message"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [event.trigger_name for event in _EVENTS.values()]
 
-    SUPPORTED_EVENTS: ClassVar[set[str]] = {"GMAIL_NEW_GMAIL_MESSAGE"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = set(_EVENTS)
 
     @property
     def trigger_names(self) -> list[str]:
@@ -35,10 +64,13 @@ class GmailTriggerHandler(TriggerHandler):
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
+    def trigger_names_for_event(self, event_type: str) -> list[str]:
+        return [_EVENTS[event_type].trigger_name]
+
     @property
     def registers_instances(self) -> bool:
-        # Composio fires GMAIL_NEW_GMAIL_MESSAGE on the connected account, not on a
-        # per-owner instance — register() has no ids to return, and never has.
+        # Composio fires both Gmail triggers on the connected account (armed once
+        # at connect), not on a per-owner instance — register() has no ids to return.
         return False
 
     async def register(
@@ -53,11 +85,11 @@ class GmailTriggerHandler(TriggerHandler):
         No explicit registration needed - triggers fire on connected account.
         """
         trigger_data = trigger_config.trigger_data
+        expected = TRIGGER_CONFIG_CLASSES[trigger_name]
 
-        # Validate trigger_data type if provided
-        if trigger_data is not None and not isinstance(trigger_data, GmailNewMessageConfig):
+        if trigger_data is not None and not isinstance(trigger_data, expected):
             raise TypeError(
-                f"Expected GmailNewMessageConfig for trigger '{trigger_name}', "
+                f"Expected {expected.__name__} for trigger '{trigger_name}', "
                 f"but got {type(trigger_data).__name__}"
             )
 
@@ -65,38 +97,38 @@ class GmailTriggerHandler(TriggerHandler):
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows for a Gmail event.
 
-        Matches gmail_new_message workflows by user_id and gmail_poll_inbox
-        workflows by composio_trigger_ids in one pass — both share the
-        GMAIL_NEW_GMAIL_MESSAGE Composio event.
+        Matches the event's own account-level trigger by user_id, and
+        gmail_poll_inbox workflows by composio_trigger_ids — the poll trigger
+        shares the GMAIL_NEW_GMAIL_MESSAGE Composio event.
         """
         log.set_ns("trigger", integration_id="gmail", trigger_type=event_type)
         try:
             try:
-                GmailNewMessagePayload.model_validate(data)
-            except Exception as e:
+                _EVENTS[event_type].payload_model.model_validate(data)
+            except ValidationError as e:
                 log.debug(
                     f"{LogTag.TRIGGER} Gmail payload validation failed",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
 
-            user_id = data.get("user_id")
+            user_id = ComposioTriggerEventIds.model_validate(data).user_id
             if not user_id and not trigger_id:
                 log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
                 return []
 
             workflows: list[Workflow] = []
 
-            # gmail_new_message workflows are account-level, matched only by user_id.
-            # Poll webhooks may omit user_id, so only run this when we have one.
+            # Account-level workflows are matched only by user_id. Poll webhooks may
+            # omit user_id, so only run this when we have one.
             if user_id:
                 workflows.extend(
                     await workflow_repository.find_active_integration_workflows(
-                        user_id, self.SUPPORTED_TRIGGERS
+                        user_id, self.trigger_names_for_event(event_type)
                     )
                 )
 

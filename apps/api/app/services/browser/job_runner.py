@@ -49,7 +49,7 @@ from app.schemas.browser_job import (
     BrowserJobState,
     BrowserJobStatus,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser import host_client
 from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import (
@@ -99,6 +99,8 @@ from app.utils.agent_utils import (
     format_subagent_start_event,
 )
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserTaskFinished
 from shared.py.wide_events import log
 
 #: Where one already-shaped stream frame goes: the job's own replayable feed.
@@ -514,20 +516,19 @@ async def persist_run_outcome(
     if not request.user_id:
         return
     result = run.result
-    capture_event(
-        request.user_id,
-        AnalyticsEvents.BROWSER_TASK_FINISHED,
-        {
-            "status": result.status.value,
-            "success": result.success,
-            "steps": result.steps,
-            "actions": run.actions,
-            "duration_ms": run.run_ms,
-            "source": request.source_category or "web",
+    capture(
+        UserId(request.user_id),
+        BrowserTaskFinished(
+            status=result.status.value,
+            success=result.success,
+            steps=result.steps,
+            actions=run.actions,
+            duration_ms=run.run_ms,
+            source=request.source_category or "web",
             # With success, says whether the fallback engine recovered a run
             # the primary could not finish, and so points at engine gaps.
-            "engine_fallback": run.engine_fallback,
-        },
+            engine_fallback=run.engine_fallback,
+        ),
     )
     await record_browser_task(
         BrowserTaskRecord(

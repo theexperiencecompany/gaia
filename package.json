@@ -49,7 +49,7 @@
     "jscpd": "^4.2.5",
     "jsdom": "^30.0.1",
     "knip": "^6.31.0",
-    "next": "16.3.6",
+    "next": "16.3.8",
     "npm-package-json-lint": "^10.4.1",
     "nx": "^22.7.7",
     "openapi-typescript": "^7.13.0",

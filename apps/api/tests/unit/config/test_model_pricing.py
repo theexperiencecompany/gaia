@@ -13,13 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.agents.llm.client import PROVIDER_MODELS
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     MODEL_PRICING,
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
-    has_rate_card,
 )
 from app.config.settings import settings
 from app.constants.llm import (
@@ -31,6 +31,7 @@ from app.constants.llm import (
     OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
     VISION_MODEL_NAME,
+    LLMProviderName,
 )
 from shared.py.wide_events import log
 
@@ -56,6 +57,19 @@ RUNTIME_MODEL_IDS = sorted(
         HIL_JUDGE_MODEL_NAME,
         COMMS_MODEL_NAME,
     }
+)
+
+
+# Every model served through a provider that reports no per-call cost: each
+# PROVIDER_MODELS lane but OpenRouter (cost reported) and the dev-only custom
+# endpoint, plus the direct-Gemini memory and vision clients.
+TABLE_PRICED_MODEL_IDS = sorted(
+    {
+        model
+        for provider, model in PROVIDER_MODELS.items()
+        if provider not in {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+    }
+    | {MEMORY_MODEL_NAME, VISION_MODEL_NAME}
 )
 
 
@@ -134,7 +148,6 @@ class TestEveryRuntimeModelIsPriced:
             pricing = get_model_pricing("gpt-6-luna")
 
         assert pricing == DEFAULT_PRICING
-        assert has_rate_card("gpt-6-luna") is False
         mock_log.error.assert_not_called()
 
     def test_production_still_logs_an_unpriced_model_named_like_the_dev_one(
@@ -173,14 +186,13 @@ class TestEveryRuntimeModelIsPriced:
             assert pricing != DEFAULT_PRICING, model_id
 
 
-class TestHasRateCard:
-    """The flag the analytics event reports as cost_estimated."""
+class TestEveryNoProviderCostLaneIsPriced:
+    """Where the provider reports no per-call cost, the rate card is the whole price."""
 
-    def test_a_priced_model_is_not_estimated(self) -> None:
-        assert has_rate_card(DEFAULT_MODEL_NAME) is True
-
-    def test_a_model_missing_from_the_table_is_estimated(self) -> None:
-        assert has_rate_card("some-model-nobody-registered") is False
+    @pytest.mark.parametrize("model_id", TABLE_PRICED_MODEL_IDS)
+    def test_the_model_carries_its_own_rate(self, model_id: str) -> None:
+        """A missing row would book DEFAULT_PRICING as the cost of record, with no provider figure to correct it."""
+        assert model_id in MODEL_PRICING
 
 
 class TestAuxModelPricing:

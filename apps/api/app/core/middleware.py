@@ -125,16 +125,16 @@ def configure_middleware(app: FastAPI) -> None:
         allow_headers=["*"],
     )
 
-    # Bot authentication (before WorkOS to allow bot auth to take precedence)
-    app.add_middleware(BotAuthMiddleware)
-
-    # PostHog's context must run after WorkOS authentication has populated
+    # PostHog's context must run after BOTH auth layers have populated
     # request.state.user, while still wrapping every downstream handler.
     app.add_middleware(PostHogRequestContextMiddleware)
 
-    # WorkOS authentication, inside the logging boundary so its rejections are
-    # logged. The client is built only for AUTH_MODE=workos: local-mode
-    # instances have no WorkOS credentials at all.
+    # Bot authentication (before WorkOS to allow bot auth to take precedence)
+    app.add_middleware(BotAuthMiddleware)
+
+    # WorkOS authentication — inside the logging boundary, so its rejections
+    # are logged and its log.set()/log.error() calls reach the wide event.
+    # Local-auth instances have no WorkOS credentials, so no client is built.
     workos_client = (
         AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
         if settings.AUTH_MODE == "workos"

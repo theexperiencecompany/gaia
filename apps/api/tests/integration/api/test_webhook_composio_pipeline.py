@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+from collections.abc import Iterator
 import hashlib
 import hmac as hmac_mod
 import json
@@ -12,8 +13,8 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.integrations.integration_expiry import ExpiryOptions
 from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
 from app.services.workflow.queue_service import WorkflowQueueService
 from shared.py.wide_events import spawn_logged_task
@@ -64,6 +65,31 @@ def _gmail_delivery() -> dict:
     }
 
 
+def _gmail_sent_delivery() -> dict:
+    """GMAIL_EMAIL_SENT_TRIGGER at toolkit 20260107_00: recipients is one comma-separated string."""
+    return {
+        "type": "gmail_email_sent_trigger",
+        "timestamp": "2026-09-27T05:44:33Z",
+        "data": {
+            "connection_id": "conn-1",
+            "connection_nano_id": "nano-1",
+            "trigger_nano_id": "ti_sent_nano",
+            "trigger_id": "uuid-2",
+            "user_id": USER_ID,
+            "thread_id": "thread-1",
+            "message_id": "msg-sent-1",
+            "sender": "me@example.com",
+            "recipients": "alice@acme.com, bob@acme.com",
+            "to": "alice@acme.com",
+            "cc": "bob@acme.com",
+            "bcc": None,
+            "subject": "Re: Invoice 4021",
+            "message_timestamp": "2026-09-27T05:44:00Z",
+            "payload": {},
+        },
+    }
+
+
 def _expired_connection_delivery() -> dict:
     return {
         "id": "msg_847cdfcd",
@@ -91,7 +117,7 @@ def _expired_connection_delivery() -> dict:
     }
 
 
-def _workflow() -> Workflow:
+def _workflow(trigger_name: str = "gmail_new_message") -> Workflow:
     return Workflow(
         id=WORKFLOW_ID,
         user_id=USER_ID,
@@ -102,7 +128,7 @@ def _workflow() -> Workflow:
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             enabled=True,
-            trigger_name="gmail_new_message",
+            trigger_name=trigger_name,
             composio_trigger_ids=[],
         ),
     )
@@ -144,6 +170,15 @@ async def _drain(spawned: list[asyncio.Task]) -> None:
 
 class TestTriggerDeliveryToQueuedExecution:
     """A signed GMAIL_NEW_GMAIL_MESSAGE delivery must become a queued workflow execution."""
+
+    @pytest.fixture(autouse=True)
+    def _single_account(self) -> Iterator[None]:
+        """One account on record, so the event is not tagged with which inbox received it."""
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=None),
+        ):
+            yield
 
     async def test_a_signed_delivery_buffers_the_matched_workflow_for_a_batched_run(
         self,
@@ -235,10 +270,95 @@ class TestTriggerDeliveryToQueuedExecution:
         enqueue.assert_awaited_once()
         _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
         assert task_name == "dispatch_todo_subscriptions"
-        assert "gmail_new_message" in trigger_names
+        # Inbound mail must never wake a watch on the user's sent mail.
+        assert trigger_names == ["gmail_new_message"]
         assert user_id == USER_ID
         assert payload["payload"]["message_id"] == "msg-1"
         assert trigger_id is not None
+
+    async def test_a_sent_mail_delivery_reaches_only_sent_mail_subscriptions(
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
+    ) -> None:
+        """The user's own reply is the event a thread todo waits on; it must reach the todo side."""
+        enqueue = AsyncMock()
+        find_by_user = AsyncMock(return_value=[])
+        body = _gmail_sent_delivery()
+        with (
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows",
+                find_by_user,
+            ),
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[]),
+            ),
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            response = await unauthenticated_client.post(
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-sent-1"),
+            )
+            await _drain(_spawned)
+
+        assert response.json()["message"] == "Webhook accepted"
+        find_by_user.assert_awaited_once_with(USER_ID, ["gmail_email_sent"])
+        enqueue.assert_awaited_once()
+        _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
+        assert task_name == "dispatch_todo_subscriptions"
+        assert trigger_names == ["gmail_email_sent"]
+        assert trigger_id == "ti_sent_nano"
+        assert user_id == USER_ID
+        assert payload["thread_id"] == "thread-1"
+
+    async def test_a_sent_mail_delivery_buffers_its_workflow_on_the_daily_window(
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
+    ) -> None:
+        """Sent mail fires once per message too; a burst must join one batch, not queue a run each."""
+        queue = AsyncMock()
+        buffer = AsyncMock(return_value=True)
+        body = _gmail_sent_delivery()
+        with (
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows",
+                AsyncMock(return_value=[_workflow("gmail_email_sent")]),
+            ),
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", AsyncMock()),
+            patch("app.services.triggers.base.buffer_trigger_event", buffer),
+            patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
+        ):
+            response = await unauthenticated_client.post(
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-sent-batch-1"),
+            )
+            await _drain(_spawned)
+
+        assert response.status_code == 200
+        buffer.assert_awaited_once()
+        workflow_id, _user_id, data, window_seconds, _context = buffer.await_args.args
+        assert workflow_id == WORKFLOW_ID
+        assert data["thread_id"] == "thread-1"
+        assert window_seconds == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+        queue.assert_not_awaited()
 
     async def test_a_bad_signature_is_refused_and_never_reaches_the_handler(
         self,
@@ -322,13 +442,41 @@ class TestConnectionExpiryDelivery:
         _webhook_secret: None,
         _redis: MagicMock,
         _spawned: list,
+        fake_redis: object,
     ) -> None:
-        pause = AsyncMock(return_value=3)
-        expire = AsyncMock()
+        """The real expiry runs against the repository seam: the dead primary halts workflows."""
+        record = UserIntegrationDocument(
+            user_id=USER_ID,
+            integration_id="googlecalendar",
+            status="connected",
+            accounts=[
+                IntegrationAccount(
+                    id="acct_work",
+                    connected_account_id="ca_xxxxxxxxxxxx",
+                    label="work@acme.com",
+                )
+            ],
+            primary_account_id="acct_work",
+        )
+        repository = MagicMock()
+        repository.get_for_user = AsyncMock(return_value=record)
+        repository.save_accounts = AsyncMock(
+            side_effect=lambda user_id, integration_id, **f: record.model_copy(
+                update={"status": f["status"], "accounts": f["accounts"]}
+            )
+        )
+        pause = AsyncMock(return_value=["Standup prep"])
+        announce = AsyncMock()
         body = _expired_connection_delivery()
         with (
+            patch(
+                "app.services.integrations.integration_accounts.user_integration_repository",
+                repository,
+            ),
+            patch("app.services.integrations.integration_expiry.schedule_user_integrations_sync"),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.expire_user_integration", expire),
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
+            patch(f"{MODULE}.announce_account_expiry", announce),
         ):
             response = await unauthenticated_client.post(
                 ENDPOINT,
@@ -340,18 +488,22 @@ class TestConnectionExpiryDelivery:
         assert response.status_code == 200
         assert response.json()["message"] == "Connection event accepted"
 
+        saved = repository.save_accounts.await_args.kwargs
+        assert saved["status"] == "expired"
+        assert [a.status for a in saved["accounts"]] == ["expired"]
         pause.assert_awaited_once_with(USER_ID, "googlecalendar")
-        expire.assert_awaited_once_with(
+        # The integration's only account died, so its watches on every account stop too.
+        pause_watches.assert_awaited_once_with(
+            USER_ID, "googlecalendar", record.accounts[0].id, integration_expired=True
+        )
+        user_id, integration_id, expired, paused, reason = announce.await_args.args
+        assert (user_id, integration_id, paused, reason) == (
             USER_ID,
             "googlecalendar",
-            ExpiryOptions(
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_xxxxxxxxxxxx",
-                paused_workflows=3,
-            ),
+            ["Standup prep"],
+            "refresh_token_revoked",
         )
+        assert expired.integration_expired is True
 
     async def test_an_unrecognised_toolkit_is_acked_without_touching_any_user(
         self,
@@ -367,7 +519,7 @@ class TestConnectionExpiryDelivery:
         body["data"]["auth_config"]["id"] = "ac_unknown_config"
         with (
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.expire_user_integration", expire),
+            patch(f"{MODULE}.expire_account", expire),
         ):
             response = await unauthenticated_client.post(
                 ENDPOINT,

@@ -1,3 +1,5 @@
+import { ADVERTISED_PRO_MONTHLY_PRICE } from "@/features/pricing/advertisedPrice";
+
 import type { FAQItem } from "./faq";
 
 /**
@@ -83,8 +85,7 @@ export const pricingFAQs: FAQItem[] = [
   },
   {
     question: "How does GAIA's pricing compare to competitors?",
-    answer:
-      "GAIA Pro starts at $20/month, comparable to ChatGPT Plus ($20/month) and Motion ($19/month). Unlike these tools, GAIA offers a free tier, self-hosting for $0, and combines capabilities that would otherwise require multiple subscriptions (email management, calendar AI, workflow automation, task management).",
+    answer: `GAIA Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE}/month, comparable to ChatGPT Plus ($20/month) and Motion ($19/month). Unlike these tools, GAIA offers a free tier, self-hosting for $0, and combines capabilities that would otherwise require multiple subscriptions (email management, calendar AI, workflow automation, task management).`,
   },
   {
     question: "Can I self-host GAIA for free?",

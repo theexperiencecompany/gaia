@@ -6,8 +6,8 @@ MongoDB is the source of truth; the on-disk tree is a hash-gated projection
 short-circuit unchanged content.
 
 Layout under <user_root>/gaia-tasks/: GUIDE.md and index.md (mode 0644),
-plus per-doc <slug>-<shortid>/ folders holding canvas.md, log.md, meta.json
-(mode 0444). Folder names are a kebab-case title (up to 40 chars) plus the
+plus per-doc <slug>-<shortid>/ folders holding canvas.md, activity.md,
+observations.md, log.md and meta.json (mode 0444). Folder names are a kebab-case title (up to 40 chars) plus the
 ObjectId's last 8 hex chars; a title rename removes the stale folder and
 writes a fresh one under the new slug.
 
@@ -17,8 +17,9 @@ cleanup_legacy_todos_dir is a one-shot migration removing the prior release's
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
@@ -26,6 +27,7 @@ from app.services.storage._vfs_common import (
     META_FILENAME,
     READONLY_DIR_MODE,
     RW_DIR_MODE,
+    TodoProjectionMeta,
     folder_name as common_folder_name,
     hash_body_with_meta,
     meta_body,
@@ -51,6 +53,7 @@ GAIA_TASKS_MARKER = ".gaia/gaia-tasks.v"
 GAIA_TASKS_PER_DOC_MARKER_DIR = ".gaia/gaia-tasks"
 CANVAS_FILENAME = "canvas.md"
 ACTIVITY_FILENAME = "activity.md"
+OBSERVATIONS_FILENAME = "observations.md"
 LOG_FILENAME = "log.md"
 
 # --- Legacy paths (one-shot migration from the prior release) ---------------
@@ -60,24 +63,35 @@ LEGACY_TODOS_MARKER = ".gaia/todos.v"
 LEGACY_TODOS_PER_DOC_MARKER_DIR = ".gaia/todos"
 
 
+class GaiaTaskMeta(TodoProjectionMeta):
+    """A gaia-task's meta.json: the shared todo fields plus the tracking ones."""
+
+    references: list[str]
+    scheduled_at: datetime | None
+    recurrence: str | None
+    expires_at: datetime | None
+
+
 class GaiaTaskProjection(TypedDict):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
     id: str
     canvas: str
     activity: str
+    observations: str
     log: str
-    meta: dict[str, Any]
+    meta: GaiaTaskMeta
 
 
 # ====================================================================
-# signatures (per-doc body shape is canvas + activity + log + meta)
+# signatures (per-doc body shape is canvas + activity + observations + log + meta)
 # ====================================================================
 
 
 def per_doc_signature(doc: GaiaTaskProjection) -> str:
-    """sha256 of canvas + activity + log + serialized meta — gates per-folder rewrite."""
-    return hash_body_with_meta(doc["canvas"], doc["activity"], doc["log"], meta=doc["meta"])
+    """sha256 of canvas + activity + observations + log + meta: gates per-folder rewrite."""
+    bodies = (doc["canvas"], doc["activity"], doc["observations"], doc["log"])
+    return hash_body_with_meta(*bodies, meta=doc["meta"])
 
 
 # ====================================================================
@@ -137,12 +151,17 @@ def cleanup_legacy_todos_dir(user_root: Path) -> bool:
 # ====================================================================
 
 
-def _glyph(meta: dict[str, Any]) -> str:
+def _glyph(meta: GaiaTaskMeta) -> str:
     return "DONE" if meta.get("completed") else "OPEN"
 
 
 def _folder_name(doc: GaiaTaskProjection) -> str:
-    return common_folder_name(doc["id"], doc["meta"].get("title"))
+    meta: GaiaTaskMeta = doc["meta"]
+    return common_folder_name(doc["id"], meta.get("title"))
+
+
+def _recency(doc: GaiaTaskProjection) -> str:
+    return updated_at_key(doc["meta"])
 
 
 def render_index(docs: list[GaiaTaskProjection]) -> str:
@@ -152,12 +171,12 @@ def render_index(docs: list[GaiaTaskProjection]) -> str:
         "last-updated, newest first. Do not edit — regenerated on every "
         "sync. -->\n"
     )
-    sorted_docs = sorted(docs, key=lambda d: updated_at_key(d["meta"]), reverse=True)
+    sorted_docs: list[GaiaTaskProjection] = sorted(docs, key=_recency, reverse=True)
     if not sorted_docs:
         return header + "\n# No active gaia-tasks.\n"
     body = []
     for d in sorted_docs:
-        meta = d["meta"]
+        meta: GaiaTaskMeta = d["meta"]
         title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
         updated = updated_at_key(meta) or "—"
         body.append(f"- [{_glyph(meta)}] `{_folder_name(d)}`  {title}  _(updated {updated})_")
@@ -207,6 +226,7 @@ def _write_changed_docs(
         folder.chmod(RW_DIR_MODE)
         write_readonly_body(folder / CANVAS_FILENAME, doc["canvas"])
         write_readonly_body(folder / ACTIVITY_FILENAME, doc["activity"])
+        write_readonly_body(folder / OBSERVATIONS_FILENAME, doc["observations"])
         write_readonly_body(folder / LOG_FILENAME, doc["log"])
         write_readonly_body(folder / META_FILENAME, meta_body(doc["meta"]))
         folder.chmod(READONLY_DIR_MODE)

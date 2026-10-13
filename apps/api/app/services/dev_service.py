@@ -68,6 +68,7 @@ async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
         name=name,
         email=email,
         picture_url=None,
+        auth_method=None,
         # Same stored shape as real signup, but a minted dev user must never
         # send a welcome email, join the marketing audience, or hit PostHog.
         external_side_effects=False,

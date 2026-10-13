@@ -22,7 +22,6 @@ from langchain_core.runnables.config import var_child_runnable_config
 from pydantic import ValidationError
 import pytest
 
-from app.agents.tools.integrations import calendar_tool
 from app.agents.tools.integrations.calendar_tool import (
     _extract_datetime,
     _format_calendar_for_stream,
@@ -31,6 +30,7 @@ from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
 )
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
+from app.models.agent_config import ComposioAccountSelection
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventsResponse,
@@ -53,6 +53,7 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
+from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
 from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
@@ -123,7 +124,7 @@ def _no_captured_server_loop() -> Iterator[None]:
 def writer():
     """Capture everything the tool pushes to the LangGraph stream."""
     sink = MagicMock()
-    with patch(f"{MODULE}.get_stream_writer", return_value=sink):
+    with patch(f"{MODULE}.current_stream_writer", return_value=sink):
         yield sink
 
 
@@ -416,6 +417,17 @@ class TestRunSync:
         assert dispatch.call_args.args[0] is coro
         assert dispatch.call_args.kwargs == {"timeout": 3.0}
         coro.close()
+
+    async def test_inside_a_running_loop_the_coroutine_sees_the_account_scope(self) -> None:
+        # The nested-loop branch runs the coroutine on a fresh thread; the scope must follow.
+        work = ComposioAccountSelection(toolkit="googlecalendar", connected_account_id="ca_work")
+
+        async def scoped() -> str | None:
+            selection = current_selection("googlecalendar")
+            return selection.connected_account_id if selection else None
+
+        with account_scope(work):
+            assert _run_sync(scoped(), timeout=5.0) == "ca_work"
 
 
 class TestGetDaySummary:
@@ -1839,7 +1851,6 @@ class TestCreateEvent:
         # BUG: ticket redeem invokes the tool outside any graph run (bare config, no
         # Pregel runtime), so the unconditional get_stream_writer() raised KeyError
         # AFTER the Google POST and every retry duplicated the event. No writer fixture.
-        from langchain_core.runnables.config import var_child_runnable_config
 
         token = var_child_runnable_config.set(
             {"configurable": {"user_id": "user-42", "user_timezone": "+05:30"}}
@@ -1902,21 +1913,3 @@ def test_zoneinfo_offset_guard_is_still_needed() -> None:
     # Pins the reason CUSTOM_GET_DAY_SUMMARY must go through Timezone.parse.
     with pytest.raises(Exception):
         ZoneInfo("+05:30")
-
-
-class TestOptionalStreamWriter:
-    def test_returns_none_with_no_runnable_context(self) -> None:
-        assert calendar_tool._optional_stream_writer() is None
-
-    def test_returns_none_under_dispatch_like_bare_config(self) -> None:
-        """Ticket redeem invokes tools via dispatch with a synthesized config that carries no Pregel runtime — this is the shape that crashed."""
-        token = var_child_runnable_config.set({"configurable": {"user_id": "u1"}})
-        try:
-            assert calendar_tool._optional_stream_writer() is None
-        finally:
-            var_child_runnable_config.reset(token)
-
-    def test_returns_writer_inside_a_graph_run(self) -> None:
-        sink = MagicMock()
-        with patch(f"{MODULE}.get_stream_writer", return_value=sink):
-            assert calendar_tool._optional_stream_writer() is sink

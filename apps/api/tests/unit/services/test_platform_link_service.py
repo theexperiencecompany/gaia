@@ -21,7 +21,6 @@ from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -31,6 +30,7 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import AppError, create_error
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 
 
 def _user(**fields) -> UserDocument:
@@ -926,7 +926,9 @@ class TestStartPlatformConnect:
 
 
 class TestDisconnectPlatformAccount:
-    async def test_success_clears_bot_cache_and_audits(self, sample_user_id):
+    async def test_success_clears_bot_cache_and_audits(
+        self, sample_user_id: str, posthog_events: list[dict[str, object]]
+    ) -> None:
         link_entry = {"platformUserId": "DISC999"}
         unlink_result = DisconnectPlatformResponse(status="disconnected", platform="discord")
         with (
@@ -941,7 +943,6 @@ class TestDisconnectPlatformAccount:
                 return_value=unlink_result,
             ) as mock_unlink,
             patch("app.services.platform_link_service.redis_cache") as mock_cache,
-            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
             patch("app.services.platform_link_service.log") as mock_log,
         ):
             mock_cache.client = AsyncMock()
@@ -957,9 +958,12 @@ class TestDisconnectPlatformAccount:
             actor=sample_user_id,
             provider="discord",
         )
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
-        )
+        # The agent tool reaches this from an ARQ executor run with no request
+        # context, so the owner must be named explicitly.
+        [event] = posthog_events
+        assert event["event"] == IntegrationDisconnected.event
+        assert event["distinct_id"] == sample_user_id
+        assert event["properties"]["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (

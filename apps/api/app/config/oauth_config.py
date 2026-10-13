@@ -89,6 +89,7 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
+from app.config.composio_auth_configs import with_auth_config_overrides
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -128,6 +129,7 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.config.settings import settings
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
@@ -160,8 +162,11 @@ from app.constants.hil_destructive_tools import (
     ZOOM_DESTRUCTIVE_TOOLS,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
-from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
-from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
+from app.constants.triggers import (
+    GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+    GMAIL_EMAIL_SENT_TRIGGER_NAME,
+    GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+)
 from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
@@ -179,7 +184,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
+_DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -206,6 +211,17 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit_version="20260107_00",
         ),
         destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    # The primary calendar's id is the account's email; GET_CURRENT_USER
+                    # does not exist at the pinned toolkit version.
+                    tool="GOOGLECALENDAR_GET_CALENDAR",
+                    variables=[VariableExtraction(name="email", field_path="calendar_data.id")],
+                ),
+            ],
+            label_template="{email}",
+        ),
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
@@ -429,7 +445,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "delete_todo",
                 "search_todos",
                 "get_today_todos",
-                "add_subtask",
+                "add_checklist_item",
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),
@@ -501,10 +517,26 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
                 auto_activate=True,
                 workflow_trigger_schema=WorkflowTriggerSchema(
-                    slug="gmail_new_message",
+                    slug=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="New Gmail Message",
                     description="Trigger when a new email arrives",
+                    config_schema={},
+                ),
+            ),
+            # The inbox trigger never sees the user's own mail (labelled SENT, not
+            # INBOX), so without this a watched thread cannot learn the user replied.
+            TriggerConfig(
+                slug=GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+                name="Gmail Email Sent",
+                description="Triggered when you send an email from Gmail",
+                config={"interval": 1},
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug=GMAIL_EMAIL_SENT_TRIGGER_NAME,
+                    composio_slug=GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+                    name="Email Sent",
+                    description="Trigger when you send an email",
                     config_schema={},
                 ),
             ),
@@ -547,13 +579,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
-            # A large inbox scan offloads to a JSONL file; bind the sandbox-free
-            # miners into the agent AND its spawned chunk-readers so triage mines
-            # the offload with query_json/grep instead of read-whole-file + bash.
             extra_initial_tools=["query_json", "grep"],
-            # GMAIL_FETCH_MESSAGES/THREAD replace the fixed-page-size, unshaped
-            # stock tools. exclude_tools only gates agent retrieval; the REST
-            # mail layer still invokes the stock tools by name.
             exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
@@ -566,6 +592,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=GMAIL_CONTENT,
     ),
@@ -676,6 +703,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{workspace_name}",
         ),
         content=NOTION_CONTENT,
     ),
@@ -725,6 +753,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="@{username}",
         ),
         content=TWITTER_CONTENT,
     ),
@@ -972,7 +1001,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="managing repositories, creating issues, handling pull requests, managing branches, reviewing code, managing collaborators, and automating development workflows",
             use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
-            specific_tools=GITHUB_TOOLS,
             auto_bind_tools=[
                 "GITHUB_CUSTOM_GATHER_CONTEXT",
                 "GITHUB_CREATE_AN_ISSUE",
@@ -994,6 +1022,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username}",
         ),
         content=GITHUB_CONTENT,
     ),
@@ -1179,6 +1208,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{email}",
         ),
         content=LINEAR_CONTENT,
     ),
@@ -1266,7 +1296,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
-            specific_tools=SLACK_TOOLS,
             auto_bind_tools=[
                 "SLACK_CUSTOM_GATHER_CONTEXT",
                 "SLACK_SEND_MESSAGE",
@@ -1291,6 +1320,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     ],
                 ),
             ],
+            label_template="{username} @ {team_name}",
         ),
         content=SLACK_CONTENT,
     ),
@@ -2190,6 +2220,10 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         content=POSTHOG_CONTENT,
     ),
 ]
+
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = with_auth_config_overrides(
+    _DECLARED_INTEGRATIONS, settings.COMPOSIO_AUTH_CONFIG_OVERRIDES
+)
 
 
 @cache

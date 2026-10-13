@@ -8,6 +8,7 @@
  * stitches the pre-link history, and the failure fallback.
  */
 
+import type { AnalyticsId } from "@gaia/shared/analytics";
 import { BaseBotAdapter } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,7 +54,7 @@ class TestAdapter extends BaseBotAdapter {
     (this as unknown as { analytics: unknown }).analytics = analytics;
   }
 
-  resolve(platformUserId: string): Promise<string> {
+  resolve(platformUserId: string): Promise<AnalyticsId> {
     return this.resolveDistinctId(platformUserId);
   }
 }
@@ -157,6 +158,20 @@ describe("BaseBotAdapter.resolveDistinctId", () => {
     );
     await expect(adapter.resolve(PLATFORM_USER_ID)).resolves.toBe(GAIA_USER_ID);
     expect(analytics.alias).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a linked user_id that is not a Mongo ObjectId", async () => {
+    const { adapter, analytics } = setup(
+      vi.fn(async () => ({
+        authenticated: true,
+        platform: "discord",
+        platform_user_id: PLATFORM_USER_ID,
+        user_id: "user@example.com",
+      })),
+    );
+
+    await expect(adapter.resolve(PLATFORM_USER_ID)).rejects.toThrow(TypeError);
+    expect(analytics.alias).not.toHaveBeenCalled();
   });
 
   it("degrades to the platform id when the link lookup fails", async () => {

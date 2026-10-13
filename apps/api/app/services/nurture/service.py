@@ -7,7 +7,6 @@ enforces the frequency caps.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TypedDict, cast
 from urllib.parse import urlencode
 
 from app.config.settings import settings
@@ -25,8 +24,9 @@ from app.constants.nurture import (
     NurtureStep,
 )
 from app.db.repositories.users import user_repository
+from app.models.nurture_models import NurtureHistoryEntry, NurtureState, NurtureStepStatus
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
@@ -37,37 +37,16 @@ from app.services.providers.provider_credentials_service import (
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from app.utils.timezone import as_utc, is_within_local_daytime
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 from shared.py.wide_events import log
 
 
-class NurtureStepRecord(TypedDict, total=False):
-    """One outcome appended to the nurture history of a user.
-
-    Total False because capped fields are read defensively, not because the
-    writer may omit them.
-    """
-
-    step: str
-    at: datetime
-    status: str
-
-
-class NurtureState(TypedDict, total=False):
-    """The nurture subdocument of a user: which steps ran, and when.
-
-    Total False so a missing or partial subdocument reads as no steps yet
-    rather than failing the run.
-    """
-
-    completed_steps: list[str]
-    history: list[NurtureStepRecord]
-
-
-def _within_frequency_caps(history: list[NurtureStepRecord], now: datetime) -> bool:
+def _within_frequency_caps(history: list[NurtureHistoryEntry], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history
-        if entry.get("status") == "sent" and (sent_at := as_utc(entry.get("at")))
+        if entry.status == NurtureStepStatus.SENT and (sent_at := as_utc(entry.at))
     ]
     if not sent_times:
         return True
@@ -77,7 +56,9 @@ def _within_frequency_caps(history: list[NurtureStepRecord], now: datetime) -> b
     return now - max(sent_times) >= timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)
 
 
-async def _record_step(user_id: str, step_key: str, now: datetime, status: str) -> None:
+async def _record_step(
+    user_id: str, step_key: str, now: datetime, status: NurtureStepStatus
+) -> None:
     await user_repository.record_nurture_step(user_id, step_key, at=now, status=status)
 
 
@@ -140,7 +121,7 @@ async def _select_step(
         if not _step_pending(step, days_since_signup, completed, onboarded):
             continue
         if step.skip_predicate and await SKIP_PREDICATES[step.skip_predicate](user):
-            await _record_step(user.id, step.key, now, status="skipped")
+            await _record_step(user.id, step.key, now, status=NurtureStepStatus.SKIPPED)
             continue
         return step
     return None
@@ -162,25 +143,18 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     if not created_at:
         return False
 
-    # The only writer is ``record_nurture_step`` ($addToSet + $push of exactly
-    # these keys); ``UserDocument.nurture`` stays a raw mapping because it is
-    # carried on the auth context too. Name the shape here, where it is read.
-    state: NurtureState = cast(NurtureState, user.nurture or {})
-    if not _within_frequency_caps(state.get("history") or [], now):
+    state = NurtureState.model_validate(user.nurture or {})
+    if not _within_frequency_caps(state.history, now):
         return False
 
-    completed = set(state.get("completed_steps") or [])
+    completed = set(state.completed_steps)
     step = await _select_step(user, (now - created_at).days, completed, now)
     if step is None:
         return False
 
     await _send_step(user, step)
-    await _record_step(user.id, step.key, now, status="sent")
-    capture_event(
-        user.id,
-        AnalyticsEvents.NURTURE_EMAIL_SENT,
-        {"step": step.key, "day_offset": step.day_offset},
-    )
+    await _record_step(user.id, step.key, now, status=NurtureStepStatus.SENT)
+    capture(UserId(user.id), NurtureEmailSent(step=step.key, day_offset=step.day_offset))
     log.set(user={"id": user.id}, nurture={"step": step.key})
     log.info(f"{LogTag.MAIL} Nurture email sent", step_key=step.key)
     return True

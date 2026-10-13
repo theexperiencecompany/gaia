@@ -87,9 +87,10 @@ class TestTrackedTodosSummary:
 
     @staticmethod
     def _todos(*docs: TodoDocument):
-        return patch(
-            "app.db.repositories.todos.todo_repository.list_active_tracked",
-            AsyncMock(return_value=list(docs)),
+        return patch.multiple(
+            "app.db.repositories.todos.todo_repository",
+            list_active_tracked=AsyncMock(return_value=list(docs)),
+            count_open_sub_todos=AsyncMock(return_value={}),
         )
 
     @staticmethod

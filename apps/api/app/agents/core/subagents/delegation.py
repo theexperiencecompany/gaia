@@ -17,7 +17,6 @@ from uuid import uuid4
 
 from langchain_core.messages import AnyMessage
 from langchain_core.runnables.config import var_child_runnable_config
-from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 
@@ -57,6 +56,7 @@ from app.models.agent_models import (
     SubagentKind,
     SubagentResumeItem,
     agent_configurable,
+    current_stream_writer,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
 from app.services.hil.approvals_store import get_approval, mark_resumed
@@ -181,7 +181,7 @@ async def _run_blocking(delegation: Delegation, *, probe_parked: bool) -> str:
     if not await registry.claim(record):
         return THREAD_BUSY_REFUSAL.format(name=delegation.display.name)
 
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     _emit_start(writer, delegation)
     start_time = time.monotonic()
     paused = False

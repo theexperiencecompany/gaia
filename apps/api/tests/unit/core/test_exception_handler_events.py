@@ -10,11 +10,16 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from httpx import ASGITransport, AsyncClient
 import pytest
+from sentry_sdk.types import Event
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.requests import Request
+from starlette.requests import ClientDisconnect, Request
+from starlette.types import Message
 
+from app.core import exception_handlers
 from app.core.exception_handlers import (
     app_error_handler,
     http_exception_handler,
@@ -35,7 +40,7 @@ def _request(method: str = "POST", path: str = "/api/v1/todos") -> Request:
     )
 
 
-async def test_an_app_error_names_the_failure_and_where_it_happened() -> None:
+async def test_a_client_app_error_is_a_warning_naming_the_failure() -> None:
     exc = create_error(
         message="Payment failed",
         why="Card declined",
@@ -49,7 +54,8 @@ async def test_an_app_error_names_the_failure_and_where_it_happened() -> None:
         response = await app_error_handler(_request(), exc)
 
     assert response.status_code == 402
-    mock_log.error.assert_called_once_with(
+    mock_log.error.assert_not_called()
+    mock_log.warning.assert_called_once_with(
         "app_error",
         error={
             "message": "Payment failed",
@@ -61,6 +67,39 @@ async def test_an_app_error_names_the_failure_and_where_it_happened() -> None:
         status_code=402,
         path="/api/v1/todos",
         method="POST",
+    )
+
+
+async def test_a_500_app_error_is_an_error_carrying_its_exception() -> None:
+    exc = create_error(message="Store down", status_code=500, code="store_down")
+
+    with patch(HANDLERS_LOG) as mock_log:
+        response = await app_error_handler(_request(), exc)
+
+    assert response.status_code == 500
+    mock_log.warning.assert_not_called()
+    mock_log.error.assert_called_once_with(
+        "app_error",
+        exc_info=exc,
+        error={"message": "Store down", "code": "store_down"},
+        status_code=500,
+        path="/api/v1/todos",
+        method="POST",
+    )
+
+
+async def test_a_client_disconnect_is_a_warning_naming_the_request() -> None:
+    with patch(HANDLERS_LOG) as mock_log:
+        response = await exception_handlers.client_disconnect_handler(
+            _request(method="PUT", path="/api/v1/webhook"), ClientDisconnect()
+        )
+
+    assert response.status_code == 499
+    mock_log.warning.assert_called_once_with(
+        "client_disconnected",
+        error_type="ClientDisconnect",
+        path="/api/v1/webhook",
+        method="PUT",
     )
 
 
@@ -181,7 +220,13 @@ async def test_the_registration_covers_every_kind_of_failure() -> None:
     register_exception_handlers(app)
 
     registered = [call.args[0] for call in app.exception_handler.call_args_list]
-    assert registered == [AppError, RequestValidationError, StarletteHTTPException, Exception]
+    assert registered == [
+        AppError,
+        RequestValidationError,
+        StarletteHTTPException,
+        ClientDisconnect,
+        Exception,
+    ]
     # The decorator form returns the handler it was given, so each registration
     # must hand the real function over, not a placeholder.
     handlers = [call.args[0] for call in app.exception_handler.return_value.call_args_list]
@@ -189,5 +234,81 @@ async def test_the_registration_covers_every_kind_of_failure() -> None:
         app_error_handler,
         validation_error_handler,
         http_exception_handler,
+        exception_handlers.client_disconnect_handler,
         unhandled_exception_handler,
     ]
+
+
+def _app_raising(exc: Exception) -> FastAPI:
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def boom() -> None:
+        raise exc
+
+    return app
+
+
+async def _get(app: FastAPI, path: str) -> int:
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return (await client.get(path)).status_code
+
+
+@pytest.mark.regression
+async def test_a_client_error_app_error_is_not_a_sentry_error(sentry_events: list[Event]) -> None:
+    exc = create_error(message="Sandbox execute rate limit hit", status_code=429)
+
+    status_code = await _get(_app_raising(exc), "/boom")
+
+    assert status_code == 429
+    assert sentry_events == []
+
+
+@pytest.mark.regression
+async def test_a_server_error_app_error_reaches_sentry_once_as_its_exception(
+    sentry_events: list[Event],
+) -> None:
+    exc = create_error(message="Upstream store unavailable", status_code=503)
+
+    status_code = await _get(_app_raising(exc), "/boom")
+
+    assert status_code == 503
+    assert [event["exception"]["values"][-1]["type"] for event in sentry_events] == ["AppError"]
+
+
+@pytest.mark.regression
+async def test_a_client_hanging_up_mid_body_is_a_quiet_499(sentry_events: list[Event]) -> None:
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.post("/webhook")
+    async def webhook(request: Request) -> None:
+        await request.body()
+
+    async def receive() -> Message:
+        return {"type": "http.disconnect"}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/webhook",
+        "raw_path": b"/webhook",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [],
+        "server": ("test", 80),
+        "client": ("client", 1234),
+    }
+    await app(scope, receive, send)
+
+    assert sent[0]["status"] == 499
+    assert sentry_events == []

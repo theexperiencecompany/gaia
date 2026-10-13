@@ -5,10 +5,13 @@ respx — no real network) to prove the JSON/HTML is mapped onto the shared
 SearchResultItem shape correctly.
 """
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 import respx
 
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search.providers.brave import BraveProvider
 from app.utils.search.providers.duckduckgo import DuckDuckGoProvider
 from app.utils.search.providers.exa import ExaProvider
@@ -313,3 +316,17 @@ async def test_duckduckgo_treats_bot_challenge_as_empty() -> None:
     response = await DuckDuckGoProvider().search("query", 5)
 
     assert response.is_empty
+
+
+@respx.mock
+async def test_duckduckgo_bot_challenge_logs_the_query_shape_not_its_words() -> None:
+    respx.post("https://lite.duckduckgo.com/lite/").mock(
+        return_value=httpx.Response(202, text="challenge")
+    )
+
+    with patch("app.utils.search.providers.duckduckgo.log") as log:
+        await DuckDuckGoProvider().search("my divorce papers", 5)
+
+    log.warning.assert_called_once_with(
+        "DuckDuckGo served a bot-challenge page", query=user_text_shape("my divorce papers")
+    )

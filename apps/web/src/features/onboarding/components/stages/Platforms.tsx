@@ -2,7 +2,7 @@
  * `platformPick` stage. Telegram / WhatsApp / iMessage — Slack and Discord
  * moved to Settings → Linked accounts. The stage advances when the user
  * either connects a platform (`platformConnected`) or skips
- * (`skipPlatforms`).
+ * (`skipPlatforms`); either click also submits onboarding (`onConfirmed`).
  */
 
 "use client";
@@ -28,11 +28,12 @@ import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 interface PlatformsProps {
   state: OnboardingState;
   dispatch: Dispatch<Action>;
+  onConfirmed: () => void;
 }
 
 const PLATFORM_REVEAL_KEY = "platform";
 
-export function Platforms({ state, dispatch }: PlatformsProps) {
+export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
   const gaiaDone = usePaceDone(PLATFORM_REVEAL_KEY);
   const [hoveredPlatform, setHoveredPlatform] =
     useState<PlatformPreviewPlatform | null>(null);
@@ -49,7 +50,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
     isSubmittingPhone,
     submitPhone,
     closePhoneModal,
-  } = useConnectPlatform(dispatch, state.preferencesPersisted);
+  } = useConnectPlatform(dispatch, state.preferencesPersisted, onConfirmed);
 
   return (
     <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>

@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
+from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY, TOOL_RESULT_NOTE_SEPARATOR
 from app.db.repositories.base import MongoDocument
 from app.schemas.common import ResponseModel
 
@@ -70,12 +70,12 @@ def _trim_strings(value: object, limit: int) -> object:
 
 
 def _fit_elements(
-    items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int
+    items: list[object], rebuild: Callable[[list[object]], object], max_chars: int
 ) -> str | None:
     """The value with elements shed off the end until it fits; ``None`` when not
     even the first element fits, so the caller keeps cutting strings instead of
     recording a list that had items as an empty one."""
-    kept: list[Any] = []
+    kept: list[object] = []
     for item in items:
         kept.append(item)
         if len(_compact(rebuild(kept))) > max_chars:
@@ -116,13 +116,13 @@ def _bounded_json(value: object, max_chars: int) -> str:
         limit //= 2
 
 
-def _as_is(items: list[Any]) -> object:
+def _as_is(items: list[object]) -> object:
     return items
 
 
 def _largest_sequence(
     value: object,
-) -> tuple[list[Any] | None, Callable[[list[Any]], object]]:
+) -> tuple[list[object] | None, Callable[[list[object]], object]]:
     """The list inside ``value`` worth shedding, and how to put it back.
 
     Searched at any depth under dicts, because tool results are envelopes: the
@@ -134,8 +134,8 @@ def _largest_sequence(
     if not isinstance(value, dict):
         return None, _as_is
 
-    best: list[Any] | None = None
-    best_rebuild: Callable[[list[Any]], object] = _as_is
+    best: list[object] | None = None
+    best_rebuild: Callable[[list[object]], object] = _as_is
     # Any sentinel below 2 is equivalent: a candidate is compact JSON of a list,
     # never shorter than "[]", so the first one always wins the comparison.
     best_size = -1  # pragma: no mutate
@@ -148,9 +148,9 @@ def _largest_sequence(
             best, best_size = items, size
 
             def rebuild(
-                replacement: list[Any],
+                replacement: list[object],
                 key: str = key,
-                rebuild_child: Callable[[list[Any]], object] = rebuild_child,
+                rebuild_child: Callable[[list[object]], object] = rebuild_child,
             ) -> object:
                 return {**value, key: rebuild_child(replacement)}
 
@@ -206,7 +206,11 @@ def carries_no_data(value: object) -> bool:
         # "messages": []), and reading that as data would defeat the check.
         return value == 0
     if isinstance(value, Mapping):
-        return all(carries_no_data(item) for item in value.values())
+        return all(
+            carries_no_data(item)
+            for key, item in value.items()
+            if key != TOOL_RESULT_FETCHED_AT_KEY
+        )
     if isinstance(value, list):
         return all(carries_no_data(item) for item in value)
     return False

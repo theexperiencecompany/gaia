@@ -108,7 +108,7 @@ function handleDeliveredNotification(
       "[NotificationWS] Notification has conversation_id, triggering sync",
       notification.metadata.conversation_id,
     );
-    batchSyncConversations();
+    batchSyncConversations({ background: true });
   }
 }
 

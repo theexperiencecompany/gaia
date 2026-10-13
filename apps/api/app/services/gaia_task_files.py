@@ -1,7 +1,7 @@
 """Path router for /workspace/gaia-tasks/ inside the coding tools.
 
 The agent reads and edits a tracked todo's working notes with the ordinary
-read/write/edit tools at /workspace/gaia-tasks/<slug>-<shortid>/{canvas.md,activity.md}.
+read/write/edit tools at /workspace/gaia-tasks/<slug>-<shortid>/{canvas,activity,observations}.md.
 Those bodies live on the todo document (see todo_canvas_storage), and the disk
 tree is a read-only projection, so the tools route these paths here instead
 of touching the filesystem — which also makes them work in native dev, where
@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL
+from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL, OBSERVATIONS_MAX_CHARS
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
 from app.services.canvas_markdown import canvas_problems, with_missing_sections
@@ -24,7 +24,8 @@ from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
     render_index,
 )
-from app.services.todo_canvas_storage import write_activity, write_canvas
+from app.services.todo_activity import TIMESTAMPED_ENTRY
+from app.services.todo_canvas_storage import write_activity, write_canvas, write_observations
 from app.services.tracked_todo_service import tracked_todo_service
 from shared.py.wide_events import log
 
@@ -32,11 +33,17 @@ from shared.py.wide_events import log
 class GaiaTaskFile(StrEnum):
     CANVAS = "canvas.md"
     ACTIVITY = "activity.md"
+    OBSERVATIONS = "observations.md"
     LOG = "log.md"
     META = "meta.json"
 
 
-WRITABLE_FILES = frozenset({GaiaTaskFile.CANVAS, GaiaTaskFile.ACTIVITY})
+WRITABLE_FILES = (GaiaTaskFile.CANVAS, GaiaTaskFile.ACTIVITY, GaiaTaskFile.OBSERVATIONS)
+# Refuses a write the router does not own, from every file tool; {rel} is the path tried.
+NOT_A_NOTES_FILE = (
+    "Error: {rel} is not an editable notes file. Only "
+    f"{', '.join(WRITABLE_FILES)} under /workspace/{GAIA_TASKS_DIRNAME}/<todo>/ can be edited."
+)
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,8 @@ async def read_file(ref: GaiaTaskPath, user_id: str) -> str:
             return doc.canvas_content or ""
         case GaiaTaskFile.ACTIVITY:
             return doc.activity_content or ""
+        case GaiaTaskFile.OBSERVATIONS:
+            return doc.observations_content or ""
         case GaiaTaskFile.LOG:
             return doc.log_content or ""
         case GaiaTaskFile.META:
@@ -143,14 +152,22 @@ def write_refusal(ref: GaiaTaskPath) -> str | None:
         return f"Error: {ref.name} is generated from the todos and cannot be edited."
     if ref.filename not in WRITABLE_FILES:
         return (
-            f"Error: {ref.filename.value} is system-written. Only canvas.md and "
-            "activity.md are editable under gaia-tasks/."
+            f"Error: {ref.filename.value} is system-written. Only "
+            f"{', '.join(WRITABLE_FILES)} are editable under {GAIA_TASKS_DIRNAME}/."
         )
     return None
 
 
 def _content_refusal(ref: TaskFile, content: str) -> str | None:
     """Why this body breaks its file's shape, or None when it may be saved."""
+    if ref.filename is GaiaTaskFile.OBSERVATIONS:
+        if len(content) <= OBSERVATIONS_MAX_CHARS:
+            return None
+        return (
+            f"Error: observations.md was not saved: {len(content)} characters, over its "
+            f"{OBSERVATIONS_MAX_CHARS}. Fold the oldest daily counts into earlier and drop "
+            "the entries seen least recently."
+        )
     if ref.filename is GaiaTaskFile.ACTIVITY:
         current = (ref.todo.activity_content or "").rstrip()
         appended = content[len(current) :]
@@ -172,8 +189,23 @@ def _content_refusal(ref: TaskFile, content: str) -> str | None:
     return None
 
 
+def _unwritten_activity(stored: str, content: str) -> str | None:
+    """Drop appended timestamped entries the log already holds; None when nothing new is left."""
+    current = stored.rstrip()
+    seen = set(current.splitlines())
+    kept: list[str] = []
+    for line in content[len(current) :].split("\n"):
+        if TIMESTAMPED_ENTRY.match(line):
+            if line in seen:
+                continue
+            seen.add(line)
+        kept.append(line)
+    appended = "\n".join(kept)
+    return current + appended if appended.strip() else None
+
+
 async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | None:
-    """Persist a write to canvas.md/activity.md; return a refusal message on failure, None otherwise."""
+    """Persist a write to a notes file; return a refusal message on failure, None otherwise."""
     refusal = write_refusal(ref)
     if refusal is not None or not isinstance(ref, TaskFile):
         return refusal
@@ -181,7 +213,15 @@ async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | Non
         return refusal
     if ref.filename is GaiaTaskFile.CANVAS:
         content = with_missing_sections(content)
-    writer = write_canvas if ref.filename is GaiaTaskFile.CANVAS else write_activity
+        writer = write_canvas
+    elif ref.filename is GaiaTaskFile.ACTIVITY:
+        unwritten = _unwritten_activity(ref.todo.activity_content or "", content)
+        if unwritten is None:
+            return None
+        content = unwritten
+        writer = write_activity
+    else:
+        writer = write_observations
     if not await writer(ref.todo.id, user_id, content, expected_updated_at=ref.todo.updated_at):
         # The guarded write matched nothing: either the todo is gone or a
         # concurrent writer moved the revision. Re-read to tell them apart.

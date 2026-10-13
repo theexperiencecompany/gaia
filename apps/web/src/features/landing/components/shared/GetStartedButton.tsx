@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 export default function GetStartedButton({
   small_text = false,
@@ -25,8 +25,7 @@ export default function GetStartedButton({
           className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}
           color={btnColor}
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
-              button_text: text,
+            track("cta:get_started_clicked", {
               has_small_text: small_text,
             });
           }}

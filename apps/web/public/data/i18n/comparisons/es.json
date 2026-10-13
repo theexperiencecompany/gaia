@@ -69,7 +69,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; hospedar en tu propio servidor es completamente gratis, sin límites de uso",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; hospedar en tu propio servidor es completamente gratis, sin límites de uso",
         "competitor": "Plan gratuito con 1.000 tareas/mes y 2 flujos activos; Plus por $25/mes con tareas ilimitadas y 20 flujos; Business por $150/mes con 50 flujos y soporte multiusuario; la edición comunitaria autohospedada es gratis con flujos y ejecuciones ilimitadas"
       }
     ],
@@ -121,7 +121,7 @@
       "herramienta de gestión de flujos de trabajo con IA",
       "alternativa a base de datos sin código con IA"
     ],
-    "intro": "Airtable se convirtió en un éxito al dar poder a los equipos no técnicos para construir bases de datos personalizadas sin necesidad de programar. Los equipos de marketing la usan para calendarios de contenido, los de producto para hojas de ruta, operaciones para la gestión de proveedores y reclutamiento para pipelines de candidatos. Su combinación de familiaridad de hojas de cálculo con el poder de una base de datos relacional — registros vinculados, vistas múltiples, fórmulas y una API para desarrolladores — la han convertido en la herramienta preferida para cualquiera que haya superado Google Sheets pero considere Salesforce muy rígido y otras bases de datos demasiado técnicas.\n\nEl problema que encuentran habitualmente los usuarios de Airtable es que la base de datos está actualizada solo hasta que alguien la modifica. Airtable es excelente para almacenar y mostrar datos estructurados, pero no lee tus correos para añadir nuevos registros, ni monitorea Slack para actualizar proyectos, ni crea tareas automáticamente de solicitudes de clientes, ni coordina flujos de trabajo que muevan datos entre tus herramientas sin intervención humana. Las automatizaciones ayudan con actualizaciones internas basadas en reglas, pero la inteligencia para interpretar comunicaciones no estructuradas — un correo, un hilo de Slack, una nota de reunión — y decidir qué registro crear o actualizar, simplemente no está presente. El resultado es que los equipos dedican mucho tiempo a transcribir manualmente información desde canales de comunicación a las bases de Airtable, perdiendo parte del beneficio de productividad.\n\nGAIA opera en esa capa de inteligencia. Se conecta con Gmail, Slack, Google Calendar, GitHub, Notion, Linear y más de 40 herramientas vía MCP, gestionando activamente el flujo de información y tareas entre todas ellas. Lee tus correos y crea tareas priorizadas automáticamente, monitorea la actividad y resalta lo importante, prepara resúmenes antes de reuniones y ejecuta automatizaciones de varios pasos para mantener organizado tu trabajo sin entrada manual de datos. Para equipos que usan Airtable como base de operaciones, GAIA actúa como una capa de IA que recoge e ingresa registros a partir de la comunicación no estructurada que los rodea.\n\nGAIA es completamente open source y puede instalarse en tus propios servidores, lo que te permite mantener tus datos en tu propia infraestructura si así lo eliges. La versión gratuita incluye las funciones principales de IA y el plan Pro cuesta $20/mes en total — mucho más económico que el precio por usuario de Airtable en equipos de tamaño mediano o grande. El plan gratuito de Airtable es limitado, y el plan Pro, que desbloquea automatizaciones significativas, cuesta $20 por usuario al mes en facturación anual. Para un equipo de cinco integrantes, eso equivale a $100 al mes solo para la base de datos. GAIA ofrece gestión proactiva de flujos de trabajo con IA a una fracción de ese costo, y la auto-instalación es completamente gratuita.",
+    "intro": "Airtable se convirtió en un éxito al dar poder a los equipos no técnicos para construir bases de datos personalizadas sin necesidad de programar. Los equipos de marketing la usan para calendarios de contenido, los de producto para hojas de ruta, operaciones para la gestión de proveedores y reclutamiento para pipelines de candidatos. Su combinación de familiaridad de hojas de cálculo con el poder de una base de datos relacional — registros vinculados, vistas múltiples, fórmulas y una API para desarrolladores — la han convertido en la herramienta preferida para cualquiera que haya superado Google Sheets pero considere Salesforce muy rígido y otras bases de datos demasiado técnicas.\n\nEl problema que encuentran habitualmente los usuarios de Airtable es que la base de datos está actualizada solo hasta que alguien la modifica. Airtable es excelente para almacenar y mostrar datos estructurados, pero no lee tus correos para añadir nuevos registros, ni monitorea Slack para actualizar proyectos, ni crea tareas automáticamente de solicitudes de clientes, ni coordina flujos de trabajo que muevan datos entre tus herramientas sin intervención humana. Las automatizaciones ayudan con actualizaciones internas basadas en reglas, pero la inteligencia para interpretar comunicaciones no estructuradas — un correo, un hilo de Slack, una nota de reunión — y decidir qué registro crear o actualizar, simplemente no está presente. El resultado es que los equipos dedican mucho tiempo a transcribir manualmente información desde canales de comunicación a las bases de Airtable, perdiendo parte del beneficio de productividad.\n\nGAIA opera en esa capa de inteligencia. Se conecta con Gmail, Slack, Google Calendar, GitHub, Notion, Linear y más de 40 herramientas vía MCP, gestionando activamente el flujo de información y tareas entre todas ellas. Lee tus correos y crea tareas priorizadas automáticamente, monitorea la actividad y resalta lo importante, prepara resúmenes antes de reuniones y ejecuta automatizaciones de varios pasos para mantener organizado tu trabajo sin entrada manual de datos. Para equipos que usan Airtable como base de operaciones, GAIA actúa como una capa de IA que recoge e ingresa registros a partir de la comunicación no estructurada que los rodea.\n\nGAIA es completamente open source y puede instalarse en tus propios servidores, lo que te permite mantener tus datos en tu propia infraestructura si así lo eliges. La versión gratuita incluye las funciones principales de IA y el plan Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes en total — mucho más económico que el precio por usuario de Airtable en equipos de tamaño mediano o grande. El plan gratuito de Airtable es limitado, y el plan Pro, que desbloquea automatizaciones significativas, cuesta $20 por usuario al mes en facturación anual. Para un equipo de cinco integrantes, eso equivale a $100 al mes solo para la base de datos. GAIA ofrece gestión proactiva de flujos de trabajo con IA a una fracción de ese costo, y la auto-instalación es completamente gratuita.",
     "rows": [
       {
         "feature": "Enfoque principal",
@@ -180,7 +180,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro desde $20/mes precio fijo (no por usuario); autohospedaje completamente gratis",
+        "gaia": "Plan gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes precio fijo (no por usuario); autohospedaje completamente gratis",
         "competitor": "Plan gratuito con registros y funciones limitadas; Plus desde $10/usuario/mes; Pro desde $20/usuario/mes; Enterprise con precios personalizados"
       }
     ],
@@ -189,7 +189,7 @@
       "Gestiona la capa de comunicación no estructurada —correo electrónico, Slack, notas de reuniones— que alimenta las bases de datos de Airtable y actualmente requiere transcripción humana",
       "Orquestación entre herramientas impulsada por IA que supera con creces al motor de automatizaciones por reglas de Airtable",
       "Código abierto y opción de autohospedaje para plena propiedad de los datos y sin dependencia del proveedor",
-      "Precio fijo de $20/mes sin importar el tamaño del equipo — mucho más económico que Airtable Pro para equipos de más de una persona",
+      "Precio fijo de ${{PRO_MONTHLY_PRICE}}/mes sin importar el tamaño del equipo — mucho más económico que Airtable Pro para equipos de más de una persona",
       "La memoria basada en grafos crea comprensión contextual entre herramientas en lugar de requerir configuración manual de relaciones"
     ],
     "competitorAdvantages": [
@@ -209,7 +209,7 @@
       },
       {
         "question": "¿GAIA es más barato que Airtable?",
-        "answer": "Sí. El plan gratuito de GAIA ofrece capacidades de productividad con IA útiles sin cargos por usuario. El plan gratuito de Airtable está limitado a 1.000 registros y 5 editores, y el plan Pro que desbloquea automatización significativa cuesta 20 USD/usuario/mes. Para un equipo de cinco, Airtable Pro cuesta 100 USD al mes. El plan Pro de GAIA cuesta 20 USD al mes para cualquier tamaño de equipo, y el autohospedaje es completamente gratuito."
+        "answer": "Sí. El plan gratuito de GAIA ofrece capacidades de productividad con IA útiles sin cargos por usuario. El plan gratuito de Airtable está limitado a 1.000 registros y 5 editores, y el plan Pro que desbloquea automatización significativa cuesta 20 USD/usuario/mes. Para un equipo de cinco, Airtable Pro cuesta 100 USD al mes. El plan Pro de GAIA cuesta {{PRO_MONTHLY_PRICE}} USD al mes para cualquier tamaño de equipo, y el autohospedaje es completamente gratuito."
       },
       {
         "question": "¿GAIA es de código abierto, a diferencia de Airtable?",
@@ -221,7 +221,7 @@
       },
       {
         "question": "¿GAIA tiene un plan gratuito comparado con Airtable?",
-        "answer": "Ambos tienen planes gratuitos, pero ofrecen capacidades muy diferentes. El plan gratuito de Airtable está limitado a 1,000 registros por base y 5 editores, lo cual rápidamente se vuelve restrictivo para proyectos reales. El plan gratuito de GAIA incluye gestión de tareas con IA, integración con Gmail, sincronización con Google Calendar y automatización principal de flujos de trabajo sin límites de registros. El plan Pro de GAIA cuesta $20/mes fijo sin importar el tamaño del equipo, mientras que el plan Pro de Airtable cuesta $20/usuario/mes."
+        "answer": "Ambos tienen planes gratuitos, pero ofrecen capacidades muy diferentes. El plan gratuito de Airtable está limitado a 1,000 registros por base y 5 editores, lo cual rápidamente se vuelve restrictivo para proyectos reales. El plan gratuito de GAIA incluye gestión de tareas con IA, integración con Gmail, sincronización con Google Calendar y automatización principal de flujos de trabajo sin límites de registros. El plan Pro de GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes fijo sin importar el tamaño del equipo, mientras que el plan Pro de Airtable cuesta $20/usuario/mes."
       },
       {
         "question": "¿GAIA puede automatizar registros de Airtable desde el correo electrónico?",
@@ -334,7 +334,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Hay un plan gratuito; Pro desde $20/mes; autohospedaje totalmente gratis sin límites de uso",
+        "gaia": "Hay un plan gratuito; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autohospedaje totalmente gratis sin límites de uso",
         "competitor": "Un solo plan de $19/mes (mensual) o $15/mes (anual); sin plan gratuito, sin plan para equipos; prueba de 7 días; diseñado exclusivamente para usuarios avanzados individuales"
       }
     ],
@@ -362,7 +362,7 @@
       },
       {
         "question": "¿GAIA es más asequible que Akiflow?",
-        "answer": "Akiflow cuesta 19 US$/mes (mensual) o 15 US$/mes (anual) y no tiene plan gratuito—solo una prueba de 7 días. El plan Pro de GAIA cuesta 20 US$/mes y ofrece una versión gratuita y la opción de autohospedaje sin coste. Para quienes están dispuestos a autohospedar, GAIA es mucho más asequible que Akiflow. Para los usuarios de planes hospedados, los precios son similares, pero GAIA cubre un alcance mucho más amplio: gestión de correos electrónicos, programación de calendarios, automatizaciones entre herramientas y más de 50 integraciones, en comparación con el uso concreto de Akiflow para centralizar tareas y bloquear tiempo."
+        "answer": "Akiflow cuesta 19 US$/mes (mensual) o 15 US$/mes (anual) y no tiene plan gratuito—solo una prueba de 7 días. El plan Pro de GAIA cuesta {{PRO_MONTHLY_PRICE}} US$/mes y ofrece una versión gratuita y la opción de autohospedaje sin coste. Para quienes están dispuestos a autohospedar, GAIA es mucho más asequible que Akiflow. Para los usuarios de planes hospedados, los precios son similares, pero GAIA cubre un alcance mucho más amplio: gestión de correos electrónicos, programación de calendarios, automatizaciones entre herramientas y más de 50 integraciones, en comparación con el uso concreto de Akiflow para centralizar tareas y bloquear tiempo."
       }
     ]
   },
@@ -431,7 +431,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible, Pro desde $20/mes, autohospedaje gratis",
+        "gaia": "Plan gratuito disponible, Pro desde ${{PRO_MONTHLY_PRICE}}/mes, autohospedaje gratis",
         "competitor": "Plan gratuito disponible; Premium a $4.99/mes (anual); familiar a $8.33/mes (anual); equipos a $4.99/usuario/mes (anual)"
       }
     ],
@@ -534,7 +534,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro a partir de 20 $/mes (tarifa plana, no por usuario); autoalojamiento totalmente gratis",
+        "gaia": "Nivel gratuito disponible; Pro a partir de {{PRO_MONTHLY_PRICE}} $/mes (tarifa plana, no por usuario); autoalojamiento totalmente gratis",
         "competitor": "Completamente gratis — incluida en todos los dispositivos Apple sin suscripción, compras dentro de la app ni anuncios"
       }
     ],
@@ -636,7 +636,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde 20 $/mes; autoalojamiento completamente gratuito sin coste por usuario",
+        "gaia": "Nivel gratuito disponible; Pro desde {{PRO_MONTHLY_PRICE}} $/mes; autoalojamiento completamente gratuito sin coste por usuario",
         "competitor": "Plan personal gratuito (hasta 15 miembros); Starter a 10,99 $/usuario/mes; Advanced a 24,99 $/usuario/mes (facturación anual)"
       }
     ],
@@ -664,7 +664,7 @@
       },
       {
         "question": "¿GAIA es más barato que Asana para equipos grandes?",
-        "answer": "Para equipos grandes, la opción de autoalojamiento de GAIA elimina completamente el costo por usuario: solo pagas por la infraestructura. El plan Avanzado de Asana cuesta $24.99 por usuario al mes facturado anualmente, lo cual suma rápidamente a gran escala. El plan Pro de GAIA alojado parte de $20/mes sin importar la cantidad de usuarios, y el autoalojamiento es gratuito."
+        "answer": "Para equipos grandes, la opción de autoalojamiento de GAIA elimina completamente el costo por usuario: solo pagas por la infraestructura. El plan Avanzado de Asana cuesta $24.99 por usuario al mes facturado anualmente, lo cual suma rápidamente a gran escala. El plan Pro de GAIA alojado parte de ${{PRO_MONTHLY_PRICE}}/mes sin importar la cantidad de usuarios, y el autoalojamiento es gratuito."
       }
     ]
   },
@@ -738,7 +738,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro desde 20 $/mes; autoalojamiento completamente gratis y sin límites de uso",
+        "gaia": "Plan gratuito disponible; Pro desde {{PRO_MONTHLY_PRICE}} $/mes; autoalojamiento completamente gratis y sin límites de uso",
         "competitor": "Plan gratuito con créditos limitados; Starter desde 99 $/mes (facturado anualmente, 15.000 créditos/año); Teams desde ~500 $/mes; Enterprise desde ~1.500 $/mes"
       }
     ],
@@ -839,7 +839,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes tarifa fija (no por usuario); autohospedaje completamente gratis",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes tarifa fija (no por usuario); autohospedaje completamente gratis",
         "competitor": "Plan por usuario a $15/usuario/mes (todas las funciones); Pro Unlimited tarifa plana de $299/mes facturada anualmente para usuarios ilimitados — predecible pero costoso para equipos pequeños"
       }
     ],
@@ -848,7 +848,7 @@
       "Prepara proactivamente resúmenes de reuniones desde Google Calendar y destaca alertas prioritarias del correo sin necesidad de ser solicitado",
       "Más de 50 integraciones MCP orquestan acciones entre Gmail, Slack, GitHub, Todoist y más en un solo flujo de trabajo en lenguaje natural",
       "Memoria persistente basada en grafos enlaza correos, tareas, reuniones y personas entre herramientas, construyendo una conciencia contextual que crece con el tiempo",
-      "Código abierto y autohospedable con precios planos — GAIA Pro a $20/mes es significativamente más barato que los $15/usuario/mes de Basecamp para equipos de más de uno o dos integrantes"
+      "Código abierto y autohospedable con precios planos — GAIA Pro a ${{PRO_MONTHLY_PRICE}}/mes es significativamente más barato que los $15/usuario/mes de Basecamp para equipos de más de uno o dos integrantes"
     ],
     "competitorAdvantages": [
       "Estructura deliberadamente simple y con opiniones que reduce la proliferación de herramientas — foros de mensajes, listas de tareas, chat, archivos y calendarios en un solo lugar sin complicaciones de configuración",
@@ -863,7 +863,7 @@
       },
       {
         "question": "¿GAIA es más barato que Basecamp para equipos pequeños?",
-        "answer": "Para un profesional independiente o un equipo muy pequeño, el plan de Basecamp de $15/usuario/mes es comparable al plan GAIA Pro de $20/mes fijo. Pero con 3 usuarios Basecamp cuesta $45/mes, con 5 usuarios $75/mes y con 10 usuarios $150/mes. GAIA Pro sigue costando $20/mes independientemente del número de usuarios, y la versión autohospedada es completamente gratuita. Para equipos de más de dos personas, GAIA es significativamente más barato por persona."
+        "answer": "Para un profesional independiente o un equipo muy pequeño, el plan de Basecamp de $15/usuario/mes es comparable al plan GAIA Pro de ${{PRO_MONTHLY_PRICE}}/mes fijo. Pero con 3 usuarios Basecamp cuesta $45/mes, con 5 usuarios $75/mes y con 10 usuarios $150/mes. GAIA Pro sigue costando ${{PRO_MONTHLY_PRICE}}/mes independientemente del número de usuarios, y la versión autohospedada es completamente gratuita. Para equipos de más de dos personas, GAIA es significativamente más barato por persona."
       },
       {
         "question": "¿Puede GAIA reemplazar a Basecamp para la colaboración en equipo?",
@@ -943,7 +943,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro desde $20/mes; autohospedaje totalmente gratis",
+        "gaia": "Plan gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autohospedaje totalmente gratis",
         "competitor": "Versión gratuita con temas limitados; Bear Pro a $2.99/mes o $29.99/año para todas las funciones"
       },
       {
@@ -1014,7 +1014,7 @@
       "mejor reemplazo de Cal.com",
       "Cal.com vs GAIA"
     ],
-    "intro": "Cal.com se ha convertido en una de las herramientas más respetadas en el ámbito de la programación de reuniones, en gran parte gracias a su base de código abierto y política de precios transparente. Como alternativa a Calendly, resuelve el problema de agendar reuniones de manera elegante: estableces tu disponibilidad, compartes un enlace y las personas reservan una hora contigo sin intercambios interminables de correos. Para 2026, admite tipos de eventos ilimitados, programación en equipo tipo round-robin, formularios de enrutamiento, automatizaciones de flujos de trabajo y una generosa versión gratuita; además de la posibilidad de autohospedar completamente la versión de código abierto para equipos que desean control total sobre sus datos.\n\nPero Cal.com es, fundamentalmente, una herramienta de reservas. Está diseñada para recibir solicitudes de programación entrantes y gestionar toda la infraestructura en torno a ello: emails de confirmación, recordatorios, sincronización de calendarios, enlaces para reprogramar. No lee tu bandeja de entrada de Gmail. No te prepara para la reunión que acaba de ser reservada. No detecta que se han agendado dos reuniones seguidas sin margen, o que el cliente que solicitó una llamada hoy también te envió un correo urgente esta mañana cambiando el contexto de la conversación. Cal.com gestiona la mecánica de la programación; no administra la inteligencia relacionada con tu calendario.\n\nGAIA opera a un nivel completamente diferente. Se integra directamente con Google Calendar y Gmail para brindarte una gestión proactiva e inteligente de tu agenda. Cuando se agenda una reunión, GAIA puede preparar un informe automáticamente: extrae correos relevantes del cliente, resume interacciones pasadas y muestra tareas pendientes antes de la llamada. Cuando tu bandeja de entrada incluye una petición de reunión oculta en un largo hilo de correo, GAIA puede detectarlo y gestionarlo o marcarlo para tu atención, sin que tengas que buscar manualmente en tu correo. GAIA puede crear, actualizar y reprogramar eventos en el calendario por lenguaje natural: describes lo que necesitas y GAIA se encarga de las operaciones del calendario.\n\nAmbas herramientas satisfacen necesidades distintas y pueden funcionar perfectamente juntas. Cal.com se encarga de la infraestructura para reservas entrantes: el enlace compartible, las reglas de disponibilidad, las confirmaciones automáticas. GAIA gestiona la inteligencia saliente: revisa tu calendario buscando conflictos, prepara contexto para tus reuniones, responde solicitudes de programación recibidas por email y mantiene tu programación alineada con tus prioridades en todas las herramientas conectadas.\n\nEn cuanto a precios, ambas ofrecen versiones gratuitas o de código abierto muy competitivas. Cal.com es gratis para autohospedar (con tus propios costes de servidor) y ofrece una versión alojada gratuita generosa. El plan Teams cuesta $15 por usuario al mes. El plan Pro alojado de GAIA cuesta $20 al mes, precio fijo sin importar la cantidad de usuarios, y también es totalmente de código abierto y autohospedable. Para equipos que necesitan tanto infraestructura de reservas como inteligencia de calendario con IA, el costo combinado está muy por debajo de lo que normalmente cobran por separado las herramientas empresariales de programación y de IA.",
+    "intro": "Cal.com se ha convertido en una de las herramientas más respetadas en el ámbito de la programación de reuniones, en gran parte gracias a su base de código abierto y política de precios transparente. Como alternativa a Calendly, resuelve el problema de agendar reuniones de manera elegante: estableces tu disponibilidad, compartes un enlace y las personas reservan una hora contigo sin intercambios interminables de correos. Para 2026, admite tipos de eventos ilimitados, programación en equipo tipo round-robin, formularios de enrutamiento, automatizaciones de flujos de trabajo y una generosa versión gratuita; además de la posibilidad de autohospedar completamente la versión de código abierto para equipos que desean control total sobre sus datos.\n\nPero Cal.com es, fundamentalmente, una herramienta de reservas. Está diseñada para recibir solicitudes de programación entrantes y gestionar toda la infraestructura en torno a ello: emails de confirmación, recordatorios, sincronización de calendarios, enlaces para reprogramar. No lee tu bandeja de entrada de Gmail. No te prepara para la reunión que acaba de ser reservada. No detecta que se han agendado dos reuniones seguidas sin margen, o que el cliente que solicitó una llamada hoy también te envió un correo urgente esta mañana cambiando el contexto de la conversación. Cal.com gestiona la mecánica de la programación; no administra la inteligencia relacionada con tu calendario.\n\nGAIA opera a un nivel completamente diferente. Se integra directamente con Google Calendar y Gmail para brindarte una gestión proactiva e inteligente de tu agenda. Cuando se agenda una reunión, GAIA puede preparar un informe automáticamente: extrae correos relevantes del cliente, resume interacciones pasadas y muestra tareas pendientes antes de la llamada. Cuando tu bandeja de entrada incluye una petición de reunión oculta en un largo hilo de correo, GAIA puede detectarlo y gestionarlo o marcarlo para tu atención, sin que tengas que buscar manualmente en tu correo. GAIA puede crear, actualizar y reprogramar eventos en el calendario por lenguaje natural: describes lo que necesitas y GAIA se encarga de las operaciones del calendario.\n\nAmbas herramientas satisfacen necesidades distintas y pueden funcionar perfectamente juntas. Cal.com se encarga de la infraestructura para reservas entrantes: el enlace compartible, las reglas de disponibilidad, las confirmaciones automáticas. GAIA gestiona la inteligencia saliente: revisa tu calendario buscando conflictos, prepara contexto para tus reuniones, responde solicitudes de programación recibidas por email y mantiene tu programación alineada con tus prioridades en todas las herramientas conectadas.\n\nEn cuanto a precios, ambas ofrecen versiones gratuitas o de código abierto muy competitivas. Cal.com es gratis para autohospedar (con tus propios costes de servidor) y ofrece una versión alojada gratuita generosa. El plan Teams cuesta $15 por usuario al mes. El plan Pro alojado de GAIA cuesta ${{PRO_MONTHLY_PRICE}} al mes, precio fijo sin importar la cantidad de usuarios, y también es totalmente de código abierto y autohospedable. Para equipos que necesitan tanto infraestructura de reservas como inteligencia de calendario con IA, el costo combinado está muy por debajo de lo que normalmente cobran por separado las herramientas empresariales de programación y de IA.",
     "rows": [
       {
         "feature": "Enfoque principal",
@@ -1063,7 +1063,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes (tarifa plana, no por usuario); autoalojamiento totalmente gratuito",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes (tarifa plana, no por usuario); autoalojamiento totalmente gratuito",
         "competitor": "Nivel gratuito alojado con funciones básicas; equipos a $15/usuario/mes; organizaciones a $37/usuario/mes; el autoalojamiento es gratis salvo el costo de tu propio servidor"
       }
     ],
@@ -1072,7 +1072,7 @@
       "Prepara reseñas proactivas antes de las reuniones, mostrando el historial relevante de correos, interacciones previas y contexto de todas tus herramientas sin buscar manualmente",
       "Más de 50 integraciones MCP orquestan todo el contexto en torno a una reunión: tareas asignadas, correos enviados, documentos compartidos y acciones de seguimiento creadas automáticamente",
       "Una memoria persistente basada en grafos vincula personas, reuniones e hilos de correo a lo largo del tiempo, construyendo una comprensión contextual de cada relación y proyecto",
-      "Código abierto y autoalojable con tarifa plana: GAIA Pro por $20/mes funciona para equipos de cualquier tamaño sin costes por usuario"
+      "Código abierto y autoalojable con tarifa plana: GAIA Pro por ${{PRO_MONTHLY_PRICE}}/mes funciona para equipos de cualquier tamaño sin costes por usuario"
     ],
     "competitorAdvantages": [
       "Infraestructura de reservas diseñada específicamente, con reglas de disponibilidad, tiempos de margen, programación de equipos en turnos rotativos y formularios de enrutamiento, lo que supera ampliamente la gestión informal de reuniones por correo electrónico para la administración de citas entrantes.",
@@ -1087,7 +1087,7 @@
       },
       {
         "question": "¿GAIA es de código abierto como Cal.com?",
-        "answer": "Sí. GAIA es completamente de código abierto y puede autoalojarse mediante Docker, igual que Cal.com. Ambos proyectos te ofrecen total propiedad de tus datos y te permiten gestionar tu propia infraestructura sin coste adicional. El plan Pro alojado de GAIA cuesta $20/mes fijo y el plan Teams alojado de Cal.com cuesta $15/usuario/mes — ambos ofrecen precios transparentes y sólidas alternativas de autoalojamiento."
+        "answer": "Sí. GAIA es completamente de código abierto y puede autoalojarse mediante Docker, igual que Cal.com. Ambos proyectos te ofrecen total propiedad de tus datos y te permiten gestionar tu propia infraestructura sin coste adicional. El plan Pro alojado de GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes fijo y el plan Teams alojado de Cal.com cuesta $15/usuario/mes — ambos ofrecen precios transparentes y sólidas alternativas de autoalojamiento."
       },
       {
         "question": "¿GAIA puede reemplazar totalmente una herramienta de programación como Cal.com?",
@@ -1165,7 +1165,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro desde 20 $/mes; el autoalojamiento es totalmente gratis sin límites de uso",
+        "gaia": "Plan gratuito disponible; Pro desde {{PRO_MONTHLY_PRICE}} $/mes; el autoalojamiento es totalmente gratis sin límites de uso",
         "competitor": "Plan gratis (1 tipo de evento); Estándar a 10 $/usuario/mes; Teams a 16 $/usuario/mes (facturado anualmente); Enterprise desde 15.000 $/año"
       }
     ],
@@ -1266,7 +1266,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; autoalojamiento totalmente gratuito y sin límites de uso",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento totalmente gratuito y sin límites de uso",
         "competitor": "Plan gratuito con notas ilimitadas, 5 GB de almacenamiento, acceso sin conexión y funciones básicas; planes de pago desde $10/mes para almacenamiento adicional y funciones premium"
       }
     ],
@@ -1377,7 +1377,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro desde $20/mes fijo (no por usuario); autoalojamiento totalmente gratis",
+        "gaia": "Plan gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes fijo (no por usuario); autoalojamiento totalmente gratis",
         "competitor": "Precios empresariales negociados por organización; normalmente $30+/usuario/mes con requisitos mínimos de usuarios"
       }
     ],
@@ -1386,7 +1386,7 @@
       "Más de 50 integraciones profundas con herramientas reales (enviar correos, crear tareas, actualizar eventos de calendario) en vez de solo asistencia por chat",
       "Totalmente autoalojable en tu propia infraestructura para máxima privacidad de datos; los datos nunca salen de tu entorno",
       "Completamente open source — total transparencia, posibilidad de auditoría y personalización sin cajas negras propietarias",
-      "Coste dramáticamente inferior con un plan gratuito y opción Pro por $20/mes en comparación con precios empresariales por usuario",
+      "Coste dramáticamente inferior con un plan gratuito y opción Pro por ${{PRO_MONTHLY_PRICE}}/mes en comparación con precios empresariales por usuario",
       "La memoria persistente basada en grafos construye comprensión contextual en tus herramientas a lo largo del tiempo sin necesidad de intervención manual"
     ],
     "competitorAdvantages": [
@@ -1414,7 +1414,7 @@
       },
       {
         "question": "¿Cuánto cuesta GAIA en comparación con ChatGPT Enterprise?",
-        "answer": "GAIA cuenta con una versión gratuita y planes Pro desde 20 $/mes, independientemente del tamaño del equipo. El precio de ChatGPT Enterprise se negocia para cada organización y normalmente cuesta 30 $ o más por usuario al mes con un número mínimo de plazas. Para un equipo de 50 personas, ChatGPT Enterprise podría costar más de 1.500 $/mes, mientras que el plan Pro alojado de GAIA sigue siendo de 20 $/mes. La opción de autohospedaje de GAIA es completamente gratuita, por lo que resulta mucho más rentable para organizaciones que pueden gestionar su propia infraestructura."
+        "answer": "GAIA cuenta con una versión gratuita y planes Pro desde {{PRO_MONTHLY_PRICE}} $/mes, independientemente del tamaño del equipo. El precio de ChatGPT Enterprise se negocia para cada organización y normalmente cuesta 30 $ o más por usuario al mes con un número mínimo de plazas. Para un equipo de 50 personas, ChatGPT Enterprise podría costar más de 1.500 $/mes, mientras que el plan Pro alojado de GAIA sigue siendo de {{PRO_MONTHLY_PRICE}} $/mes. La opción de autohospedaje de GAIA es completamente gratuita, por lo que resulta mucho más rentable para organizaciones que pueden gestionar su propia infraestructura."
       },
       {
         "question": "¿Puede GAIA integrarse con herramientas con las que ChatGPT Enterprise no puede?",
@@ -1546,7 +1546,7 @@
       },
       {
         "question": "Is GAIA free like ChatGPT?",
-        "answer": "GAIA offers a free tier with core features. Pro plans start at $20/month. You can also self-host GAIA entirely free for complete data ownership. ChatGPT has a free tier with Plus at $20/month."
+        "answer": "GAIA offers a free tier with core features. Pro plans start at ${{PRO_MONTHLY_PRICE}}/month. You can also self-host GAIA entirely free for complete data ownership. ChatGPT has a free tier with Plus at $20/month."
       }
     ]
   },
@@ -1618,7 +1618,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; el autoalojamiento es gratuito sin límites de uso",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; el autoalojamiento es gratuito sin límites de uso",
         "competitor": "Nivel gratuito (limitado); Go a $8/mes; Plus a $20/mes; Pro a $200/mes; Business desde $25–30/asiento/mes"
       }
     ],
@@ -1650,7 +1650,7 @@
       },
       {
         "question": "¿Es GAIA más caro que ChatGPT?",
-        "answer": "El plan Pro de GAIA comienza en $20/mes, comparable a ChatGPT Plus. Sin embargo, GAIA se puede autoalojar de forma totalmente gratuita con propiedad total de los datos y sin límites de uso — una opción que ChatGPT no ofrece. El nivel Pro de ChatGPT cuesta $200/mes para acceso ilimitado a sus modelos más capaces."
+        "answer": "El plan Pro de GAIA comienza en ${{PRO_MONTHLY_PRICE}}/mes, comparable a ChatGPT Plus. Sin embargo, GAIA se puede autoalojar de forma totalmente gratuita con propiedad total de los datos y sin límites de uso — una opción que ChatGPT no ofrece. El nivel Pro de ChatGPT cuesta $200/mes para acceso ilimitado a sus modelos más capaces."
       }
     ]
   },
@@ -1900,7 +1900,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible, Pro desde $20/mes, autoalojamiento gratuito",
+        "gaia": "Nivel gratuito disponible, Pro desde ${{PRO_MONTHLY_PRICE}}/mes, autoalojamiento gratuito",
         "competitor": "Plan gratuito ilimitado; planes de pago desde $4.99/usuario/mes"
       }
     ],
@@ -2001,7 +2001,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; autoalojamiento totalmente gratuito sin costo por asiento",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento totalmente gratuito sin costo por asiento",
         "competitor": "Plan gratuito disponible; Equipos a $6.75/usuario/mes; Business a $11.50/usuario/mes; precios empresariales personalizados (todos facturados anualmente)"
       }
     ],
@@ -2030,7 +2030,7 @@
       },
       {
         "question": "¿GAIA es más barato que Clockwise para equipos?",
-        "answer": "El plan Teams de Clockwise cuesta $6.75 por usuario al mes facturado anualmente, lo que escala linealmente con el número de empleados. El plan Pro alojado de GAIA comienza en $20/mes, y el autoalojamiento es totalmente gratuito sin costo por asiento. Para equipos de tres o más personas, GAIA autoalojado es gratuito. Para planes alojados, el precio fijo de GAIA se vuelve más rentable a medida que crece el tamaño del equipo."
+        "answer": "El plan Teams de Clockwise cuesta $6.75 por usuario al mes facturado anualmente, lo que escala linealmente con el número de empleados. El plan Pro alojado de GAIA comienza en ${{PRO_MONTHLY_PRICE}}/mes, y el autoalojamiento es totalmente gratuito sin costo por asiento. Para equipos de tres o más personas, GAIA autoalojado es gratuito. Para planes alojados, el precio fijo de GAIA se vuelve más rentable a medida que crece el tamaño del equipo."
       }
     ]
   },
@@ -2106,7 +2106,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; autoalojamiento totalmente gratuito",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento totalmente gratuito",
         "competitor": "Nivel gratuito con límites de tamaño de documentos; Pro a $10/usuario/mes; Equipo a $30/usuario/mes; precios empresariales personalizados"
       },
       {
@@ -2148,7 +2148,7 @@
       },
       {
         "question": "¿GAIA es más barato que Coda para equipos?",
-        "answer": "El plan Team de Coda cuesta $30/usuario/mes, lo que se acumula significativamente con el tamaño del equipo. El plan Pro alojado de GAIA comienza en $20/mes, y el autoalojamiento es totalmente gratuito sin costo por asiento. Para equipos de más de dos personas, GAIA es sustancialmente más rentable."
+        "answer": "El plan Team de Coda cuesta $30/usuario/mes, lo que se acumula significativamente con el tamaño del equipo. El plan Pro alojado de GAIA comienza en ${{PRO_MONTHLY_PRICE}}/mes, y el autoalojamiento es totalmente gratuito sin costo por asiento. Para equipos de más de dos personas, GAIA es sustancialmente más rentable."
       }
     ]
   },
@@ -2224,7 +2224,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; autoalojamiento totalmente gratuito",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento totalmente gratuito",
         "competitor": "Gratuito para hasta 10 usuarios; Estándar a $4.89/usuario/mes; Premium a $8.97/usuario/mes; precios empresariales disponibles"
       },
       {
@@ -2266,7 +2266,7 @@
       },
       {
         "question": "¿GAIA es más barato que Confluence para equipos grandes?",
-        "answer": "Sí, significativamente. El plan Estándar de Confluence cuesta $4.89/usuario/mes y el Premium $8.97/usuario/mes, costos que se acumulan con el número de empleados. El plan Pro alojado de GAIA comienza en $20/mes sin importar el número de asientos, y el autoalojamiento es totalmente gratuito, lo que lo hace sustancialmente más económico para equipos más grandes."
+        "answer": "Sí, significativamente. El plan Estándar de Confluence cuesta $4.89/usuario/mes y el Premium $8.97/usuario/mes, costos que se acumulan con el número de empleados. El plan Pro alojado de GAIA comienza en ${{PRO_MONTHLY_PRICE}}/mes sin importar el número de asientos, y el autoalojamiento es totalmente gratuito, lo que lo hace sustancialmente más económico para equipos más grandes."
       }
     ]
   },
@@ -2338,7 +2338,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible, Pro desde $20/mes, el autoalojamiento es gratuito sin tarifas por asiento",
+        "gaia": "Nivel gratuito disponible, Pro desde ${{PRO_MONTHLY_PRICE}}/mes, el autoalojamiento es gratuito sin tarifas por asiento",
         "competitor": "Copilot es gratuito en copilot.microsoft.com con límites; Microsoft 365 Copilot para empresas comienza en ~$30/usuario/mes además de las licencias existentes de Microsoft 365 ($12.50–$57/usuario/mes)"
       }
     ],
@@ -2362,7 +2362,7 @@
       },
       {
         "question": "¿Cuánto cuesta realmente Microsoft Copilot?",
-        "answer": "El nivel gratuito en copilot.microsoft.com ofrece acceso limitado. Para uso empresarial, Microsoft 365 Copilot cuesta aproximadamente $30 por usuario al mes con un compromiso anual — pero eso requiere una licencia existente de Microsoft 365 Business Standard, Business Premium, E3 o E5, que añade otros $12.50 a $57 por usuario al mes. El plan Pro de GAIA comienza en $20/mes sin una suscripción subyacente obligatoria, y el autoalojamiento es totalmente gratuito."
+        "answer": "El nivel gratuito en copilot.microsoft.com ofrece acceso limitado. Para uso empresarial, Microsoft 365 Copilot cuesta aproximadamente $30 por usuario al mes con un compromiso anual — pero eso requiere una licencia existente de Microsoft 365 Business Standard, Business Premium, E3 o E5, que añade otros $12.50 a $57 por usuario al mes. El plan Pro de GAIA comienza en ${{PRO_MONTHLY_PRICE}}/mes sin una suscripción subyacente obligatoria, y el autoalojamiento es totalmente gratuito."
       },
       {
         "question": "¿Puedo autoalojar Microsoft Copilot para mantener mis datos privados?",
@@ -2394,7 +2394,7 @@
       "Asistente de escritura de IA de Craft docs",
       "Alternativa de gestión de documentos autoalojable"
     ],
-    "intro": "Craft se ha ganado un devoto seguimiento por una razón sencilla: es una de las aplicaciones de documentos y toma de notas visualmente más refinadas disponibles en dispositivos Apple. Su editor basado en bloques, páginas anidadas, colaboración en tiempo real, hermosas opciones de exportación y estrecha integración con iOS, iPadOS y macOS hacen que sea un verdadero placer usarla para cualquiera que esté profundamente inmerso en el ecosistema Apple. Para 2026, también incluye un asistente de escritura de IA que maneja la redacción, el resumen y la edición dentro del editor de documentos, junto con un sistema de tareas incorporado con visibilidad del calendario.\n\nPero Craft es fundamentalmente un lugar al que ir para escribir y organizar. Como la mayoría de las herramientas centradas en documentos, espera por ti. Un correo electrónico importante llega y Craft no lo sabe — tienes que abrir manualmente la aplicación, crear una nota o tarea, y escribir lo que necesitas recordar. Una reunión se agrega a tu calendario y Craft no prepara un resumen para ella — tienes que buscarlo tú mismo. El asistente de IA de Craft es reactivo y está limitado al editor: te ayuda una vez que ya estás dentro de un documento.\n\nGAIA adopta el enfoque opuesto. Monitoriza continuamente tu bandeja de entrada de Gmail, clasifica hilos por prioridad y puede crear tareas o notas estructuradas a partir del contenido del correo electrónico sin intervención manual. Lee tu Google Calendar y prepara resúmenes proactivos antes de las reuniones. Se conecta a más de 50 herramientas a través de MCP y orquesta acciones en todas ellas a través de lenguaje natural o flujos de trabajo automatizados — creando el documento o la tarea en la herramienta correcta en el momento correcto, en lugar de esperar a que abras una aplicación.\n\nEl diseño de Craft centrado en Apple es también su principal limitación para muchas personas. Si bien Craft ofrece una aplicación web, su experiencia está optimizada para iOS, iPadOS y macOS. No hay una aplicación nativa para Android ni una aplicación de escritorio para Windows. Los equipos con entornos de dispositivos mixtos o usuarios de Windows a menudo encuentran que Craft es poco práctico como espacio de trabajo compartido. GAIA es agnóstico a la plataforma — funciona a través de cualquier navegador web y se integra con herramientas independientemente del sistema operativo.\n\nEn cuanto a precios, el plan Plus de Craft cuesta $8 al mes por miembro facturado anualmente, lo que es competitivo para personas. Para equipos, el plan Team de $50/mes (hasta 25 miembros facturados anualmente) o el plan Business de $250/mes lo hacen razonable para la colaboración en documentos. El plan Pro alojado de GAIA es de $20/mes fijo independientemente del número de personas, y el autoalojamiento es totalmente gratuito para equipos que prefieren la propiedad total de los datos.\n\nPara los usuarios que aman el editor de Craft y la integración con Apple, GAIA puede servir como la capa de captura inteligente que alimenta automáticamente Craft con contenido del correo electrónico y calendario — creando notas a partir de correos electrónicos, enrutando el contexto de las reuniones a las páginas de Craft, y mostrando lo que necesita atención en tu entorno digital sin requerir que abras Craft manualmente cada vez.",
+    "intro": "Craft se ha ganado un devoto seguimiento por una razón sencilla: es una de las aplicaciones de documentos y toma de notas visualmente más refinadas disponibles en dispositivos Apple. Su editor basado en bloques, páginas anidadas, colaboración en tiempo real, hermosas opciones de exportación y estrecha integración con iOS, iPadOS y macOS hacen que sea un verdadero placer usarla para cualquiera que esté profundamente inmerso en el ecosistema Apple. Para 2026, también incluye un asistente de escritura de IA que maneja la redacción, el resumen y la edición dentro del editor de documentos, junto con un sistema de tareas incorporado con visibilidad del calendario.\n\nPero Craft es fundamentalmente un lugar al que ir para escribir y organizar. Como la mayoría de las herramientas centradas en documentos, espera por ti. Un correo electrónico importante llega y Craft no lo sabe — tienes que abrir manualmente la aplicación, crear una nota o tarea, y escribir lo que necesitas recordar. Una reunión se agrega a tu calendario y Craft no prepara un resumen para ella — tienes que buscarlo tú mismo. El asistente de IA de Craft es reactivo y está limitado al editor: te ayuda una vez que ya estás dentro de un documento.\n\nGAIA adopta el enfoque opuesto. Monitoriza continuamente tu bandeja de entrada de Gmail, clasifica hilos por prioridad y puede crear tareas o notas estructuradas a partir del contenido del correo electrónico sin intervención manual. Lee tu Google Calendar y prepara resúmenes proactivos antes de las reuniones. Se conecta a más de 50 herramientas a través de MCP y orquesta acciones en todas ellas a través de lenguaje natural o flujos de trabajo automatizados — creando el documento o la tarea en la herramienta correcta en el momento correcto, en lugar de esperar a que abras una aplicación.\n\nEl diseño de Craft centrado en Apple es también su principal limitación para muchas personas. Si bien Craft ofrece una aplicación web, su experiencia está optimizada para iOS, iPadOS y macOS. No hay una aplicación nativa para Android ni una aplicación de escritorio para Windows. Los equipos con entornos de dispositivos mixtos o usuarios de Windows a menudo encuentran que Craft es poco práctico como espacio de trabajo compartido. GAIA es agnóstico a la plataforma — funciona a través de cualquier navegador web y se integra con herramientas independientemente del sistema operativo.\n\nEn cuanto a precios, el plan Plus de Craft cuesta $8 al mes por miembro facturado anualmente, lo que es competitivo para personas. Para equipos, el plan Team de $50/mes (hasta 25 miembros facturados anualmente) o el plan Business de $250/mes lo hacen razonable para la colaboración en documentos. El plan Pro alojado de GAIA es de ${{PRO_MONTHLY_PRICE}}/mes fijo independientemente del número de personas, y el autoalojamiento es totalmente gratuito para equipos que prefieren la propiedad total de los datos.\n\nPara los usuarios que aman el editor de Craft y la integración con Apple, GAIA puede servir como la capa de captura inteligente que alimenta automáticamente Craft con contenido del correo electrónico y calendario — creando notas a partir de correos electrónicos, enrutando el contexto de las reuniones a las páginas de Craft, y mostrando lo que necesita atención en tu entorno digital sin requerir que abras Craft manualmente cada vez.",
     "rows": [
       {
         "feature": "Enfoque principal",
@@ -2443,7 +2443,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes fijo (no por asiento); autoalojamiento totalmente gratuito",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes fijo (no por asiento); autoalojamiento totalmente gratuito",
         "competitor": "Plan gratuito con funciones limitadas; Plus a $8/usuario/mes facturado anualmente; Plan de equipo a $50/mes fijo para hasta 25 miembros; Business a $250/mes fijo para miembros ilimitados"
       }
     ],
@@ -2543,7 +2543,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde $20/mes; el autoalojamiento es totalmente gratuito sin tarifas por asiento",
+        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; el autoalojamiento es totalmente gratuito sin tarifas por asiento",
         "competitor": "Hobby gratuito (500 finalizaciones/mes); Pro a $20/mes con finalizaciones de Tab ilimitadas y un grupo de créditos mensual; Pro+ a $60/mes; Ultra a $200/mes para uso intensivo de agentes; Equipos a $40/usuario/mes"
       }
     ],
@@ -2647,7 +2647,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito; Pro desde $20/mes; autoalojamiento gratuito",
+        "gaia": "Nivel gratuito; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito",
         "competitor": "Chat web gratuito; precios de API de $0.14–$2.19 por millón de tokens (dependiendo del modelo); tarifas muy competitivas"
       }
     ],
@@ -2760,7 +2760,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito; Pro desde $20/mes; autoalojamiento gratuito",
+        "gaia": "Nivel gratuito; Pro desde ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito",
         "competitor": "Gratuito para funciones básicas; Nitro a $9.99/mes para funciones mejoradas; Boosting de servidor para funciones comunitarias"
       }
     ],
@@ -2874,7 +2874,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan limited to 50 notes, 1 notebook, 1 device sync; Starter at ~$8.25/month (annual); Advanced at ~$21/month (annual) — pricing has increased significantly in recent years"
       }
     ],
@@ -2902,7 +2902,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Evernote Advanced?",
-        "answer": "Evernote Advanced costs approximately $21/month on the annual plan — higher than GAIA's $20/month Pro plan. Evernote's free plan is very restrictive (50 notes, 1 notebook, 1 device). GAIA offers a more generous free tier and can be self-hosted for free with no usage caps, an option Evernote does not provide. Given Evernote's ownership changes and data privacy concerns under Bending Spoons, GAIA's open source self-hosting option is also a meaningful data sovereignty advantage for privacy-conscious users."
+        "answer": "Evernote Advanced costs approximately $21/month on the annual plan. Evernote's free plan is very restrictive (50 notes, 1 notebook, 1 device). GAIA offers a more generous free tier and can be self-hosted for free with no usage caps, an option Evernote does not provide. Given Evernote's ownership changes and data privacy concerns under Bending Spoons, GAIA's open source self-hosting option is also a meaningful data sovereignty advantage for privacy-conscious users."
       }
     ]
   },
@@ -2970,7 +2970,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Fantastical Premium at $4.75/month (billed annually); no free tier beyond a limited trial"
       }
     ],
@@ -3076,7 +3076,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Free forever plan (unlimited recordings); Team Edition at $19/seat/month for CRM sync and collaboration features"
       }
     ],
@@ -3189,7 +3189,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Starter free (limited projects); Professional at $15/editor/month; Organization at $45/editor/month"
       }
     ],
@@ -3302,7 +3302,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Free tier (800 min storage); Pro at $18/seat/month; Business at $29/seat/month"
       }
     ],
@@ -3363,7 +3363,7 @@
       "AI focus management tool",
       "async productivity management"
     ],
-    "intro": "Focusmate built a passionate community around a simple but powerful human insight: having another person present — even a stranger on a video call — dramatically increases our ability to follow through on work we have been procrastinating. The body-doubling effect is well-documented in psychology, and Focusmate operationalises it elegantly. Thousands of people use it daily to tackle their most difficult tasks by booking 25, 50, or 75-minute sessions with accountability partners around the world. The community is warm, the format is structured, and the accountability loop is genuinely effective for people who struggle to self-start on difficult work.\n\nThe constraint is structural: Focusmate requires a scheduled session, an available partner, and a video connection. On your most chaotic days — exactly when you most need help staying focused — you may not have the availability to schedule a session, or you may be overwhelmed by the email and task backlog that makes sitting down to work feel impossible in the first place. Focusmate helps you execute during a session once you have already decided to work; it does not help you decide what to work on, clear the inbox flooding your attention, protect your calendar from meeting creep, or reduce the coordination overhead of managing tasks across multiple tools.\n\nGAIA approaches the focus problem from the workflow side. It proactively schedules protected work blocks on your Google Calendar before meetings can fill them, reads your inbox and creates a prioritised task list so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email is triaged, your tasks are created from conversations automatically, and your calendar has protected time built in, the conditions for deep work exist without needing to find a partner who is available at exactly the right moment. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools via MCP, and it is fully open source with a free tier.\n\nThe tools also operate at different scopes. Focusmate is a single-purpose accountability platform — excellent at its one job but unable to act on the broader workflow causing your focus challenges. GAIA is a full productivity operating system that manages your email, tasks, calendar, and cross-tool automations continuously in the background. GAIA's Pro plan is $20/month flat, self-hosting is free, and the free tier includes access to core AI capabilities. For knowledge workers dealing with complex multi-tool workflows, GAIA addresses the root causes of focus loss rather than helping manage the symptoms during a timed session.",
+    "intro": "Focusmate built a passionate community around a simple but powerful human insight: having another person present — even a stranger on a video call — dramatically increases our ability to follow through on work we have been procrastinating. The body-doubling effect is well-documented in psychology, and Focusmate operationalises it elegantly. Thousands of people use it daily to tackle their most difficult tasks by booking 25, 50, or 75-minute sessions with accountability partners around the world. The community is warm, the format is structured, and the accountability loop is genuinely effective for people who struggle to self-start on difficult work.\n\nThe constraint is structural: Focusmate requires a scheduled session, an available partner, and a video connection. On your most chaotic days — exactly when you most need help staying focused — you may not have the availability to schedule a session, or you may be overwhelmed by the email and task backlog that makes sitting down to work feel impossible in the first place. Focusmate helps you execute during a session once you have already decided to work; it does not help you decide what to work on, clear the inbox flooding your attention, protect your calendar from meeting creep, or reduce the coordination overhead of managing tasks across multiple tools.\n\nGAIA approaches the focus problem from the workflow side. It proactively schedules protected work blocks on your Google Calendar before meetings can fill them, reads your inbox and creates a prioritised task list so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email is triaged, your tasks are created from conversations automatically, and your calendar has protected time built in, the conditions for deep work exist without needing to find a partner who is available at exactly the right moment. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools via MCP, and it is fully open source with a free tier.\n\nThe tools also operate at different scopes. Focusmate is a single-purpose accountability platform — excellent at its one job but unable to act on the broader workflow causing your focus challenges. GAIA is a full productivity operating system that manages your email, tasks, calendar, and cross-tool automations continuously in the background. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat, self-hosting is free, and the free tier includes access to core AI capabilities. For knowledge workers dealing with complex multi-tool workflows, GAIA addresses the root causes of focus loss rather than helping manage the symptoms during a timed session.",
     "rows": [
       {
         "feature": "Core approach",
@@ -3422,7 +3422,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free for 3 sessions/week; Pro from $6.99/month for unlimited sessions"
       }
     ],
@@ -3451,7 +3451,7 @@
       },
       {
         "question": "Is GAIA more affordable than Focusmate?",
-        "answer": "GAIA has a free tier with no usage limits on core features. Focusmate offers 3 free sessions per week and charges $6.99/month for unlimited access. GAIA Pro is $20/month with substantially broader capabilities, and self-hosting GAIA is entirely free for those who want full data ownership."
+        "answer": "GAIA has a free tier with no usage limits on core features. Focusmate offers 3 free sessions per week and charges $6.99/month for unlimited access. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with substantially broader capabilities, and self-hosting GAIA is entirely free for those who want full data ownership."
       },
       {
         "question": "Is GAIA open source?",
@@ -3463,7 +3463,7 @@
       },
       {
         "question": "Does GAIA have a free plan compared to Focusmate?",
-        "answer": "Yes. GAIA has a free tier with no credit card required that includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. Focusmate offers 3 free sessions per week and charges $6.99/month for unlimited sessions. GAIA's Pro plan is $20/month with substantially broader capabilities, and self-hosting GAIA is entirely free for users who want complete data ownership."
+        "answer": "Yes. GAIA has a free tier with no credit card required that includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. Focusmate offers 3 free sessions per week and charges $6.99/month for unlimited sessions. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month with substantially broader capabilities, and self-hosting GAIA is entirely free for users who want complete data ownership."
       },
       {
         "question": "Is GAIA open source unlike Focusmate?",
@@ -3523,7 +3523,7 @@
       "AI focus management tool",
       "anti-distraction app alternative"
     ],
-    "intro": "Forest has delighted millions of users with a simple and charming premise: plant a virtual tree, stay focused during the session, and watch your forest grow. The gamification works because it makes focus feel rewarding and makes distraction feel like a small but visible failure — your tree dies if you leave the app. The real-tree planting programme adds genuine environmental meaning to every session. For people who struggle to stay off their phones, Forest's gentle accountability loop is genuinely effective at what it does.\n\nBut Forest addresses only one narrow slice of the focus problem: phone distraction during a self-initiated timer session. It does not help you decide what to focus on in the first place, manage the email that interrupts your flow, protect your calendar from meeting creep, or reduce the cognitive overhead of managing tasks across a dozen different tools. You must still decide to start a Forest session — and that decision requires having already cleared enough mental space to know what to work on and having suppressed the urge to check the notifications competing for your attention.\n\nGAIA approaches focus from the upstream side. It proactively schedules protected work blocks on your calendar before meetings can fill them, reads your inbox and creates prioritised task lists so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email, tasks, and calendar are managed by an AI that surfaces the right priorities at the right time, the cognitive overhead of context-switching drops substantially. You arrive at your work sessions with clarity about what matters most — and far fewer interruptions competing for your attention. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools, and it is fully open source with a free tier.\n\nThe two tools also sit at entirely different price points and capability scopes. Forest costs around $1.99 as a mobile app purchase, with a web subscription available. GAIA's free tier gives you access to AI task management, email triage, calendar integration, and workflow automation — a fundamentally broader set of capabilities. Self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure, and the Pro plan is $20/month. For knowledge workers who want to go beyond phone-locking to genuinely reduce the workflow chaos that makes focus sessions necessary, GAIA operates at a different level entirely.",
+    "intro": "Forest has delighted millions of users with a simple and charming premise: plant a virtual tree, stay focused during the session, and watch your forest grow. The gamification works because it makes focus feel rewarding and makes distraction feel like a small but visible failure — your tree dies if you leave the app. The real-tree planting programme adds genuine environmental meaning to every session. For people who struggle to stay off their phones, Forest's gentle accountability loop is genuinely effective at what it does.\n\nBut Forest addresses only one narrow slice of the focus problem: phone distraction during a self-initiated timer session. It does not help you decide what to focus on in the first place, manage the email that interrupts your flow, protect your calendar from meeting creep, or reduce the cognitive overhead of managing tasks across a dozen different tools. You must still decide to start a Forest session — and that decision requires having already cleared enough mental space to know what to work on and having suppressed the urge to check the notifications competing for your attention.\n\nGAIA approaches focus from the upstream side. It proactively schedules protected work blocks on your calendar before meetings can fill them, reads your inbox and creates prioritised task lists so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email, tasks, and calendar are managed by an AI that surfaces the right priorities at the right time, the cognitive overhead of context-switching drops substantially. You arrive at your work sessions with clarity about what matters most — and far fewer interruptions competing for your attention. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools, and it is fully open source with a free tier.\n\nThe two tools also sit at entirely different price points and capability scopes. Forest costs around $1.99 as a mobile app purchase, with a web subscription available. GAIA's free tier gives you access to AI task management, email triage, calendar integration, and workflow automation — a fundamentally broader set of capabilities. Self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure, and the Pro plan is ${{PRO_MONTHLY_PRICE}}/month. For knowledge workers who want to go beyond phone-locking to genuinely reduce the workflow chaos that makes focus sessions necessary, GAIA operates at a different level entirely.",
     "rows": [
       {
         "feature": "Core approach",
@@ -3582,7 +3582,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "One-time purchase around $1.99 for the mobile app; web version requires a separate subscription"
       }
     ],
@@ -3746,7 +3746,7 @@
       },
       {
         "question": "Is GAIA free like Gemini?",
-        "answer": "GAIA offers a free tier with core features, Pro plans from $20/month, and completely free self-hosting for total data control. Gemini has a free tier with Google One AI Premium at $19.99/month for advanced features."
+        "answer": "GAIA offers a free tier with core features, Pro plans from ${{PRO_MONTHLY_PRICE}}/month, and completely free self-hosting for total data control. Gemini has a free tier with Google One AI Premium at $19.99/month for advanced features."
       }
     ]
   },
@@ -3913,7 +3913,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Free for personal use with a Google account; included in Google Workspace plans starting at $6/user/month for business — no standalone paid calendar tier"
       }
     ],
@@ -4022,7 +4022,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free tier with basic checks; Premium at $12/month; Business at $15/user/month"
       }
     ],
@@ -4140,7 +4140,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Free tier (limited meetings); Pro at $18/month"
       }
     ],
@@ -4253,7 +4253,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Included with X Premium ($8/month); SuperGrok subscription for advanced models"
       }
     ],
@@ -4286,7 +4286,7 @@
       },
       {
         "question": "Is GAIA more expensive than Grok?",
-        "answer": "Grok is bundled with X Premium at $8/month. GAIA's Pro plan starts at $20/month, but GAIA can also be self-hosted for free with full data ownership. For users who primarily want productivity automation rather than social AI, GAIA's pricing reflects a substantially different and deeper capability set."
+        "answer": "Grok is bundled with X Premium at $8/month. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month, but GAIA can also be self-hosted for free with full data ownership. For users who primarily want productivity automation rather than social AI, GAIA's pricing reflects a substantially different and deeper capability set."
       },
       {
         "question": "Is GAIA open source while Grok is not?",
@@ -4314,7 +4314,7 @@
       "AI freelancer productivity tool",
       "client workflow management AI"
     ],
-    "intro": "Harvest built a loyal following among freelancers and creative agencies by combining time tracking and invoicing into a single, well-designed product. The ability to track time against projects, see real-time budget burn, and generate professional invoices without switching tools makes Harvest a practical choice for anyone who bills by the hour. The Forecast add-on extends this into resource planning and team scheduling, giving agency principals visibility into team capacity alongside project budgets. For businesses where accurate billing is the foundation of financial health, Harvest does its job reliably.\n\nThe limitation is that Harvest, like all time trackers, records what already happened. It does not help you decide what project to work on next, manage the client emails that create new billable tasks, prepare briefing notes before client calls, or automate the coordination work between client deliverables and project tracking. Every Harvest entry is a retrospective action — accurate data about the past, but no guidance about the future. The hours spent on email, client communication, and task coordination before you can bill are invisible in Harvest's reports, yet they often represent a significant portion of the total time a project requires.\n\nGAIA handles the workflow that precedes time tracking. It reads client emails in Gmail and creates billable task items automatically — without requiring you to manually log each new request. It schedules project work blocks on your calendar around client meetings, monitors Slack conversations for new requests or scope changes, and runs multi-step automations that move client deliverables forward. When a client emails with a change request, GAIA can detect it, create a task, flag it as urgent, and send you a summary — all before you have had a chance to check your inbox. For freelancers and agency teams, GAIA substantially reduces the coordination overhead between client communication and actual billable work.\n\nGAIA is open source and self-hostable, which means your client data and project information stay entirely within your own infrastructure if you choose to self-host. The free tier includes access to core AI capabilities, and the Pro plan is $20/month flat — significantly cheaper than Harvest's per-user pricing for teams of more than one or two people. Self-hosting is entirely free. For freelancers and small agencies who want to reduce the non-billable overhead that eats into their profitability, GAIA provides a complementary layer of AI productivity management that time tracking tools cannot offer.",
+    "intro": "Harvest built a loyal following among freelancers and creative agencies by combining time tracking and invoicing into a single, well-designed product. The ability to track time against projects, see real-time budget burn, and generate professional invoices without switching tools makes Harvest a practical choice for anyone who bills by the hour. The Forecast add-on extends this into resource planning and team scheduling, giving agency principals visibility into team capacity alongside project budgets. For businesses where accurate billing is the foundation of financial health, Harvest does its job reliably.\n\nThe limitation is that Harvest, like all time trackers, records what already happened. It does not help you decide what project to work on next, manage the client emails that create new billable tasks, prepare briefing notes before client calls, or automate the coordination work between client deliverables and project tracking. Every Harvest entry is a retrospective action — accurate data about the past, but no guidance about the future. The hours spent on email, client communication, and task coordination before you can bill are invisible in Harvest's reports, yet they often represent a significant portion of the total time a project requires.\n\nGAIA handles the workflow that precedes time tracking. It reads client emails in Gmail and creates billable task items automatically — without requiring you to manually log each new request. It schedules project work blocks on your calendar around client meetings, monitors Slack conversations for new requests or scope changes, and runs multi-step automations that move client deliverables forward. When a client emails with a change request, GAIA can detect it, create a task, flag it as urgent, and send you a summary — all before you have had a chance to check your inbox. For freelancers and agency teams, GAIA substantially reduces the coordination overhead between client communication and actual billable work.\n\nGAIA is open source and self-hostable, which means your client data and project information stay entirely within your own infrastructure if you choose to self-host. The free tier includes access to core AI capabilities, and the Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat — significantly cheaper than Harvest's per-user pricing for teams of more than one or two people. Self-hosting is entirely free. For freelancers and small agencies who want to reduce the non-billable overhead that eats into their profitability, GAIA provides a complementary layer of AI productivity management that time tracking tools cannot offer.",
     "rows": [
       {
         "feature": "Core approach",
@@ -4373,7 +4373,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Free plan limited to 1 user and 2 projects; Pro from $12/user/month for unlimited projects and users"
       }
     ],
@@ -4402,7 +4402,7 @@
       },
       {
         "question": "Is GAIA free compared to Harvest?",
-        "answer": "GAIA has a free tier with no credit card required. Harvest's free plan is limited to 1 user and 2 projects, making it impractical for any real freelance or agency use. GAIA can also be self-hosted completely free with full data ownership. GAIA's Pro plan is $20/month flat regardless of the number of users on your team."
+        "answer": "GAIA has a free tier with no credit card required. Harvest's free plan is limited to 1 user and 2 projects, making it impractical for any real freelance or agency use. GAIA can also be self-hosted completely free with full data ownership. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of the number of users on your team."
       },
       {
         "question": "Is GAIA open source unlike Harvest?",
@@ -4514,7 +4514,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free plan with unlimited members, Team plan at ~$6.99–$8.50 per member per month"
       }
     ],
@@ -4628,7 +4628,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "HEY for You at $99/year ($8.25/month, annual billing only); HEY for Domains at $12/month per person; no free tier beyond a trial period"
       }
     ],
@@ -4680,7 +4680,7 @@
       "AI productivity tool for sales teams",
       "personal AI assistant for sales"
     ],
-    "intro": "HubSpot has become one of the most recognisable names in B2B software by offering a unified CRM platform that covers the full customer lifecycle — from lead generation and marketing automation through sales pipeline management and customer support. For revenue teams, HubSpot's ability to track every touchpoint with a contact across email, calls, deals, and support tickets in one place is genuinely powerful. The platform's free CRM tier, generous feature set, and extensive integration marketplace made it the default choice for thousands of growing companies.\n\nBut HubSpot is fundamentally a team CRM platform, not a personal productivity assistant. It excels at managing customer data and automating marketing sequences, but it does not proactively manage your personal inbox, prepare you for meetings, create tasks from Slack conversations, or orchestrate workflows across your engineering, product, and project management tools. A sales manager using HubSpot still spends hours each week manually triaging email, updating deal stages, chasing follow-ups across Slack, and coordinating internally across tools that HubSpot does not connect. HubSpot tracks what happened; it rarely prevents the overhead in the first place.\n\nGAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more tools via MCP, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like \"when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder\" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.\n\nThe pricing difference is also stark. HubSpot's free CRM is genuinely useful, but the features that matter for automation — Marketing Hub, Sales Hub, and Service Hub at meaningful tiers — scale quickly to hundreds or thousands of dollars per month. GAIA's hosted Pro plan is $20 per month flat with no per-seat pricing, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management rather than enterprise CRM, GAIA delivers far more value per dollar.",
+    "intro": "HubSpot has become one of the most recognisable names in B2B software by offering a unified CRM platform that covers the full customer lifecycle — from lead generation and marketing automation through sales pipeline management and customer support. For revenue teams, HubSpot's ability to track every touchpoint with a contact across email, calls, deals, and support tickets in one place is genuinely powerful. The platform's free CRM tier, generous feature set, and extensive integration marketplace made it the default choice for thousands of growing companies.\n\nBut HubSpot is fundamentally a team CRM platform, not a personal productivity assistant. It excels at managing customer data and automating marketing sequences, but it does not proactively manage your personal inbox, prepare you for meetings, create tasks from Slack conversations, or orchestrate workflows across your engineering, product, and project management tools. A sales manager using HubSpot still spends hours each week manually triaging email, updating deal stages, chasing follow-ups across Slack, and coordinating internally across tools that HubSpot does not connect. HubSpot tracks what happened; it rarely prevents the overhead in the first place.\n\nGAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more tools via MCP, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like \"when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder\" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.\n\nThe pricing difference is also stark. HubSpot's free CRM is genuinely useful, but the features that matter for automation — Marketing Hub, Sales Hub, and Service Hub at meaningful tiers — scale quickly to hundreds or thousands of dollars per month. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month flat with no per-seat pricing, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management rather than enterprise CRM, GAIA delivers far more value per dollar.",
     "rows": [
       {
         "feature": "Core approach",
@@ -4739,7 +4739,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Free CRM tier available; Marketing Hub from $800/month; Sales Hub from $90/user/month; full suite for growing teams runs well into the thousands per month"
       }
     ],
@@ -4768,7 +4768,7 @@
       },
       {
         "question": "Is GAIA cheaper than HubSpot?",
-        "answer": "Dramatically so for personal productivity use. GAIA has a free tier and Pro plans from $20/month flat. HubSpot's Marketing Hub starts at $800/month and enterprise contracts run much higher. HubSpot's free CRM tier is generous for basic contact tracking, but it offers no proactive AI management of your personal email, tasks, or calendar."
+        "answer": "Dramatically so for personal productivity use. GAIA has a free tier and Pro plans from ${{PRO_MONTHLY_PRICE}}/month flat. HubSpot's Marketing Hub starts at $800/month and enterprise contracts run much higher. HubSpot's free CRM tier is generous for basic contact tracking, but it offers no proactive AI management of your personal email, tasks, or calendar."
       },
       {
         "question": "Is GAIA open source unlike HubSpot?",
@@ -4780,7 +4780,7 @@
       },
       {
         "question": "Does GAIA have a free plan compared to HubSpot?",
-        "answer": "Both have free tiers. HubSpot's free CRM is generous for basic contact management and deal tracking but does not include proactive AI, meaningful marketing automation, or advanced sales features. GAIA's free tier includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. GAIA's paid plans start at $20/month flat, while HubSpot's paid tiers escalate quickly — Marketing Hub alone starts at $800/month."
+        "answer": "Both have free tiers. HubSpot's free CRM is generous for basic contact management and deal tracking but does not include proactive AI, meaningful marketing automation, or advanced sales features. GAIA's free tier includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. GAIA's paid plans start at ${{PRO_MONTHLY_PRICE}}/month flat, while HubSpot's paid tiers escalate quickly — Marketing Hub alone starts at $800/month."
       },
       {
         "question": "Can GAIA help with sales workflows that HubSpot manages?",
@@ -4897,7 +4897,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "One-time purchase per platform — typically $29.99 on Mac, $9.99 on iOS; occasional upgrades are paid"
       }
     ],
@@ -5003,7 +5003,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free for up to 10 users, Standard from $8.15/user/month, Premium from $16/user/month, enterprise pricing on request"
       }
     ],
@@ -5033,7 +5033,7 @@
       },
       {
         "question": "Is GAIA cheaper than Jira for small teams?",
-        "answer": "Jira is free for up to 10 users, which makes it cost-effective for small teams. GAIA is free for individual use and starts at $20/month for Pro features, or free indefinitely if you self-host. The cost comparison depends heavily on team size and whether you need team project management versus personal AI assistance."
+        "answer": "Jira is free for up to 10 users, which makes it cost-effective for small teams. GAIA is free for individual use and starts at ${{PRO_MONTHLY_PRICE}}/month for Pro features, or free indefinitely if you self-host. The cost comparison depends heavily on team size and whether you need team project management versus personal AI assistance."
       }
     ]
   },
@@ -5109,7 +5109,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free tier with feature limits; Pro at $12/user/month; Enterprise custom pricing"
       },
       {
@@ -5151,7 +5151,7 @@
       },
       {
         "question": "Is GAIA cheaper than Lark for mid-sized teams?",
-        "answer": "GAIA's hosted Pro plan is $20/month regardless of team size, and self-hosting is entirely free. Lark's Pro plan is $12/user/month, so for teams of two or more, Lark's cost scales linearly while GAIA's does not. For teams of five or more, GAIA is substantially more cost-effective when comparing comparable usage tiers."
+        "answer": "GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is entirely free. Lark's Pro plan is $12/user/month, so for teams of two or more, Lark's cost scales linearly while GAIA's does not. For teams of five or more, GAIA is substantially more cost-effective when comparing comparable usage tiers."
       }
     ]
   },
@@ -5215,7 +5215,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is entirely free with no usage caps",
         "competitor": "App free with 1,200 transcription minutes/month; Pendant hardware from $99; following Meta acquisition in late 2025, hardware sales were discontinued and existing customers moved to an unlimited plan"
       }
     ],
@@ -5405,7 +5405,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free plan (limited to 250 issues), Basic at ~$8/user/month, Business at ~$14/user/month, Enterprise custom"
       }
     ],
@@ -5504,7 +5504,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is free with no usage caps",
         "competitor": "Free and open source for the desktop app; sync and collaboration features in the upcoming DB version are expected to carry a subscription cost"
       }
     ],
@@ -5608,7 +5608,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Starter free (25 videos); Business at $12.50/creator/month; Enterprise pricing on request"
       }
     ],
@@ -5722,7 +5722,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan with 1,000 operations/month; Core plan from $29/month; Pro and Teams plans for higher volume; operations-based billing that scales with usage"
       }
     ],
@@ -5750,7 +5750,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Make for an individual user?",
-        "answer": "Make's Free plan offers 1,000 operations/month, which is enough for light automation but quickly runs out with active email or calendar workflows. The Core plan starts at $29/month. GAIA's Pro plan is $20/month with no operation-based billing — all features included. Additionally, GAIA can be self-hosted for free with no usage caps, an option Make does not offer. For individuals who want AI-powered productivity automation without metering every action, GAIA is typically more cost-effective."
+        "answer": "Make's Free plan offers 1,000 operations/month, which is enough for light automation but quickly runs out with active email or calendar workflows. The Core plan starts at $29/month. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month with no operation-based billing — all features included. Additionally, GAIA can be self-hosted for free with no usage caps, an option Make does not offer. For individuals who want AI-powered productivity automation without metering every action, GAIA is typically more cost-effective."
       }
     ]
   },
@@ -5895,7 +5895,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan limited to 25 notes and 25 chat messages per month; Mem Pro at $12/month with unlimited notes, chat, search, collections, templates, and connected emails"
       }
     ],
@@ -5923,7 +5923,7 @@
       },
       {
         "question": "Is GAIA more expensive than Mem.ai?",
-        "answer": "Mem Pro costs $12/month. GAIA's hosted Pro plan starts at $20/month, but GAIA can be self-hosted for free with full data ownership and no usage caps — an option Mem does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Mem has no self-hosting path."
+        "answer": "Mem Pro costs $12/month. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month, but GAIA can be self-hosted for free with full data ownership and no usage caps — an option Mem does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Mem has no self-hosting path."
       }
     ]
   },
@@ -5999,7 +5999,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free tier with 3 editable boards; Starter at $8/user/month; Business at $16/user/month; Enterprise custom"
       },
       {
@@ -6033,7 +6033,7 @@
       },
       {
         "question": "Is GAIA cheaper than Miro for large teams?",
-        "answer": "Yes, significantly. Miro's Business plan is $16/user/month, which scales linearly with team size. GAIA's hosted Pro plan is $20/month regardless of team size, and self-hosting is entirely free. For teams of three or more, GAIA is substantially more cost-effective."
+        "answer": "Yes, significantly. Miro's Business plan is $16/user/month, which scales linearly with team size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is entirely free. For teams of three or more, GAIA is substantially more cost-effective."
       },
       {
         "question": "What workflow gaps does GAIA fill that Miro leaves open?",
@@ -6119,7 +6119,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan up to 3 users with 15-day history; Starter at $14/user/month (annual); Productive at $24/user/month (annual); Business plan for enterprise"
       }
     ],
@@ -6147,7 +6147,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Missive for a small team?",
-        "answer": "Missive's Starter plan is $14/user/month (annual billing) and the Productive plan is $24/user/month. For a team of five, that is $70-120/month. GAIA's Pro plan is $20/month for an individual, with self-hosting available for free. GAIA is not a per-seat product in the same way — it is an individual AI assistant rather than a shared team platform. For team workflows, you would typically run GAIA per person and use its integrations to coordinate rather than sharing a single GAIA inbox."
+        "answer": "Missive's Starter plan is $14/user/month (annual billing) and the Productive plan is $24/user/month. For a team of five, that is $70-120/month. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month for an individual, with self-hosting available for free. GAIA is not a per-seat product in the same way — it is an individual AI assistant rather than a shared team platform. For team workflows, you would typically run GAIA per person and use its integrations to coordinate rather than sharing a single GAIA inbox."
       }
     ]
   },
@@ -6176,7 +6176,7 @@
       "best Monday.com replacement",
       "Monday.com vs GAIA"
     ],
-    "intro": "Monday.com has cemented itself as one of the most recognisable names in project management. Its visual boards, timeline views, workload charts, and flexible column types make it genuinely good at what it was designed for: giving teams a shared space to plan, track, and report on work. By 2026, Monday.com has also invested heavily in AI — its 'monday sidekick' assistant and AI-powered automations can summarise tasks, categorise incoming requests, suggest automations, and build workflows through natural conversation within the platform.\n\nBut Monday.com is still fundamentally a destination — a place your team goes to update statuses, log time, and check project progress. Someone on the team has to keep it current. Items don't appear on your boards because an email arrived; they appear because a human created them. Automations can be triggered within Monday.com's own ecosystem, but Monday.com does not read your Gmail inbox, does not prepare you for the meeting starting in 20 minutes, and does not proactively surface the task that just became urgent because of a Slack message you received.\n\nGAIA operates in the opposite direction. Instead of being a destination, it is an ambient layer across your entire digital environment. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or calendar events from email content automatically. It reads your Google Calendar and prepares briefings before meetings without being asked. It connects to 50+ tools via MCP — including project management tools, note-taking apps, developer tools, and communication platforms — and orchestrates actions across all of them through natural language or proactive automation.\n\nOn pricing, Monday.com's per-seat model scales steeply with team size. The Basic plan starts at $9 per seat per month billed annually with a minimum of 3 seats, and the Pro plan — which unlocks automations and integrations — is $30 per seat per month. For a team of 10 on the Pro plan, that is $300 per month just for the work management layer. GAIA's hosted Pro plan is $20 per month flat regardless of headcount, and self-hosting is free for teams comfortable managing their own infrastructure.\n\nMonday.com is a strong choice when your team needs structured project coordination with visual dashboards and stakeholder reporting. GAIA is a strong choice when you need an AI that removes the manual overhead of keeping every tool current — reading your email, building your tasks, managing your calendar, and triggering automations that span your entire stack, not just a single work management board.",
+    "intro": "Monday.com has cemented itself as one of the most recognisable names in project management. Its visual boards, timeline views, workload charts, and flexible column types make it genuinely good at what it was designed for: giving teams a shared space to plan, track, and report on work. By 2026, Monday.com has also invested heavily in AI — its 'monday sidekick' assistant and AI-powered automations can summarise tasks, categorise incoming requests, suggest automations, and build workflows through natural conversation within the platform.\n\nBut Monday.com is still fundamentally a destination — a place your team goes to update statuses, log time, and check project progress. Someone on the team has to keep it current. Items don't appear on your boards because an email arrived; they appear because a human created them. Automations can be triggered within Monday.com's own ecosystem, but Monday.com does not read your Gmail inbox, does not prepare you for the meeting starting in 20 minutes, and does not proactively surface the task that just became urgent because of a Slack message you received.\n\nGAIA operates in the opposite direction. Instead of being a destination, it is an ambient layer across your entire digital environment. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or calendar events from email content automatically. It reads your Google Calendar and prepares briefings before meetings without being asked. It connects to 50+ tools via MCP — including project management tools, note-taking apps, developer tools, and communication platforms — and orchestrates actions across all of them through natural language or proactive automation.\n\nOn pricing, Monday.com's per-seat model scales steeply with team size. The Basic plan starts at $9 per seat per month billed annually with a minimum of 3 seats, and the Pro plan — which unlocks automations and integrations — is $30 per seat per month. For a team of 10 on the Pro plan, that is $300 per month just for the work management layer. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month flat regardless of headcount, and self-hosting is free for teams comfortable managing their own infrastructure.\n\nMonday.com is a strong choice when your team needs structured project coordination with visual dashboards and stakeholder reporting. GAIA is a strong choice when you need an AI that removes the manual overhead of keeping every tool current — reading your email, building your tasks, managing your calendar, and triggering automations that span your entire stack, not just a single work management board.",
     "rows": [
       {
         "feature": "Core approach",
@@ -6225,7 +6225,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Basic at $9/seat/month, Standard at $12/seat/month, Pro at $30/seat/month — all billed annually with a 3-seat minimum; a 10-person Pro team costs $300/month"
       }
     ],
@@ -6233,7 +6233,7 @@
       "Reads your Gmail inbox and creates Monday.com items, tasks, or calendar events from email content automatically — no manual entry required",
       "Proactively prepares meeting briefings from Google Calendar without being asked, keeping you informed before calls start",
       "50+ MCP integrations let GAIA orchestrate actions across Gmail, Slack, GitHub, Linear, and Todoist in a single automated workflow",
-      "Flat pricing at $20/month regardless of team size — dramatically cheaper than Monday.com's per-seat model for teams of more than two people",
+      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month regardless of team size — dramatically cheaper than Monday.com's per-seat model for teams of more than two people",
       "Open source and self-hostable — full data ownership with zero per-seat cost for teams running their own infrastructure"
     ],
     "competitorAdvantages": [
@@ -6249,7 +6249,7 @@
       },
       {
         "question": "How does GAIA pricing compare to Monday.com for a small team?",
-        "answer": "Monday.com requires a minimum of 3 seats and charges per seat. The Pro plan — which includes meaningful automations and integrations — is $30 per seat per month billed annually. A team of 5 pays $150/month, and a team of 10 pays $300/month. GAIA's hosted Pro plan is $20/month flat regardless of headcount, and self-hosting is free. For teams of more than one or two people, GAIA is substantially cheaper."
+        "answer": "Monday.com requires a minimum of 3 seats and charges per seat. The Pro plan — which includes meaningful automations and integrations — is $30 per seat per month billed annually. A team of 5 pays $150/month, and a team of 10 pays $300/month. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is free. For teams of more than one or two people, GAIA is substantially cheaper."
       },
       {
         "question": "Is GAIA a replacement for Monday.com?",
@@ -6315,7 +6315,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Starts at $19/month, no free tier"
       }
     ],
@@ -6343,7 +6343,7 @@
       },
       {
         "question": "Is GAIA more expensive than Motion?",
-        "answer": "GAIA offers a free tier and Pro plans starting at $20/month. You can also self-host GAIA for free with complete data ownership. Motion starts at $19/month with no free option."
+        "answer": "GAIA offers a free tier and Pro plans starting at ${{PRO_MONTHLY_PRICE}}/month. You can also self-host GAIA for free with complete data ownership. Motion starts at $19/month with no free option."
       }
     ]
   },
@@ -6465,7 +6465,7 @@
       "best Notion AI replacement",
       "Notion AI vs GAIA"
     ],
-    "intro": "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across 50+ integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the Business plan at $20 per user per month (billed annually). For a solo professional or small team that wants Notion AI, the effective cost is now $20 per seat — just for the workspace plus AI. GAIA's hosted Pro plan is $20 per month regardless of seat count, and self-hosting is entirely free.\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
+    "intro": "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across 50+ integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the Business plan at $20 per user per month (billed annually). For a solo professional or small team that wants Notion AI, the effective cost is now $20 per seat — just for the workspace plus AI. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of seat count, and self-hosting is entirely free.\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
     "rows": [
       {
         "feature": "Core approach",
@@ -6509,7 +6509,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month (not per seat); self-hosting entirely free",
         "competitor": "Bundled into Notion Business at $20/user/month billed annually — no longer available as a standalone add-on; Free and Plus plans get only a limited AI trial"
       },
       {
@@ -6523,7 +6523,7 @@
       "Acts before you ask: monitors your calendar and surfaces pre-meeting briefings, priority alerts, and action items from across your tool stack",
       "50+ integrations via MCP let GAIA orchestrate actions across Gmail, Google Calendar, Slack, GitHub, Todoist, and Notion simultaneously",
       "Graph-based persistent memory builds contextual understanding that spans email, calendar, tasks, and documents — not just what's in one workspace",
-      "Open source and self-hostable with no per-seat pricing — flat $20/month hosted Pro, or free when you run your own infrastructure"
+      "Open source and self-hostable with no per-seat pricing — flat ${{PRO_MONTHLY_PRICE}}/month hosted Pro, or free when you run your own infrastructure"
     ],
     "competitorAdvantages": [
       "Deep contextual AI within Notion — agents can read and write across hundreds of Notion pages simultaneously, making it exceptionally powerful for Notion-centric workflows",
@@ -6538,7 +6538,7 @@
       },
       {
         "question": "How much does Notion AI cost compared to GAIA?",
-        "answer": "Since May 2025, Notion AI is bundled exclusively into the Notion Business plan at $20 per user per month billed annually — it is no longer sold as a standalone add-on. For a 5-person team that costs $100/month just for Notion with AI. GAIA's hosted Pro plan is $20/month regardless of seat count, and the self-hosted version is entirely free. For teams of more than one person, GAIA is significantly cheaper per seat."
+        "answer": "Since May 2025, Notion AI is bundled exclusively into the Notion Business plan at $20 per user per month billed annually — it is no longer sold as a standalone add-on. For a 5-person team that costs $100/month just for Notion with AI. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and the self-hosted version is entirely free. For teams of more than one person, GAIA is significantly cheaper per seat."
       },
       {
         "question": "Does GAIA replace Notion AI or complement it?",
@@ -6611,7 +6611,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no per-seat cost",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no per-seat cost",
         "competitor": "Free to use; advanced Notion database linking features require a paid Notion plan starting at $12 per member per month (Plus) or $18 per member per month (Business)"
       }
     ],
@@ -6722,7 +6722,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no per-seat cost",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no per-seat cost",
         "competitor": "Free plan available; Plus at $10/user/month; Business at $20/user/month; Enterprise at custom pricing (all billed annually with 20% discount)"
       }
     ],
@@ -6754,7 +6754,7 @@
       },
       {
         "question": "Is GAIA cheaper than Notion for teams?",
-        "answer": "For larger teams, GAIA's self-hosting option removes per-seat pricing entirely — you only pay for your own infrastructure. Notion's Business plan is $20 per user per month billed annually, which scales quickly with headcount. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is free."
+        "answer": "For larger teams, GAIA's self-hosting option removes per-seat pricing entirely — you only pay for your own infrastructure. Notion's Business plan is $20 per user per month billed annually, which scales quickly with headcount. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and self-hosting is free."
       }
     ]
   },
@@ -6830,7 +6830,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free tier for up to 50 items; Starter at $6/user/month; Business at $12/user/month"
       },
       {
@@ -6868,7 +6868,7 @@
       },
       {
         "question": "Is GAIA cheaper than Nuclino for growing teams?",
-        "answer": "GAIA's self-hosting option is entirely free, and the hosted Pro plan is $20/month regardless of team size. Nuclino's Business plan is $12/user/month, which scales linearly with team growth. For teams of more than two people, GAIA's flat pricing makes it significantly more cost-effective. Nuclino's free tier is also more limited, capped at 50 content items."
+        "answer": "GAIA's self-hosting option is entirely free, and the hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size. Nuclino's Business plan is $12/user/month, which scales linearly with team growth. For teams of more than two people, GAIA's flat pricing makes it significantly more cost-effective. Nuclino's free tier is also more limited, capped at 50 content items."
       },
       {
         "question": "What does GAIA capture that Nuclino misses?",
@@ -6941,7 +6941,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is free with no usage caps",
         "competitor": "Core app is free; Obsidian Sync adds $4/month; Obsidian Publish adds $8/month per site; commercial use was free as of 2025"
       }
     ],
@@ -7030,7 +7030,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "One-time purchase — Standard ($49.99) or Pro ($99.99) for Mac; separate purchases for iPhone and iPad. No free tier"
       }
     ],
@@ -7061,7 +7061,7 @@
       },
       {
         "question": "OmniFocus has a one-time price. Is GAIA more expensive over time?",
-        "answer": "For a solo Apple user who only needs task management, OmniFocus's one-time purchase can be more cost-effective over several years. However, GAIA's Pro plan starts at $20/month and replaces multiple tools at once — a task manager, email assistant, calendar tool, and automation platform — which would typically cost far more purchased separately. GAIA also offers a free tier and a fully free self-hosting option for technically inclined users."
+        "answer": "For a solo Apple user who only needs task management, OmniFocus's one-time purchase can be more cost-effective over several years. However, GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month and replaces multiple tools at once — a task manager, email assistant, calendar tool, and automation platform — which would typically cost far more purchased separately. GAIA also offers a free tier and a fully free self-hosting option for technically inclined users."
       }
     ]
   },
@@ -7142,7 +7142,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free with a Microsoft account; full features included with Microsoft 365 subscriptions from $6/user/month"
       }
     ],
@@ -7328,7 +7328,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Free tier (300 min/month); Pro at $16.99/month; Business at $30/user/month"
       }
     ],
@@ -7519,7 +7519,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Free to use; Pi Pro subscription for enhanced access"
       }
     ],
@@ -7629,7 +7629,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan with 100 credits/month and 3 active workflows; Basic at $45/month with 2,000 credits and 10 workflows; Business plan for enterprise"
       }
     ],
@@ -7681,7 +7681,7 @@
       "AI sales productivity tool",
       "proactive email management for sales"
     ],
-    "intro": "Pipedrive earned strong loyalty from sales teams by doing one thing exceptionally well: making pipeline management visual, intuitive, and fast. Its Kanban-style deal board, activity reminders, and email tracking give sales reps clear visibility into what to focus on and when to follow up. For teams that live inside their sales pipeline, Pipedrive's simplicity and speed beat the complexity of more feature-heavy CRMs like Salesforce or HubSpot. The mobile app is excellent, the interface is uncluttered, and onboarding takes hours rather than weeks.\n\nThe limitation surfaces in the day-to-day workflow that surrounds deal management. Pipedrive tracks what deals exist and what stage they are in, but it does not proactively read your inbox to surface unanswered prospect emails, automatically create follow-up tasks from meeting notes, monitor Slack conversations for buying signals, or orchestrate workflows across your sales, marketing, and product tools. Every Pipedrive entry requires a human to initiate it. Sales reps using Pipedrive still spend significant time manually triaging their email, updating deal stages, and coordinating across tools that Pipedrive does not connect.\n\nGAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and 40+ more tools via MCP, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.\n\nThe pricing structures also contrast meaningfully. Pipedrive has no free plan — the Essential tier starts at $14 per user per month billed annually, and the Advanced tier with full email sync and automation features is $34 per user per month. For a team of five on the Advanced plan, that is $170/month just for the CRM. GAIA's hosted Pro plan is $20/month flat regardless of headcount, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management alongside their CRM, GAIA provides substantially more capability per dollar.",
+    "intro": "Pipedrive earned strong loyalty from sales teams by doing one thing exceptionally well: making pipeline management visual, intuitive, and fast. Its Kanban-style deal board, activity reminders, and email tracking give sales reps clear visibility into what to focus on and when to follow up. For teams that live inside their sales pipeline, Pipedrive's simplicity and speed beat the complexity of more feature-heavy CRMs like Salesforce or HubSpot. The mobile app is excellent, the interface is uncluttered, and onboarding takes hours rather than weeks.\n\nThe limitation surfaces in the day-to-day workflow that surrounds deal management. Pipedrive tracks what deals exist and what stage they are in, but it does not proactively read your inbox to surface unanswered prospect emails, automatically create follow-up tasks from meeting notes, monitor Slack conversations for buying signals, or orchestrate workflows across your sales, marketing, and product tools. Every Pipedrive entry requires a human to initiate it. Sales reps using Pipedrive still spend significant time manually triaging their email, updating deal stages, and coordinating across tools that Pipedrive does not connect.\n\nGAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and 40+ more tools via MCP, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.\n\nThe pricing structures also contrast meaningfully. Pipedrive has no free plan — the Essential tier starts at $14 per user per month billed annually, and the Advanced tier with full email sync and automation features is $34 per user per month. For a team of five on the Advanced plan, that is $170/month just for the CRM. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management alongside their CRM, GAIA provides substantially more capability per dollar.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7740,7 +7740,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Essential from $14/user/month; Advanced from $34/user/month; Professional from $49/user/month — no free plan"
       }
     ],
@@ -7769,7 +7769,7 @@
       },
       {
         "question": "Is GAIA free unlike Pipedrive?",
-        "answer": "Yes. GAIA has a free tier with no credit card required. Pipedrive starts at $14/user/month with no free plan available. GAIA can also be self-hosted completely free with full data ownership. GAIA's Pro plan is $20/month flat regardless of how many users are on your team."
+        "answer": "Yes. GAIA has a free tier with no credit card required. Pipedrive starts at $14/user/month with no free plan available. GAIA can also be self-hosted completely free with full data ownership. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of how many users are on your team."
       },
       {
         "question": "Is GAIA open source?",
@@ -7781,7 +7781,7 @@
       },
       {
         "question": "Does GAIA have a free plan unlike Pipedrive?",
-        "answer": "Yes. GAIA has a free tier with no credit card required that includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. Pipedrive has no free plan — it starts at $14/user/month billed annually for the Essential tier. GAIA's Pro plan is $20/month flat regardless of the number of users, and self-hosting is entirely free."
+        "answer": "Yes. GAIA has a free tier with no credit card required that includes AI task management, Gmail integration, Google Calendar sync, and core workflow automation. Pipedrive has no free plan — it starts at $14/user/month billed annually for the Essential tier. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of the number of users, and self-hosting is entirely free."
       },
       {
         "question": "Can GAIA and Pipedrive work together?",
@@ -7968,7 +7968,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Included in Salesforce platform licenses; pricing varies based on Salesforce edition — typically enterprise-level costs"
       }
     ],
@@ -8001,7 +8001,7 @@
       },
       {
         "question": "Is GAIA cheaper than Quip?",
-        "answer": "Quip is typically priced as part of enterprise Salesforce licensing, which is among the most expensive software categories. GAIA's hosted Pro plan starts at $20/month regardless of team size, and self-hosting is entirely free — making it dramatically more cost-effective for most organizations."
+        "answer": "Quip is typically priced as part of enterprise Salesforce licensing, which is among the most expensive software categories. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is entirely free — making it dramatically more cost-effective for most organizations."
       },
       {
         "question": "Can GAIA handle sales team workflows?",
@@ -8067,7 +8067,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free tier, paid from $10/month"
       }
     ],
@@ -8158,7 +8158,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Single paid plan at $10–$15/month (billed annually) with a two-week free trial; no permanent free tier; all features included in the single plan"
       }
     ],
@@ -8186,7 +8186,7 @@
       },
       {
         "question": "Is GAIA more expensive than Reflect?",
-        "answer": "Reflect's single plan costs around $10–$15/month billed annually with a two-week free trial. GAIA's hosted Pro plan starts at $20/month but includes a free tier and can be self-hosted for free with full data ownership and no usage caps — an option Reflect does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Reflect has no self-hosting path."
+        "answer": "Reflect's single plan costs around $10–$15/month billed annually with a two-week free trial. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month but includes a free tier and can be self-hosted for free with full data ownership and no usage caps — an option Reflect does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Reflect has no self-hosting path."
       }
     ]
   },
@@ -8259,7 +8259,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan with 200 steps/month and 500 AI credits; Professional at undisclosed pricing per month; Team plan with 2,000 steps/month and 10 users; Enterprise for compliance"
       }
     ],
@@ -8287,7 +8287,7 @@
       },
       {
         "question": "How does Relay.app pricing compare to GAIA?",
-        "answer": "Relay's Free plan is limited to 200 steps per month, which is very restrictive for active email and calendar workflows. Paid plans include Professional and Team tiers, with step-based usage limits. GAIA's Pro plan is $20/month with no step-based billing, and self-hosting is entirely free with no usage caps. For individuals running continuous email and productivity workflows, GAIA's flat-rate model is typically more cost-predictable than step-based billing that scales with automation volume."
+        "answer": "Relay's Free plan is limited to 200 steps per month, which is very restrictive for active email and calendar workflows. Paid plans include Professional and Team tiers, with step-based usage limits. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month with no step-based billing, and self-hosting is entirely free with no usage caps. For individuals running continuous email and productivity workflows, GAIA's flat-rate model is typically more cost-predictable than step-based billing that scales with automation volume."
       }
     ]
   },
@@ -8358,7 +8358,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free tier with limited history; Premium from $12/month"
       }
     ],
@@ -8464,7 +8464,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is completely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is completely free with no usage caps",
         "competitor": "Free tier with limited recording history; paid plans required for extended history and AI features; Mac hardware with sufficient local storage required"
       }
     ],
@@ -8560,7 +8560,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is free with no usage caps",
         "competitor": "Believer plan at $500 one-time or $165/year; standard plan at $15/month; no permanent free tier beyond a short trial period"
       }
     ],
@@ -8588,7 +8588,7 @@
       },
       {
         "question": "Is Roam Research worth the price compared to GAIA?",
-        "answer": "Roam Research costs $15/month or $165/year on its standard plan, with no permanent free tier. GAIA's hosted Pro plan starts at $20/month and includes a free tier, but GAIA can also be self-hosted for free with full data ownership and no usage caps — an option Roam does not offer. The more important comparison is value delivered: Roam's price buys a networked outliner for knowledge capture, while GAIA's price buys a proactive AI assistant that manages your inbox, calendar, tasks, and cross-tool automations. For users whose bottleneck is execution rather than knowledge capture, GAIA delivers substantially more operational leverage per dollar."
+        "answer": "Roam Research costs $15/month or $165/year on its standard plan, with no permanent free tier. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month and includes a free tier, but GAIA can also be self-hosted for free with full data ownership and no usage caps — an option Roam does not offer. The more important comparison is value delivered: Roam's price buys a networked outliner for knowledge capture, while GAIA's price buys a proactive AI assistant that manages your inbox, calendar, tasks, and cross-tool automations. For users whose bottleneck is execution rather than knowledge capture, GAIA delivers substantially more operational leverage per dollar."
       }
     ]
   },
@@ -8651,7 +8651,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is completely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is completely free with no usage caps",
         "competitor": "Snack at $7/month (1 account, 2 features); Lunch at $12/month (2 accounts, 6 features); Dinner at $36/month (4 accounts, all features); 14-day free trial, no permanent free tier"
       }
     ],
@@ -8679,7 +8679,7 @@
       },
       {
         "question": "Is GAIA more expensive than SaneBox?",
-        "answer": "SaneBox's entry plan starts at $7/month for one account with two features, while GAIA's Pro plan starts at $20/month with full feature access. However, GAIA can be self-hosted for free with no usage caps — an option SaneBox does not offer. Comparing value, GAIA replaces not just an email filter but also a task manager, calendar assistant, and workflow automation layer."
+        "answer": "SaneBox's entry plan starts at $7/month for one account with two features, while GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month with full feature access. However, GAIA can be self-hosted for free with no usage caps — an option SaneBox does not offer. Comparing value, GAIA replaces not just an email filter but also a task manager, calendar assistant, and workflow automation layer."
       }
     ]
   },
@@ -8743,7 +8743,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is entirely free with no usage caps",
         "competitor": "Free plan (1 active scheduling link); Basic at $12/user/month; Premium at $20/user/month (unlocks all features including payment collection via Stripe)"
       }
     ],
@@ -8851,7 +8851,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting is free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting is free with no usage caps",
         "competitor": "Free plan available; Personal at $7/month (annual) or $8.50/month; Pro at $18/month; Business at $9/user/month (annual); Enterprise with custom pricing"
       }
     ],
@@ -8883,7 +8883,7 @@
       },
       {
         "question": "Is GAIA more expensive than Shortwave?",
-        "answer": "GAIA's Pro plan starts at $20/month, which is higher than Shortwave's Personal plan at $7/month or Pro at $18/month. However, GAIA covers a far broader scope than an email client — replacing the need for separate task managers, automation tools, and calendar assistants. GAIA can also be self-hosted for free, with no usage caps and full data ownership, which Shortwave does not offer."
+        "answer": "GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month, which is higher than Shortwave's Personal plan at $7/month or Pro at $18/month. However, GAIA covers a far broader scope than an email client — replacing the need for separate task managers, automation tools, and calendar assistants. GAIA can also be self-hosted for free, with no usage caps and full data ownership, which Shortwave does not offer."
       }
     ]
   },
@@ -8907,7 +8907,7 @@
       "Smartsheet vs GAIA",
       "enterprise project management alternative"
     ],
-    "intro": "Smartsheet occupies an interesting niche in the project management market: it looks like a spreadsheet but behaves like a project management platform. Teams already comfortable in Excel or Google Sheets often gravitate to Smartsheet because the row-and-column structure feels familiar, yet they gain Gantt charts, resource management, automated workflows, and enterprise-grade permissions on top of that familiar grid metaphor. For large enterprise deployments coordinating complex multi-phase projects across departments, Smartsheet has genuine strengths in resource allocation, portfolio dashboards, and governance controls that purpose-built project management tools match but spreadsheets cannot.\n\nBut Smartsheet has a fundamental characteristic that defines how it must be used: it is a passive record-keeping system. Information gets into Smartsheet because someone puts it there. A task row does not appear because an important email arrived; it appears because a project manager or team member manually creates it. A Gantt timeline does not update itself when a client emails to say a deliverable date has shifted; someone has to open Smartsheet and change the date. Automations exist within Smartsheet — you can trigger notifications or move rows based on status changes — but those automations operate on data already inside the platform, not on the broader context of your digital work environment. The gap between what is happening in your communication tools and what is recorded in Smartsheet is always filled by human effort.\n\nGAIA operates in the opposite direction. Rather than being a destination your team maintains, GAIA is an ambient AI layer that continuously monitors your Gmail inbox, reads your Google Calendar, and connects to 50+ tools via MCP. When an important email arrives that implies a project needs updating, GAIA detects it. When a meeting is 15 minutes away, GAIA prepares a briefing from your calendar context and relevant email threads without being asked. When you describe a multi-step workflow in natural language — \"whenever I receive an email from a client marked urgent, create a high-priority task and send me a Slack summary\" — GAIA executes it across tools rather than requiring you to configure it within a single platform's automation engine.\n\nThe pricing model also diverges significantly. Smartsheet's pricing is per-seat and designed for enterprise contracts — meaningful features like resource management, advanced automations, and SSO require the Business or Enterprise tiers, which are substantially more expensive at scale. A team of 10 on the Business plan pays $320/month just for the project management layer. GAIA's hosted Pro plan is $20 per month regardless of how many people are on your team, and self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure. For individuals and teams who want AI-powered productivity management rather than enterprise grid tooling, GAIA delivers a fundamentally different and more cost-effective approach to getting work done.",
+    "intro": "Smartsheet occupies an interesting niche in the project management market: it looks like a spreadsheet but behaves like a project management platform. Teams already comfortable in Excel or Google Sheets often gravitate to Smartsheet because the row-and-column structure feels familiar, yet they gain Gantt charts, resource management, automated workflows, and enterprise-grade permissions on top of that familiar grid metaphor. For large enterprise deployments coordinating complex multi-phase projects across departments, Smartsheet has genuine strengths in resource allocation, portfolio dashboards, and governance controls that purpose-built project management tools match but spreadsheets cannot.\n\nBut Smartsheet has a fundamental characteristic that defines how it must be used: it is a passive record-keeping system. Information gets into Smartsheet because someone puts it there. A task row does not appear because an important email arrived; it appears because a project manager or team member manually creates it. A Gantt timeline does not update itself when a client emails to say a deliverable date has shifted; someone has to open Smartsheet and change the date. Automations exist within Smartsheet — you can trigger notifications or move rows based on status changes — but those automations operate on data already inside the platform, not on the broader context of your digital work environment. The gap between what is happening in your communication tools and what is recorded in Smartsheet is always filled by human effort.\n\nGAIA operates in the opposite direction. Rather than being a destination your team maintains, GAIA is an ambient AI layer that continuously monitors your Gmail inbox, reads your Google Calendar, and connects to 50+ tools via MCP. When an important email arrives that implies a project needs updating, GAIA detects it. When a meeting is 15 minutes away, GAIA prepares a briefing from your calendar context and relevant email threads without being asked. When you describe a multi-step workflow in natural language — \"whenever I receive an email from a client marked urgent, create a high-priority task and send me a Slack summary\" — GAIA executes it across tools rather than requiring you to configure it within a single platform's automation engine.\n\nThe pricing model also diverges significantly. Smartsheet's pricing is per-seat and designed for enterprise contracts — meaningful features like resource management, advanced automations, and SSO require the Business or Enterprise tiers, which are substantially more expensive at scale. A team of 10 on the Business plan pays $320/month just for the project management layer. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of how many people are on your team, and self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure. For individuals and teams who want AI-powered productivity management rather than enterprise grid tooling, GAIA delivers a fundamentally different and more cost-effective approach to getting work done.",
     "rows": [
       {
         "feature": "Core approach",
@@ -8966,7 +8966,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Pro at $9/user/month; Business at $32/user/month; Enterprise at custom pricing — all billed annually; meaningful automation and resource features require Business tier or higher"
       }
     ],
@@ -8976,7 +8976,7 @@
       "Natural language multi-step workflows that span your entire tool stack, not just one platform's automation engine",
       "Graph-based persistent memory builds a living map of your projects, people, and decisions across every connected tool",
       "Open source and self-hostable — full data ownership with no per-seat pricing when running your own infrastructure",
-      "Flat pricing at $20/month regardless of team size — far cheaper than Smartsheet's per-seat Business tier for any team of meaningful size"
+      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month regardless of team size — far cheaper than Smartsheet's per-seat Business tier for any team of meaningful size"
     ],
     "competitorAdvantages": [
       "Enterprise-grade resource management, portfolio roll-ups, and executive dashboards built specifically for large multi-team project coordination",
@@ -8992,7 +8992,7 @@
       },
       {
         "question": "How does GAIA compare to Smartsheet on pricing for a team?",
-        "answer": "Smartsheet's Business plan — which includes meaningful automations and resource management — is $32 per user per month billed annually. A team of 10 pays $320/month. GAIA's hosted Pro plan is $20/month flat regardless of headcount, and self-hosting is entirely free. The cost difference is substantial at any team size beyond one or two people."
+        "answer": "Smartsheet's Business plan — which includes meaningful automations and resource management — is $32 per user per month billed annually. A team of 10 pays $320/month. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is entirely free. The cost difference is substantial at any team size beyond one or two people."
       },
       {
         "question": "Is GAIA open source unlike Smartsheet?",
@@ -9012,7 +9012,7 @@
       },
       {
         "question": "Does GAIA have a free plan unlike Smartsheet?",
-        "answer": "Yes. GAIA has a free tier that includes AI task management, email integration, calendar sync, and access to core workflow automation capabilities with no credit card required. Smartsheet's free trial is time-limited and does not offer a permanent free tier with meaningful features. GAIA's Pro plan starts at $20/month flat, and self-hosting is completely free."
+        "answer": "Yes. GAIA has a free tier that includes AI task management, email integration, calendar sync, and access to core workflow automation capabilities with no credit card required. Smartsheet's free trial is time-limited and does not offer a permanent free tier with meaningful features. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month flat, and self-hosting is completely free."
       },
       {
         "question": "Is Smartsheet good for small teams?",
@@ -9117,7 +9117,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan available; Premium Individual at $4.99/month (annual) or $7.99/month; Premium Teams at $6.99/user/month (annual) or $9.99/user/month"
       }
     ],
@@ -9222,7 +9222,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Single plan at $20/month (annual, $240/year) or $25/month (monthly); 14-day free trial; no free plan; all features included in one tier"
       }
     ],
@@ -9250,7 +9250,7 @@
       },
       {
         "question": "Is GAIA less expensive than Sunsama?",
-        "answer": "Sunsama costs $20/month on the annual plan ($240/year) with no free plan — the 14-day trial is the only way to evaluate it without paying. GAIA's Pro plan is also $20/month, but GAIA offers a free tier and can be self-hosted entirely for free with no usage caps. For users who want to evaluate before committing, GAIA's free tier is an advantage. For users comfortable with self-hosting, GAIA costs only infrastructure while Sunsama has no self-hosting path."
+        "answer": "Sunsama costs $20/month on the annual plan ($240/year) with no free plan — the 14-day trial is the only way to evaluate it without paying. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month, but GAIA offers a free tier and can be self-hosted entirely for free with no usage caps. For users who want to evaluate before committing, GAIA's free tier is an advantage. For users comfortable with self-hosting, GAIA costs only infrastructure while Sunsama has no self-hosting path."
       }
     ]
   },
@@ -9329,7 +9329,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Starter at $30/month ($300/year); Business at $40/month ($396/year); Enterprise at custom pricing; 7-day free trial, no permanent free tier"
       }
     ],
@@ -9345,7 +9345,7 @@
       "Polished, distraction-free design with features like read receipts, follow-up reminders, and shared team threads purpose-built for high-volume email communication",
       "CRM integrations with HubSpot and Salesforce on the Business plan make it a strong fit for sales teams tracking pipeline activity through email"
     ],
-    "verdict": "Superhuman is the right choice if you want to be personally faster at email — a beautifully designed client that rewards keyboard discipline and helps committed users reach inbox zero through manual speed. GAIA is the right choice if you want email handled for you — an AI that reads, triages, replies, and acts on your inbox autonomously, then connects those actions to your tasks, calendar, and 50+ other tools. If you are paying $30/month to process email faster yourself, GAIA offers a fundamentally different outcome for less.",
+    "verdict": "Superhuman is the right choice if you want to be personally faster at email — a beautifully designed client that rewards keyboard discipline and helps committed users reach inbox zero through manual speed. GAIA is the right choice if you want email handled for you — an AI that reads, triages, replies, and acts on your inbox autonomously, then connects those actions to your tasks, calendar, and 50+ other tools. If you are paying $30/month to process email faster yourself, GAIA offers a fundamentally different outcome.",
     "faqs": [
       {
         "question": "Is GAIA a direct replacement for Superhuman?",
@@ -9357,7 +9357,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Superhuman?",
-        "answer": "Superhuman's Starter plan costs $30/month with no free tier beyond a 7-day trial. GAIA's Pro plan starts at $20/month and includes a permanent free tier. If you self-host GAIA, it is free with no usage caps — you pay only for your own infrastructure. For teams, GAIA's pricing does not scale per seat when self-hosted, making it significantly cheaper at scale than Superhuman's per-user model."
+        "answer": "Superhuman's Starter plan costs $30/month with no free tier beyond a 7-day trial. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month and includes a permanent free tier. If you self-host GAIA, it is free with no usage caps — you pay only for your own infrastructure. For teams, GAIA's pricing does not scale per seat when self-hosted, making it significantly cheaper at scale than Superhuman's per-user model."
       },
       {
         "question": "Can GAIA automate email workflows that Superhuman cannot?",
@@ -9434,7 +9434,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free with no usage caps",
         "competitor": "Free plan available; Plus at $5/month for students; Pro at $9/month (individual) or $7/month annual; up to $18/month for full-featured access"
       }
     ],
@@ -9458,7 +9458,7 @@
       },
       {
         "question": "Is Tana more expensive than GAIA?",
-        "answer": "Tana's individual plans range from free to $18/month, making the paid tiers generally less expensive than GAIA's $20/month Pro plan. However, GAIA can be self-hosted for free with no usage caps, which Tana does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure. Additionally, GAIA's $20/month includes email management, calendar scheduling, task automation, and 50+ tool integrations — a significantly broader feature scope than Tana's knowledge management focus."
+        "answer": "Tana's individual plans range from free to $18/month, making the paid tiers generally less expensive than GAIA's ${{PRO_MONTHLY_PRICE}}/month Pro plan. However, GAIA can be self-hosted for free with no usage caps, which Tana does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure. Additionally, GAIA's ${{PRO_MONTHLY_PRICE}}/month includes email management, calendar scheduling, task automation, and 50+ tool integrations — a significantly broader feature scope than Tana's knowledge management focus."
       },
       {
         "question": "How long does it take to get productive in Tana vs GAIA?",
@@ -9484,7 +9484,7 @@
       "microsoft teams replacement 2026",
       "teams alternative for small teams"
     ],
-    "intro": "Microsoft Teams is one of the most widely deployed workplace communication tools in the world, embedded in millions of organizations through Microsoft 365 subscriptions. Its 2023 introduction of Copilot added genuinely useful AI capabilities: meeting recaps, chat thread summaries, and draft message suggestions. For organizations already running deep on the Microsoft stack — Outlook, SharePoint, OneDrive, Excel — Teams with Copilot can feel like a natural evolution of what they already have.\n\nThe challenge is that modern work rarely lives inside a single vendor's ecosystem. Engineering teams use GitHub and Linear. Product teams use Notion and Figma. Customer-facing teams use Salesforce or HubSpot. Teams with Copilot provides AI within the Office 365 boundary but has limited reach into the broader tool landscape that most professionals actually use daily. Copilot can summarize a Teams meeting, but it will not create a GitHub issue from that discussion or update a Notion page with the outcomes.\n\nGAIA is built for the multi-tool reality of modern work. It connects Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and 45+ more tools through a unified AI layer that understands context across all of them. When a decision is made in a meeting, GAIA can propagate that decision into the right tools automatically. When an email arrives with a task buried in it, GAIA surfaces that task without you having to switch apps and manually create it.\n\nThe pricing and access model is also fundamentally different. Microsoft Copilot for Teams requires a Microsoft 365 Copilot license on top of the base Teams subscription — an additional $30 per user per month that adds up fast for larger organizations. GAIA offers a free tier and Pro plans starting at $20/month, and uniquely offers a fully self-hosted deployment at no per-seat cost for teams with the infrastructure to support it. For organizations that want AI productivity capabilities without Microsoft's ecosystem lock-in or pricing, GAIA represents a genuinely different path.",
+    "intro": "Microsoft Teams is one of the most widely deployed workplace communication tools in the world, embedded in millions of organizations through Microsoft 365 subscriptions. Its 2023 introduction of Copilot added genuinely useful AI capabilities: meeting recaps, chat thread summaries, and draft message suggestions. For organizations already running deep on the Microsoft stack — Outlook, SharePoint, OneDrive, Excel — Teams with Copilot can feel like a natural evolution of what they already have.\n\nThe challenge is that modern work rarely lives inside a single vendor's ecosystem. Engineering teams use GitHub and Linear. Product teams use Notion and Figma. Customer-facing teams use Salesforce or HubSpot. Teams with Copilot provides AI within the Office 365 boundary but has limited reach into the broader tool landscape that most professionals actually use daily. Copilot can summarize a Teams meeting, but it will not create a GitHub issue from that discussion or update a Notion page with the outcomes.\n\nGAIA is built for the multi-tool reality of modern work. It connects Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and 45+ more tools through a unified AI layer that understands context across all of them. When a decision is made in a meeting, GAIA can propagate that decision into the right tools automatically. When an email arrives with a task buried in it, GAIA surfaces that task without you having to switch apps and manually create it.\n\nThe pricing and access model is also fundamentally different. Microsoft Copilot for Teams requires a Microsoft 365 Copilot license on top of the base Teams subscription — an additional $30 per user per month that adds up fast for larger organizations. GAIA offers a free tier and Pro plans starting at ${{PRO_MONTHLY_PRICE}}/month, and uniquely offers a fully self-hosted deployment at no per-seat cost for teams with the infrastructure to support it. For organizations that want AI productivity capabilities without Microsoft's ecosystem lock-in or pricing, GAIA represents a genuinely different path.",
     "rows": [
       {
         "feature": "Core approach",
@@ -9528,7 +9528,7 @@
       },
       {
         "feature": "Copilot / AI pricing",
-        "gaia": "Free tier; Pro from $20/month; self-hosting free",
+        "gaia": "Free tier; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free",
         "competitor": "Teams Essentials from $4/month; Microsoft 365 Copilot add-on at $30/user/month for AI features"
       },
       {
@@ -9567,7 +9567,7 @@
       },
       {
         "question": "Is GAIA cheaper than Microsoft 365 Copilot?",
-        "answer": "Significantly cheaper for AI features. Microsoft 365 Copilot costs $30/user/month on top of your existing Microsoft 365 subscription. GAIA's Pro plan starts at $20/month regardless of seat count, and you can self-host GAIA for free with full data ownership."
+        "answer": "Significantly cheaper for AI features. Microsoft 365 Copilot costs $30/user/month on top of your existing Microsoft 365 subscription. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and you can self-host GAIA for free with full data ownership."
       },
       {
         "question": "Can GAIA work alongside Microsoft Teams?",
@@ -9639,7 +9639,7 @@
       },
       {
         "feature": "Pricing model",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "One-time purchase — Mac ($49.99), iPhone ($9.99), iPad ($19.99). No subscription, no free tier"
       }
     ],
@@ -9669,7 +9669,7 @@
       },
       {
         "question": "Things 3 has a one-time price. Is GAIA more expensive over time?",
-        "answer": "For individual Apple users who only need task management, Things 3 can be more cost-effective over several years given its one-time pricing. GAIA's Pro plan starts at $20/month but replaces multiple tools — a task manager, email assistant, calendar tool, and automation platform — which typically cost far more individually. GAIA also offers a free tier and a self-hosting option at no cost."
+        "answer": "For individual Apple users who only need task management, Things 3 can be more cost-effective over several years given its one-time pricing. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month but replaces multiple tools — a task manager, email assistant, calendar tool, and automation platform — which typically cost far more individually. GAIA also offers a free tier and a self-hosting option at no cost."
       }
     ]
   },
@@ -9737,7 +9737,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting completely free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting completely free",
         "competitor": "Free tier with 9 lists and 99 tasks per list; Premium at $3.99/month or $35.99/year"
       }
     ],
@@ -9766,7 +9766,7 @@
       },
       {
         "question": "Is GAIA more expensive than TickTick?",
-        "answer": "TickTick Premium is very affordable at around $3/month annually. GAIA Pro starts at $20/month, reflecting its broader scope as a full AI workflow assistant. However, GAIA also offers a free tier and can be self-hosted at no cost, giving technical users an unlimited option."
+        "answer": "TickTick Premium is very affordable at around $3/month annually. GAIA Pro starts at ${{PRO_MONTHLY_PRICE}}/month, reflecting its broader scope as a full AI workflow assistant. However, GAIA also offers a free tier and can be self-hosted at no cost, giving technical users an unlimited option."
       }
     ]
   },
@@ -9929,7 +9929,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free for up to 5 users; Starter from $10/user/month"
       }
     ],
@@ -10041,7 +10041,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free tier for up to 10 boards; Standard from $5/user/month, Premium $10/user/month, Enterprise custom pricing"
       }
     ],
@@ -10071,7 +10071,7 @@
       },
       {
         "question": "Is GAIA more expensive than Trello?",
-        "answer": "GAIA offers a free tier and Pro plans starting at $20/month per user, and it can be self-hosted for free with full data ownership. Trello's paid plans start at $5/user/month, making it cheaper on a per-seat basis for large teams, but GAIA replaces multiple tools simultaneously — email management, calendar assistant, automation platform, and task manager — which often makes it more cost-effective overall."
+        "answer": "GAIA offers a free tier and Pro plans starting at ${{PRO_MONTHLY_PRICE}}/month per user, and it can be self-hosted for free with full data ownership. Trello's paid plans start at $5/user/month, making it cheaper on a per-seat basis for large teams, but GAIA replaces multiple tools simultaneously — email management, calendar assistant, automation platform, and task manager — which often makes it more cost-effective overall."
       },
       {
         "question": "Can GAIA automate Trello workflows?",
@@ -10156,7 +10156,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Subscription at $5.99/month or $39.99/year; no free tier beyond a brief trial"
       }
     ],
@@ -10269,7 +10269,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting entirely free",
         "competitor": "Free tier with limited boards; Starter at $10/user/month; Pro at $20/user/month"
       },
       {
@@ -10311,7 +10311,7 @@
       },
       {
         "question": "Is GAIA cheaper than Whimsical for teams?",
-        "answer": "GAIA's self-hosting option is entirely free, and the hosted Pro plan is $20/month regardless of team size. Whimsical's Pro plan is $20/user/month, making GAIA significantly more cost-effective for teams of more than one person. GAIA also offers a free hosted tier for basic usage."
+        "answer": "GAIA's self-hosting option is entirely free, and the hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size. Whimsical's Pro plan is $20/user/month, making GAIA significantly more cost-effective for teams of more than one person. GAIA also offers a free hosted tier for basic usage."
       }
     ]
   },
@@ -10382,7 +10382,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available, Pro from $20/month, self-hosting free",
+        "gaia": "Free tier available, Pro from ${{PRO_MONTHLY_PRICE}}/month, self-hosting free",
         "competitor": "Free plan very limited; paid from $9.80/user/month up to enterprise contracts"
       }
     ],
@@ -10536,7 +10536,7 @@
       "Zoho vs GAIA",
       "self-hosted business suite alternative"
     ],
-    "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of 50+ integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — Zoho has an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One costs $37 per user per month when billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is $20 per month regardless of how many people are on your team, and self-hosting GAIA on your own infrastructure is entirely free. For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
+    "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of 50+ integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — Zoho has an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One costs $37 per user per month when billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of how many people are on your team, and self-hosting GAIA on your own infrastructure is entirely free. For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
     "rows": [
       {
         "feature": "Core approach",
@@ -10595,7 +10595,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month flat (not per seat); self-hosting entirely free",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat (not per seat); self-hosting entirely free",
         "competitor": "Zoho One from $37/user/month billed annually; individual app plans range from free tiers to $20+/user/month"
       }
     ],
@@ -10604,7 +10604,7 @@
       "Proactively creates tasks, drafts email replies, and manages calendar events from across your tool stack automatically",
       "Open source and self-hostable for full data control and no vendor lock-in",
       "AI-native design focused on workflow orchestration rather than bundling average apps together",
-      "Flat pricing at $20/month makes it significantly cheaper than Zoho One at any team size above one person",
+      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month makes it significantly cheaper than Zoho One at any team size above one person",
       "50+ integrations let you keep best-in-class tools for each function instead of settling for Zoho's version"
     ],
     "competitorAdvantages": [
@@ -10624,7 +10624,7 @@
       },
       {
         "question": "Is GAIA cheaper than Zoho One?",
-        "answer": "Significantly. Zoho One costs from $37/user/month billed annually. GAIA has a free tier with meaningful capabilities and Pro plans from $20/month with no per-user pricing for individual plans. Self-hosting GAIA is entirely free. For a team of five, GAIA saves over $160/month compared to Zoho One."
+        "answer": "Significantly. Zoho One costs from $37/user/month billed annually. GAIA has a free tier with meaningful capabilities and Pro plans from ${{PRO_MONTHLY_PRICE}}/month with no per-user pricing for individual plans. Self-hosting GAIA is entirely free."
       },
       {
         "question": "Is GAIA open source unlike Zoho?",
@@ -10668,7 +10668,7 @@
       },
       {
         "question": "Is GAIA a good alternative to Zoho One for startups?",
-        "answer": "Yes — especially for startups already using Gmail, Slack, and GitHub. GAIA adds proactive AI management on top of those tools at $20/month flat, without requiring any migration or new vendor relationships. Zoho One can be appealing for startups starting from scratch, but the switching cost from established tools is often higher than anticipated. GAIA's approach — enhance what you have rather than replace it — is usually lower friction and faster to deliver value."
+        "answer": "Yes — especially for startups already using Gmail, Slack, and GitHub. GAIA adds proactive AI management on top of those tools at ${{PRO_MONTHLY_PRICE}}/month flat, without requiring any migration or new vendor relationships. Zoho One can be appealing for startups starting from scratch, but the switching cost from established tools is often higher than anticipated. GAIA's approach — enhance what you have rather than replace it — is usually lower friction and faster to deliver value."
       },
       {
         "question": "How does GAIA's memory compare to Zoho One's unified data model?",
@@ -10748,7 +10748,7 @@
       },
       {
         "feature": "Pricing",
-        "gaia": "Free tier available; Pro from $20/month; self-hosting free with no usage caps",
+        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free with no usage caps",
         "competitor": "Free tier (40-min limit); Pro at $15.99/seat/month; AI Companion included on paid plans"
       }
     ],

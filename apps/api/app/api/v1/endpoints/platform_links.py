@@ -18,7 +18,7 @@ from app.models.platform_models import (
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.onboarding.first_message import compose_first_message
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.platform_link_code_service import (
@@ -35,6 +35,8 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import create_error
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnectInitiated
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -255,8 +257,8 @@ async def initiate_platform_connect(
 
     result = await start_platform_connect(user_id, platform, phone=body.phone)
     log.set(outcome="success", auth_type=result.auth_type)
-    capture_context_event(
-        AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
-        {"integration_id": platform, "auth_type": result.auth_type},
+    capture(
+        UserId(user_id),
+        IntegrationConnectInitiated(integration_id=platform, auth_type=result.auth_type),
     )
     return result

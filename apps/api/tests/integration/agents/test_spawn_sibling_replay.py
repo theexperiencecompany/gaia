@@ -203,6 +203,8 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
             "app.utils.agent_utils.get_tool_registry",
             AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
         ),
+        # The HIL preference read (Mongo users): no stored preferences, so HIL is off.
+        patch("app.services.hil.preferences.user_repository.get", AsyncMock(return_value=None)),
     ):
         # First pass: A finishes, B pauses, the parent parks.
         first_events = [

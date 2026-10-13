@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from typing import NamedTuple
 from urllib.parse import urlparse
 
 survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
@@ -654,6 +655,192 @@ def _unobservable_header_case(
     return False
 
 
+class _MutationSpot(NamedTuple):
+    line_no: int
+    col: int
+    orig_line: str
+    mut_line: str
+
+
+class _RecaseSite(NamedTuple):
+    callee: ast.FunctionDef
+    module: dict[str, ast.FunctionDef]
+    literal: ast.Constant
+    spot: _MutationSpot
+
+
+def _unobservable_case_insensitive_heading(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only re-cased a heading the matcher folds anyway.
+
+    Canvas headings match case-insensitively, so no casing of the literal selects
+    a different span — the re-cased survivors cannot be killed by any test. Only
+    a case-only rewrite of one literal passes here, and only when the exact
+    parameter receiving it is observed solely through that one folded match.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    module = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    spot = _MutationSpot(line_no, col, orig_line, mut_line)
+    calls = [
+        (module[node.func.id], node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in module
+    ]
+    return any(
+        _recased_call_argument_is_equivalent(callee, module, node, spot) for callee, node in calls
+    )
+
+
+def _recased_call_argument_is_equivalent(
+    callee: ast.FunctionDef,
+    module: dict[str, ast.FunctionDef],
+    node: ast.Call,
+    spot: _MutationSpot,
+) -> bool:
+    """Whether a re-cased literal at this call site reaches only the folded match."""
+    for index, literal in enumerate(node.args):
+        if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
+            continue
+        param = _positional_parameter(callee, index)
+        if param is None:
+            continue
+        site = _RecaseSite(callee, module, literal, spot)
+        if _recased_literal_is_equivalent(site, param):
+            return True
+    for keyword in node.keywords:
+        if not isinstance(keyword.value, ast.Constant) or not isinstance(keyword.value.value, str):
+            continue
+        if keyword.arg not in _parameter_names(callee):
+            continue
+        site = _RecaseSite(callee, module, keyword.value, spot)
+        if _recased_literal_is_equivalent(site, keyword.arg):
+            return True
+    return False
+
+
+def _parameter_names(callee: ast.FunctionDef) -> set[str]:
+    return {arg.arg for arg in (*callee.args.args, *callee.args.kwonlyargs)}
+
+
+def _positional_parameter(callee: ast.FunctionDef, index: int) -> str | None:
+    positional = (*callee.args.posonlyargs, *callee.args.args)
+    if index >= len(positional):
+        return None
+    return positional[index].arg
+
+
+def _recased_literal_is_equivalent(site: _RecaseSite, param: str) -> bool:
+    """Whether the mutation re-cased the literal taken as this parameter."""
+    # A case-only rewrite is usually a different length, so the slice ends where
+    # the mutant's literal ends rather than where the original's did.
+    literal, spot = site.literal, site.spot
+    mut_span = (
+        literal.lineno,
+        literal.col_offset,
+        literal.end_lineno or literal.lineno,
+        literal.end_col_offset + len(spot.mut_line) - len(spot.orig_line),
+    )
+    if not _within(mut_span, spot.line_no, spot.col):
+        return False
+    replacement = _mutated_token(mut_span, spot.line_no, spot.orig_line, spot.mut_line)
+    if replacement is None:
+        return False
+    try:
+        mutated = ast.literal_eval(replacement.strip())
+    except (ValueError, SyntaxError):
+        return False
+    if not (
+        isinstance(mutated, str)
+        and mutated != literal.value
+        and mutated.lower() == literal.value.lower()
+    ):
+        return False
+    return _heading_matched_case_insensitively(site.callee, site.module, {site.callee.name}, param)
+
+
+def _heading_matched_case_insensitively(
+    callee: ast.FunctionDef, module: dict[str, ast.FunctionDef], seen: set[str], param: str
+) -> bool:
+    """Whether the value taken as param is observed only through one folded match.
+
+    Follows the parameter through this module's own calls, since the matcher is
+    usually a helper one hop down. Any other read of the value — a second use, a
+    case-sensitive match — can observe its casing, so only an exclusive chain
+    reports equivalence. The visited set keeps a call cycle terminating.
+    """
+    loads = _loads_under(callee, param)
+    if not loads:
+        return False
+    allowed: set[int] = set()
+    for node in ast.walk(callee):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            called = module.get(node.func.id)
+            if called is not None and called.name not in seen:
+                for target in _forwarded_parameters(called, node, param):
+                    seen.add(called.name)
+                    if _heading_matched_case_insensitively(called, module, seen, target):
+                        allowed.update(_loads_under(node, param))
+            continue
+        if _is_ignorecase_compile(node) and _mentions(node.args[0], param):
+            allowed.update(_loads_under(node.args[0], param))
+    return not (loads - allowed)
+
+
+def _loads_under(node: ast.AST, name: str) -> set[int]:
+    return {
+        id(child)
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and child.id == name and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _forwarded_parameters(called: ast.FunctionDef, node: ast.Call, param: str) -> list[str]:
+    """Return the called function's parameters receiving exactly this value."""
+    positional = (*called.args.posonlyargs, *called.args.args)
+    targets = [
+        positional[index].arg
+        for index, arg in enumerate(node.args)
+        if isinstance(arg, ast.Name) and arg.id == param and index < len(positional)
+    ]
+    keywordable = {arg.arg for arg in (*called.args.args, *called.args.kwonlyargs)}
+    targets.extend(
+        keyword.arg
+        for keyword in node.keywords
+        if keyword.arg in keywordable
+        and isinstance(keyword.value, ast.Name)
+        and keyword.value.id == param
+    )
+    return targets
+
+
+def _is_ignorecase_compile(node: ast.Call) -> bool:
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "compile"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+        and node.args
+    ):
+        return False
+    # re.compile takes flags positionally as often as by keyword.
+    flags = [keyword.value for keyword in node.keywords if keyword.arg == "flags"]
+    if len(node.args) > 1:
+        flags.append(node.args[1])
+    return any(
+        isinstance(flag, ast.Attribute) and flag.attr in ("IGNORECASE", "I") for flag in flags
+    )
+
+
+def _mentions(node: ast.AST, name: str) -> bool:
+    return any(isinstance(child, ast.Name) and child.id == name for child in ast.walk(node))
+
+
 def _unobservable_response_header_case(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
@@ -1146,6 +1333,9 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_response_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_case_insensitive_heading(
+                real_path, line_no, col, orig_raw[i], mut_raw[i]
+            )
             or _unreachable_match_arm(real_path, line_no)
             or _unobservable_default_argument(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_urlparse_host_default(real_path, line_no, col, orig_raw[i], mut_raw[i])

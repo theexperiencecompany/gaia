@@ -30,7 +30,7 @@ from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
-USER = "user-1"
+USER = "6812f0b3c9a14e2b7d5a91cc"
 WEB_TURN = ChatTurn(conversation_id="conv-1", user_id=USER, source=ConversationSource.WEB)
 DM = bot_chat_address(ConversationSource.TELEGRAM, USER)
 DM_TURN = ChatTurn(conversation_id="conv-dm", user_id=USER, source=ConversationSource.TELEGRAM)

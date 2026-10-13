@@ -7,14 +7,28 @@ sits past it as a backstop only.
 """
 
 import asyncio
-from collections.abc import Mapping
-from unittest.mock import patch
+from collections.abc import Iterator, Mapping
+import contextvars
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
+from arq.connections import ArqRedis
+import arq.worker
+import fakeredis.aioredis
 import pytest
+from sentry_sdk.types import Event
 
 from app.workers.config.worker_settings import ARQ_BACKSTOP_GRACE_SECONDS
-from app.workers.queue import TRACE_ID_KWARG
+from app.workers.queue import TRACE_ID_KWARG, enqueue_worker_job
 from app.workers.task_envelope import arq_function, arq_task
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
+from shared.py.logging import env_context
 from tests.helpers import WideEventRecorder
 
 pytestmark = pytest.mark.unit
@@ -139,3 +153,134 @@ def test_a_registered_tasks_retry_and_result_policy_reach_arq() -> None:
 
     assert registered.max_tries == 1
     assert registered.keep_result_s == 0
+
+
+async def _report_analytics_context(ctx: Mapping[str, object]) -> AnalyticsContext:
+    return current_analytics_context()
+
+
+async def test_a_job_runs_as_the_agent_in_the_run_its_producer_carried() -> None:
+    """Queued work is never the human acting, but keeps the trigger, surface and session that caused it."""
+    carried = AnalyticsContext(
+        attribution=Attribution(
+            actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.DESKTOP
+        ),
+        posthog_session_id="sess-1",
+    )
+    pool = AsyncMock()
+    with analytics_context(carried):
+        await enqueue_worker_job(pool, "report")
+    # ARQ consumes its own _-prefixed controls; the task sees the rest.
+    job_kwargs = {
+        key: value
+        for key, value in pool.enqueue_job.call_args.kwargs.items()
+        if key.startswith("_gaia_") or not key.startswith("_")
+    }
+
+    with patch("shared.py.wide_events._loguru", WideEventRecorder()):
+        seen = await contextvars.Context().run(
+            asyncio.create_task, arq_task(_report_analytics_context)({}, **job_kwargs)
+        )
+
+    assert seen == carried.acting_as(Actor.AGENT)
+
+
+async def test_a_job_nobody_attributed_is_the_workers_system_work() -> None:
+    """A cron fire has no producer, so its events are system work, never left unattributed."""
+    with patch("shared.py.wide_events._loguru", WideEventRecorder()):
+        seen = await contextvars.Context().run(
+            asyncio.create_task, arq_task(_report_analytics_context)({})
+        )
+
+    assert seen == worker_context(Trigger.SYSTEM)
+
+
+async def test_the_jobs_id_and_try_reach_its_wide_event() -> None:
+    recorder = WideEventRecorder()
+
+    async def _done(ctx: Mapping[str, object]) -> str:
+        return "done"
+
+    with patch("shared.py.wide_events._loguru", recorder):
+        await arq_task(_done)({"job_id": "j1", "job_try": 2})
+
+    event = recorder.event("_done")
+    assert (event["job_id"], event["job_try"]) == ("j1", 2)
+
+
+async def test_enqueue_hands_arq_the_job_and_every_control_unchanged() -> None:
+    pool = AsyncMock()
+    defer_until = datetime(2026, 10, 9, tzinfo=UTC)
+    with analytics_context(worker_context(Trigger.SCHEDULE)):
+        await enqueue_worker_job(
+            pool,
+            "process_reminder",
+            "reminder-1",
+            7,
+            _job_id="job-1",
+            _queue_name="q",
+            _defer_until=defer_until,
+            _defer_by=timedelta(seconds=5),
+            _expires=timedelta(hours=1),
+            _job_try=3,
+            occurrence="o",
+        )
+
+    pool.enqueue_job.assert_awaited_once_with(
+        "process_reminder",
+        "reminder-1",
+        7,
+        _job_id="job-1",
+        _queue_name="q",
+        _defer_until=defer_until,
+        _defer_by=timedelta(seconds=5),
+        _expires=timedelta(hours=1),
+        _job_try=3,
+        occurrence="o",
+        # JSON, not enum objects: the payload outlives this code version in Redis.
+        _gaia_analytics_context={
+            "attribution": {"actor": "agent", "trigger": "schedule", "surface": "worker"},
+            "posthog_session_id": None,
+        },
+    )
+    carried = pool.enqueue_job.await_args.kwargs["_gaia_analytics_context"]
+    assert type(carried["attribution"]["actor"]) is str
+
+
+async def _fails_outright(ctx: Mapping[str, object]) -> str:
+    raise RuntimeError("mongo unreachable")
+
+
+@pytest.fixture
+def _as_the_worker_process(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Identify as the ARQ worker process does (app.workers.lifecycle.startup)."""
+    monkeypatch.setenv("GAIA_SERVICE_NAME", "arq_worker")
+    env_context.cache_clear()
+    yield
+    env_context.cache_clear()
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("_as_the_worker_process")
+async def test_a_failing_job_reaches_sentry_once_tagged_as_the_worker(
+    sentry_events: list[Event],
+) -> None:
+    redis = ArqRedis(connection_pool=fakeredis.aioredis.FakeRedis().connection_pool)
+    worker = arq.worker.create_worker(
+        {"functions": [arq_task(_fails_outright)]},
+        redis_pool=redis,
+        burst=True,
+        poll_delay=0,
+        handle_signals=False,
+    )
+    await redis.enqueue_job("_fails_outright")
+
+    # fakeredis has no INFO, which arq only reads to log the server version at boot.
+    with patch("arq.worker.log_redis_info", AsyncMock()):
+        await worker.main()
+    await redis.aclose()
+
+    assert [
+        (event["exception"]["values"][-1]["type"], event["tags"]["service"])
+        for event in sentry_events
+    ] == [("RuntimeError", "arq_worker")]

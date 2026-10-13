@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import { CHECKOUT_RETURNED_PARAM } from "../constants";
 
@@ -104,14 +104,14 @@ export function useCheckoutReturn(): CheckoutReturn {
     if (!returned || outcomeTrackedRef.current) return;
     if (!failed && !timedOut) return;
     outcomeTrackedRef.current = true;
-    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
+    track("subscription:failed", {
       source: "onboarding",
       reason: failed ? "declined" : "confirmation_timeout",
     });
   }, [returned, failed, timedOut]);
 
   const retry = () => {
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_CHECKOUT_RETRIED, {
+    track("onboarding:checkout_retried", {
       reason: failed ? "declined" : "confirmation_timeout",
     });
     outcomeTrackedRef.current = false;

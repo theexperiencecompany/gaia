@@ -1,26 +1,30 @@
 """Unit tests for app/services/llm_usage_analytics.py.
 
-The PostHog client is mocked, never capture_event itself: a wrong distinct_id
+The PostHog client is mocked, never capture itself: a wrong distinct_id
 is the failure mode that matters, and mocking the helper would hide it.
 """
 
 import ast
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
 from app.constants.llm import DEFAULT_MODEL_NAME
-from app.services.analytics_service import AIFeature, AnalyticsEvents
-from app.services.llm_metering import TokenUsage
+from app.db.repositories.llm_calls import LLMCallDocument
+from app.services.analytics_service import AIFeature
 from app.services.llm_usage_analytics import (
     _MEMORY_LABEL_PREFIX,
-    capture_auxiliary_llm_call,
+    capture_llm_call,
     feature_for_label,
-    graph_call_properties,
     llm_feature,
 )
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
+
+USER = "6a40d2f0c1b2a3d4e5f60718"
 
 
 @pytest.fixture
@@ -41,44 +45,30 @@ def _captured(posthog: Any) -> dict[str, Any]:
 
 
 def test_a_workflow_run_is_workflow_spend() -> None:
-    assert llm_feature("executor_agent", "wf-1") is AIFeature.WORKFLOW
+    assert llm_feature("executor_agent", "wf-1", background=False) is AIFeature.WORKFLOW
 
 
 def test_a_graph_tier_without_a_workflow_is_chat() -> None:
-    assert llm_feature("comms_agent", None) is AIFeature.CHAT
-    assert llm_feature("executor_agent", None) is AIFeature.CHAT
+    assert llm_feature("comms_agent", None, background=False) is AIFeature.CHAT
+    assert llm_feature("executor_agent", None, background=False) is AIFeature.CHAT
 
 
 def test_a_subagent_is_integration_spend() -> None:
-    assert llm_feature("gmail_agent", None) is AIFeature.INTEGRATION
+    assert llm_feature("gmail_agent", None, background=False) is AIFeature.INTEGRATION
 
 
 def test_a_subagent_inside_a_workflow_is_still_workflow_spend() -> None:
     """agent_name still records which subagent ran, so nothing is lost."""
-    assert llm_feature("gmail_agent", "wf-9") is AIFeature.WORKFLOW
+    assert llm_feature("gmail_agent", "wf-9", background=False) is AIFeature.WORKFLOW
 
 
-# --- graph_call_properties ---------------------------------------------------- #
+def test_a_browser_run_is_browser_spend_not_an_integration() -> None:
+    assert llm_feature("browser_task", None, background=False) is AIFeature.BROWSER
 
 
-def test_graph_properties_carry_feature_and_surface() -> None:
-    props = graph_call_properties("comms_agent", "web", None)
-    assert props == {"feature": "chat", "surface": "ui"}
-
-
-def test_graph_properties_carry_the_workflow_when_there_is_one() -> None:
-    props = graph_call_properties("executor_agent", None, "wf-7")
-    assert props["feature"] == "workflow"
-    assert props["workflow_id"] == "wf-7"
-
-
-def test_a_bot_turn_reports_the_bot_surface() -> None:
-    assert graph_call_properties("comms_agent", "discord", None)["surface"] == "bot"
-
-
-def test_an_unset_source_reports_background() -> None:
-    """Only the silent background paths leave the source blank."""
-    assert graph_call_properties("executor_agent", None, None)["surface"] == "bg"
+def test_a_background_call_is_attributed_by_its_label() -> None:
+    """A one-shot inside a workflow run is still the memory or follow-up work it did."""
+    assert llm_feature("memory:extract", "wf-1", background=True) is AIFeature.MEMORY
 
 
 # --- feature_for_label -------------------------------------------------------- #
@@ -175,69 +165,140 @@ def test_no_member_claims_a_label_nothing_passes() -> None:
     assert not (claimed - used), f"labels no call site passes: {sorted(claimed - used)}"
 
 
-# --- capture_auxiliary_llm_call ----------------------------------------------- #
+# --- capture_llm_call ---------------------------------------------------------- #
 
 
-def _capture(user_id: str | None = "user-1", **overrides: Any) -> None:
-    kwargs: dict[str, Any] = {
-        "user_id": user_id,
-        "label": "memory:extract",
-        "model_name": DEFAULT_MODEL_NAME,
-        "usage": TokenUsage(
-            input_tokens=3000, output_tokens=150, cached_tokens=400, reasoning_tokens=20
-        ),
+def _row(**overrides: Any) -> LLMCallDocument:
+    fields: dict[str, Any] = {
+        "id": "row-1",
+        "created_at": datetime.now(UTC),
+        "user_id": USER,
+        "agent_name": "memory:extract",
+        "background": True,
+        "charge_to_budget": False,
+        "model_requested": DEFAULT_MODEL_NAME,
+        "model_served": DEFAULT_MODEL_NAME,
+        "input_tokens": 3000,
+        "output_tokens": 150,
+        "cached_tokens": 400,
+        "reasoning_tokens": 20,
         "cost_usd": 0.00036,
+        "cost_source": "provider",
+        "generation_id": "gen-1",
+        "channel": "web",
     }
-    capture_auxiliary_llm_call(**{**kwargs, **overrides})
+    return LLMCallDocument(**{**fields, **overrides})
 
 
-def test_the_event_is_attributed_to_the_gaia_user_id(posthog: Any) -> None:
-    _capture(user_id="mongo-user-42")
+def test_the_event_is_attributed_to_the_rows_user(posthog: Any) -> None:
+    capture_llm_call(_row())
     call = _captured(posthog)
-    assert call["distinct_id"] == "mongo-user-42"
-    assert call["event"] == AnalyticsEvents.AI_LLM_CALL_COMPLETED
+    assert call["distinct_id"] == USER
+    assert call["event"] == AiLlmCallCompleted.event
 
 
-def test_the_event_carries_the_tokens_cost_and_attribution(posthog: Any) -> None:
-    _capture()
+def test_the_rows_upstream_timing_and_context_ids_reach_the_event(posthog: Any) -> None:
+    capture_llm_call(
+        _row(
+            provider="anthropic",
+            finish_reason="length",
+            duration_ms=812.5,
+            conversation_id="conv-9",
+            workflow_id="wf-3",
+        )
+    )
+    props = _captured(posthog)["properties"]
+    assert {
+        key: props[key]
+        for key in ("provider", "finish_reason", "duration_ms", "conversation_id", "workflow_id")
+    } == {
+        "provider": "anthropic",
+        "finish_reason": "length",
+        "duration_ms": 812.5,
+        "conversation_id": "conv-9",
+        "workflow_id": "wf-3",
+    }
+
+
+def test_the_event_carries_the_rows_tokens_cost_and_attribution(posthog: Any) -> None:
+    capture_llm_call(_row())
     props = _captured(posthog)["properties"]
     assert props["feature"] == "memory"
-    assert props["label"] == "memory:extract"
-    assert props["input_tokens"] == 3000
-    assert props["output_tokens"] == 150
-    assert props["cached_tokens"] == 400
-    assert props["reasoning_tokens"] == 20
+    assert props["agent_name"] == "memory:extract"
+    assert (props["input_tokens"], props["output_tokens"]) == (3000, 150)
+    assert (props["cached_tokens"], props["reasoning_tokens"]) == (400, 20)
     assert props["total_tokens"] == 3150
     assert props["cost_usd"] == 0.00036
+    assert props["cost_source"] == "provider"
+    assert props["background"] is True
+    assert props["charge_to_budget"] is False
 
 
-def test_background_spend_is_never_marked_charged(posthog: Any) -> None:
-    """Auxiliary work is not billed to the user's budget."""
-    _capture()
+def test_the_channel_is_the_surface_the_call_came_from(posthog: Any) -> None:
+    capture_llm_call(_row(channel="discord"))
+    assert _captured(posthog)["properties"]["channel"] == "discord"
+
+
+def test_a_call_with_no_channel_sends_no_channel(posthog: Any) -> None:
+    capture_llm_call(_row(channel=None))
+    assert "channel" not in _captured(posthog)["properties"]
+
+
+def test_a_graph_row_is_charged_chat_spend(posthog: Any) -> None:
+    capture_llm_call(_row(agent_name="comms_agent", background=False, charge_to_budget=True))
     props = _captured(posthog)["properties"]
-    assert props["charged"] is False
-    assert props["surface"] == "bg"
+    assert props["feature"] == "chat"
+    assert props["charge_to_budget"] is True
 
 
-def test_a_call_with_no_user_is_skipped_not_left_anonymous(posthog: Any) -> None:
-    _capture(user_id=None)
-    posthog.capture.assert_not_called()
+def test_a_row_inside_a_workflow_is_charged_workflow_spend(posthog: Any) -> None:
+    capture_llm_call(_row(agent_name="comms_agent", background=False, workflow_id="wf-1"))
+
+    assert _captured(posthog)["properties"]["feature"] == "workflow"
 
 
-def test_the_skip_says_which_call_it_dropped(posthog: Any) -> None:
-    """The warning is the only trace a skipped call leaves."""
+def test_an_error_row_says_it_failed_and_why(posthog: Any) -> None:
+    """The ledger keeps failures so an outage reads as errors, not a dip in traffic; the event must too."""
+    capture_llm_call(
+        _row(
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            reasoning_tokens=0,
+            cost_usd=0.0,
+            status="error",
+            error_family="timeout",
+        )
+    )
+    props = _captured(posthog)["properties"]
+    assert (props["status"], props["error_family"]) == ("error", "timeout")
+
+
+def test_the_event_is_keyed_by_the_ledger_row(posthog: Any) -> None:
+    """One row is one event: a replayed emit collapses, two real calls (two rows) never do."""
+    capture_llm_call(_row(id="row-42"))
+    expected = uuid5(NAMESPACE_URL, f"{AiLlmCallCompleted.event}:{USER}:row-42")
+    assert _captured(posthog)["uuid"] == str(expected)
+
+
+@pytest.mark.parametrize("user_id", [None, "system", "u-not-an-object-id"])
+def test_a_row_with_no_real_user_is_logged_not_sent(posthog: Any, user_id: str | None) -> None:
     with patch("app.services.llm_usage_analytics.log") as mock_log:
-        _capture(user_id=None, label="memory:extract", model_name=DEFAULT_MODEL_NAME)
+        capture_llm_call(_row(user_id=user_id))
 
+    posthog.capture.assert_not_called()
     mock_log.warning.assert_called_once_with(
-        "llm_call_unattributed", label="memory:extract", model=DEFAULT_MODEL_NAME
+        "llm_call_unattributed",
+        user_id=user_id,
+        agent_name="memory:extract",
+        model=DEFAULT_MODEL_NAME,
     )
 
 
 def test_an_unmapped_label_raises_an_error_line_naming_itself(posthog: Any) -> None:
     """The error line is what makes a label no member claims greppable."""
     with patch("app.services.llm_usage_analytics.log") as mock_log:
-        _capture(label="helper_added_without_a_table_entry")
+        capture_llm_call(_row(agent_name="helper_added_without_a_table_entry"))
 
     mock_log.error.assert_called_once_with(
         "llm_call_unmapped_label",
@@ -249,53 +310,45 @@ def test_an_unmapped_label_raises_an_error_line_naming_itself(posthog: Any) -> N
 
 def test_a_mapped_label_logs_no_error(posthog: Any) -> None:
     with patch("app.services.llm_usage_analytics.log") as mock_log:
-        _capture(label="memory:extract")
+        capture_llm_call(_row())
 
     mock_log.error.assert_not_called()
 
 
-def test_a_priced_model_is_not_flagged_as_estimated(posthog: Any) -> None:
-    _capture(model_name=DEFAULT_MODEL_NAME)
-    assert _captured(posthog)["properties"]["cost_estimated"] is False
-
-
-def test_a_model_missing_from_the_rate_card_is_flagged(posthog: Any) -> None:
-    """An unpriced model falls back to DEFAULT_PRICING, so the figure is plausible and wrong."""
-    _capture(model_name="some/model-nobody-priced")
-    assert _captured(posthog)["properties"]["cost_estimated"] is True
-
-
-def test_the_event_is_not_deduped(posthog: Any) -> None:
-    """A retry is a second real charge; collapsing them under-reports spend."""
-    _capture()
-    assert "uuid" not in _captured(posthog)
-
-
 def test_the_event_carries_no_message_content(posthog: Any) -> None:
-    _capture()
+    """Counts, flags and ids only, and a None field is left out rather than sent as null."""
+    capture_llm_call(_row())
     assert set(_captured(posthog)["properties"]) == {
         "feature",
         "surface",
-        "label",
+        "agent_name",
+        "background",
+        "charge_to_budget",
         "model",
+        "model_served",
         "input_tokens",
         "output_tokens",
         "cached_tokens",
         "reasoning_tokens",
         "total_tokens",
         "cost_usd",
-        "charged",
-        "cost_estimated",
-        "timestamp",
+        "actor",
+        "trigger",
+        "cost_source",
+        "status",
+        "channel",
+        "generation_id",
+        "llm_call_id",
+        "$ignore_sent_at",
     }
 
 
 def test_every_feature_is_reachable() -> None:
     """A member reached by no label and no graph rule charts as zero spend, not as a bug."""
     graph_reachable = {
-        llm_feature("comms_agent", None),
-        llm_feature("gmail_agent", None),
-        llm_feature("comms_agent", "wf-1"),
+        llm_feature("comms_agent", None, background=False),
+        llm_feature("gmail_agent", None, background=False),
+        llm_feature("comms_agent", "wf-1", background=False),
     }
     reachable = (
         {f for f in AIFeature if f.labels}

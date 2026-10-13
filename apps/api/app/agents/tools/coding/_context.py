@@ -9,15 +9,14 @@ Centralizes:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import contextlib
 from datetime import UTC
 import posixpath
 import time
-from typing import Any
 
 from e2b import AsyncSandbox
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
@@ -28,20 +27,15 @@ from app.agents.workspace.paths import (
     session_dir,
 )
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import (
+    current_stream_writer,
+    get_user_id,
+    read_agent_configurable,
+    read_run_metadata,
+)
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
-
-
-def get_user_id(config: RunnableConfig) -> str:
-    """Extract user_id from config or raise a clear error."""
-    configurable = agent_configurable(config)
-    metadata = config.get("metadata", {}) if config else {}
-    user_id = configurable.get("user_id") or metadata.get("user_id")
-    if not isinstance(user_id, str) or not user_id:
-        raise ValueError("user_id not found in RunnableConfig")
-    return user_id
 
 
 def get_session_id(config: RunnableConfig) -> str | None:
@@ -54,15 +48,13 @@ def get_session_id(config: RunnableConfig) -> str | None:
     chat artifact forwarder key on — using it would split the session dir and
     drop every artifact event). May be None for non-chat invocations
     (workflows, background tasks)."""
-    configurable = agent_configurable(config)
-    metadata = config.get("metadata", {}) if config else {}
-    session_id = (
-        configurable.get("vfs_session_id")
-        or configurable.get("conversation_id")
-        or metadata.get("conversation_id")
-        or configurable.get("thread_id")
+    configurable = read_agent_configurable(config)
+    return (
+        configurable.vfs_session_id
+        or configurable.conversation_id
+        or read_run_metadata(config).conversation_id
+        or configurable.thread_id
     )
-    return session_id if isinstance(session_id, str) else None
 
 
 def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:
@@ -137,12 +129,10 @@ async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
     return mtime.replace(tzinfo=UTC).timestamp() if mtime is not None else time.time()
 
 
-def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
-    """Emit a custom stream event, swallowing 'no writer' errors silently.
+def safe_emit(event: Mapping[str, object], *, session_id: str | None = None) -> None:
+    """Emit a custom stream event; a failed write is logged, never fails the tool.
 
-    Tools are invoked both during live chat (writer present) and during
-    silent/background runs (no writer). Don't fail the tool just because
-    nobody is listening. When `session_id` is given it is stamped into the
+    When `session_id` is given it is stamped into the
     artifact/bash/file payloads so the frontend can route the event to the
     right conversation.
     """
@@ -152,11 +142,7 @@ def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
             if isinstance(payload, dict):
                 payload.setdefault("session_id", session_id)
     try:
-        writer = get_stream_writer()
-    except Exception:
-        return
-    try:
-        writer(event)
+        current_stream_writer()(event)
     except Exception as e:
         log.debug("Stream writer failed silently", error_type=type(e).__name__)
 

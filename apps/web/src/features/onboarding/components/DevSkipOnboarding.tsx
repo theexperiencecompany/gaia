@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { isDevelopment } from "@/lib/fetchAll";
 import { toast } from "@/lib/toast";
 
@@ -23,7 +23,7 @@ export function DevSkipOnboarding() {
   if (!isDevelopment()) return null;
 
   const skip = async () => {
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, { source: "dev_skip" });
+    track("onboarding:skipped", { source: "dev_skip" });
     setLoading(true);
     try {
       const res = await authApi.completeOnboarding({

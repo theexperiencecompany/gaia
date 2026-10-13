@@ -16,9 +16,14 @@ from pydantic import (
 )
 
 from app.constants.reminders import REMINDER_DEFAULT_LIFETIME
+from app.constants.scheduling import ScheduleRejection
 from app.db.repositories.base import MongoDocument
-from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
-from app.utils.cron_utils import validate_cron_expression
+from app.models.scheduler_models import (
+    BaseScheduledTask,
+    DeactivationReason,
+    ScheduledTaskStatus,
+)
+from app.utils.schedule import RecurringSchedule
 from app.utils.timezone import Timezone
 
 # Use the base scheduler status directly
@@ -76,13 +81,19 @@ class ReminderModel(BaseScheduledTask):
     payload: Union[StaticReminderPayload, dict[str, Any]] = Field(
         ..., description="Task-specific data based on agent type"
     )
+    pause_reason: DeactivationReason | None = Field(
+        default=None,
+        description="Why the system paused this reminder; None for a pause the user made.",
+    )
 
 
 class CreateReminderRequest(BaseModel):
     """Request model for creating a new reminder."""
 
     agent: AgentType = Field(..., description="Agent handling the reminder task (static only)")
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks (optional)")
+    repeat: RecurringSchedule | None = Field(
+        None, description="Cron expression for recurring tasks (optional)"
+    )
     scheduled_at: datetime | None = Field(
         None, description="First execution time (optional, defaults to None)"
     )
@@ -112,17 +123,6 @@ class CreateReminderRequest(BaseModel):
         if v is None:
             return None
         return Timezone.parse(v).value
-
-    @field_validator("repeat")
-    @classmethod
-    def check_repeat_cron(cls, v: str | None) -> str | None:
-        """Reject a repeat value that is not a valid cron expression."""
-        # Deferred import: validator-local re-import of validate_cron_expression, also bound at module top level
-        from app.utils.cron_utils import validate_cron_expression  # noqa: PLC0415 -- deferred
-
-        if v is not None and not validate_cron_expression(v):
-            raise ValueError(f"Invalid cron expression: {v}")
-        return v
 
     @field_validator("scheduled_at")
     @classmethod
@@ -190,7 +190,9 @@ class CreateReminderToolRequest(BaseModel):
     payload: StaticReminderPayload = Field(
         ..., description="Task-specific data for static reminder"
     )
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks (optional)")
+    repeat: RecurringSchedule | None = Field(
+        None, description="Cron expression for recurring tasks (optional)"
+    )
     scheduled_at: str | None = Field(
         None,
         description="Date/time for when the reminder should run (YYYY-MM-DD HH:MM:SS format)",
@@ -228,14 +230,6 @@ class CreateReminderToolRequest(BaseModel):
     source_conversation_id: str | None = Field(
         None, description="The chat that created the reminder; delivery target when it fires."
     )
-
-    @field_validator("repeat")
-    @classmethod
-    def check_repeat_cron(cls, v: str | None) -> str | None:
-        """Reject a repeat value that is not a valid cron expression."""
-        if v is not None and not validate_cron_expression(v):
-            raise ValueError(f"Invalid cron expression: {v}")
-        return v
 
     @field_validator("max_occurrences")
     @classmethod
@@ -327,24 +321,14 @@ class UpdateReminderRequest(BaseModel):
     """Request model for updating an existing reminder."""
 
     agent: AgentType | None = Field(None, description="Agent handling the reminder task (optional)")
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    repeat: RecurringSchedule | None = Field(
+        None, description="Cron expression for recurring tasks"
+    )
     scheduled_at: datetime | None = Field(None, description="Next execution time")
     status: ReminderStatus | None = Field(None, description="Current status")
     max_occurrences: int | None = Field(None, description="Maximum number of executions")
     stop_after: datetime | None = Field(None, description="Stop executing after this date")
     payload: StaticReminderPayload | None = Field(None, description="Task-specific data (optional)")
-
-    @field_validator("repeat")
-    @classmethod
-    def check_repeat_cron(cls, v: str | None) -> str | None:
-        """Reject a repeat value that is not a valid cron expression."""
-        from app.utils.cron_utils import (  # noqa: PLC0415 -- keeps croniter off this module's import path; only needed when a repeat cron actually validates
-            validate_cron_expression,
-        )
-
-        if v is not None and not validate_cron_expression(v):
-            raise ValueError(f"Invalid cron expression: {v}")
-        return v
 
     @field_validator("scheduled_at", "stop_after")
     @classmethod
@@ -424,13 +408,18 @@ class CronValidationResponse(BaseModel):
     """Result of validating a cron expression."""
 
     expression: str = Field(..., description="The cron expression that was checked")
-    valid: bool = Field(..., description="Whether the expression parses as a valid cron")
+    valid: bool = Field(
+        ..., description="Whether the expression is an acceptable recurring schedule"
+    )
     next_runs: list[str] = Field(
         default_factory=list,
         description="ISO timestamps of the next few runs; empty unless the expression is valid",
     )
     error: str | None = Field(
-        default=None, description="Why the expression could not be evaluated, if it raised"
+        default=None, description="Why the expression is not an acceptable schedule"
+    )
+    reason: ScheduleRejection | None = Field(
+        default=None, description="Machine-readable reason the expression was refused"
     )
 
 
@@ -465,7 +454,7 @@ class ReminderUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     agent: AgentType | None = None
-    repeat: str | None = None
+    repeat: RecurringSchedule | None = None
     scheduled_at: datetime | None = None
     status: ReminderStatus | None = None
     max_occurrences: int | None = None
@@ -473,3 +462,4 @@ class ReminderUpdate(BaseModel):
     payload: StaticReminderPayload | None = None
     occurrence_count: int | None = None
     timezone: str | None = None
+    pause_reason: DeactivationReason | None = None

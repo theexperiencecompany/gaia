@@ -48,7 +48,6 @@ from app.schemas.browser_job import (
     BrowserJobStatus,
     BrowserJobStopped,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_runner as jr, job_teller as teller
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -61,6 +60,8 @@ from app.services.browser.jobs import done_state, put_job_state
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.tasks import BrowserTaskRecord
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserTaskFinished
 from shared.py.wide_events import log, wide_task
 from tests.helpers import captured_wide_event
 
@@ -80,7 +81,7 @@ def _request(**overrides: Any) -> BrowserJobRequest:
     fields: dict[str, Any] = {
         "job_id": "job-1",
         "tool_call_id": "call-1",
-        "user_id": "u1",
+        "user_id": USER_ID,
         "conversation_id": "c1",
         "task": "x",
         "in_background": False,
@@ -101,6 +102,8 @@ def _bot_request(**overrides: Any) -> BrowserJobRequest:
 #: The real publisher, kept so the feed-shape cases can put it back after _install
 #: has swapped it for a recorder.
 _REAL_PUBLISH_FRAME = jr.publish_frame_to_job
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OTHER_USER_ID = "6812f0b3c9a14e2b7d5a91c7"
 
 
 async def _run(h: "Harness", request: BrowserJobRequest) -> str:
@@ -956,7 +959,7 @@ async def test_task_is_passed_through_unchanged_without_a_start_url(
     await _run(h, _request(task="book a table"))
     assert h.run_task == "book a table"
     assert h.session_kwargs == {
-        "user_id": "u1",
+        "user_id": USER_ID,
         "host_url": PRIMARY_HOST,
         "start_url": None,
     }
@@ -969,7 +972,7 @@ async def test_start_url_is_appended_to_the_task_and_opened(
     await _run(h, _request(task="book a table", start_url="https://resy.com"))
     assert h.run_task == "book a table\n\nStart at: https://resy.com"
     assert h.session_kwargs == {
-        "user_id": "u1",
+        "user_id": USER_ID,
         "host_url": PRIMARY_HOST,
         "start_url": "https://resy.com",
     }
@@ -1030,7 +1033,7 @@ async def test_runner_is_configured_from_settings_and_config(
     assert isinstance(kwargs.pop("secrets"), RunSecrets)
     assert kwargs == {
         "session": h.session,
-        "user_id": "u1",
+        "user_id": USER_ID,
         "root_request_id": "req-42",
     }
 
@@ -1319,7 +1322,7 @@ async def test_history_records_step_captions_and_uploaded_screenshots_in_order(
     assert h.spawn_names == []
     (call,) = h.record_calls
     assert call["record"] == BrowserTaskRecord(
-        user_id="u1",
+        user_id=USER_ID,
         conversation_id="conv-9",
         task="book a table",
         session_id="sess-1",
@@ -1384,7 +1387,7 @@ async def test_bot_delivery_is_built_for_the_originating_platform(
     assert h.delivery_kwargs == [
         {
             "platform": ConversationSource.DISCORD,
-            "user_id": "u1",
+            "user_id": USER_ID,
             "stream_screenshots": False,
         }
     ]
@@ -1605,21 +1608,21 @@ async def test_finished_run_is_captured_against_the_user_who_ran_it(
     captured: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
         jr,
-        "capture_event",
-        lambda user_id, event, props: captured.append((user_id, event, props)),
+        "capture",
+        lambda user_id, event: captured.append((user_id, event)),
     )
     h = _install(monkeypatch, result=_result(BrowserSessionStatus.COMPLETED, True, "done", steps=3))
 
     await _run(h, _request(task="x"))
 
-    (user_id, event, props) = captured[0]
+    (user_id, event) = captured[0]
     assert len(captured) == 1
-    assert user_id == "u1"
-    assert event == AnalyticsEvents.BROWSER_TASK_FINISHED
-    assert props["status"] == "completed"
-    assert props["success"] is True
-    assert props["steps"] == 3
-    assert props["engine_fallback"] is False
+    assert user_id == UserId(USER_ID)
+    assert isinstance(event, BrowserTaskFinished)
+    assert event.status == "completed"
+    assert event.success is True
+    assert event.steps == 3
+    assert event.engine_fallback is False
 
 
 async def test_a_run_finished_on_the_fallback_engine_is_recorded_against_that_session(
@@ -1639,15 +1642,15 @@ async def test_a_run_finished_on_the_fallback_engine_is_recorded_against_that_se
     await _run(h, _request(task="x"))
 
     assert h.record_calls[0]["record"].session_id == "sess-fallback"
-    assert captured[0][2]["engine_fallback"] is True
+    assert captured[0][1].engine_fallback is True
 
 
 def _capture(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
     captured: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
         jr,
-        "capture_event",
-        lambda user_id, event, props: captured.append((user_id, event, props)),
+        "capture",
+        lambda user_id, event: captured.append((user_id, event)),
     )
     return captured
 
@@ -1670,7 +1673,7 @@ async def test_capture_source_falls_back_to_web_when_the_run_has_no_category(
 
     await _run(h, _request(source_category=None))
 
-    assert captured[0][2]["source"] == "web"
+    assert captured[0][1].source == "web"
 
 
 async def test_capture_source_is_the_surface_the_run_came_from(
@@ -1681,7 +1684,7 @@ async def test_capture_source_is_the_surface_the_run_came_from(
 
     await _run(h, _bot_request(task="x"))
 
-    assert captured[0][2]["source"] == "bot"
+    assert captured[0][1].source == "bot"
 
 
 # ---------------------------------------------------------------------------
@@ -1897,7 +1900,7 @@ def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source", "reply_to"), [(None, "conv-9"), (ConversationSource.TELEGRAM, "telegram:u1")]
+    ("source", "reply_to"), [(None, "conv-9"), (ConversationSource.TELEGRAM, f"telegram:{USER_ID}")]
 )
 async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_for_its_budget(
     monkeypatch: pytest.MonkeyPatch, source: ConversationSource | None, reply_to: str
@@ -1922,7 +1925,7 @@ async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_f
         handoff_id,
         NewHandoff(
             job_id="job-1",
-            user_id="u1",
+            user_id=USER_ID,
             conversation_id="conv-9",
             reason="log in",
             reply_to=reply_to,
@@ -2111,11 +2114,11 @@ async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_thi
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
     h.session.engine = BrowserEngine.OBSCURA
 
-    await _run(h, _request(user_id="u7"))
+    await _run(h, _request(user_id=OTHER_USER_ID))
 
     assert opened == [h.session]
     assert h.session_kwargs == {
-        "user_id": "u7",
+        "user_id": OTHER_USER_ID,
         "host_url": "http://fallback:8930",
         "start_url": "https://page",
         "carried": carried,
@@ -2155,7 +2158,7 @@ async def test_the_run_time_reaches_the_event_and_the_analytics_capture(
     event = await _run_event(h, _request())
 
     assert event["browser"]["run_ms"] == 2500
-    assert captured[0][2]["duration_ms"] == 2500
+    assert captured[0][1].duration_ms == 2500
 
 
 def _replay_links(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -2337,9 +2340,9 @@ async def test_the_engine_is_the_users_own_obscura_choice(
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
     h.session.engine = BrowserEngine(engine)
 
-    event = await _run_event(h, _request(user_id="u7"))
+    event = await _run_event(h, _request(user_id=OTHER_USER_ID))
 
-    assert asked == [(FeatureFlag.BROWSER_OBSCURA, "u7")]
+    assert asked == [(FeatureFlag.BROWSER_OBSCURA, OTHER_USER_ID)]
     assert h.session_kwargs["host_url"] == (PRIMARY_HOST if opted_in else "http://chrome:8930")
     # The engine the run is on is what the host reported for its session.
     assert event["browser"]["engine"] == engine
@@ -2405,7 +2408,7 @@ async def test_the_actions_a_run_executed_reach_the_event_the_capture_and_the_hi
     event = await _run_event(h, _request())
 
     assert event["browser"]["actions"] == 3
-    assert captured[0][2]["actions"] == 3
+    assert captured[0][1].actions == 3
     assert h.record_calls[0]["actions"] == 3
 
 

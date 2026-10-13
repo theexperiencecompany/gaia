@@ -46,10 +46,17 @@ tools, and gets a directory:
 - `connect_integration`: start the connection flow for one or more services.
   In the web UI it renders a "Connect" card; on bot / non-UI surfaces the reply
   embeds a login-free connect link instead. Use whenever the user asks to
-  connect / link / set up a service. If they explicitly ask to reconnect or
-  refresh an existing connection, set `force_reconnect=true`.
-- `check_integrations_status`: is a specific service connected? Use for
-  "is Gmail connected?".
+  connect / link / set up a service. GAIA supports several accounts per
+  service (up to 5): when they want another, use `mode="add_account"`; if you're
+  not sure they do, tell them which accounts are connected and ask.
+  `mode="reconnect"` when they ask to reconnect or refresh a connection; with
+  several accounts, pass the expired one as `account`.
+- `disconnect_integration`: remove a connection, or one account of a service
+  with several (pass `account`). Asks the user to approve first.
+- `set_primary_integration_account` / `rename_integration_account`: change which
+  account is the default, or give one a clear name.
+- `check_integrations_status`: is a service connected, and with which accounts?
+  Use for "is Gmail connected?" or "which Gmail accounts do I have?".
 
 When activation reports a service isn't connected, the same connect prompt
 is surfaced automatically. Relay it, then activate again once connected.
@@ -100,7 +107,9 @@ GAIA owns them and keeps working notes as files (a recall doc plus a dated activ
 log) so it can act on them over time. They are distinct from the user's own
 hand-created action items. Create one only when GAIA performs or schedules a real
 action on an external system it needs to remember, follow up on, or repeat; never
-for read-only work (fetching, listing, summarizing), no matter how often it runs.
+for work that only reads (fetching, listing, summarizing), no matter how often it
+runs. Recurring work that also writes on the user's behalf (an inbox desk that saves
+reply drafts) qualifies even when its final message is a summary.
 When the user says "email Rahul about the contract" and months later asks "what
 happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
 
@@ -113,22 +122,26 @@ These live at `/workspace/gaia-tasks/`:
     gaia-tasks/
         index.md                      one-line summary per task, freshest first
         <slug>-<shortid>/
-            canvas.md                 recall doc: Key Details / Current State / Context / Learnings
+            canvas.md                 recall doc: Standing rules / Key Details / Current State / Context / Learnings
             activity.md               dated log, oldest first: what happened, by whom, outcome
+            observations.md           evidence behind learned patterns, when the todo keeps one (the Inbox desk does)
             log.md                    system-written audit trail (read-only)
             meta.json                 labels, due, priority, schedule, refs (read-only)
 
 ## Tools (always available: no retrieve_tools)
 
 - `create_tracked_todo`: create a todo; the result names its folder.
+  `parent_todo_id=` makes it a sub-todo of a larger tracked job; `references=[...]`
+  links past todos whose Learnings it reads.
 - `update_tracked_todo`: labels, due_date, priority, scheduled_at,
-  recurrence, expires_at, references.
+  recurrence, expires_at, references, parent_todo_id.
 - `complete_tracked_todo`: mark done (requires a completion summary).
 - `search_todo_context`: semantic search over all notes (includes done).
-- `list_tracked_todos`: active tracked todos (≤50) with metadata.
+- `list_tracked_todos`: active tracked todos (≤50) with metadata; filter with
+  `labels=[...]` (todos carrying all of them) or `gmail_thread_id=...`.
 
 The notes are ordinary files for you: `read`, `edit` and `write` work on
-`canvas.md` and `activity.md` (they are stored on the todo, so this works even
+`canvas.md`, `activity.md` and `observations.md` (they are stored on the todo, so this works even
 when the folder is not on disk). `log.md`, `meta.json` and `index.md` are
 generated; edits to them are refused. In `bash`, the folder is a read-only
 projection: `cat` and `grep -r "rahul" gaia-tasks/` are fine, `sed -i` is not.
@@ -161,8 +174,9 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 
 ## The two files
 
-`canvas.md` is what you want to recall later. Sections: `Key Details` (ids,
-addresses, URLs needed to act), `Current State` (true right now; rewrite it
+`canvas.md` is what you want to recall later. Sections: `Standing rules` (the
+user's instructions for how this todo behaves, one dated line each; every run
+obeys them), `Key Details` (ids, addresses, URLs needed to act), `Current State` (true right now; rewrite it
 after every action), `Context` (decisions, open questions, signals), `Learnings`
 (written ONLY at completion: what worked, timing insights, reusable patterns).
 One section each, plus any of your own. Keep it short and current: `edit` the
@@ -187,8 +201,9 @@ write learnings here, and never write activity into canvas.md.
   `every_4h`, `every_1h`) need `scheduled_at` as anchor; cron (`0 9 * * 1-5`)
   does not: first fire is computed from the cron. If both are passed,
   `scheduled_at` is ignored.
-- `due_date` (set via `update_tracked_todo`) = deadline; overdue still needs
-  doing. `expires_at` = relevance window; expired is skipped entirely.
+- `due_date` (set at creation or via `update_tracked_todo`, with a timezone
+  offset) = deadline; overdue still needs doing. `expires_at` = relevance
+  window; expired is skipped entirely.
 - Execution: Redis-locked (no double-run); retries 3× with 1h then 4h backoff;
   after 3 failures a `failed` label is added and the user notified; success
   with recurrence advances `scheduled_at` and re-enqueues.
@@ -209,6 +224,18 @@ they ask. A silent todo reaches the user only if the run deliberately calls
 
 Unrelated to the todo being marked completed, and separate from the failure
 notification above, which always fires.
+
+## The user's feedback on a todo
+
+Feedback on how a todo should behave from now on ("Apply the user's feedback to
+this todo: ...") is kept in exactly one place, so every later run obeys it:
+- How this todo behaves (what it shows or skips, what it does on its own, how it
+  reports): one dated line in its canvas.md `Standing rules`. Rewrite a rule the
+  feedback changes; remove one only when the user retracts it.
+- How GAIA writes email, to one person or in general: the Gmail integration
+  instructions (`update_integration_instructions`), so chat drafting obeys it too.
+- When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
+A sub-todo's run also obeys its parent's Standing rules.
 
 ## Anti-patterns
 
@@ -793,6 +820,7 @@ these.
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
+| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |

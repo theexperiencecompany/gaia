@@ -16,7 +16,6 @@ from app.utils.cron_utils import (
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
-    validate_cron_expression,
 )
 from app.utils.timezone import Timezone
 
@@ -55,41 +54,6 @@ class TestCronError:
 
     def test_empty_message(self) -> None:
         assert str(CronError()) == ""
-
-
-# ---------------------------------------------------------------------------
-# validate_cron_expression
-# ---------------------------------------------------------------------------
-
-
-class TestValidateCronExpression:
-    @pytest.mark.parametrize(
-        "cron_expr",
-        [
-            "* * * * *",
-            "0 8 * * *",
-            "*/5 * * * *",
-            "0 9 * * 1",
-            "0 0 1 1 *",
-            "30 14 * * 1-5",
-            "0 */2 * * *",
-            "0 9 1 * *",
-        ],
-    )
-    def test_valid_expressions_return_true(self, cron_expr: str) -> None:
-        assert validate_cron_expression(cron_expr) is True
-
-    @pytest.mark.parametrize(
-        "cron_expr",
-        ["not a cron", "60 * * * *", "* 25 * * *", "* * 32 * *", "* * * 13 *", "", "0 8 * *"],
-    )
-    def test_invalid_expressions_return_false(self, cron_expr: str) -> None:
-        assert validate_cron_expression(cron_expr) is False
-
-    def test_none_raises_attribute_error(self) -> None:
-        # croniter raises AttributeError for non-string inputs, not caught by validate.
-        with pytest.raises(AttributeError):
-            validate_cron_expression(None)
 
 
 # ---------------------------------------------------------------------------

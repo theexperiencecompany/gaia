@@ -243,6 +243,8 @@ export function createTodoStore(
               trigger_subscriptions: [],
               gaia_retry_count: 0,
               pending_approval: null,
+              parent_todo_id: null,
+              sub_todo_count: 0,
               created_at: now,
               updated_at: now,
             };

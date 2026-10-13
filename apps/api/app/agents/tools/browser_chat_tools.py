@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.models.agent_models import agent_configurable
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.browser.chat_task import (
     chat_browser_tasks,
     paused_step,
@@ -23,6 +23,8 @@ from app.services.browser.chat_task import (
 from app.services.browser.handoff import resolve_handoff
 from app.services.browser.job_stop import stop_chat_jobs, stop_job
 from app.services.browser.jobs import post_job_message
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from shared.py.wide_events import log
 
 _NOT_A_USER_TURN = (
@@ -113,10 +115,9 @@ async def stop_browser_task(config: RunnableConfig) -> str:
     if paused is not None:
         # The paused task is the one the user is answering; another run may share their bot chat.
         outcome = await stop_job(paused.job_id)
-        capture_event(
-            turn.user_id,
-            AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-            {"decision": HandoffDecision.CANCEL.value, "with_note": False},
+        capture(
+            UserId(turn.user_id),
+            BrowserHandoffResolved(decision=HandoffDecision.CANCEL.value, with_note=False),
         )
         log.set_ns("browser", job_id=paused.job_id, stopped_from_chat=True)
         return stop_report([outcome])

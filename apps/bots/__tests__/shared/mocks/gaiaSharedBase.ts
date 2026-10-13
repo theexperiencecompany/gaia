@@ -19,6 +19,10 @@
 
 import { vi } from "vitest";
 import {
+  type AnalyticsId,
+  platformIdentity,
+} from "../../../../../libs/shared/ts/src/analytics";
+import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
@@ -66,8 +70,10 @@ export function makeGaiaSharedMock(
     }
 
     /** Unlinked-user path — adapter tests assert routing, not identity. */
-    protected async resolveDistinctId(platformUserId: string): Promise<string> {
-      return `${this.platform}:${platformUserId}`;
+    protected async resolveDistinctId(
+      platformUserId: string,
+    ): Promise<AnalyticsId> {
+      return platformIdentity(this.platform, platformUserId);
     }
 
     protected async dispatchCommand(

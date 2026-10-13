@@ -6,9 +6,9 @@ users._id, plus the post-aggregation creator-dict shape (with the system →
 apps/web/src/features/workflows/utils/creator.ts.
 """
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.models.workflow_models import PublicWorkflowRow, WorkflowCreator
 
-SYSTEM_CREATOR_ID = "system"
 SYSTEM_CREATOR_NAME = "GAIA Team"
 UNKNOWN_CREATOR_NAME = "Unknown"
 
@@ -64,7 +64,7 @@ def format_creator(
 
     if default_name is not None:
         fallback_name = default_name
-    elif creator_id == SYSTEM_CREATOR_ID:
+    elif creator_id == SYSTEM_USER_ID:
         fallback_name = SYSTEM_CREATOR_NAME
     else:
         fallback_name = UNKNOWN_CREATOR_NAME

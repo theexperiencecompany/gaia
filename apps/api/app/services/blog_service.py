@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from app.db.repositories.blog import blog_repository
 from app.decorators.caching import Cacheable
 from app.models.blog_models import BlogPost
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 
@@ -65,6 +66,6 @@ class BlogService:
             query, skip=(page - 1) * limit, limit=limit, include_content=include_content
         )
 
-        log.set(blog={"search_query": query, "result_count": len(blogs)})
+        log.set(blog={"search_query": user_text_shape(query), "result_count": len(blogs)})
         log.info("Found blogs matching query", blog_count=len(blogs))
         return blogs

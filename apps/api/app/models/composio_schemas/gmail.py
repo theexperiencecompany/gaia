@@ -39,6 +39,27 @@ class GmailNewMessagePayload(BaseModel):
     to: str | None = Field(None, description="Recipient email address")
 
 
+class GmailEmailSentPayload(BaseModel):
+    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20260107_00.
+
+    Field set verified against Composio triggers_types API (2026-09); the pinned
+    version carries no message body or attachment list.
+    """
+
+    bcc: str | None = Field(None, description="Bcc recipients")
+    cc: str | None = Field(None, description="Cc recipients")
+    message_id: str | None = Field(None, description="Gmail message ID")
+    message_timestamp: str | None = Field(None, description="When it was sent, ISO 8601")
+    payload: dict[str, Any] | None = Field(None, description="Raw Gmail payload")
+    recipients: str | None = Field(
+        None, description="Comma-separated list of all recipients (To, Cc, Bcc)"
+    )
+    sender: str | None = Field(None, description="Sender email address")
+    subject: str | None = Field(None, description="Email subject")
+    thread_id: str | None = Field(None, description="Gmail thread ID")
+    to: str | None = Field(None, description="To recipients")
+
+
 # =============================================================================
 # Custom Tool Inputs
 # =============================================================================
@@ -122,6 +143,13 @@ class FetchMessagesInput(BaseModel):
         ),
     )
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
+    offload: bool = Field(
+        default=False,
+        description=(
+            "true: write every message to a JSONL file and return only its digest, "
+            "however few match. For a scan you aggregate with query_json and never read."
+        ),
+    )
 
 
 class FetchThreadInput(BaseModel):
@@ -239,28 +267,39 @@ class GmailAttachmentMetadata(TypedDict):
     attachmentId: str | None
 
 
-class GmailParsedAttachment(TypedDict, total=False):
-    """An attachment as reported by ``GmailMessageParser.attachments``.
-
-    ``total=False`` because the two extraction paths report different key sets:
-    the raw-payload fallback carries ``attachmentId`` (the id used to fetch the
-    bytes later), while the parsed-MIME path already holds the decoded
-    ``content``.
-    """
-
-    filename: str | None
-    mimeType: str | None
-    size: int | None
-    attachmentId: str | None
-    messageId: str
-    content: bytes | None
-
-
 class GmailMessageContent(TypedDict):
     """A message body in both renderings, as extracted from its MIME parts."""
 
     text: str
     html: str
+
+
+class GmailMessageView(BaseModel):
+    """One message as the detailed template and GMAIL_FETCH_MESSAGES shape it.
+
+    A model rather than a TypedDict because its wire key ``from`` is a Python
+    keyword; the agent sees it dumped by alias. body and content are left out
+    of the dump when the body was never fetched.
+    """
+
+    id: str
+    thread_id: str = Field(serialization_alias="threadId")
+    sender: str = Field(serialization_alias="from")
+    # One key per sender whatever its display name, so counts group by sender.
+    from_address: str
+    to: str
+    subject: str
+    snippet: str
+    time: str
+    is_read: bool = Field(serialization_alias="isRead")
+    has_attachment: bool = Field(serialization_alias="hasAttachment")
+    attachments: list[GmailAttachmentMetadata]
+    labels: list[str]
+    cc: str
+    body: str | None = Field(default=None, exclude_if=lambda body: body is None)
+    content: GmailMessageContent | None = Field(
+        default=None, exclude_if=lambda content: content is None
+    )
 
 
 class GmailMessageRef(BaseModel):
@@ -357,3 +396,112 @@ class GmailLabelCounts(TypedDict):
     label_name: str
     unreadCount: int
     totalCount: int
+
+
+class GmailStarResult(GmailBatchModifyResult):
+    """GMAIL_STAR_EMAIL: the batchModify outcome, naming which way it went."""
+
+    action: Literal["starred", "unstarred"]
+
+
+class GmailUnreadQueryCounts(TypedDict):
+    """GMAIL_GET_UNREAD_COUNT in query mode: estimates for a search, total and unread."""
+
+    query: str
+    label_ids: list[str]
+    totalCount: int
+    unreadCount: int
+    is_estimate: bool
+    label_id: NotRequired[str]
+
+
+class GmailUnreadLabelCounts(TypedDict):
+    """GMAIL_GET_UNREAD_COUNT in label mode; one label also gets its counts lifted to the top."""
+
+    counts: dict[str, GmailLabelCounts]
+    label_ids: list[str]
+    label_id: NotRequired[str]
+    label_name: NotRequired[str]
+    unreadCount: NotRequired[int]
+    totalCount: NotRequired[int]
+
+
+class GmailContact(TypedDict):
+    """One address found in a message's From/To/Cc/Reply-To headers."""
+
+    name: str
+    email: str
+
+
+class GmailContactList(TypedDict):
+    """GMAIL_GET_CONTACT_LIST: the deduplicated contacts, or the error that stopped the scan."""
+
+    success: bool
+    contacts: list[GmailContact]
+    count: int
+    error: NotRequired[str]
+
+
+class GmailContextUser(TypedDict):
+    """The mailbox owner, as users.getProfile reports them."""
+
+    email: str | None
+    messages_total: int | None
+    threads_total: int | None
+
+
+class GmailContextInbox(TypedDict):
+    """The INBOX label's counts."""
+
+    unread_count: int
+    message_count: int
+
+
+class GmailContextSnapshot(TypedDict):
+    """GMAIL_CUSTOM_GATHER_CONTEXT: who the mailbox is, its inbox counts, and its newest ids."""
+
+    user: GmailContextUser
+    inbox: GmailContextInbox
+    recent_message_ids: list[str]
+
+
+class GmailFetchInlineResult(TypedDict):
+    """A fetch returned whole, as projected messages.
+
+    total_matched and hint appear only when a result too large to inline had
+    no session to offload into and was cut to the messages that fit.
+    """
+
+    fetched_count: int
+    truncated: bool
+    messages: list[dict[str, object]]
+    total_matched: NotRequired[int]
+    hint: NotRequired[str]
+
+
+class GmailFetchPartialResult(TypedDict):
+    """A fetch that failed partway: the messages read before the error, and the error."""
+
+    fetched_count: int
+    truncated: bool
+    partial: bool
+    error: str
+    note: str
+    messages: list[dict[str, object]]
+
+
+class GmailThreadResult(TypedDict):
+    """One thread of a GMAIL_FETCH_THREAD result, its messages projected."""
+
+    id: str
+    message_count: int
+    messages: list[dict[str, object]]
+
+
+class GmailFetchThreadResult(TypedDict):
+    """GMAIL_FETCH_THREAD returned whole, each thread's messages grouped under it."""
+
+    fetched_threads: int
+    total_messages: int
+    truncated: bool
+    threads: list[GmailThreadResult]

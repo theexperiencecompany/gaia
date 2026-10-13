@@ -9,7 +9,7 @@ Real: stream_manager (real Redis), _save_conversation_async -> update_messages
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from bson import ObjectId
 import pytest
@@ -63,7 +63,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -108,7 +108,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -142,7 +142,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("agent exploded")),
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 
 import { usePrefetchConnectionDetails } from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -47,25 +47,25 @@ export const useVoiceModeControls = (
     // upgrade modal. While subscription status is unknown, let the user
     // proceed — the backend's 402 is the real enforcement; wrongly paywalling a paying user is worse.
     if (!isSubscriptionStatusUnknown && !isPaid) {
-      trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+      track("chat:voice_mode_toggled", {
         voice_mode_enabled: false,
-        conversation_id: convoIdParam,
+        conversation_id: convoIdParam || undefined,
         blocked_reason: "upgrade_required",
       });
       openUpgradeModal(undefined, { dismissible: true, source: "voice_mode" });
       return;
     }
-    trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+    track("chat:voice_mode_toggled", {
       voice_mode_enabled: true,
-      conversation_id: convoIdParam,
+      conversation_id: convoIdParam || undefined,
     });
     enterVoiceMode(convoIdParam || undefined);
   };
 
   const endVoiceCall = () => {
-    trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+    track("chat:voice_mode_toggled", {
       voice_mode_enabled: false,
-      conversation_id: convoIdParam,
+      conversation_id: convoIdParam || undefined,
     });
     // Capture the active id BEFORE exiting (exitVoiceMode clears the store id).
     const activeId = useChatStore.getState().activeConversationId;

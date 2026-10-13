@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 import { paywallCopyFor } from "../constants";
@@ -39,10 +39,10 @@ export function useUpgradeModal() {
       offer: shownOffer,
       source,
     } = useUpgradeModalStore.getState();
-    trackEvent(ANALYTICS_EVENTS.PAYWALL_MODAL_VIEWED, {
+    track("paywall:modal_viewed", {
       dismissible: shownAsDismissible,
       has_discount_code: Boolean(shownOffer?.discountCode),
-      source,
+      source: source ?? undefined,
     });
   }, [open, isOnboardingRoute]);
 

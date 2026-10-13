@@ -3,7 +3,6 @@
  * the adapter's `reactToMessage`, and the text fallback when it is refused.
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   REACTION_OUTCOME,
@@ -101,7 +100,7 @@ describe("BaseBotAdapter outbound reaction", () => {
     expect(capture.mock.calls).toStrictEqual([
       [
         "telegram:chat-1",
-        BOT_EVENTS.REACTION_DELIVERED,
+        "bot:reaction_delivered",
         { success: true, surface: "outbound", delivery: "native" },
       ],
     ]);
@@ -118,7 +117,7 @@ describe("BaseBotAdapter outbound reaction", () => {
       expect(capture.mock.calls).toStrictEqual([
         [
           "telegram:chat-1",
-          BOT_EVENTS.REACTION_DELIVERED,
+          "bot:reaction_delivered",
           {
             success: true,
             surface: "outbound",
@@ -139,7 +138,7 @@ describe("BaseBotAdapter outbound reaction", () => {
     expect(capture.mock.calls).toStrictEqual([
       [
         "telegram:chat-1",
-        BOT_EVENTS.REACTION_DELIVERED,
+        "bot:reaction_delivered",
         {
           success: true,
           surface: "outbound",

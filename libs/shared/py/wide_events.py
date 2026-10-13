@@ -58,7 +58,7 @@ from collections.abc import AsyncIterator, Coroutine
 import contextlib
 import contextvars
 import time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 import uuid
 
 from loguru import logger as _loguru
@@ -125,6 +125,13 @@ _trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trac
 
 def _generate_trace_id() -> str:
     return uuid.uuid4().hex[:16]
+
+
+class TextShape(TypedDict):
+    """What a log may record about text a person wrote: its size and a join key, never the words."""
+
+    length: int
+    hash: NotRequired[str]
 
 
 class UserContext(TypedDict, total=False):
@@ -205,7 +212,7 @@ class TodoContext(TypedDict, total=False):
     has_due_date: bool
     project_id: str
     search_mode: str  # "text"|"semantic"|"hybrid"
-    query: str
+    query: TextShape
     result_count: int
     page: int
     per_page: int
@@ -235,7 +242,7 @@ class MemoryContext(TypedDict, total=False):
     memory_id: str
     new_memory_id: str  # update → superseding entry id
     content_length: int
-    query: str
+    query: TextShape
     category: str
     doc_type: str
     version: int
@@ -317,9 +324,10 @@ class WorkflowContext(TypedDict, total=False):
 class SearchContext(TypedDict, total=False):
     """Cross-entity search operation context."""
 
-    query: str
+    query: TextShape
     mode: str
     result_count: int
+    duration_ms: int
     scope: list[str]  # which entity types were searched
 
 

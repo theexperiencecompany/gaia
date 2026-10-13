@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import type { NavbarDropdown } from "@/hooks/ui/useNavbar";
+import { track } from "@/lib/analytics";
 
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
@@ -40,7 +41,7 @@ interface NavbarItemsProps {
   pathname: string;
   hoveredItem: string | null;
   onDropdownMouseEnter: (
-    menu: string,
+    menu: NavbarDropdown,
     event: React.MouseEvent<HTMLButtonElement>,
   ) => void;
   onLinkMouseEnter: (label: string) => void;
@@ -64,7 +65,7 @@ export function NavbarItems({
               onLinkMouseEnter(item.label);
             }}
             onClick={() => {
-              trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_LINK_CLICKED, {
+              track("navigation:navbar_link_clicked", {
                 label: item.label,
                 href: item.href,
               });
@@ -79,9 +80,6 @@ export function NavbarItems({
             className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
             onMouseEnter={(event) => {
               onDropdownMouseEnter(item.menu, event);
-              trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED, {
-                menu: item.menu,
-              });
             }}
           >
             {hoveredItem === item.menu && (

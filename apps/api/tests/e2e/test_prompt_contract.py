@@ -31,7 +31,7 @@ USER_TURN = "Do I have any meetings tomorrow?"
 async def _construct_web_prompt(user_turn: str) -> list[AnyMessage]:
     """Assemble the message list the production prompt builder produces for a web turn."""
     return await construct_langchain_messages(
-        messages=[{"role": "user", "content": user_turn}],
+        query=user_turn,
         scope=MessageScope(source="web"),
     )
 

@@ -23,6 +23,7 @@ from app.constants.nurture import (
     NURTURE_UTM_MEDIUM,
     NURTURE_UTM_SOURCE,
 )
+from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.services.nurture.service import _within_frequency_caps
@@ -105,23 +106,21 @@ class TestScheduleFitsTheCaps:
         return datetime(2026, 1, offset, 9, tzinfo=UTC)
 
     def test_every_enabled_step_can_send_within_its_window(self) -> None:
-        sent: list[datetime] = []
+        sent: list[NurtureHistoryEntry] = []
         for step in NURTURE_STEPS:
             if not step.enabled:
                 continue
             window = range(step.day_offset, step.day_offset + NURTURE_BACKFILL_GRACE_DAYS + 1)
             send_day = next(
-                (
-                    day
-                    for day in window
-                    if _within_frequency_caps(
-                        [{"status": "sent", "at": t} for t in sent], self._day(day)
-                    )
-                ),
+                (day for day in window if _within_frequency_caps(sent, self._day(day))),
                 None,
             )
             assert send_day is not None, (
                 f"step {step.key} (day {step.day_offset}) is starved by the caps: "
                 f"no sendable day in its window. Tightening a cap starves a step."
             )
-            sent.append(self._day(send_day))
+            sent.append(
+                NurtureHistoryEntry(
+                    step=step.key, at=self._day(send_day), status=NurtureStepStatus.SENT
+                )
+            )

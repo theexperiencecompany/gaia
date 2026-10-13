@@ -66,7 +66,6 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 # missing invalidation, not a safety net.
 INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
 SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
-PROVIDER_METADATA_CACHE_TTL = ONE_DAY_TTL
 WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
 WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
@@ -91,6 +90,7 @@ LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 # Per-repository cache-key prefixes (one namespace per domain).
 NOTE_CACHE_PREFIX = "note"
 TODO_CACHE_PREFIX = "todo"
+USER_INTEGRATION_CACHE_PREFIX = "user_integration"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
 # A user's paired devices and the servers they expose. Generation scoped (see

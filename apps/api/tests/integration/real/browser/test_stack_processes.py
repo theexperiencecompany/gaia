@@ -21,7 +21,7 @@ import pytest
 
 from tests.integration.real.browser._stack.processes import API_ROOT, READY_SECONDS
 
-pytestmark = pytest.mark.skipif(
+_LINUX_ONLY = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="PR_SET_PDEATHSIG is Linux-only"
 )
 
@@ -54,7 +54,7 @@ def _alive(pid: int) -> bool:
     """Whether pid runs: a zombie (dead, not yet reaped by whoever inherited it) does not."""
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
     return stat.rsplit(") ", 1)[1].split()[0] != "Z"
 
@@ -68,6 +68,20 @@ def _wait_for(condition: Callable[[], object], what: str, seconds: float) -> Non
     raise AssertionError(f"{what} within {seconds}s")
 
 
+def test_a_process_reaped_while_its_stat_is_read_is_not_alive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The kernel answers ESRCH, not ENOENT, when the pid goes between open and read (CI run 37975291573)."""
+
+    def _reaped_mid_read(_path: Path) -> str:
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(Path, "read_text", _reaped_mid_read)
+
+    assert _alive(12345) is False
+
+
+@_LINUX_ONLY
 def test_a_hard_killed_test_process_takes_its_stack_processes_and_their_engines_along(
     tmp_path: Path,
 ) -> None:

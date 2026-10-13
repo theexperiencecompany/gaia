@@ -17,7 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import Depends, FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
+from posthog.contexts import get_context_distinct_id
 import pytest
+from starlette.testclient import TestClient
 
 from app.api.v1.endpoints.bot import require_bot_api_key, router as bot_router
 from app.api.v1.middleware.logging import LoggingMiddleware
@@ -26,6 +28,7 @@ from app.constants import error_codes
 from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.core.exception_handlers import register_exception_handlers
+from app.core.middleware import configure_middleware
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
@@ -925,3 +928,40 @@ class TestBotRefusalWideEvent:
         assert event["reason"] == "bot_api_key_invalid"
         assert event["platform"] == "telegram"
         mock_platform_lookup.assert_not_awaited()
+
+
+@pytest.mark.integration
+class TestBotRequestAnalyticsAttribution:
+    """A bot request's PostHog context identity is the linked GAIA user.
+
+    Built with the production middleware stack, because the bug was the order:
+    the PostHog context ran before bot auth had resolved anyone.
+    """
+
+    def test_posthog_context_on_a_bot_route_is_the_linked_user(
+        self,
+        mock_platform_lookup: AsyncMock,
+        mock_redis_cache: dict,
+        posthog_events: list[dict[str, object]],
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        app = FastAPI()
+        configure_middleware(app)
+        seen: dict[str, str | None] = {}
+
+        @app.post("/api/v1/bot/probe")
+        async def probe() -> dict[str, bool]:
+            seen["distinct_id"] = get_context_distinct_id()
+            return {"ok": True}
+
+        response = TestClient(app).post(
+            "/api/v1/bot/probe",
+            headers={
+                "X-Bot-API-Key": TEST_BOT_API_KEY,
+                "X-Bot-Platform": TEST_PLATFORM,
+                "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+            },
+        )
+
+        assert response.status_code == 200
+        assert seen["distinct_id"] == TEST_USER_ID

@@ -4,13 +4,13 @@ import { Skeleton } from "@heroui/skeleton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import type { CheckoutSource, Plan } from "../api/pricingApi";
-import { ANNUAL_PRICE_RETENTION } from "../constants";
+import { MONTHS_PER_YEAR } from "../constants";
 import {
   useIsSubscriptionStatusUnknown,
   usePricing,
 } from "../hooks/usePricing";
 import { getPlanViewerState } from "../types";
-import { convertToUSDCents } from "../utils/currencyConverter";
+import { isMonthlyTwin } from "../utils/annualSavings";
 import {
   displayPlanName,
   isEnterprisePlan,
@@ -161,16 +161,14 @@ export function PricingCards({
             index === 0
               ? "Includes:"
               : `Everything in ${sortedPlans[index - 1].name}, plus`;
-          // Convert any currency to USD cents for display
-          const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
-
-          // Every paid annual plan carries the same discount, so the pre-discount
-          // price (what 12 monthly payments would cost) is the annual price
-          // divided by the retained fraction.
-          const originalPriceInUSDCents =
-            !durationIsMonth && plan.amount > 0
-              ? Math.round(priceInUSDCents / ANNUAL_PRICE_RETENTION)
-              : undefined;
+          // A yearly card is compared against twelve payments of the same tier's
+          // monthly row, so the saving is whatever the two live prices say.
+          const monthlyTwin = durationIsMonth
+            ? undefined
+            : plans.find((candidate: Plan) => isMonthlyTwin(candidate, plan));
+          const originalPrice = monthlyTwin
+            ? monthlyTwin.amount * MONTHS_PER_YEAR
+            : undefined;
 
           // current_plan can be null even for an active subscription (product not
           // in the active plan list), so use plan_type instead: pro is the only
@@ -208,8 +206,9 @@ export function PricingCards({
               features={plan.features}
               featuresHeading={featuresHeading}
               description={plan.description ?? undefined}
-              price={priceInUSDCents} // Always in USD cents
-              originalPrice={originalPriceInUSDCents}
+              price={plan.amount}
+              currency={plan.currency}
+              originalPrice={originalPrice}
               title={displayPlanName(plan)}
               isPro={isPro}
               planViewerState={planViewerState}

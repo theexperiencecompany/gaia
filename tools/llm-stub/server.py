@@ -47,6 +47,7 @@ from directives import (
     DirectiveError,
     _last_user_index,
     _script_message_index,
+    _strip_echoed_payloads,
     message_text,
     parse_directives,
     parse_request,
@@ -55,7 +56,7 @@ from directives import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-from wire import build_chat_completion, sse_lines
+from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
 
@@ -100,7 +101,7 @@ def _log_request(parsed: ChatRequest) -> None:
         return
     idx = script_idx if script_idx is not None else _last_user_index(parsed.messages)
     text = message_text(parsed.messages[idx]) if idx is not None else ""
-    directives = parse_directives(text) if script_idx is not None else []
+    directives = parse_directives(_strip_echoed_payloads(text)) if script_idx is not None else []
     print(
         f"[llm-stub] roles=[{roles}] tools={len(parsed.available_tools)} "
         f"directives={len(directives)} script_msg={text[:160]!r}",
@@ -125,12 +126,13 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
 
+    request_tokens = prompt_tokens(parsed.messages)
     if parsed.stream:
         return StreamingResponse(
-            sse_lines(parsed.model, response),
+            sse_lines(parsed.model, response, request_tokens),
             media_type="text/event-stream",
         )
-    return JSONResponse(content=build_chat_completion(parsed.model, response))
+    return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)

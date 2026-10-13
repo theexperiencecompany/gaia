@@ -23,7 +23,7 @@ import {
   GITHUB_RELEASES_BASE,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
 
@@ -157,7 +157,7 @@ function DesktopDownloadButton({
         variant={buttonVariant}
         startContent={icon}
         onPress={() => {
-          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+          track("navigation:cta_clicked", {
             destination: "github_releases",
             os,
           });
@@ -193,7 +193,7 @@ function DesktopDownloadButton({
       variant={buttonVariant}
       startContent={icon}
       onPress={() => {
-        trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+        track("navigation:cta_clicked", {
           destination: "download",
           os,
         });
@@ -315,9 +315,7 @@ function MobileSection() {
             target="_blank"
             rel="noopener noreferrer"
             onPress={() => {
-              trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
-                button_text: "mobile_waitlist",
-              });
+              track("cta:get_started_clicked", {});
             }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />

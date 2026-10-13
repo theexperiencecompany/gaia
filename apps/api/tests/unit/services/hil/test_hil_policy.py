@@ -160,27 +160,38 @@ class TestOverrides:
 
 
 class TestPreferencesFailure:
-    async def test_an_unreachable_store_fails_open_only_because_hil_is_off(self) -> None:
-        # Today HIL_DEFAULT_MODE is always_allow, so a Redis/Mongo blip must not start
-        # gating every tool call for the ~100% of users who have HIL off.
+    @pytest.mark.regression
+    async def test_an_unreadable_store_asks_for_a_destructive_call(self) -> None:
+        """Regression: an owner whose preferences could not load ran every tool as always_allow."""
         with (
-            patch(f"{MODULE}.HIL_DEFAULT_MODE", "always_allow"),
             patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "allow"
+            assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "ask"
 
-    async def test_once_the_default_is_a_gating_mode_an_unreachable_store_must_raise(self) -> None:
-        # THE launch-safety test. The day HIL_DEFAULT_MODE flips to always_ask, this
-        # fail-open becomes "a Redis blip disables the approval gate for everyone".
-        # The guard must re-raise so the gate's own fail-closed handler denies the call.
-        for gating_mode in ("always_ask", "auto"):
-            with (
-                patch(f"{MODULE}.HIL_DEFAULT_MODE", gating_mode),
-                patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
-                pytest.raises(ConnectionError),
-            ):
-                await resolve_policy(make_request(), USER_ID, "delete_everything")
+    async def test_an_unreadable_store_still_lets_a_harmless_call_through(self) -> None:
+        with (
+            patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "list_todos") == "allow"
+
+    @pytest.mark.regression
+    async def test_the_failure_is_logged_as_a_warning_with_its_reason(self) -> None:
+        with (
+            patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+            patch(f"{MODULE}.log") as log_mock,
+        ):
+            await resolve_policy(make_request(), USER_ID, "delete_everything")
+
+        log_mock.error.assert_not_called()
+        (fields,) = [
+            c.kwargs for c in log_mock.warning.call_args_list if "Preferences" in c.args[0]
+        ]
+        assert fields["error_type"] == "ConnectionError"
+        assert fields["error"] == "redis down"
+        assert fields["user_id"] == USER_ID
 
 
 class TestHasPausingSibling:

@@ -3,7 +3,11 @@
 import Image from "next/image";
 import { ReceiptPrinter } from "@/features/pricing/components/ReceiptPrinter";
 import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
-import { CENTS_PER_DOLLAR } from "@/features/pricing/constants";
+import {
+  formatMoney,
+  isWellFormedCurrency,
+  toMajorUnits,
+} from "@/features/pricing/utils/money";
 
 type PostPaymentReceiptProps = {
   /** Current printer stage, driven by useReceiptPrinterStage. */
@@ -28,39 +32,19 @@ type PostPaymentReceiptProps = {
   quantity?: number;
 };
 
-/** Intl throws only for a code that is not three ASCII letters; a well-formed
- *  but unknown code renders as the code itself. */
-const WELL_FORMED_CURRENCY = /^[A-Za-z]{3}$/;
-
-/** One formatter per currency, built once. Constructing an `Intl.NumberFormat`
- *  is the expensive part, and a receipt re-renders. */
-const MONEY_FORMATTERS = new Map<string, Intl.NumberFormat>();
-
-function moneyFormatter(code: string): Intl.NumberFormat {
-  const cached = MONEY_FORMATTERS.get(code);
-  if (cached) return cached;
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: code,
-    currencyDisplay: "narrowSymbol",
-  });
-  MONEY_FORMATTERS.set(code, formatter);
-  return formatter;
-}
-
 /** Formats minor-unit money with the currency it was actually charged in. */
-function formatMoney(amount: number, currency?: string): string {
+function formatReceiptMoney(amount: number, currency?: string): string {
   const code = currency || "USD";
   // The currency arrives from webhook data, so a malformed code is possible and
   // would take the screen down with a RangeError; it's checked rather than
   // caught, since silently swallowing it would print the wrong money silently.
-  if (!WELL_FORMED_CURRENCY.test(code)) {
+  if (!isWellFormedCurrency(code)) {
     console.error(
       `Receipt: subscription currency "${code}" is not a currency code; printing the bare amount`,
     );
-    return `${amount / CENTS_PER_DOLLAR} ${code}`;
+    return `${toMajorUnits(amount, code)} ${code}`;
   }
-  return moneyFormatter(code).format(amount / CENTS_PER_DOLLAR);
+  return formatMoney(amount, code);
 }
 
 function formatDate(dateString?: string | null): string | null {
@@ -123,9 +107,9 @@ export function PostPaymentReceipt({
   const nextBilling = formatDate(nextBillingDate);
   const purchased = formatDate(purchasedAt);
   const cycle = billingCycleLabel(billingPeriod);
-  const price = amount != null ? formatMoney(amount, currency) : null;
+  const price = amount != null ? formatReceiptMoney(amount, currency) : null;
   const lineTotal =
-    amount != null ? formatMoney(amount * quantity, currency) : null;
+    amount != null ? formatReceiptMoney(amount * quantity, currency) : null;
   const bars = barcodeBars(subscriptionRef ?? displayName);
 
   return (

@@ -25,12 +25,14 @@ from langgraph.store.base import BaseStore
 
 from app.agents.context.slots import (
     SINGLETON_SLOTS,
+    TAIL_VOLATILE_PROVIDERS,
     PromptSlot,
     request_slot_order,
     slot_of,
 )
+from app.agents.llm.lane import ModelLane
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable, agent_configurable, config_agent_name
+from app.models.agent_models import config_agent_name, read_agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from app.services.latency_metrics import observe_graph_node
 from app.utils.multimodal import extract_text_content
@@ -108,9 +110,7 @@ def _keep_latest_per_slot(
 def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
     """Keep the latest message per slot and emit them in canonical slot order.
 
-    The order depends on the provider the request is bound for — see
-    request_slot_order. The lane's provider is read off the configurable,
-    which build_agent_config derives from the resolved ModelLane.
+    The order depends on the provider of the run's lane — see request_slot_order.
     """
     try:
         messages = state.get("messages", [])
@@ -121,8 +121,8 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
         for message in messages:
             by_slot[slot_of(message)].append(message)
 
-        configurable: AgentConfigurable = agent_configurable(config)
-        slot_order = request_slot_order(configurable.get("provider"))
+        lane = ModelLane.from_configurable(read_agent_configurable(config).lane)
+        slot_order = request_slot_order(lane.provider if lane else None)
         kept = _keep_latest_per_slot(by_slot, slot_order)
 
         # A short content fingerprint per slot, to name which slot moved the
@@ -143,6 +143,8 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
         # behind the cache boundary. Characters, not tokens — no tokenizer
         # here, and ~4 chars/token is close enough to rank the slots.
         slot_chars = {name: len(text) for name, text in slot_text.items()}
+        # OpenRouter-wire providers place memory recall after conversation; OpenAI
+        # and Gemini keep it ahead, which is the layout this field diagnoses.
 
         log.set(
             prompt_pruning={
@@ -153,10 +155,7 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
                 "dropped_system_prompts": kept.dropped_system,
                 "dropped_time_context": kept.dropped_time,
                 **{field: bool(by_slot.get(slot)) for slot, field in _KEPT_FIELDS.items()},
-                # Which of the two layouts the request got. The tail layout is
-                # what lets the conversation join the cached prefix, so a
-                # sudden drop in cache hit rate is answered by this field.
-                "tail_layout": slot_order != tuple(PromptSlot),
+                "tail_layout": lane is not None and lane.provider in TAIL_VOLATILE_PROVIDERS,
             }
         )
 

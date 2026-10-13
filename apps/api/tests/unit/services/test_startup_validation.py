@@ -31,57 +31,47 @@ validate_startup_requirements = startup_validation.validate_startup_requirements
 
 class TestValidateStartupRequirements:
     async def test_passes_when_payment_is_set_up(self) -> None:
-        with patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)):
+        with (
+            patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.backfill_plan_tiers", AsyncMock(return_value=0)) as backfill,
+        ):
             assert await validate_startup_requirements() is None
+        backfill.assert_awaited_once_with()
+
+    async def test_a_catalogue_row_it_cannot_tag_halts_startup(self) -> None:
+        with (
+            patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=True)),
+            patch(
+                f"{MODULE}.backfill_plan_tiers",
+                AsyncMock(side_effect=RuntimeError("Plan rows with no plan_type")),
+            ),
+            pytest.raises(RuntimeError, match="Plan rows with no plan_type"),
+        ):
+            await validate_startup_requirements()
 
     async def test_raises_when_payment_is_not_set_up(self) -> None:
-        # Dodo configured: the seeder must NOT fire — a Dodo instance missing
-        # its plans is a real misconfiguration and keeps the boot gate.
-        dodo_settings = MagicMock()
-        dodo_settings.DODO_PAYMENTS_API_KEY = "dodo_key"
         with (
-            patch(f"{MODULE}.settings", dodo_settings),
+            patch(f"{MODULE}.settings", MagicMock(billing_enabled=True)),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.seed_free_plan_if_missing", new_callable=AsyncMock) as mock_seed,
             pytest.raises(RuntimeError, match="Startup requirements not met"),
         ):
             await validate_startup_requirements()
 
-        mock_seed.assert_not_awaited()
-
-    async def test_boots_by_seeding_free_plan_when_no_dodo(self) -> None:
-        # Selfhost/dev: no Dodo key, empty plans — the seeder provisions the
-        # Free row and the gate passes instead of demanding the Dodo script.
-        free_settings = MagicMock()
-        free_settings.DODO_PAYMENTS_API_KEY = None
+    async def test_boots_without_plans_when_billing_is_disabled(self) -> None:
         with (
-            patch(f"{MODULE}.settings", free_settings),
+            patch(f"{MODULE}.settings", MagicMock(billing_enabled=False)),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.seed_free_plan_if_missing", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.backfill_plan_tiers", AsyncMock(return_value=0)) as backfill,
         ):
             assert await validate_startup_requirements() is None
-
-    async def test_no_dodo_with_plans_appearing_between_counts_boots(self) -> None:
-        # The seeder returns False only when plans already exist (another
-        # process seeded between the two counts); the gate must then confirm
-        # them and boot instead of demanding the Dodo script.
-        free_settings = MagicMock()
-        free_settings.DODO_PAYMENTS_API_KEY = None
-        with (
-            patch(f"{MODULE}.settings", free_settings),
-            patch(f"{MODULE}.is_payment_setup", AsyncMock(side_effect=[False, True])),
-            patch(f"{MODULE}.seed_free_plan_if_missing", AsyncMock(return_value=False)),
-        ):
-            assert await validate_startup_requirements() is None
+        backfill.assert_not_awaited()
 
     async def test_remediation_names_a_script_that_actually_exists(self) -> None:
-        # The guidance is the value of this check: it once named a missing
-        # script. Dodo stays configured so the payment remedy is in play
-        # for the unseeded-payment cases.
-        dodo_settings = MagicMock()
-        dodo_settings.DODO_PAYMENTS_API_KEY = "dodo_key"
+        # The guidance is the whole value of this check — it previously pointed at
+        # ./scripts/setup.sh, which does not exist in the repo, so an operator who
+        # followed it got "no such file" instead of a seeded database.
         with (
-            patch(f"{MODULE}.settings", dodo_settings),
+            patch(f"{MODULE}.settings", MagicMock(billing_enabled=True)),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
             pytest.raises(RuntimeError) as excinfo,
         ):

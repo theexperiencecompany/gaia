@@ -2,7 +2,7 @@ import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import type { ReactNode } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";
@@ -72,7 +72,7 @@ export default function UseCaseDetailLayout({
               color="#00bbff"
               className="shrink-0 text-black!"
               onClick={() => {
-                trackEvent(ANALYTICS_EVENTS.USE_CASE_CLICKED, {
+                track("use_cases:clicked", {
                   use_case_id: id,
                 });
                 onCreateWorkflow();

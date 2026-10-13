@@ -33,6 +33,16 @@ _COMMUNITY_SORT: dict[str, list[tuple[str, int]]] = {
 }
 
 
+# store_tools upserts {integration_id, tools} for an id that has no catalog document,
+# so a stub is exactly a document with tools and none of the Integration identity fields.
+_IDENTITY_FIELDS = ("name", "description", "category", "managed_by")
+_TOOLS_STUB_FILTER: dict[str, object] = {
+    "tools": {"$exists": True},
+    **{field: {"$exists": False} for field in _IDENTITY_FIELDS},
+}
+_FULL_DOCUMENT_FILTER: dict[str, object] = {field: {"$exists": True} for field in _IDENTITY_FIELDS}
+
+
 class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     collection_name = "integrations"
     document_model = Integration
@@ -461,6 +471,23 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice
         )
         return slice_.tools if slice_ is not None else []
+
+    async def tools_stub_ids(self) -> list[str]:
+        """Ids whose only document is a tools-only stub (never a full Integration)."""
+        return await self._distinct("integration_id", _TOOLS_STUB_FILTER)
+
+    async def full_document_ids(self, integration_ids: list[str]) -> list[str]:
+        """Those of integration_ids that have a full Integration document (not just a tools stub)."""
+        return await self._distinct(
+            "integration_id", {"integration_id": {"$in": integration_ids}, **_FULL_DOCUMENT_FILTER}
+        )
+
+    async def delete_tools_stub(self, integration_id: str) -> bool:
+        """Delete the tools-only stub for an id; a full Integration document is never matched."""
+        # Equivalent under mutation: cache_policy is None here, so the scope only feeds no-op eviction.
+        return await self._remove(
+            integration_id, REPO_GLOBAL_SCOPE, _TOOLS_STUB_FILTER
+        )  # pragma: no mutate
 
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""

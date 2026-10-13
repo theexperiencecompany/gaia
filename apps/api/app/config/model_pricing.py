@@ -34,12 +34,13 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# Per-1k USD rates by model id (https://openrouter.ai/api/v1/models for the
-# OpenRouter-served ids). Nothing reconciles these against the live listings —
-# re-check by hand when a model id here is added or re-pointed.
+# Per-1k USD rates by model id: the price only where the provider reports no
+# per-call cost (direct OpenAI comms, direct Gemini); elsewhere the provider's
+# figure is booked. Rows track list prices by hand; re-check when an id moves.
 MODEL_PRICING: dict[str, ModelPricing] = {
-    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME — the graph lane on every tier.
-    # Live 2026-09-20: $0.04/$0.08/$0.016 per 1M in/out/cached.
+    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME. UNUSED AS A PRICE: OpenRouter reports
+    # every call's cost (no row table-priced, 30 days to 2026-10-08); this only keeps
+    # a cost-less reply off DEFAULT_PRICING. Stale: live 2026-10-08 is $0.0137/$1.28.
     "deepseek/deepseek-v4-flash-0731": ModelPricing(
         input_cost_per_1k=0.00004,
         output_cost_per_1k=0.00008,
@@ -105,8 +106,8 @@ def get_model_pricing(model_name: str) -> ModelPricing:
     if variant and base in MODEL_PRICING:
         return MODEL_PRICING[base]
     if _is_dev_custom_model(model_name):
-        # Any id a developer points DEV_LLM_MODEL at: unpriced by design, and
-        # has_rate_card still marks its cost estimated. An error per call was noise.
+        # Any id a developer points DEV_LLM_MODEL at: unpriced by design, and the
+        # ledger still marks it cost_source="table". An error per call was noise.
         return DEFAULT_PRICING
     # A model id missing from the table is priced at DEFAULT_PRICING, which is
     # not its real rate — so it must never pass quietly.
@@ -120,11 +121,6 @@ def get_model_pricing(model_name: str) -> ModelPricing:
 def _is_dev_custom_model(model_name: str) -> bool:
     """Whether model_name is the development-only custom endpoint's model (DEV_LLM_MODEL)."""
     return settings.ENV == "development" and model_name == settings.DEV_LLM_MODEL
-
-
-def has_rate_card(model_name: str) -> bool:
-    """Return True when the model has a real entry, rather than DEFAULT_PRICING."""
-    return model_name in MODEL_PRICING
 
 
 def calculate_token_cost(

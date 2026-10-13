@@ -46,7 +46,7 @@ pytestmark = pytest.mark.e2e
 
 CONVERSATION = "conv-browser-e2e"
 STREAM = "stream-browser-e2e"
-USER = "user-e2e"
+USER = "6812f0b3c9a14e2b7d5a91f2"
 
 RETRIEVE = call("retrieve_tools", {"exact_tool_names": ["browser_task"]}, "r1")
 START = call("browser_task", {"task": "book a table for two at 7pm"}, "b1")

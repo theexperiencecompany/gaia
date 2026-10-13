@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.models.integration_models import UserToolNamespaces
 
 
 def _fake_tool(name: str, description: str = "test tool"):
@@ -136,7 +137,7 @@ class TestRetrieveToolsDiscoveryMode:
             ) as get_registry,
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
-                new=AsyncMock(return_value=["posthog"]),
+                new=AsyncMock(return_value=UserToolNamespaces(namespaces={"posthog"})),
             ),
             patch(
                 "app.agents.tools.core.retrieval.search_public_integrations",
