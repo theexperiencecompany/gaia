@@ -74,11 +74,8 @@ export function BotBubbleFooter({
   isRetrying,
 }: FooterProps) {
   const hasFollowUps = !!follow_up_actions && follow_up_actions.length > 0;
-  // Initial hidden state lives in classes (not a style prop) so the
-  // imperative hover reveal in useActionsHover keeps working untouched: it
-  // writes el.style.opacity/visibility on hover/focus, which overrides these
-  // classes, and clears back on leave/blur. Pure group-hover cannot cover the
-  // focus/blur path, so the ref logic stays the reveal mechanism.
+  // Hidden via classes so useActionsHover's inline opacity/visibility writes
+  // (which group-hover cannot replace: they cover focus/blur) still win.
   const rowClass = disableActions
     ? "hidden"
     : loading

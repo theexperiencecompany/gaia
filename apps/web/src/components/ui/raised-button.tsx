@@ -49,21 +49,15 @@ const getFlatMode = (color: string | undefined): FlatMode => {
   return null;
 };
 
-// Inline-style overrides for black/white flat modes live in globals.css
-// (.raised-flat-black / .raised-flat-white) as plain classes — the same
-// declarations, matched to the reference button's computed styles — so the
-// existing glossy treatment (bg-primary, dark:bg-zinc-500, ::before,
-// shadow-md) is neutralised without fighting cva specificity. Unlayered
-// classes beat layered utilities the way the old inline styles did.
+// Flat black/white modes are unlayered classes in globals.css: they beat the
+// layered glossy utilities without fighting cva specificity.
 const FLAT_CLASS: Record<Exclude<FlatMode, null>, string> = {
   black: "raised-flat-black",
   white: "raised-flat-white",
 };
 
-// Builds an rgba() string inside a call return: the no-inline-styles rule
-// traces custom-property values statically, so a template literal with an
-// rgba( shape would read as a hardcoded color even though every channel here
-// comes from the caller's dynamic `color` prop.
+// A function, not an inline template: no-inline-styles reads a literal rgba(
+// as a hardcoded color, though every channel comes from the `color` prop.
 const rgba = (
   rgb: { r: number; g: number; b: number },
   alpha: number,
@@ -76,11 +70,8 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = "button";
     const mode = getFlatMode(color);
 
-    // Custom-color glossy values (untouched legacy math: parse the color,
-    // take its WCAG relative luminance, then pick whichever of black/white
-    // has the higher WCAG contrast ratio via getContrastColor). Returned as
-    // plain data and fed through --rb-* vars in `style` below — null unless
-    // a parseable custom color is set outside flat mode.
+    // Glossy values for a custom color, fed through the --rb-* vars below;
+    // null in flat mode or when the color does not parse.
     const glossy = React.useMemo(() => {
       if (!color || mode) return null;
 
@@ -111,13 +102,8 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ? "before:hidden hover:scale-[0.98] hover:bg-transparent dark:bg-transparent dark:text-inherit"
       : "";
 
-    // flatNeutraliserClass goes BEFORE the cva/className output so caller-
-    // provided classes (e.g. a custom `hover:scale-*`) win the merge.
-    // Glossy colors are consumed from the --rb-* vars (same values the old
-    // inline styles carried: background/foreground/border/shadow, plus the
-    // hover + ::before highlight vars). dark: duplicates preserve the old
-    // inline-wins-over-dark:bg-zinc-500/dark:text-white behavior;
-    // transition-all + ease-in-out preserve the old `all 0.2s ease-in-out`.
+    // The neutraliser goes first so caller classes win the merge; the dark:
+    // duplicates keep the --rb-* colors ahead of dark:bg-zinc-500.
     const computedClassName = cn(
       flatNeutraliserClass,
       raisedButtonVariants({ variant, size, className }),

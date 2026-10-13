@@ -176,10 +176,13 @@
     "./config/biome-rules/no-chevron-from-icons.grit",
     "./config/biome-rules/no-hugeicons-import.grit",
     "./config/biome-rules/no-motion-react-heavy-imports.grit",
-    "./config/biome-rules/no-motion-full-import.grit",
-    "./config/biome-rules/no-unicode-symbols.grit"
+    "./config/biome-rules/no-motion-full-import.grit"
   ],
   "overrides": [
+    {
+      "includes": ["apps/web/**", "apps/mobile/**"],
+      "plugins": ["./config/biome-rules/no-unicode-symbols.grit"]
+    },
     {
       "includes": ["apps/web/**"],
       "plugins": [

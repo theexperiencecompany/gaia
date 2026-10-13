@@ -93,10 +93,8 @@ interface WeatherTheme {
   colorCode: string;
 }
 
-// NOTE: gray/slate gradients and hardcoded colorCode hex values are
-// intentional here — they encode weather semantics (mist, fog, clouds, etc.)
-// and must not be migrated to the zinc design-system palette.
-// Atmospheric conditions (weather codes 7xx) each have a distinct look.
+// Gray/slate gradients and hex colorCodes encode weather semantics (mist, fog,
+// clouds); keep them off the zinc palette. Each 7xx atmosphere code has its own look.
 const getAtmosphereTheme = (weatherId: number): WeatherTheme => {
   if (weatherId === 701) {
     // Mist

@@ -271,14 +271,8 @@ function OptionChips({
         const disabled = !selected && (isDisabled?.(option.value) ?? false);
         const note = personalisedNote?.(option.value) ?? null;
         const { icon: Icon, tint } = OPTION_STYLE[option.value];
-        // One pastel per option, on the fill, the text and the icon; the
-        // fill goes solid when picked. Founder's call, not a theme override.
-        // Applied via style (backgroundColor/color are allowed for this file)
-        // so the Chip className stays a static literal: bg-*/text-* utilities
-        // are rejected by the Chip restyle contract. The palette still lives
-        // in TINTS (single source); only its color name is reused here to
-        // reference the exact Tailwind v4 theme values (bg-*/15 compiles to
-        // the color-mix below).
+        // One pastel per option (solid when picked), via style because the Chip
+        // contract rejects bg-*/text-*; TINTS stays the single palette source.
         const tintName =
           Object.entries(TINTS).find(
             ([, optionTint]) => optionTint === tint,

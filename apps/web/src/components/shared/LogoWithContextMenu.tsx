@@ -209,10 +209,8 @@ export function LogoWithContextMenu({
       {isOpen && (
         <ContextMenuContent>
           {menuItemsConfig.map((item, index) => {
-            // Stagger delay rides on --menu-index (see .menu-stagger-item in
-            // globals.css). It sits on the same node as the animate-in
-            // classes — animation-delay is not inherited, so keeping it on
-            // the outer ContextMenuItem would be a no-op.
+            // --menu-index drives .menu-stagger-item's delay; it must sit on the
+            // animated node, since animation-delay is not inherited.
             const itemAnimationClass =
               "animate-in fade-in slide-in-from-left-2 duration-100 menu-stagger-item";
             const style = { "--menu-index": index } as CSSProperties;
