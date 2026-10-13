@@ -115,8 +115,14 @@ services:
   gaia-backend:
     logging: *default_logging
     image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
-    env_file:
-      - ../../apps/api/.env
+    # apps/api/.env is what `gaia up` writes. Platforms that deploy this file
+    # straight from the repo (Dokploy) write their UI variables to .env beside
+    # it instead; apps/api/.env is listed last so it wins where both exist.
+    env_file: &backend_env_files
+      - path: .env
+        required: false
+      - path: ../../apps/api/.env
+        required: false
     environment: &backend_environment
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1
@@ -190,8 +196,7 @@ services:
   arq_worker:
     logging: *default_logging
     image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
-    env_file:
-      - ../../apps/api/.env
+    env_file: *backend_env_files
     environment:
       <<: *backend_environment
       WORKER_TYPE: arq_worker
