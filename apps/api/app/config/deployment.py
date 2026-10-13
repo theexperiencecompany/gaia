@@ -36,6 +36,9 @@ class DeploymentProfile:
     runtime_credentials: provider keys may be stored at runtime; off means env only.
     hosted_models: GAIA Cloud's fixed per-role model routing and hosted generators;
         off means every role runs on the instance's own configured providers.
+    catalog_composio_auth_configs: the integration catalog's Composio auth config
+        ids exist in this deployment's Composio project (GAIA's own); off means
+        each integration needs an auth config from the instance's own project.
     """
 
     kind: DeploymentKind
@@ -45,6 +48,7 @@ class DeploymentProfile:
     enforces_usage_limits: bool
     runtime_credentials: bool
     hosted_models: bool
+    catalog_composio_auth_configs: bool
 
 
 @cache
@@ -71,4 +75,5 @@ def deployment_profile(
         enforces_usage_limits=enforces_plans and not unlimited_usage,
         runtime_credentials=kind is DeploymentKind.SELFHOST or local_auth,
         hosted_models=kind is DeploymentKind.PRODUCTION,
+        catalog_composio_auth_configs=kind is not DeploymentKind.SELFHOST,
     )

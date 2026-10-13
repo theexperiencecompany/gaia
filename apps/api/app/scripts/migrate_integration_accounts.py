@@ -50,7 +50,6 @@ from composio_client.types.connected_account_list_response import Item
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
 from app.constants.integrations import (
     COMPOSIO_ACCOUNT_LIST_LIMIT,
@@ -62,6 +61,10 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import LIVE_LEDGER_STATES
 from app.models.integration_models import IntegrationAccount, new_account_id
 from app.models.oauth_models import OAuthIntegration
+from app.services.composio.auth_config_resolver import (
+    composio_integrations,
+    resolve_auth_configs,
+)
 from app.services.composio.composio_service import get_composio_service, init_composio_service
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.integrations.account_identity import account_label, fetch_account_identity
@@ -287,14 +290,17 @@ async def _run(args: argparse.Namespace) -> None:
     init_composio_service()
     database = MongoDB(settings.MONGO_DB, MONGO_DATABASE_NAME).database
     user_integrations = database.user_integrations
-    composio_integrations = {
-        i.id: (i, i.composio_config.auth_config_id) for i in OAUTH_INTEGRATIONS if i.composio_config
+    resolved = await resolve_auth_configs()
+    integrations_to_migrate = {
+        i.id: (i, resolved[i.id].auth_config_id)
+        for i in composio_integrations()
+        if i.id in resolved
     }
 
     totals = _Totals()
     cursor = user_integrations.find(
         {
-            "integration_id": {"$in": list(composio_integrations)},
+            "integration_id": {"$in": list(integrations_to_migrate)},
             "$or": [
                 {"accounts.0": {"$exists": False}},
                 {"connected_account_id": {"$exists": True}},
@@ -303,7 +309,7 @@ async def _run(args: argparse.Namespace) -> None:
     )
     async for raw in cursor:
         doc = _LegacyRecord.model_validate(raw)
-        integration, auth_config_id = composio_integrations[doc.integration_id]
+        integration, auth_config_id = integrations_to_migrate[doc.integration_id]
         try:
             await _migrate_document(doc, integration, auth_config_id, totals, args.apply)
         except Exception as e:

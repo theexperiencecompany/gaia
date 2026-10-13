@@ -89,7 +89,7 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
-from app.config.composio_auth_configs import with_auth_config_overrides
+from app.config.composio_auth_configs import check_auth_config_ids
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -184,7 +184,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-_DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -2221,8 +2221,10 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
     ),
 ]
 
-OAUTH_INTEGRATIONS: list[OAuthIntegration] = with_auth_config_overrides(
-    _DECLARED_INTEGRATIONS, settings.COMPOSIO_AUTH_CONFIG_OVERRIDES
+check_auth_config_ids(
+    OAUTH_INTEGRATIONS,
+    settings.COMPOSIO_AUTH_CONFIG_OVERRIDES,
+    origin="COMPOSIO_AUTH_CONFIG_OVERRIDES",
 )
 
 
@@ -2248,26 +2250,13 @@ def get_short_name_mapping() -> dict[str, str]:
 
 
 @cache
-def get_composio_social_configs() -> dict[str, ComposioConfig]:
-    """Get COMPOSIO_SOCIAL_CONFIGS from integrations managed by Composio."""
-    configs = {}
-    for integration in OAUTH_INTEGRATIONS:
-        if integration.managed_by == "composio" and integration.composio_config:
-            configs[integration.provider] = integration.composio_config
-    return configs
-
-
-@cache
-def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
-    """Get an integration by its Composio auth config ID."""
-    return next(
-        (
-            i
-            for i in OAUTH_INTEGRATIONS
-            if i.composio_config and i.composio_config.auth_config_id == auth_config_id
-        ),
-        None,
-    )
+def get_composio_integrations_by_provider() -> dict[str, OAuthIntegration]:
+    """Map each Composio-managed integration's provider to the integration."""
+    return {
+        integration.provider: integration
+        for integration in OAUTH_INTEGRATIONS
+        if integration.managed_by == "composio" and integration.composio_config
+    }
 
 
 @cache

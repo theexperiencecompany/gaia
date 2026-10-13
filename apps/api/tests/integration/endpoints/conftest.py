@@ -17,13 +17,15 @@ from app.api.v1.dependencies import instance_admin as instance_admin_module
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import setup as setup_module
 from app.api.v1.endpoints.setup import router as setup_router
+from app.api.v1.endpoints.setup_composio import router as setup_composio_router
 from app.config.settings import settings
+from app.core.exception_handlers import register_exception_handlers
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import ProviderConfig
 
-FAKE_USER_ID = "setup-test-admin"
-NON_ADMIN_USER_ID = "setup-test-second-user"
+FAKE_USER_ID = "65f0c0ffee0000000000a001"
+NON_ADMIN_USER_ID = "65f0c0ffee0000000000a002"
 API = "/api/v1/setup"
 
 
@@ -140,7 +142,9 @@ def _reset_fake_state() -> None:
 
 def _client(*, authenticated: bool, user_id: str = FAKE_USER_ID) -> AsyncClient:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(setup_router, prefix=API)
+    app.include_router(setup_composio_router, prefix=API)
     if authenticated:
         app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(user_id=user_id)
     return AsyncClient(

@@ -28,6 +28,7 @@ import pytest
 from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
+from app.config.settings import settings
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
@@ -50,6 +51,7 @@ from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationSuccessResponse,
 )
+from app.services.composio import auth_config_resolver
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
@@ -2772,6 +2774,30 @@ class TestConnectComposioIntegration:
         seams["attach"].assert_awaited_once_with("state-token", "ca_initiated")
         seams["status"].assert_awaited_once_with(USER_ID, "slack", "created")
         seams["record"].assert_awaited_once_with(USER_ID, "slack")
+
+    async def test_an_integration_not_set_up_on_this_instance_mints_no_link(
+        self, seams: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {})
+        monkeypatch.setattr(
+            auth_config_resolver,
+            "instance_settings_repository",
+            SimpleNamespace(find_by_key=AsyncMock(return_value=None)),
+        )
+        auth_config_resolver.invalidate_auth_config_cache()
+
+        result = await self._connect()
+        auth_config_resolver.invalidate_auth_config_cache()
+
+        assert result.status == "error"
+        assert result.error == (
+            "Slack is not set up on this instance. An admin can add it in "
+            "Settings > Integrations setup."
+        )
+        seams["service"].connect_account.assert_not_awaited()
+        seams["attach"].assert_not_awaited()
+        seams["status"].assert_not_awaited()
 
     async def test_adding_an_account_leaves_a_working_integration_connected(
         self, seams: dict[str, MagicMock]

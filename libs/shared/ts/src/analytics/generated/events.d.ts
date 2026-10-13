@@ -75,6 +75,7 @@ export type ServerEventName =
   | "integration:custom_unpublished"
   | "integration:custom_updated"
   | "integration:disconnected"
+  | "integration:instance_setup_saved"
   | "integration:instructions_updated"
   | "integration:primary_changed"
   | "mcp:connection_tested"
@@ -948,6 +949,14 @@ export interface EventProperties {
     "integration": string;
     "status"?: number;
     "error_code"?: string;
+  };
+  "integration:instance_setup_saved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "stored_count": number;
+    "set_up_count": number;
+    "total_count": number;
   };
   "integration:instructions_updated": {
     "actor": "user" | "agent";

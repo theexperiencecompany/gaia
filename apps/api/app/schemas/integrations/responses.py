@@ -144,6 +144,8 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     is_featured: bool = False
     display_priority: int = 0
     available: bool = True
+    # A Composio integration with no auth config on this instance; Connect cannot work.
+    instance_setup_required: bool = False
     icon_url: str | None = None
     slug: str | None = None
     tool_count: int = 0

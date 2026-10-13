@@ -4350,6 +4350,38 @@
       }
     },
     {
+      "event": "integration:instance_setup_saved",
+      "class": "IntegrationInstanceSetupSaved",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin saved which Composio auth config each integration connects through.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin saved which Composio auth config each integration connects through.",
+        "properties": {
+          "stored_count": {
+            "title": "Stored Count",
+            "type": "integer"
+          },
+          "set_up_count": {
+            "title": "Set Up Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": ["stored_count", "set_up_count", "total_count"],
+        "title": "IntegrationInstanceSetupSaved",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:instructions_updated",
       "class": "IntegrationInstructionsUpdated",
       "owner": "server",

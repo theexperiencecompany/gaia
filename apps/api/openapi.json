@@ -3049,6 +3049,119 @@
         "title": "ComposedEmailOutput",
         "type": "object"
       },
+      "ComposioAuthConfigCandidate": {
+        "description": "An enabled auth config in the admin's Composio project for this integration's toolkit.",
+        "properties": {
+          "id": {
+            "description": "Composio auth config id (ac_...)",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name the admin gave it in Composio",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ComposioAuthConfigCandidate",
+        "type": "object"
+      },
+      "ComposioAuthConfigSource": {
+        "description": "Where the auth config an integration connects through comes from.",
+        "enum": [
+          "stored",
+          "env",
+          "catalog"
+        ],
+        "title": "ComposioAuthConfigSource",
+        "type": "string"
+      },
+      "ComposioIntegrationSetup": {
+        "description": "One Composio integration and the auth config it connects through on this instance.",
+        "properties": {
+          "auth_config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The id in effect; None means not set up",
+            "title": "Auth Config Id"
+          },
+          "detected": {
+            "description": "Matching auth configs found in the Composio project",
+            "items": {
+              "$ref": "#/components/schemas/ComposioAuthConfigCandidate"
+            },
+            "title": "Detected",
+            "type": "array"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComposioAuthConfigSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the id in effect comes from"
+          },
+          "toolkit": {
+            "description": "Composio toolkit slug the auth config must belong to",
+            "title": "Toolkit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_id",
+          "name",
+          "toolkit",
+          "auth_config_id",
+          "source",
+          "detected"
+        ],
+        "title": "ComposioIntegrationSetup",
+        "type": "object"
+      },
+      "ComposioSetupResponse": {
+        "description": "GET /setup/composio: the per-integration view the admin panel renders.",
+        "properties": {
+          "composio_configured": {
+            "description": "Whether a Composio API key resolves",
+            "title": "Composio Configured",
+            "type": "boolean"
+          },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/ComposioIntegrationSetup"
+            },
+            "title": "Integrations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "composio_configured",
+          "integrations"
+        ],
+        "title": "ComposioSetupResponse",
+        "type": "object"
+      },
       "ComposioWebhookAckResponse": {
         "description": "Acknowledgement returned to Composio once a webhook has been accepted.",
         "properties": {
@@ -10857,6 +10970,11 @@
             "title": "Id",
             "type": "string"
           },
+          "instanceSetupRequired": {
+            "default": false,
+            "title": "Instancesetuprequired",
+            "type": "boolean"
+          },
           "isFeatured": {
             "default": false,
             "title": "Isfeatured",
@@ -14602,6 +14720,24 @@
           "tool_name"
         ],
         "title": "SandboxToolSchemaRequest",
+        "type": "object"
+      },
+      "SaveComposioAuthConfigsRequest": {
+        "description": "The full set of auth config ids to store; integrations left out are cleared.",
+        "properties": {
+          "auth_configs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Integration id to Composio auth config id",
+            "title": "Auth Configs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "auth_configs"
+        ],
+        "title": "SaveComposioAuthConfigsRequest",
         "type": "object"
       },
       "SaveSocialProfilesResponse": {
@@ -36129,6 +36265,122 @@
           }
         },
         "summary": "Get Provider Catalog",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      }
+    },
+    "/api/v1/setup/composio": {
+      "get": {
+        "description": "Each Composio integration's auth config in effect, plus matches found in the Composio project.",
+        "operationId": "setup_get_composio_setup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposioSetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Composio Setup",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      }
+    },
+    "/api/v1/setup/composio/auth-configs": {
+      "put": {
+        "description": "Replace the instance's stored auth config ids and return the updated view.",
+        "operationId": "setup_put_composio_auth_configs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveComposioAuthConfigsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposioSetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Put Composio Auth Configs",
         "tags": [
           "Setup",
           "Setup"
