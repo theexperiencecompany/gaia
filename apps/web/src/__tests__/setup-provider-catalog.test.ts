@@ -72,7 +72,10 @@ const statusWith = (configured: string[]): SetupStatus => ({
   needs_setup: true,
   plans_seeded: true,
   providers: Object.fromEntries(
-    configured.map((key) => [key, { configured: true }]),
+    configured.map((key) => [
+      key,
+      { configured: true, source: "stored" as const },
+    ]),
   ),
 });
 
