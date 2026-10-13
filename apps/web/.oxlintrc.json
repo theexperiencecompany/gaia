@@ -14,7 +14,7 @@
   "settings": {
     "shadcn": {
       "componentImports": ["^@heroui/"],
-      "note": "See DESIGN.md for the card contract (outer rounded-3xl bg-zinc-800 p-4, inner rounded-2xl bg-zinc-900 p-3, no borders, status /10) and approved exceptions."
+      "note": "See DESIGN.md."
     }
   },
   "rules": {
@@ -168,8 +168,8 @@
           }
         ],
         "message": {
-          "spacing": "Don't restyle {{component}} spacing \u2014 use the {{component}} size prop (sm, md, lg) or {{around}}. See DESIGN.md card contract.",
-          "default": "Don't restyle {{component}} \u2014 use HeroUI variant/color/size props instead of {{className}}. See DESIGN.md (variants: solid, bordered, light, flat, faded, shadow, ghost)."
+          "spacing": "Don't restyle {{component}} spacing \u2014 use its size prop or {{around}}.",
+          "default": "Don't restyle {{component}} with {{className}} \u2014 use its props instead ({{variants|variant, color, radius, size}})."
         }
       }
     ],
@@ -216,7 +216,7 @@
           "text-medium",
           "bg-custom-gradient2"
         ],
-        "message": "Use a theme color for {{className}} ({{suggestions|see DESIGN.md status colors}}). Declared tokens: {{tokens|none found}}. See {{file|your theme CSS}}."
+        "message": "Use a theme color for {{className}} ({{suggestions|DESIGN.md status colors}}). Declared tokens: {{tokens|none found}} in {{file|your theme CSS}}."
       }
     ],
     "shadcn/no-arbitrary-values": [
@@ -267,13 +267,13 @@
           "pt-[12vh]",
           "tracking-[0.2em]"
         ],
-        "message": "Stay on the scale for {{className}} \u2014 use {{replacement|{{suggestions}}|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
+        "message": "Stay on the scale for {{className}} \u2014 use {{suggestions|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
       }
     ],
     "shadcn/no-inline-styles": [
       "warn",
       {
-        "message": "Inline style sets {{property}} \u2014 use classes (DESIGN.md); only measured geometry / dynamic Google-pill colors are allowed, see .oxlintrc.json overrides."
+        "message": "Inline style sets {{property|a spread style object}} \u2014 use classes; only measured geometry and dynamic Google-pill colors may be inline (see the .oxlintrc.json overrides)."
       }
     ],
     "shadcn/no-unknown-classes": [

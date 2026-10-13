@@ -2,7 +2,8 @@ engine biome(1.0)
 language js(typescript, jsx)
 
 // Contentless divider divs in features/**/components/** must use the HeroUI
-// <Divider className="bg-zinc-700/50"/> instead of a raw border-t/b div.
+// theme-default <Divider /> instead of a raw border-t/b div (a className on
+// Divider is itself a no-restyle error in .oxlintrc.json).
 // Matches self-closing divs only, so section wrappers that happen to carry a
 // top border plus content/padding are never flagged. MarkdownRenderer
 // hr-mapping + tables are exempt — triage those hits as keeps.
@@ -21,7 +22,7 @@ JsxSelfClosingElement() as $node where {
   $node <: not r"[\s\S]*rounded-full[\s\S]*",
   register_diagnostic(
     span = $node,
-    message = "Use HeroUI <Divider className='bg-zinc-700/50'/> instead of a contentless border-t/b div. (MarkdownRenderer hr-mapping + tables exempt.)",
+    message = "Use the theme-default HeroUI <Divider /> instead of a contentless border-t/b div. (MarkdownRenderer hr-mapping + tables exempt.)",
     severity = "error"
   )
 }

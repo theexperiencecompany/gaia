@@ -505,7 +505,7 @@ Chat thread cards (data cards, tool sections, info panels in chat) follow this t
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
 | Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Section divider | Theme-default `<Divider />` (or `bg-zinc-700/50` on dark zinc surfaces) |
+| Section divider | Theme-default `<Divider />` — no className (lint-enforced) |
 | Glass variant | `rounded-3xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` (no bg, just overlay on hover) |
 
@@ -637,8 +637,6 @@ Error state is driven by `aria-invalid={!!error}` — styling is applied automat
 | Disabled | `disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed` |
 | Error | `aria-invalid:ring-destructive/20 aria-invalid:border-destructive` |
 | Hover reveal | `opacity-0 transition-all group-hover:opacity-100` (parent needs `group`) |
-
-`hover:bg-zinc-700/50` appears only on workflow/integration marketing cards — intentional divergence, do not migrate.
 
 ### Loading & Empty States
 
