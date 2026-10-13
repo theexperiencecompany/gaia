@@ -1,5 +1,6 @@
 """Unit tests for reminder scheduler service."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -11,6 +12,7 @@ import time_machine
 from app.models.reminder_models import (
     AgentType,
     CreateReminderRequest,
+    ReminderCreation,
     ReminderDocument,
     ReminderModel,
     ReminderStatus,
@@ -26,6 +28,7 @@ from app.models.scheduler_models import (
     TaskRearm,
 )
 from app.services.reminder_service import ReminderScheduler
+from app.utils import redis_lock
 from app.utils.schedule import InvalidScheduleError
 
 # ---------------------------------------------------------------------------
@@ -64,8 +67,14 @@ def mock_repo():
             "app.services.reminder_service.reminder_repository.find_paused_for_reason",
             new_callable=AsyncMock,
         ) as m_find_paused,
+        patch(
+            "app.services.reminder_service.reminder_repository.find_active_twin",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as m_find_twin,
     ):
         yield SimpleNamespace(
+            find_active_twin=m_find_twin,
             find_paused_for_reason=m_find_paused,
             create=m_create,
             update_for_user=m_update,
@@ -141,6 +150,15 @@ def sample_reminder_doc(future_time, sample_payload):
 
 
 class TestCreateReminder:
+    @pytest.fixture(autouse=True)
+    def creation_lease(self) -> Iterator[MagicMock]:
+        """Grant the creation lease; its Redis semantics are proven in tests/contracts."""
+        lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
+        client = MagicMock()
+        client.lock.return_value = lock
+        with patch.object(redis_lock.redis_cache, "redis", client):
+            yield lock
+
     async def test_creates_one_time_reminder(
         self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
     ):
@@ -152,9 +170,9 @@ class TestCreateReminder:
             agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
         )
 
-        reminder_id = await scheduler.create_reminder(request, FAKE_USER_ID)
+        creation = await scheduler.create_reminder(request, FAKE_USER_ID)
 
-        assert reminder_id == oid
+        assert creation == ReminderCreation(reminder_id=oid, created=True)
         mock_repo.create.assert_awaited_once()
         m_schedule.assert_called_once()
 
@@ -171,9 +189,9 @@ class TestCreateReminder:
             repeat="0 9 * * *",
         )
 
-        reminder_id = await scheduler.create_reminder(request, FAKE_USER_ID)
+        creation = await scheduler.create_reminder(request, FAKE_USER_ID)
 
-        assert reminder_id == oid
+        assert creation == ReminderCreation(reminder_id=oid, created=True)
 
     async def test_recurring_reminder_persists_timezone(
         self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
@@ -279,28 +297,61 @@ class TestCreateReminder:
         mock_repo.create.return_value = _reminder_document(id=oid)
 
         future = datetime.now(UTC) + timedelta(hours=2)
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC, payload=sample_payload, repeat="0 9 * * *"
+        )
         with patch("app.services.reminder_service.get_next_run_time", return_value=future):
-            request = MagicMock(spec=CreateReminderRequest)
-            request.scheduled_at = None
-            request.repeat = "0 9 * * *"
-            request.max_occurrences = None
-            request.stop_after = None
-            request.timezone = None
-            request.model_dump.return_value = {
-                "agent": "static",
-                "payload": {"title": "Test", "body": "Body"},
-                "scheduled_at": future,
-                "repeat": "0 9 * * *",
-            }
+            creation = await scheduler.create_reminder(request, FAKE_USER_ID)
 
-            reminder_id = await scheduler.create_reminder(request, FAKE_USER_ID)
-
-        assert reminder_id == oid
+        assert mock_repo.create.await_args.args[0].scheduled_at == future
+        assert creation == ReminderCreation(reminder_id=oid, created=True)
 
 
 # ---------------------------------------------------------------------------
 # update_reminder
 # ---------------------------------------------------------------------------
+
+
+class TestCreateReminderIsIdempotent:
+    @pytest.fixture(autouse=True)
+    def creation_lease(self) -> Iterator[MagicMock]:
+        lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
+        client = MagicMock()
+        client.lock.return_value = lock
+        with patch.object(redis_lock.redis_cache, "redis", client):
+            yield lock
+
+    async def test_an_active_twin_is_returned_and_nothing_new_is_scheduled(
+        self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
+    ):
+        m_schedule, _ = mock_scheduler_base
+        twin = _reminder_document()
+        mock_repo.find_active_twin.return_value = twin
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
+        )
+
+        creation = await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        assert creation == ReminderCreation(reminder_id=twin.id, created=False)
+        mock_repo.find_active_twin.assert_awaited_once_with(
+            FAKE_USER_ID, sample_payload, None, future_time
+        )
+        mock_repo.create.assert_not_awaited()
+        m_schedule.assert_not_called()
+
+    async def test_no_lease_fails_loud_instead_of_risking_a_twin(
+        self, scheduler, mock_repo, mock_scheduler_base, creation_lease, future_time, sample_payload
+    ):
+        creation_lease.acquire.return_value = False
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
+        )
+
+        with pytest.raises(RuntimeError, match="reminder-creation lease"):
+            await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        mock_repo.create.assert_not_awaited()
 
 
 class TestUpdateReminder:

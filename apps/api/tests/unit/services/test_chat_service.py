@@ -3,7 +3,7 @@
 Tests cover the core orchestration logic in chat_service.py:
 - run_chat_stream_background: end-to-end background streaming coordination
 - _initialize_new_conversation: conversation creation and init chunk format
-- _save_conversation_async: MongoDB persistence with correct message structure
+- save_user_message / save_bot_reply: MongoDB persistence with correct message structure
 - extract_tool_data: JSON parsing and tool field extraction
 - _extract_response_text: response text extraction from SSE chunks
 - update_conversation_messages: legacy background-task scheduling path
@@ -29,7 +29,7 @@ from app.agents.core.background.session import (
     create_session,
     teardown_session,
 )
-from app.constants.chat import EMPTY_RESPONSE_FALLBACK
+from app.constants.chat import EMPTY_RESPONSE_FALLBACK, TURN_REPLY_NOT_SAVED
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
@@ -39,7 +39,8 @@ from app.services.chat.chunks import (
 )
 from app.services.chat.persistence import (
     initialize_new_conversation as _initialize_new_conversation,
-    save_conversation_async as _save_conversation_async,
+    save_bot_reply,
+    save_user_message,
 )
 from app.services.chat.stream import (
     _close_turn_timings,
@@ -353,39 +354,47 @@ class TestInitializeNewConversation:
 
 
 # ---------------------------------------------------------------------------
-# _save_conversation_async
+# save_user_message / save_bot_reply
 # ---------------------------------------------------------------------------
 
 
-class TestSaveConversationAsync:
-    async def test_saves_user_and_bot_messages(self, test_user, basic_body):
-        mock_update = AsyncMock()
-        with (
-            patch(
-                "app.services.chat.persistence.update_messages",
-                new=mock_update,
-            ),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="I am GAIA.",
-                tool_data={"tool_data": []},
-                metadata={},
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-            )
+async def _saved_user_message(body: MessageRequestWithHistory, user: AuthenticatedUser):
+    mock_update = AsyncMock()
+    with patch("app.services.chat.persistence.update_messages", new=mock_update):
+        await save_user_message(body, user, "conv_x", "umsg_specific")
+    request_arg = mock_update.call_args.args[0]
+    assert request_arg.conversation_id == "conv_x"
+    (user_msg,) = request_arg.messages
+    return user_msg
 
-        assert mock_update.called
-        request_arg = mock_update.call_args.args[0]
-        messages = request_arg.messages
-        assert len(messages) == 2
-        user_msg, bot_msg = messages
+
+async def _saved_bot_reply(user: AuthenticatedUser, body: MessageRequestWithHistory, **overrides):
+    mock_update = AsyncMock()
+    kwargs = {
+        "body": body,
+        "user": user,
+        "conversation_id": "conv_123",
+        "complete_message": "ok",
+        "tool_data": {},
+        "metadata": {},
+        "bot_message_id": "bmsg_1",
+        **overrides,
+    }
+    with patch("app.services.chat.persistence.update_messages", new=mock_update):
+        await save_bot_reply(**kwargs)
+    request_arg = mock_update.call_args.args[0]
+    assert request_arg.conversation_id == kwargs["conversation_id"]
+    (bot_msg,) = request_arg.messages
+    return bot_msg
+
+
+class TestSaveUserMessage:
+    async def test_saves_only_the_user_message_under_its_id(self, test_user, basic_body):
+        user_msg = await _saved_user_message(basic_body, test_user)
         assert user_msg.type == "user"
-        assert bot_msg.type == "bot"
+        assert user_msg.message_id == "umsg_specific"
 
-    async def test_user_message_content_comes_from_last_messages_entry(self, test_user):
+    async def test_content_comes_from_last_messages_entry(self, test_user):
         body = MessageRequestWithHistory(
             message="Fallback message",
             messages=[
@@ -394,167 +403,49 @@ class TestSaveConversationAsync:
             ],
             conversation_id="conv_x",
         )
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=body,
-                user=test_user,
-                conversation_id="conv_x",
-                complete_message="response",
-                tool_data={},
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        request_arg = mock_update.call_args.args[0]
-        user_msg = request_arg.messages[0]
-        assert user_msg.response == "Last turn"
+        assert (await _saved_user_message(body, test_user)).response == "Last turn"
 
-    async def test_user_message_falls_back_to_body_message(self, test_user):
+    async def test_content_falls_back_to_body_message(self, test_user):
         body = MessageRequestWithHistory(
-            message="Fallback content",
-            messages=[],
-            conversation_id="conv_y",
+            message="Fallback content", messages=[], conversation_id="conv_y"
         )
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=body,
-                user=test_user,
-                conversation_id="conv_y",
-                complete_message="response",
-                tool_data={},
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        request_arg = mock_update.call_args.args[0]
-        user_msg = request_arg.messages[0]
-        assert user_msg.response == "Fallback content"
+        assert (await _saved_user_message(body, test_user)).response == "Fallback content"
 
-    async def test_bot_message_contains_complete_message(self, test_user, basic_body):
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="The answer is 42.",
-                tool_data={},
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        request_arg = mock_update.call_args.args[0]
-        bot_msg = request_arg.messages[1]
+
+class TestSaveBotReply:
+    async def test_saves_only_the_reply_under_its_id(self, test_user, basic_body):
+        bot_msg = await _saved_bot_reply(
+            test_user, basic_body, complete_message="The answer is 42.", bot_message_id="b9"
+        )
+        assert bot_msg.type == "bot"
         assert bot_msg.response == "The answer is 42."
-
-    async def test_message_ids_are_set_on_models(self, test_user, basic_body):
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="ok",
-                tool_data={},
-                metadata={},
-                user_message_id="umsg_specific",
-                bot_message_id="bmsg_specific",
-            )
-        request_arg = mock_update.call_args.args[0]
-        assert request_arg.messages[0].message_id == "umsg_specific"
-        assert request_arg.messages[1].message_id == "bmsg_specific"
+        assert bot_msg.message_id == "b9"
 
     async def test_tool_data_applied_to_bot_message(self, test_user, basic_body):
-        mock_update = AsyncMock()
         tool_data = {
             "tool_data": [{"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}]
         }
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="ok",
-                tool_data=tool_data,
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        request_arg = mock_update.call_args.args[0]
-        bot_msg = request_arg.messages[1]
+        bot_msg = await _saved_bot_reply(test_user, basic_body, tool_data=tool_data)
         assert bot_msg.tool_data == tool_data["tool_data"]
 
-    async def test_correct_conversation_id_passed_to_update(self, test_user, basic_body):
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="specific_conv_id",
-                complete_message="ok",
-                tool_data={},
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        request_arg = mock_update.call_args.args[0]
-        assert request_arg.conversation_id == "specific_conv_id"
+    async def test_conversation_id_passed_to_update(self, test_user, basic_body):
+        await _saved_bot_reply(test_user, basic_body, conversation_id="specific_conv_id")
 
     async def test_react_ack_is_stamped_emoji_ack_with_target(self, test_user, basic_body) -> None:
         """A comms REACT turn saves the bare emoji with kind + target so every surface (reload, sync, second device) renders it as a reaction badge."""
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="😎",
-                tool_data={},
-                metadata={},
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-                kind=MessageKind.EMOJI_ACK,
-                reacts_to_message_id="umsg_1",
-            )
-        request_arg = mock_update.call_args.args[0]
-        bot_msg = request_arg.messages[1]
+        bot_msg = await _saved_bot_reply(
+            test_user,
+            basic_body,
+            complete_message="😎",
+            kind=MessageKind.EMOJI_ACK,
+            reacts_to_message_id="umsg_1",
+        )
         assert bot_msg.response == "😎"
         assert bot_msg.kind is MessageKind.EMOJI_ACK
         assert bot_msg.reacts_to_message_id == "umsg_1"
 
     async def test_plain_reply_stays_text_without_target(self, test_user, basic_body):
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="all set",
-                tool_data={},
-                metadata={},
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-            )
-        request_arg = mock_update.call_args.args[0]
-        bot_msg = request_arg.messages[1]
+        bot_msg = await _saved_bot_reply(test_user, basic_body, complete_message="all set")
         assert bot_msg.kind is MessageKind.TEXT
         assert bot_msg.reacts_to_message_id is None
 
@@ -606,6 +497,72 @@ class TestRunChatStreamBackground:
         with patch("app.services.chat.artifact_forwarder.redis_cache.redis", None):
             yield
 
+    @pytest.fixture(autouse=True)
+    def saved_user_message(self) -> Iterator[AsyncMock]:
+        """Stub the turn-start user-message write; these tests assert on the reply."""
+        with patch("app.services.chat.stream.save_user_message", new=AsyncMock()) as mock_save:
+            yield mock_save
+
+    async def test_the_user_message_is_saved_before_the_agent_runs(
+        self, test_user, existing_conv_body, saved_user_message
+    ):
+        saved_before_agent: list[bool] = []
+
+        async def agent() -> AsyncGenerator[str, None]:
+            saved_before_agent.append(saved_user_message.await_count == 1)
+            yield f"nostream: {json.dumps({'complete_message': 'ok'})}"
+
+        with (
+            _patch_stream_manager(_make_stream_manager_mock()),
+            patch("app.services.chat.stream.call_agent", new=MagicMock(return_value=agent())),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_um",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        assert saved_before_agent == [True]
+        assert saved_user_message.await_args.args[2] == "conv_existing_123"
+
+    async def test_a_reply_that_cannot_be_saved_is_replaced_by_a_visible_error(
+        self, test_user, existing_conv_body
+    ):
+        sm = _make_stream_manager_mock()
+        mock_save = AsyncMock(side_effect=[RuntimeError("document too large"), None])
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_text_then_nostream("Reminder set.", "Reminder set.")),
+            ),
+            patch("app.services.chat.stream.save_bot_reply", new=mock_save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_rs",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        assert mock_save.await_count == 2
+        replacement = mock_save.await_args_list[1].kwargs
+        assert replacement["error"] == TURN_REPLY_NOT_SAVED
+        assert replacement["complete_message"] == ""
+        assert (
+            replacement["bot_message_id"] == mock_save.await_args_list[0].kwargs["bot_message_id"]
+        )
+        published = [c.args[1] for c in sm.publish_chunk.await_args_list]
+        assert any(TURN_REPLY_NOT_SAVED in chunk for chunk in published)
+        # Saved, not failed: the turn still closes normally for the client.
+        assert "data: [DONE]\n\n" in published
+        sm.set_error.assert_not_awaited()
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 
@@ -625,7 +582,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -655,7 +612,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -684,7 +641,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -708,7 +665,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -744,7 +701,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_done_only_stream()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -771,7 +728,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_done_only_stream()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -801,7 +758,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_done_only_stream()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -826,7 +783,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -854,7 +811,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -877,7 +834,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -903,7 +860,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -939,7 +896,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.await_executor_done",
                 new=AsyncMock(side_effect=_cancel_lands_during_wait),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -978,7 +935,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -1022,7 +979,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(side_effect=RuntimeError("network timeout")),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1058,7 +1015,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(side_effect=RuntimeError("agent down")),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1091,7 +1048,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_with_nostream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1128,7 +1085,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_with_nostream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1161,7 +1118,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_that_yields_many()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1201,7 +1158,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_with_tool_data()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1250,7 +1207,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_with_output()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1294,7 +1251,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=agent_with_follow_up()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1336,7 +1293,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=partial_agent()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=mock_save,
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1391,7 +1348,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1433,7 +1390,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
@@ -1461,7 +1418,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1485,7 +1442,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_text_then_nostream("hello there", "hello there")),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1516,7 +1473,7 @@ class TestRunChatStreamBackground:
                 new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat.stream.save_conversation_async",
+                "app.services.chat.stream.save_bot_reply",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
@@ -1553,7 +1510,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_text_then_nostream("hi there", "hi there")),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture"),
         ):
@@ -1584,7 +1541,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_text_then_nostream("ok", "ok")),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture"),
             patch("app.services.chat.stream.get_session", side_effect=_session_for),
@@ -1621,7 +1578,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture"),
             patch("app.services.chat.stream.get_session", side_effect=_session_for),
@@ -1650,7 +1607,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_empty_response_then_done()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as mock_capture,
         ):
@@ -1702,7 +1659,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=agent_stream()),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.save_bot_reply", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
@@ -1952,7 +1909,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(side_effect=RuntimeError("agent down")),
             ),
-            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.save_bot_reply", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
@@ -2052,7 +2009,7 @@ class TestRunChatStreamBackground:
                 ),
             ),
             patch("app.services.analytics_service.capture"),
-            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.save_bot_reply", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as capture,
         ):
