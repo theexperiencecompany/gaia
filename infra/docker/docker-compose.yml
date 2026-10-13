@@ -274,10 +274,14 @@ services:
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 10s
+      # A TCP probe, not mongosh: each mongosh run boots a Node.js shell (3-5s of
+      # CPU, past the timeout under load). mongod only listens once it is ready.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/27017"]
+      interval: 30s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
@@ -294,10 +298,14 @@ services:
       - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      # A TCP probe, not rabbitmqctl: each CLI run boots an Erlang VM (~10s of
+      # CPU). The AMQP listener only opens once the broker has finished booting.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/5672"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
