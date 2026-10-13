@@ -11,8 +11,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
-import { isDockerRunning } from "../../lib/docker.js";
+import { dockerVolumeExists, isDockerRunning } from "../../lib/docker.js";
 import { findRepoRoot } from "../../lib/service-starter.js";
+import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
 
 export interface BackupOptions {
   outputDir?: string;
@@ -23,40 +24,8 @@ export interface BackupResult {
   mongoFile: string;
   postgresFile: string;
   commands: string[];
-  extraFiles?: string[];
+  volumeFiles?: VolumeFile[];
   warnings?: string[];
-}
-
-/**
- * Extra volumes beyond the critical DBs, backed up best-effort via `alpine tar`.
- * `chroma_data` shows as `gaia-selfhost_chroma_data` under the `gaia-selfhost`
- * project; `gaia-sandbox-workspace` is pinned via `name:` so it is literal.
- * Other volumes (redis/rabbitmq/caches) are transient and intentionally skipped.
- */
-export const EXTRA_VOLUME_BACKUPS: ReadonlyArray<{
-  volume: string;
-  fileSuffix: string;
-  label: string;
-}> = [
-  {
-    volume: "gaia-selfhost_chroma_data",
-    fileSuffix: "chroma_data",
-    label: "Chroma",
-  },
-  {
-    volume: "gaia-sandbox-workspace",
-    fileSuffix: "sandbox-workspace",
-    label: "Sandbox workspace",
-  },
-] as const;
-
-async function volumeExists(volume: string): Promise<boolean> {
-  try {
-    const { stdout } = await execa("docker", ["volume", "inspect", volume]);
-    return stdout.trim().length > 0;
-  } catch {
-    return false;
-  }
 }
 
 /** YYYY-MM-DD for dated filenames. */
@@ -76,7 +45,7 @@ export function getBackupCommands(
     `docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > ${mongoFile}`,
     `docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > ${postgresFile}`,
   ];
-  for (const v of EXTRA_VOLUME_BACKUPS) {
+  for (const v of VOLUME_BACKUPS) {
     const file = path.join(outputDir, `${v.fileSuffix}-${date}.tar.gz`);
     base.push(
       `docker run --rm -v ${v.volume}:/data -v ${outputDir}:/backups alpine tar czf /backups/${path.basename(file)} -C /data .`,
@@ -132,9 +101,11 @@ export async function runBackup(
       mongoFile,
       postgresFile,
       commands,
-      extraFiles: EXTRA_VOLUME_BACKUPS.map((v) =>
-        path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`),
-      ),
+      volumeFiles: VOLUME_BACKUPS.map((v) => ({
+        volume: v.volume,
+        label: v.label,
+        file: path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`),
+      })),
     };
   }
 
@@ -242,15 +213,15 @@ export async function runBackup(
     );
   }
 
-  // Best-effort `alpine tar` dumps; skip missing volumes (fresh install).
-  // Both are re-creatable but snapshotted when present for full restore.
-  const extraFiles: string[] = [];
+  // `alpine tar` archives. A missing volume is a fresh install with nothing
+  // stored yet; a failed archive of user data fails the backup.
+  const volumeFiles: VolumeFile[] = [];
   const warnings: string[] = [];
-  for (const v of EXTRA_VOLUME_BACKUPS) {
+  for (const v of VOLUME_BACKUPS) {
     const file = path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`);
-    if (!(await volumeExists(v.volume))) {
+    if (!(await dockerVolumeExists(v.volume))) {
       warnings.push(
-        `${v.label} volume ${v.volume} not found — skipped (re-creatable)`,
+        `${v.label} volume ${v.volume} not found — nothing to back up`,
       );
       continue;
     }
@@ -279,16 +250,18 @@ export async function runBackup(
       } catch {
         // Best-effort hardening.
       }
-      extraFiles.push(file);
+      volumeFiles.push({ volume: v.volume, label: v.label, file });
     } catch (e) {
       try {
         fs.unlinkSync(file);
       } catch {
         // No partial file or already cleaned.
       }
-      warnings.push(`${v.label} backup failed: ${(e as Error).message}`);
+      const message = `${v.label} backup failed: ${(e as Error).message}`;
+      if (v.userData) throw new Error(message);
+      warnings.push(message);
     }
   }
 
-  return { mongoFile, postgresFile, commands, extraFiles, warnings };
+  return { mongoFile, postgresFile, commands, volumeFiles, warnings };
 }

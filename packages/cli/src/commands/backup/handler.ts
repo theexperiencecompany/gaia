@@ -4,6 +4,11 @@
  * @module commands/backup/handler
  */
 
+import * as path from "node:path";
+import {
+  VOLUME_BACKUPS,
+  volumeRestoreScript,
+} from "../../lib/volume-backups.js";
 import { getBackupCommands, runBackup } from "./flow.js";
 
 function out(line = ""): void {
@@ -22,11 +27,13 @@ export async function runBackupCommand(
     out("Backup commands (dry run — not executed):");
     for (const cmd of result.commands) out(`  ${cmd}`);
     out("");
-    out("Extra volumes (chroma_data, sandbox-workspace) are backed up via");
+    out(
+      `Volumes (${VOLUME_BACKUPS.map((v) => v.volume).join(", ")}) are backed up via`,
+    );
     out(
       "  docker run --rm -v <volume>:/data -v <output>:/backups alpine tar ...",
     );
-    out("  and are skipped if the volume does not exist (re-creatable).");
+    out("  and are skipped if the volume does not exist yet.");
     out("");
     out("Run without --dry-run to execute inside the running containers,");
     out(
@@ -40,9 +47,8 @@ export async function runBackupCommand(
     const result = await runBackup({ outputDir: options.output });
     out(`MongoDB dump: ${result.mongoFile}`);
     out(`PostgreSQL dump: ${result.postgresFile}`);
-    if (result.extraFiles?.length) {
-      for (const f of result.extraFiles) out(`Volume dump: ${f}`);
-    }
+    for (const { label, file } of result.volumeFiles ?? [])
+      out(`${label} archive: ${file}`);
     if (result.warnings?.length) {
       for (const w of result.warnings) out(`Note: ${w}`);
     }
@@ -59,15 +65,10 @@ export async function runBackupCommand(
     out(
       `  docker compose -f infra/docker/docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < ${result.mongoFile}`,
     );
-    if (result.extraFiles?.length) {
-      for (const f of result.extraFiles) {
-        const vol = f.includes("chroma")
-          ? "gaia-selfhost_chroma_data"
-          : "gaia-sandbox-workspace";
-        out(
-          `  docker run --rm -v ${vol}:/data -v $(dirname ${f}):/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${f.split("/").pop()} -C /data"`,
-        );
-      }
+    for (const { volume, file } of result.volumeFiles ?? []) {
+      out(
+        `  docker run --rm -v ${volume}:/data -v $(dirname ${file}):/backups alpine sh -c "${volumeRestoreScript(path.basename(file))}"`,
+      );
     }
   } catch (e) {
     errOut((e as Error).message);

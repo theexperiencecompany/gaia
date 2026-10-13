@@ -21,6 +21,12 @@ from app.services.blob_store import (
 from app.utils.errors import AppError
 
 
+@pytest.fixture(autouse=True)
+def mounted_volume(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Treat the tmpdir as a mounted volume; the unmounted-volume test overrides this."""
+    monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: True)
+
+
 @pytest.fixture
 def cloudinary_sdk() -> Iterator[MagicMock]:
     with patch("app.services.blob_store.cloudinary.uploader") as sdk:
@@ -151,3 +157,15 @@ class TestLocalVolumeBlobStore:
     async def test_reading_a_missing_blob_is_loud(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             await LocalVolumeBlobStore(tmp_path).read("u1", "nope", "/api/v1/blobs/u1/nope")
+
+    async def test_an_unmounted_volume_refuses_instead_of_writing_into_the_container(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: False)
+        with pytest.raises(AppError) as raised:
+            await LocalVolumeBlobStore(tmp_path).put(
+                "u1", "k", b"b", resource_type="auto", content_type="text/plain"
+            )
+        assert raised.value.status_code == 503
+        assert raised.value.code == "file_storage_not_mounted"
+        assert list(tmp_path.iterdir()) == []

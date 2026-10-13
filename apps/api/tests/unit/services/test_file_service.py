@@ -1238,6 +1238,7 @@ class TestFileServiceUploadPins:
 def selfhost_volume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setattr(settings, "ENV", "selfhost")
     monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+    monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: True)
     with (
         patch("app.config.cloudinary.providers.get", return_value=None),
         patch("app.services.blob_store.cloudinary.uploader") as cloudinary_sdk,

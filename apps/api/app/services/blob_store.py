@@ -128,6 +128,10 @@ class LocalBlob:
     content_type: str
 
 
+def _is_mountpoint(path: Path) -> bool:
+    return path.is_mount()
+
+
 def local_blob_key(public_id: str) -> str:
     """Flatten a public id into one safe path segment (the URL's last segment)."""
     key = _UNSAFE_KEY_CHARS.sub("_", public_id).lstrip(".")
@@ -143,7 +147,17 @@ class LocalVolumeBlobStore:
         self.root = root
 
     def ensure_ready(self) -> None:
-        """Nothing to configure: the volume is part of the deployment."""
+        if not _is_mountpoint(self.root):
+            raise AppError(
+                message="File uploads are not set up on this instance.",
+                why=f"{self.root} is not a mounted volume, so files would vanish with the container.",
+                fix=(
+                    "Mount a persistent volume at LOCAL_FILE_STORAGE_PATH; the self-host "
+                    "compose file mounts gaia-selfhost_files there."
+                ),
+                status_code=503,
+                code="file_storage_not_mounted",
+            )
 
     def _blob_dir(self, owner_id: str, key: str) -> Path:
         if not _SAFE_ID_RE.match(owner_id):
@@ -160,6 +174,7 @@ class LocalVolumeBlobStore:
         content_type: str,
     ) -> str:
         del resource_type
+        self.ensure_ready()
         key = local_blob_key(public_id)
         blob_dir = self._blob_dir(owner_id, key)
         meta = LocalBlobMeta(content_type=content_type).model_dump_json()
