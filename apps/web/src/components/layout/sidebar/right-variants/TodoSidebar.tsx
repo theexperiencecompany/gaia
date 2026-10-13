@@ -3,9 +3,8 @@
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
-import { BubbleChatIcon, Delete02Icon } from "@icons";
+import { Delete02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
-import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
@@ -35,7 +34,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   onDelete,
   projects,
 }) => {
-  const router = useRouter();
   const user = useUser();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -185,25 +183,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
           {/* Canvas working memory — only for gaia-tracked todos */}
           {todo.vfs_path && (
-            <div className="flex items-center gap-2">
-              <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
-              {todo.last_run_conversation_id && (
-                <Button
-                  size="sm"
-                  variant="flat"
-                  radius="lg"
-                  onPress={() =>
-                    router.push(`/c/${todo.last_run_conversation_id}`)
-                  }
-                  startContent={
-                    <BubbleChatIcon className="size-4 text-zinc-400" />
-                  }
-                  className="text-zinc-300"
-                >
-                  View run chat
-                </Button>
-              )}
-            </div>
+            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
           {/* Editable Fields */}

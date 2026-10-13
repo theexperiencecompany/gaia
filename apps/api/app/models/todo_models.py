@@ -124,14 +124,6 @@ class TodoResponse(TodoBase):
         default_factory=list,
         description="Read-only; subscriptions are written by trigger registration, not by clients",
     )
-    source_conversation_id: str | None = Field(
-        default=None,
-        description="Read-only; the chat this tracked todo was created in, if any",
-    )
-    last_run_conversation_id: str | None = Field(
-        default=None,
-        description="Read-only; conversation of the most recent execution run, if any",
-    )
 
     @classmethod
     def from_document(
@@ -364,9 +356,6 @@ class TodoDocument(UserScopedDocument):
     # The chat that created this tracked todo, captured at creation. None for todos
     # created outside a chat (onboarding/REST).
     source_conversation_id: str | None = None
-    # Conversation of the most recent execution run — the sidebar's click-through
-    # into where the work happened/is happening.
-    last_run_conversation_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -397,7 +386,6 @@ class TodoUpdate(BaseModel):
     canvas_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
-    last_run_conversation_id: str | None = None
     trigger_subscriptions: list[TriggerSubscription] | None = None
 
 

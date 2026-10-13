@@ -22,7 +22,6 @@ export interface CompleteOnboardingArgs {
   profession: string;
   timezone: string;
   focus: string;
-  working_on: string;
   clarify_answers?: CompleteOnboardingClarifyAnswer[];
   selected_integrations?: string[];
   defer_workflows?: boolean;

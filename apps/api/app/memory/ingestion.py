@@ -40,12 +40,7 @@ from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, Me
 from app.memory.consolidation import infer_doc_types, render_agenda_document, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
 from app.memory.embeddings import embed_batch, embed_query
-from app.memory.extraction import (
-    StoredMemoryState,
-    categorize_fact,
-    extract_memories,
-    summarize_episode_entries,
-)
+from app.memory.extraction import categorize_fact, extract_memories, summarize_episode_entries
 from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
 from app.memory.reconciliation import ReconciledFact, reconcile
@@ -278,68 +273,12 @@ async def _close_resolved_agenda_items(user_id: str, items: list[str]) -> int:
     return closed
 
 
-@dataclass(frozen=True)
-class MemorySource:
-    """Where a transcript came from: the kind of source and, when it has one,
-    the id (session, message, profile URL) that provenance is recorded under."""
-
-    type: MemorySourceType
-    id: str | None = None
-
-
-async def _load_stored_state(user_id: str, now: datetime) -> tuple[StoredMemoryState, datetime]:
-    """What memory already holds, plus ``now`` on the user's wall clock."""
-    folder_tree = await pg_store.get_folder_tree(user_id)
-    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
-    local_now = (await resolve_user_timezone(user_id)).localize(now)
-    today_episode = await pg_store.get_episode(user_id, local_now.date())
-    journaled_today = (
-        [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
-    )
-    stored = StoredMemoryState(
-        folder_tree=_format_folder_tree(folder_tree),
-        recent_facts=recent_facts,
-        journaled_today=journaled_today,
-    )
-    return stored, local_now
-
-
-async def _cap_free_plan_growth(
-    user_id: str, reconciled: list[ReconciledFact]
-) -> list[ReconciledFact]:
-    # Free-plan cap: passive ingestion admits only as many NEW facts as fit
-    # under the cap and silently drops the rest, so a
-    # batch that crosses the cap lands exactly at it rather than overshooting
-    # (48 live + 10 new must not become 58). Concurrent same-user batches can
-    # transiently exceed the cap by a few facts (the check is not a reservation
-    # by design — enforcement stays fail-open), after which growth stops, so
-    # the cap is exact per batch and convergent, not globally atomic. UPDATES
-    # and EXTENDS supersede (net count unchanged) so what GAIA knows stays
-    # current, and
-    # reads are never gated — the cap blocks growth, it does not lobotomize.
-    # Facts keep reconciliation order (input order), so earlier facts in the
-    # transcript win the remaining slots deterministically.
-    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
-    remaining = await _free_cap_remaining(user_id, growth)
-    if remaining is None:
-        return reconciled
-    reconciled, dropped = _enforce_free_cap(reconciled, remaining)
-    if dropped:
-        log.info(
-            "memory_cap_reached",
-            event_name="memory_cap_reached",
-            user_id=user_id,
-            dropped=dropped,
-            limit=FREE_MEMORY_FACT_LIMIT,
-        )
-    return reconciled
-
-
 async def retain(
     user_id: str,
     messages: list[dict[str, str]],
     *,
-    source: MemorySource,
+    source_type: MemorySourceType,
+    source_id: str | None = None,
     extraction_hints: str | None = None,
     user_name: str | None = None,
     now: datetime | None = None,
@@ -356,7 +295,6 @@ async def retain(
     timings: dict[str, int] = {}
     started = time.perf_counter()
     now = now or datetime.now(UTC)
-    source_type, source_id = source.type, source.id
 
     # Set operation context up front so a mid-ingest failure still attributes
     # the wide event to a retain (the completion set below replaces this).
@@ -365,7 +303,13 @@ async def retain(
         memory=MemoryContext(operation="retain", source_type=source_type.value),
     )
 
-    stored, local_now = await _load_stored_state(user_id, now)
+    folder_tree = await pg_store.get_folder_tree(user_id)
+    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
+    local_now = (await resolve_user_timezone(user_id)).localize(now)
+    today_episode = await pg_store.get_episode(user_id, local_now.date())
+    journaled_today = (
+        [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
+    )
     timings["context_ms"] = _elapsed_ms(started)
 
     stage = time.perf_counter()
@@ -373,7 +317,9 @@ async def retain(
         messages,
         user_id=user_id,
         user_name=user_name or _DEFAULT_USER_NAME,
-        stored=stored,
+        folder_tree=_format_folder_tree(folder_tree),
+        recent_facts=recent_facts,
+        journaled_today=journaled_today,
         extraction_hints=extraction_hints,
         current_date=local_now,
     )
@@ -390,6 +336,7 @@ async def retain(
 
     batch, resolved_agenda = _route_by_shelf_life(batch)
 
+    result = RetainResult(facts_extracted=len(batch.facts))
     if not batch.facts and not batch.episode_entries and not resolved_agenda:
         log.set(
             memory=MemoryContext(
@@ -400,31 +347,51 @@ async def retain(
                 success=True,
             )
         )
-        return RetainResult(facts_extracted=0)
+        return result
 
     stage = time.perf_counter()
     embeddings = await embed_batch([fact.content for fact in batch.facts])
     timings["embed_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    reconciled = await _cap_free_plan_growth(
-        user_id, await reconcile(user_id, batch.facts, embeddings)
-    )
+    reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
+
+    # Free-plan cap: passive ingestion admits only as many NEW facts as fit
+    # under the cap and silently drops the rest, so a
+    # batch that crosses the cap lands exactly at it rather than overshooting
+    # (48 live + 10 new must not become 58). Concurrent same-user batches can
+    # transiently exceed the cap by a few facts (the check is not a reservation
+    # by design — enforcement stays fail-open), after which growth stops, so
+    # the cap is exact per batch and convergent, not globally atomic. UPDATES
+    # and EXTENDS supersede (net count unchanged) so what GAIA knows stays
+    # current, and
+    # reads are never gated — the cap blocks growth, it does not lobotomize.
+    # Facts keep reconciliation order (input order), so earlier facts in the
+    # transcript win the remaining slots deterministically.
+    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
+    remaining = await _free_cap_remaining(user_id, growth)
+    if remaining is not None:
+        reconciled, dropped = _enforce_free_cap(reconciled, remaining)
+        if dropped:
+            log.info(
+                "memory_cap_reached",
+                event_name="memory_cap_reached",
+                user_id=user_id,
+                dropped=dropped,
+                limit=FREE_MEMORY_FACT_LIMIT,
+            )
 
     stage = time.perf_counter()
     applied = await _apply_reconciled(
         user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
     )
-    result = RetainResult(
-        facts_extracted=len(batch.facts),
-        new=applied.new,
-        updated=applied.updated,
-        extended=applied.extended,
-        duplicates=applied.duplicates,
-        entities_linked=applied.entities_linked,
-        edges_added=applied.edges_added,
-    )
+    result.new = applied.new
+    result.updated = applied.updated
+    result.extended = applied.extended
+    result.duplicates = applied.duplicates
+    result.entities_linked = applied.entities_linked
+    result.edges_added = applied.edges_added
     timings["apply_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()

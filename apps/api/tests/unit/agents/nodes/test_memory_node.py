@@ -20,7 +20,6 @@ from app.constants.memory import (
     MEMORY_INGEST_MARK_TTL,
     MemorySourceType,
 )
-from app.memory.ingestion import MemorySource
 from app.utils.multimodal import extract_text_content
 from tests.helpers import WideEventRecorder
 
@@ -251,6 +250,9 @@ class TestMemoryNode:
         assert call_kwargs["user_id"] == "u1"
         assert call_kwargs["messages"] == state["messages"]
         assert call_kwargs["session_id"] == "t1"
+        assert call_kwargs["extraction_prompt"] is None or isinstance(
+            call_kwargs["extraction_prompt"], str
+        )
         assert result is state
 
     @pytest.mark.asyncio
@@ -283,6 +285,7 @@ class TestMemoryNode:
                 ],
                 user_id="u1",
                 session_id="s1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name=None,
             )
@@ -375,6 +378,7 @@ class TestDeltaIngestion:
                 messages=messages,
                 user_id="u1",
                 session_id="t1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name="Sam",
             )
@@ -402,6 +406,7 @@ class TestSystemGeneratedConversations:
                 messages=[HumanMessage(content="Run the daily digest workflow now", id="m1")],
                 user_id="u1",
                 session_id="t1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name="Sam",
                 conversation_id="c1",
@@ -500,18 +505,6 @@ class TestTheFencedTranscript:
         )
 
         assert formatted[0]["content"] == "x" * MAX_TOOL_OUTPUT_SIZE + "... [truncated]"
-
-    def test_a_tool_output_exactly_at_the_cap_is_handed_over_whole(self) -> None:
-        """The cap is exclusive. Truncating at exactly the limit appends a
-        "[truncated]" marker to a complete result, so the extractor is told
-        material was withheld when none was — and the last character of every
-        boundary-length tool output is silently replaced by the marker."""
-        whole = "x" * MAX_TOOL_OUTPUT_SIZE
-        formatted = _format_messages_for_user_memory(
-            [ToolMessage(content=whole, tool_call_id="tc1", id="m1")]
-        )
-
-        assert formatted == [{"role": "tool", "content": whole}]
 
 
 @pytest.mark.unit
@@ -661,18 +654,16 @@ class TestTheIngestionHandoff:
         with (
             patch(f"{NODE}.memory_engine", engine),
             patch(f"{NODE}.redis_cache", fake),
-            patch(
-                f"{NODE}.get_memory_extraction_prompt", return_value=extraction_prompt
-            ) as prompt_for,
         ):
             await _store_user_memory_background(
                 messages=self._thread() if messages is None else messages,
                 user_id=user_id,
                 session_id=session_id,
+                extraction_prompt=extraction_prompt,
                 subagent_id=subagent_id,
                 user_name=user_name,
             )
-        return {"retain": engine.retain, "redis": fake.client, "prompt_for": prompt_for}
+        return {"retain": engine.retain, "redis": fake.client}
 
     async def test_the_extraction_is_billed_to_the_user_and_thread_it_came_from(self) -> None:
         """user_id keys the memory rows AND the mark; session_id is the memory's
@@ -683,7 +674,8 @@ class TestTheIngestionHandoff:
         calls["retain"].assert_awaited_once()
         args, kwargs = calls["retain"].await_args
         assert args[0] == "u1"
-        assert kwargs["source"] == MemorySource(MemorySourceType.CONVERSATION, "t1")
+        assert kwargs["source_id"] == "t1"
+        assert kwargs["source_type"] == MemorySourceType.CONVERSATION
 
     async def test_the_integration_hints_and_user_name_ride_along(self) -> None:
         """The hints are why a Slack turn yields Slack ids. Dropped, extraction
@@ -693,25 +685,6 @@ class TestTheIngestionHandoff:
         _, kwargs = calls["retain"].await_args
         assert kwargs["extraction_hints"] == "pull out slack ids"
         assert kwargs["user_name"] == "Sam"
-
-    async def test_the_hints_are_looked_up_under_this_runs_own_integration(self) -> None:
-        """The prompt is chosen BY subagent id. Looked up under the wrong id —
-        or under None — a GitHub turn is mined with Slack's hints (or generic
-        ones) and still reports a successful extraction."""
-        calls = await self._run(subagent_id="github", extraction_prompt="pull out repo ids")
-
-        calls["prompt_for"].assert_called_once_with("github")
-        _, kwargs = calls["retain"].await_args
-        assert kwargs["extraction_hints"] == "pull out repo ids"
-
-    async def test_a_run_with_no_integration_looks_up_nothing_and_sends_no_hints(self) -> None:
-        """Plain chat has no integration prompt to fetch: asking for one under a
-        None id is a lookup the registry never has to answer."""
-        calls = await self._run(subagent_id=None)
-
-        calls["prompt_for"].assert_not_called()
-        _, kwargs = calls["retain"].await_args
-        assert kwargs["extraction_hints"] is None
 
     async def test_the_transcript_handed_over_is_the_formatted_one(self) -> None:
         calls = await self._run()
@@ -749,6 +722,7 @@ class TestTheIngestionHandoff:
                 messages=messages,
                 user_id="u1",
                 session_id="t1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name=None,
             )
@@ -777,6 +751,7 @@ class TestTheIngestionHandoff:
                 messages=self._thread(),
                 user_id="u1",
                 session_id="t1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name=None,
                 conversation_id="c1",
@@ -804,6 +779,7 @@ class TestTheIngestionHandoff:
                     messages=self._thread(),
                     user_id="u1",
                     session_id="t1",
+                    extraction_prompt=None,
                     subagent_id=None,
                     user_name=None,
                     conversation_id="c1",
@@ -832,6 +808,7 @@ class TestTheIngestionHandoff:
                     messages=messages,
                     user_id="u1",
                     session_id="t1",
+                    extraction_prompt=None,
                     subagent_id=None,
                     user_name=None,
                 )
@@ -878,6 +855,7 @@ class TestTrivialDeltaGate:
                 messages=messages,
                 user_id="u1",
                 session_id="t1",
+                extraction_prompt=None,
                 subagent_id=None,
                 user_name=None,
             )
@@ -913,6 +891,7 @@ class TestTrivialDeltaGate:
                     messages=self._thread(),
                     user_id="u1",
                     session_id="t1",
+                    extraction_prompt=None,
                     subagent_id=None,
                     user_name=None,
                 )
@@ -1010,10 +989,9 @@ class TestWhatTheNodeSpawns:
 
         assert spawn.call_args.kwargs["name"] == "user_memory"
 
-    async def test_the_subagent_id_reaches_the_task(self) -> None:
-        """The task resolves the integration's extraction prompt from this id
-        (see TestTheIngestionHandoff); drop it and every integration turn
-        extracts with generic hints."""
+    async def test_the_subagent_s_extraction_prompt_reaches_the_task(self) -> None:
+        """The prompt is resolved from subagent_id here and nowhere else — drop
+        it and every integration turn extracts with generic hints."""
         spawn, store = self._spawn_capture()
         state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
         config = {"configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}}
@@ -1021,9 +999,11 @@ class TestWhatTheNodeSpawns:
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
             patch(f"{NODE}.spawn_background_task", spawn),
+            patch(f"{NODE}.get_memory_extraction_prompt", return_value="slack hints"),
         ):
             await memory_node(state, config, store)
 
+        assert background.call_args.kwargs["extraction_prompt"] == "slack hints"
         assert background.call_args.kwargs["subagent_id"] == "slack"
 
     async def test_the_user_name_reaches_the_task(self) -> None:

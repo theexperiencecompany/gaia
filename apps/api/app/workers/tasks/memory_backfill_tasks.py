@@ -28,7 +28,6 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
-from app.memory.ingestion import MemorySource
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -117,7 +116,8 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
         result = await memory_engine.retain(
             user_id,
             messages,
-            source=MemorySource(MemorySourceType.CONVERSATION, doc.get("conversation_id")),
+            source_type=MemorySourceType.CONVERSATION,
+            source_id=doc.get("conversation_id"),
             user_name=user_name,
             now=_conversation_date(doc),
         )

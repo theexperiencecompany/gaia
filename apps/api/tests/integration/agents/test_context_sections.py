@@ -104,12 +104,9 @@ class TestTrackedTodosSummary:
 
     @staticmethod
     def _todos(*docs: TodoDocument):
-        """Both repository reads the real summary makes: the active-todo source
-        and the rejection-strike source (empty, so no strike block is added)."""
-        return patch.multiple(
-            "app.db.repositories.todos.todo_repository",
-            list_active_gaia_for_summary=AsyncMock(return_value=list(docs)),
-            list_rejected_gaia=AsyncMock(return_value=[]),
+        return patch(
+            "app.db.repositories.todos.todo_repository.list_active_tracked",
+            AsyncMock(return_value=list(docs)),
         )
 
     @staticmethod

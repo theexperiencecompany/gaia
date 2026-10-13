@@ -15,7 +15,6 @@ import {
   PROCESSING_MSG_FOCUS,
   PROCESSING_MSG_GMAIL,
   PROCESSING_MSG_NO_GMAIL,
-  WORKING_ON_SKIP_REPLY,
 } from "../constants/messages";
 import type { ClarifyAnswer, ClarifyQuestion, Message } from "../types";
 
@@ -170,9 +169,6 @@ function displayValue(fieldName: string, value: string): string {
   }
   if (fieldName === FIELD_NAMES.PROFESSION) {
     return professionOptions.find((p) => p.value === value)?.label ?? value;
-  }
-  if (fieldName === FIELD_NAMES.WORKING_ON && !value) {
-    return WORKING_ON_SKIP_REPLY;
   }
   return value;
 }

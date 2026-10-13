@@ -127,8 +127,6 @@ class ExecutorRun:
     workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
-    # The tracked todo this run is bound to (set by call_executor's optional
-    # active_todo_id, inherited from trigger_context for scheduled runs).
     active_todo_id: str | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the

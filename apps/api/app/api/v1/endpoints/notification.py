@@ -36,7 +36,6 @@ from app.models.notification.notification_models import (
 from app.models.notification.request_models import (
     BulkActionRequest,
     BulkActionSummary,
-    NotificationQuery,
     NotificationResponse,
     PaginatedNotificationsResponse,
 )
@@ -123,10 +122,7 @@ async def get_notifications(
     try:
         notifications, notification_count = await asyncio.gather(
             notification_service.get_user_notifications(
-                user_id,
-                NotificationQuery(
-                    status=status, limit=limit, offset=offset, channel_type=channel_type
-                ),
+                user_id, status, limit, offset, channel_type
             ),
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )

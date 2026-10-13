@@ -496,10 +496,8 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         },
                       );
                       openPricingModal({
-                        offer: {
-                          discountCode: DISCOUNT_CODE,
-                          discountPercent: DISCOUNT_PERCENT,
-                        },
+                        discountCode: DISCOUNT_CODE,
+                        discountPercent: DISCOUNT_PERCENT,
                       });
                       closeLetter();
                     }}

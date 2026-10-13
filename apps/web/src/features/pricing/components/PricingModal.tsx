@@ -13,16 +13,9 @@ interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   plans: Plan[];
-  /** Context-specific pitch shown in place of the default subheading. */
-  pitch?: string | null;
 }
 
-export function PricingModal({
-  isOpen,
-  onClose,
-  plans,
-  pitch,
-}: PricingModalProps) {
+export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
   const offer = usePricingModalStore((s) => s.offer);
 
   return (
@@ -46,7 +39,7 @@ export function PricingModal({
               Level Up
             </h2>
             <p className="text-sm font-light text-zinc-400">
-              {pitch || "You've been doing this manually. Let GAIA handle it."}
+              You've been doing this manually. Let GAIA handle it.
             </p>
           </div>
 

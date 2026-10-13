@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import type React from "react";
 import { useState } from "react";
+import { ChevronUp } from "@/components/shared/icons";
 import { NewChatSection } from "@/features/chat/components/interface/sections/NewChatSection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
@@ -47,7 +48,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
             variant="flat"
             onPress={() => setShowUseCases(true)}
           >
-            Explore Use Cases
+            Explore Use Cases <ChevronUp />
           </Button>
         )}
 

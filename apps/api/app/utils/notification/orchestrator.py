@@ -20,10 +20,11 @@ from app.models.notification.notification_models import (
     NotificationContentView,
     NotificationRecord,
     NotificationRequest,
+    NotificationSourceEnum,
     NotificationStatus,
+    NotificationType,
     NotificationView,
 )
-from app.models.notification.request_models import NotificationQuery
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -402,10 +403,19 @@ class NotificationOrchestrator:
 
     # NOTIFICATION RETRIEVAL & QUERIES
     async def get_user_notifications(
-        self, user_id: str, query: NotificationQuery
+        self,
+        user_id: str,
+        status: NotificationStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        channel_type: str | None = None,
+        notification_type: NotificationType | None = None,
+        source: NotificationSourceEnum | None = None,
     ) -> list[NotificationView]:
         """Get a user's notifications with optional filtering and pagination."""
-        notifications = await self.storage.get_user_notifications(user_id, query)
+        notifications = await self.storage.get_user_notifications(
+            user_id, status, limit, offset, channel_type, notification_type, source
+        )
         return [self._serialize_notification(n) for n in notifications]
 
     async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:

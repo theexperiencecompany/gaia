@@ -23,7 +23,6 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.notification_service import notification_service
-from app.services.todo_canvas_storage import read_canvas
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -537,6 +536,8 @@ async def _send_user_dormant_digest(
 
 async def _read_canvas(todo: TodoDocument) -> str:
     """Read canvas content for the given todo. Returns empty string on failure."""
+    from app.services.todo_canvas_storage import read_canvas
+
     user_id = todo.user_id
     todo_id = todo.id
     if not user_id or not todo_id:

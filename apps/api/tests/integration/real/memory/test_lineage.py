@@ -18,7 +18,6 @@ from app.constants.memory import (
 )
 from app.memory import pg_store
 from app.memory.engine import memory_engine
-from app.memory.ingestion import MemorySource
 from app.memory.schemas import EpisodeSummary, ExtractedMemoryBatch
 from tests.integration.real.memory.llm import FakeMemoryLLM, make_batch, make_fact
 from tests.integration.real.memory.store import (
@@ -134,7 +133,7 @@ async def test_delete_all_leaves_zero_rows_and_zero_vectors(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "transcript"}],
-        source=MemorySource(MemorySourceType.CONVERSATION),
+        source_type=MemorySourceType.CONVERSATION,
     )
     await memory_engine.update_document(memory_user, MemoryDocType.USER_MD, "# Arjun")
 

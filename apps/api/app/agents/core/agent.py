@@ -47,7 +47,7 @@ from app.models.agent_models import (
     SilentRunResult,
     agent_configurable,
 )
-from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -369,19 +369,6 @@ async def call_agent_silent(
     ``task_id`` — read off the stream's session before it is torn down, since
     the session is this function's own and no caller can reach it.
     """
-    # Root guard for a recurring background-caller footgun: the human turn is
-    # read from `messages`, not `message`, when no workflow/tool is selected. A
-    # background caller that sets only `message` with `messages=[]` would fail
-    # the run with "No human message or selected tool". Synthesize it here so no
-    # caller has to remember, and none can regress.
-    if (
-        not request.messages
-        and request.message
-        and not request.selectedWorkflow
-        and not request.selectedTool
-    ):
-        request.messages = [MessageDict(role="user", content=request.message)]
-
     options = options or AgentRunOptions()
     usage_metadata_callback = options.usage_metadata_callback
     trigger_context = options.trigger_context

@@ -53,8 +53,6 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.context import UserClock
-from app.services.briefing.edition_rotation import choose_edition_family
-from app.services.briefing.editions import rotation_families
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.utils.analytics import track
@@ -559,13 +557,6 @@ async def run_daily_briefing(user_id: str) -> None:
         await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
     )
     payload = _daily_payload(clock, voice, sections, stats, winback.is_winback)
-
-    # Daily editions rotate the template library too ("daily fun docs") —
-    # independent per-kind state, assigned only after generation succeeds and
-    # persisted forever with the payload.
-    payload.template_family = await choose_edition_family(
-        user_id, kind=BRIEFING_KIND_DAILY, families=rotation_families()
-    )
     briefing = await _publish_daily(user_id, user, clock, payload)
 
     # The goodbye went out — pause the loop until a reactivation signal.
@@ -613,11 +604,6 @@ async def run_weekly_digest(user_id: str) -> None:
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
     payload.hue = hue_for_day(clock.day_of_year)
-    # Rotation advances only after generation succeeds, so a failed run does
-    # not burn this week's slot in the shuffled cycle.
-    payload.template_family = await choose_edition_family(
-        user_id, kind=BRIEFING_KIND_WEEKLY, families=rotation_families()
-    )
 
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload

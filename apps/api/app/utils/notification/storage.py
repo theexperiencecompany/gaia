@@ -3,11 +3,11 @@ from collections.abc import Mapping
 from app.constants.log_tags import LogTag
 from app.db.repositories.notifications import notification_repository
 from app.models.notification.notification_models import (
-    NotificationFilters,
     NotificationRecord,
+    NotificationSourceEnum,
     NotificationStatus,
+    NotificationType,
 )
-from app.models.notification.request_models import NotificationQuery
 from shared.py.wide_events import log
 
 
@@ -37,11 +37,24 @@ class MongoDBNotificationStorage:
         await notification_repository.update_fields(notification_id, **updates)
 
     async def get_user_notifications(
-        self, user_id: str, query: NotificationQuery
+        self,
+        user_id: str,
+        status: NotificationStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        channel_type: str | None = None,
+        notification_type: NotificationType | None = None,
+        source: NotificationSourceEnum | None = None,
     ) -> list[NotificationRecord]:
         """Get user's notifications with optional filtering"""
         return await notification_repository.list_for_user(
-            user_id, filters=query, limit=query.limit, offset=query.offset
+            user_id,
+            status=status,
+            channel_type=channel_type,
+            notification_type=notification_type,
+            source=source,
+            limit=limit,
+            offset=offset,
         )
 
     async def get_notification_count(
@@ -52,5 +65,5 @@ class MongoDBNotificationStorage:
     ) -> int:
         """Get count of notifications for a user with optional status filtering"""
         return await notification_repository.count_for_user(
-            user_id, filters=NotificationFilters(status=status, channel_type=channel_type)
+            user_id, status=status, channel_type=channel_type
         )

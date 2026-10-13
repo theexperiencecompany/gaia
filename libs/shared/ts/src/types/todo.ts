@@ -92,8 +92,6 @@ export interface Todo {
   starred?: boolean;
   created_at: string;
   updated_at: string;
-  /** Conversation of the most recent execution run — click-through into the chat. */
-  last_run_conversation_id?: string | null;
 }
 
 export interface TodoUpdate {

@@ -8,7 +8,6 @@ from fastapi import BackgroundTasks, HTTPException
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.onboarding_models import OnboardingCompletion, PersonalizationBundle
 from app.models.user_models import (
     BioStatus,
     ClarifyAnswer,
@@ -18,7 +17,6 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.services.onboarding.onboarding_service import (
-    _seed_goal_memory,
     complete_onboarding,
     get_user_onboarding_status,
     update_onboarding_preferences,
@@ -27,7 +25,6 @@ from app.services.onboarding.post_onboarding_service import (
     save_personalization_data,
     seed_initial_user_data,
 )
-from app.services.system_workflows.provisioner import provision_briefing_workflows
 
 
 @pytest.fixture
@@ -107,14 +104,7 @@ class TestCompleteOnboarding:
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
         mock_enqueue_intelligence_job.assert_awaited_once_with(sample_user_id)
-        # Deferred work: seed user data + provision briefing workflows. A goal
-        # memory seed is only scheduled when the request carries a focus.
-        expected_calls = [
-            call(seed_initial_user_data, sample_user_id),
-            call(provision_briefing_workflows, sample_user_id),
-        ]
-        sample_background_tasks.add_task.assert_has_calls(expected_calls)
-        assert sample_background_tasks.add_task.call_count == len(expected_calls)
+        sample_background_tasks.add_task.assert_called_once()
 
     async def test_user_not_found(
         self,
@@ -192,8 +182,7 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request, sample_background_tasks)
 
-        completion = mock_repo.complete_onboarding.call_args.args[1]
-        assert completion.timezone == "America/New_York"
+        assert mock_repo.complete_onboarding.call_args.kwargs["timezone"] == "America/New_York"
 
     async def test_passes_exact_normalized_kwargs_to_repository(
         self,
@@ -227,36 +216,29 @@ class TestCompleteOnboarding:
 
         mock_repo.complete_onboarding.assert_awaited_once_with(
             sample_user_id,
-            OnboardingCompletion(
-                name="Alice",
-                timezone="UTC",
-                phase=OnboardingPhase.PERSONALIZATION_PENDING,
-                bio_status=BioStatus.PENDING,
-                pipeline_mode="full",
-                preferences=OnboardingPreferences(
-                    profession="Engineer", response_style="casual", custom_instructions=None
-                ),
-                focus="ship the product",
-                clarify_answers=[
-                    {
-                        "id": "scope",
-                        "kind": "scope",
-                        "question": "What should GAIA take off your plate?",
-                        "value": "triage my inbox",
-                    }
-                ],
-                selected_integrations=["gmail"],
+            name="Alice",
+            timezone="UTC",
+            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="full",
+            preferences=OnboardingPreferences(
+                profession="Engineer", response_style="casual", custom_instructions=None
             ),
+            focus="ship the product",
+            clarify_answers=[
+                {
+                    "id": "scope",
+                    "kind": "scope",
+                    "question": "What should GAIA take off your plate?",
+                    "value": "triage my inbox",
+                }
+            ],
+            selected_integrations=["gmail"],
         )
         mock_enqueue_intelligence_job.assert_awaited_once_with(sample_user_id)
-        # This request carries a focus, so the goal memory seed is scheduled too.
-        expected_calls = [
-            call(seed_initial_user_data, sample_user_id),
-            call(_seed_goal_memory, sample_user_id, "ship the product"),
-            call(provision_briefing_workflows, sample_user_id),
-        ]
-        sample_background_tasks.add_task.assert_has_calls(expected_calls)
-        assert sample_background_tasks.add_task.call_count == len(expected_calls)
+        sample_background_tasks.add_task.assert_called_once_with(
+            seed_initial_user_data, sample_user_id
+        )
 
     async def test_blank_and_absent_optionals_normalize_to_none_and_split_mode(
         self,
@@ -278,19 +260,17 @@ class TestCompleteOnboarding:
 
         mock_repo.complete_onboarding.assert_awaited_once_with(
             sample_user_id,
-            OnboardingCompletion(
-                name="Alice",
-                timezone=None,
-                phase=OnboardingPhase.PERSONALIZATION_PENDING,
-                bio_status=BioStatus.PENDING,
-                pipeline_mode="split",
-                preferences=OnboardingPreferences(
-                    profession="Engineer", response_style="casual", custom_instructions=None
-                ),
-                focus=None,
-                clarify_answers=None,
-                selected_integrations=None,
+            name="Alice",
+            timezone=None,
+            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="split",
+            preferences=OnboardingPreferences(
+                profession="Engineer", response_style="casual", custom_instructions=None
             ),
+            focus=None,
+            clarify_answers=None,
+            selected_integrations=None,
         )
 
     async def test_generic_exception_returns_500(
@@ -406,7 +386,8 @@ class TestSavePersonalizationData:
     async def test_saves_data(
         self, mock_save_personalization: AsyncMock, sample_user_id: str
     ) -> None:
-        bundle = PersonalizationBundle(
+        await save_personalization_data(
+            sample_user_id,
             house="explorer",
             personality_phrase="Creative thinker",
             user_bio="A passionate engineer.",
@@ -418,9 +399,16 @@ class TestSavePersonalizationData:
             overlay_opacity=80,
         )
 
-        await save_personalization_data(sample_user_id, bundle)
-
-        mock_save_personalization.assert_awaited_once_with(sample_user_id, bundle)
+        mock_save_personalization.assert_awaited_once()
+        kwargs = mock_save_personalization.call_args.kwargs
+        assert kwargs["house"] == "explorer"
+        assert kwargs["personality_phrase"] == "Creative thinker"
+        assert kwargs["user_bio"] == "A passionate engineer."
+        assert kwargs["bio_status"] == BioStatus.COMPLETED
+        assert kwargs["workflow_ids"] == ["wf1", "wf2"]
+        assert kwargs["account_number"] == 42
+        assert kwargs["overlay_color"] == "#ff0000"
+        assert kwargs["overlay_opacity"] == 80
 
     async def test_handles_exception(
         self, mock_save_personalization: AsyncMock, sample_user_id: str
@@ -429,17 +417,15 @@ class TestSavePersonalizationData:
 
         await save_personalization_data(
             sample_user_id,
-            PersonalizationBundle(
-                house="explorer",
-                personality_phrase="phrase",
-                user_bio="bio",
-                bio_status=BioStatus.COMPLETED,
-                workflow_ids=[],
-                account_number=1,
-                member_since="Jan 2024",
-                overlay_color="#000",
-                overlay_opacity=50,
-            ),
+            house="explorer",
+            personality_phrase="phrase",
+            user_bio="bio",
+            bio_status=BioStatus.COMPLETED,
+            workflow_ids=[],
+            account_number=1,
+            member_since="Jan 2024",
+            overlay_color="#000",
+            overlay_opacity=50,
         )
 
 
@@ -694,14 +680,14 @@ class TestCompleteOnboardingExactKwargs:
         )
         await complete_onboarding(sample_user_id, request, sample_background_tasks)
 
-        completion = mock_repo.complete_onboarding.await_args.args[1]
-        assert completion.name == "Alice"
-        assert completion.timezone == "UTC"
-        assert completion.pipeline_mode == "split"
-        assert completion.focus == "ship v2"
-        assert completion.clarify_answers == [
+        kwargs = mock_repo.complete_onboarding.await_args.kwargs
+        assert kwargs["name"] == "Alice"
+        assert kwargs["timezone"] == "UTC"
+        assert kwargs["pipeline_mode"] == "split"
+        assert kwargs["focus"] == "ship v2"
+        assert kwargs["clarify_answers"] == [
             {"id": "c1", "kind": "goal", "question": "q", "value": "grow"}
         ]
-        assert completion.preferences == OnboardingPreferences(
+        assert kwargs["preferences"] == OnboardingPreferences(
             profession="Engineer", response_style="casual", custom_instructions=None
         )

@@ -89,7 +89,6 @@ export const authApi = {
     profession: string;
     timezone?: string;
     focus?: string;
-    working_on?: string;
     clarify_answers?: {
       id: string;
       kind: string;

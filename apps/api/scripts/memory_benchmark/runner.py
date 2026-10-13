@@ -20,7 +20,6 @@ import uuid
 from app.constants.memory import MemorySourceType
 from app.memory import ingestion
 from app.memory.engine import memory_engine
-from app.memory.ingestion import MemorySource
 
 from .dataset import SCENARIOS
 
@@ -59,7 +58,7 @@ async def _retain_at(
         await ingestion.retain(
             user_id=user_id,
             messages=messages,
-            source=MemorySource(MemorySourceType.CONVERSATION),
+            source_type=MemorySourceType.CONVERSATION,
         )
 
 

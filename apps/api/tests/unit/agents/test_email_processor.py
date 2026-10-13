@@ -31,7 +31,6 @@ from app.agents.memory.email_processor import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.memory import MemorySourceType
-from app.memory.ingestion import MemorySource
 from app.models.mail_models import GmailMessagesResponse, GmailToolResult
 from app.models.user_models import UserDocument
 from app.services.onboarding.social_profile_service import (
@@ -1753,7 +1752,7 @@ class TestCrawlAndStoreDiscoveredExactPins:
                     "content": "User's github profile: u-github\n\nGH CONTENT\n",
                 }
             ],
-            source=MemorySource(MemorySourceType.EMAIL),
+            source_type=MemorySourceType.EMAIL,
             extraction_hints=_EXTRACTION_HINTS_TWITTER,
         )
         (msg,), kwargs = mock_log.info.call_args

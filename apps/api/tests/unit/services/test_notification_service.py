@@ -17,7 +17,6 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
-from app.models.notification.request_models import NotificationQuery
 from app.services.notification_service import NotificationService, notification_service
 
 _MOD = "app.services.notification_service"
@@ -84,7 +83,8 @@ class TestNotificationService:
         svc, orchestrator = service
         orchestrator.get_user_notifications.return_value = []
 
-        query = NotificationQuery(
+        await svc.get_user_notifications(
+            "user-1",
             status=NotificationStatus.READ,
             limit=10,
             offset=5,
@@ -93,9 +93,15 @@ class TestNotificationService:
             source="ai_agent",
         )
 
-        await svc.get_user_notifications("user-1", query)
-
-        orchestrator.get_user_notifications.assert_awaited_once_with("user-1", query)
+        orchestrator.get_user_notifications.assert_awaited_once_with(
+            "user-1",
+            NotificationStatus.READ,
+            10,
+            5,
+            "in_app",
+            NotificationType.WARNING,
+            "ai_agent",
+        )
 
     async def test_get_notification_delegates(self, service):
         svc, orchestrator = service

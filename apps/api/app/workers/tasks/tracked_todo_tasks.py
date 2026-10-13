@@ -464,12 +464,6 @@ async def _execute_via_agent(
         "execution_mode": "background",
     }
 
-    # Recorded before the run so the sidebar can jump into the live conversation
-    # while the work is still happening, not only after it finishes.
-    await todo_repository.update(
-        todo_id, user_id=user_id, update=TodoUpdate(last_run_conversation_id=conversation_id)
-    )
-
     # Structural paper trail — write a start marker to the canvas Timeline
     # BEFORE the agent runs, so the run leaves evidence even if the LLM forgets.
     short_conv = conversation_id[:8]
