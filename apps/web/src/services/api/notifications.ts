@@ -1,4 +1,4 @@
-import type { ChannelPlatform } from "@gaia/shared/types";
+import type { ChannelPlatform, QuietHours } from "@gaia/shared/types";
 import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
@@ -79,6 +79,17 @@ export class NotificationsAPI {
   /** The enabled state of every user-configurable notification channel. */
   static getChannelPreferences() {
     return api.get("/api/v1/notifications/preferences/channels");
+  }
+
+  /** The daily window in which GAIA holds proactive messages. */
+  static getQuietHours() {
+    return api.get("/api/v1/notifications/preferences/quiet-hours");
+  }
+
+  static updateQuietHours(quietHours: QuietHours) {
+    return api.put("/api/v1/notifications/preferences/quiet-hours", {
+      body: quietHours,
+    });
   }
 
   static async updateChannelPreference(

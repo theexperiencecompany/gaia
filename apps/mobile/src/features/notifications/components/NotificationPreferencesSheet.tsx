@@ -104,8 +104,6 @@ const PLATFORM_CHANNELS: PlatformChannelMeta[] = [
   },
 ];
 
-const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "08:00" };
-
 const PREFERENCES_QUERY_KEY = ["notification-preferences"] as const;
 const CHANNEL_PREFERENCES_QUERY_KEY = [
   "notification-channel-preferences",
@@ -115,7 +113,6 @@ const PLATFORM_LINKS_QUERY_KEY = ["platform-links"] as const;
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   global: { push: true, in_app: true },
   categories: {},
-  quiet_hours: null,
 };
 
 function isHttpStatus(err: unknown, status: number): boolean {
@@ -378,68 +375,75 @@ function SectionShell({ title, children }: SectionShellProps) {
   );
 }
 
-function parseTimeToDate(value: string): Date {
-  const [h, m] = value.split(":").map((s) => Number.parseInt(s, 10));
+const QUIET_HOURS_QUERY_KEY = ["notification-quiet-hours"] as const;
+
+type QuietHoursEdge = "start_hour" | "end_hour";
+
+function hourToDate(hour: number): Date {
   const d = new Date();
-  d.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  d.setHours(hour, 0, 0, 0);
   return d;
 }
 
-function formatDateToHHMM(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-function formatTimeLabel(value: string): string {
-  const d = parseTimeToDate(value);
-  return d.toLocaleString(undefined, {
+function formatHourLabel(hour: number): string {
+  return hourToDate(hour).toLocaleString(undefined, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   });
 }
 
-interface QuietHoursSectionProps {
-  prefs: NotificationPreferences;
-  onChange: (next: NotificationPreferences) => void;
-  disabled: boolean;
-}
-
-function QuietHoursSection({
-  prefs,
-  onChange,
-  disabled,
-}: QuietHoursSectionProps) {
+/**
+ * The daily window, on the user's clock, in which GAIA holds proactive pushes.
+ * Always on; the user moves its edges in whole hours.
+ */
+function QuietHoursSection() {
   const { spacing, fontSize } = useResponsive();
-  const enabled = !!prefs.quiet_hours;
-  const quiet = prefs.quiet_hours ?? DEFAULT_QUIET_HOURS;
-  const [picker, setPicker] = useState<null | "from" | "to">(null);
-
-  const handleToggle = useCallback(
-    (val: boolean) => {
-      onChange({
-        ...prefs,
-        quiet_hours: val ? quiet : null,
-      });
+  const queryClient = useQueryClient();
+  const [picker, setPicker] = useState<QuietHoursEdge | null>(null);
+  const quietQuery = useQuery<QuietHours, Error>({
+    queryKey: QUIET_HOURS_QUERY_KEY,
+    queryFn: () => inAppNotificationsApi.getQuietHours(),
+  });
+  const mutation = useMutation<QuietHours, Error, QuietHours>({
+    mutationFn: (next) => inAppNotificationsApi.updateQuietHours(next),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(QUIET_HOURS_QUERY_KEY, saved);
     },
-    [onChange, prefs, quiet],
-  );
+    onError: () => {
+      Alert.alert("Error", "Failed to update quiet hours.");
+    },
+  });
+  const quiet = quietQuery.data;
 
   const handleTimeChange = useCallback(
-    (which: "from" | "to", _evt: DateTimePickerEvent, date?: Date) => {
+    (edge: QuietHoursEdge, _evt: DateTimePickerEvent, date?: Date) => {
       if (Platform.OS === "android") {
         setPicker(null);
       }
-      if (!date) return;
-      const next: QuietHours = {
-        ...quiet,
-        [which]: formatDateToHHMM(date),
-      };
-      onChange({ ...prefs, quiet_hours: next });
+      if (!date || !quiet) return;
+      const next: QuietHours = { ...quiet, [edge]: date.getHours() };
+      if (next.start_hour === next.end_hour) {
+        Alert.alert("Quiet hours", "Start and end must be different hours.");
+        return;
+      }
+      mutation.mutate(next);
     },
-    [onChange, prefs, quiet],
+    [mutation, quiet],
   );
+
+  if (!quiet) {
+    return (
+      <SectionShell title="Quiet Hours">
+        <ActivityIndicator color="#00bbff" />
+      </SectionShell>
+    );
+  }
+
+  const edges: { edge: QuietHoursEdge; label: string }[] = [
+    { edge: "start_hour", label: "From" },
+    { edge: "end_hour", label: "To" },
+  ];
 
   return (
     <SectionShell title="Quiet Hours">
@@ -452,34 +456,18 @@ function QuietHoursSection({
         }}
       >
         <AppIcon icon={Moon02Icon} size={16} color="#71717a" />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>
-            Enable quiet hours
-          </Text>
-          <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-            Pause notifications during a daily window
-          </Text>
-        </View>
-        <Switch
-          value={enabled}
-          onValueChange={handleToggle}
-          disabled={disabled}
-          trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.6)" }}
-          thumbColor={enabled ? "#00bbff" : "#71717a"}
-        />
+        <Text style={{ flex: 1, fontSize: 12, color: "#71717a" }}>
+          GAIA holds proactive messages during this window, on your clock
+        </Text>
       </View>
-
-      {enabled && (
-        <View style={{ paddingBottom: spacing.xs }}>
+      {edges.map(({ edge, label }) => (
+        <View key={edge}>
           <View
-            style={{
-              height: 1,
-              backgroundColor: "rgba(255,255,255,0.06)",
-            }}
+            style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }}
           />
           <Pressable
-            onPress={() => setPicker("from")}
-            disabled={disabled}
+            onPress={() => setPicker(edge)}
+            disabled={mutation.isPending}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -488,7 +476,7 @@ function QuietHoursSection({
             }}
           >
             <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>
-              From
+              {label}
             </Text>
             <Text
               style={{
@@ -497,58 +485,29 @@ function QuietHoursSection({
                 fontWeight: "600",
               }}
             >
-              {formatTimeLabel(quiet.from)}
+              {formatHourLabel(quiet[edge])}
             </Text>
           </Pressable>
-          <View
-            style={{
-              height: 1,
-              backgroundColor: "rgba(255,255,255,0.06)",
-            }}
-          />
-          <Pressable
-            onPress={() => setPicker("to")}
-            disabled={disabled}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingVertical: spacing.sm,
-            }}
-          >
-            <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>To</Text>
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#00bbff",
-                fontWeight: "600",
-              }}
-            >
-              {formatTimeLabel(quiet.to)}
-            </Text>
-          </Pressable>
-
-          {picker !== null && (
-            <DateTimePicker
-              value={parseTimeToDate(picker === "from" ? quiet.from : quiet.to)}
-              mode="time"
-              is24Hour={false}
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(evt, d) => handleTimeChange(picker, evt, d)}
-              themeVariant="dark"
-            />
-          )}
-          {Platform.OS === "ios" && picker !== null && (
-            <Pressable
-              onPress={() => setPicker(null)}
-              style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
-            >
-              <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>
-                Done
-              </Text>
-            </Pressable>
-          )}
         </View>
+      ))}
+      {picker !== null && (
+        <DateTimePicker
+          value={hourToDate(quiet[picker])}
+          mode="time"
+          minuteInterval={30}
+          is24Hour={false}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(evt, d) => handleTimeChange(picker, evt, d)}
+          themeVariant="dark"
+        />
+      )}
+      {Platform.OS === "ios" && picker !== null && (
+        <Pressable
+          onPress={() => setPicker(null)}
+          style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
+        >
+          <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>Done</Text>
+        </Pressable>
       )}
     </SectionShell>
   );
@@ -767,13 +726,6 @@ export const NotificationPreferencesSheet =
         [prefs, handlePersistPrefs],
       );
 
-      const handleQuietHoursChange = useCallback(
-        async (next: NotificationPreferences) => {
-          await handlePersistPrefs(next, "quiet_hours");
-        },
-        [handlePersistPrefs],
-      );
-
       const handleChannelToggle = useCallback(
         (channel: ChannelPlatform, value: boolean) => {
           channelMutation.mutate({ channel, enabled: value });
@@ -847,13 +799,7 @@ export const NotificationPreferencesSheet =
                   </View>
                 ) : prefs ? (
                   <>
-                    <QuietHoursSection
-                      prefs={prefs}
-                      onChange={(next) => {
-                        void handleQuietHoursChange(next);
-                      }}
-                      disabled={updatingPrefKey === "quiet_hours"}
-                    />
+                    <QuietHoursSection />
 
                     <ChannelsSection
                       links={platformLinks}

@@ -194,7 +194,6 @@ libs/shared/ts/src/types/notification.ts:InAppNotificationContent
 libs/shared/ts/src/types/notification.ts:NotificationActionConfig
 libs/shared/ts/src/types/notification.ts:PlatformLink
 libs/shared/ts/src/types/notification.ts:PlatformLinksResponse
-libs/shared/ts/src/types/notification.ts:QuietHours
 libs/shared/ts/src/types/reminders.ts:CronValidationResult
 libs/shared/ts/src/types/reminders.ts:Reminder
 libs/shared/ts/src/types/reminders.ts:ReminderCreate
@@ -216,6 +215,4 @@ libs/shared/ts/src/types/usage.ts:UsageActivity
 libs/shared/ts/src/types/usage.ts:UsagePeriod
 libs/shared/ts/src/types/workflow.ts:CommunityWorkflow
 libs/shared/ts/src/types/workflow.ts:ContentCreator
-libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload
-libs/shared/ts/src/types/workflow.ts:ExecutionConfig
 libs/shared/ts/src/types/workflow.ts:WorkflowMetadata

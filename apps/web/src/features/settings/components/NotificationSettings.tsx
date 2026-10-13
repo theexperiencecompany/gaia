@@ -13,6 +13,7 @@ import {
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
 import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
+import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -128,6 +129,7 @@ export default function NotificationSettings() {
           );
         })}
       </SettingsSection>
+      <QuietHoursSettings />
     </SettingsPage>
   );
 }

@@ -1,6 +1,6 @@
 import type { NotificationActionView } from "../api/generated";
 
-export type { ChannelPreferences } from "../api/generated";
+export type { ChannelPreferences, QuietHours } from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
@@ -85,8 +85,3 @@ export const NOTIFICATION_CHANNELS = [
 ] as const;
 
 export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
-
-export interface QuietHours {
-  from: string;
-  to: string;
-}

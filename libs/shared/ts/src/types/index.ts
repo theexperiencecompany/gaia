@@ -111,8 +111,6 @@ export type {
 export type {
   CommunityWorkflow,
   ContentCreator,
-  CreateWorkflowPayload,
-  ExecutionConfig,
   TriggerConfig,
   Workflow,
   WorkflowListResponse,

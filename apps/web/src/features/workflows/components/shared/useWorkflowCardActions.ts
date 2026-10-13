@@ -14,6 +14,7 @@ import type {
   TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "../../constants/delivery";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 
 interface UseWorkflowCardActionsParams {
@@ -115,6 +116,7 @@ export function useWorkflowCardActions({
           }),
         // Only generate if no steps exist
         generate_immediately: !formattedSteps || formattedSteps.length === 0,
+        delivery: ONE_CLICK_WORKFLOW_DELIVERY,
       };
 
       const result = await createWorkflow(workflowRequest);

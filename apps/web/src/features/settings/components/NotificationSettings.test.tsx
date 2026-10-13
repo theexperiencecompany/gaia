@@ -34,6 +34,10 @@ vi.mock("@/features/settings/components/ChatChannelSettings", () => ({
   ChatChannelSettings: () => null,
 }));
 
+vi.mock("@/features/settings/components/QuietHoursSettings", () => ({
+  QuietHoursSettings: () => null,
+}));
+
 function renderSettings() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

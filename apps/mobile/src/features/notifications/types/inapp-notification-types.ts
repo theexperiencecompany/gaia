@@ -44,5 +44,4 @@ export interface NotificationCategoryPreferences {
 export interface NotificationPreferences {
   global: NotificationCategoryPreferences;
   categories: Record<string, NotificationCategoryPreferences>;
-  quiet_hours?: import("@gaia/shared/types").QuietHours | null;
 }

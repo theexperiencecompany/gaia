@@ -16,6 +16,7 @@ import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "@/features/workflows/constants/delivery";
 import {
   DEFAULT_WORKFLOW_ICON_COLOR,
   WORKFLOW_ICON_BG_ALPHA,
@@ -74,6 +75,7 @@ function buildWorkflowRequest(
       }),
     // Only generate if no steps exist
     generate_immediately: !formattedSteps || formattedSteps.length === 0,
+    delivery: ONE_CLICK_WORKFLOW_DELIVERY,
   };
 }
 
